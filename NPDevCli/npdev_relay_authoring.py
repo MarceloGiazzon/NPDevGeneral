@@ -713,10 +713,11 @@ def _files_changed(model_path, extra_files, config_offers) -> bool:
     (T4.5b, `config_offers` = [(setting id, value)]). A theme-only or setting-only answer leaves the model identical and
     is still a change."""
     import npdev_relay_pages as pages_mod
+    import npdev_relay_seeds as seeds_mod
     import npdev_relay_themes as themes_mod
 
     root = Path(model_path).parent
-    if themes_mod.changed(root, extra_files) or pages_mod.changed(root, extra_files):
+    if themes_mod.changed(root, extra_files) or pages_mod.changed(root, extra_files) or seeds_mod.changed(root, extra_files):
         return True
     if not config_offers:
         return False

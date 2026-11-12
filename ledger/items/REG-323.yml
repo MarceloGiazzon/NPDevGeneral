@@ -19,6 +19,7 @@ files:
   - NPDevCli/npdev_theme_validate.py
   - NPDevCli/npdev_config_defaults.py
   - NPDevCli/npdev_relay_pages.py
+  - NPDevCli/npdev_relay_seeds.py
   - NPDevCli/npdev_relay_config.py
   - NPDevCli/relay-config-allowlist.json
   - NPDevCli/npdev_relay_prompts.py
@@ -95,7 +96,7 @@ detail: |
   config.json defaults ui.theme.name, which no chat can write: an unselected theme is saved with a `theme-not-selected` warning
   naming the setting, and `theme-added` / `theme-replaced` info findings say what happens. NOT done: (a) selecting the theme -- DONE
   by T4.5b right below; (b) pages `web/*.html|css|svg` -- DONE by T4.3b right below; (c) seed data
-  (`seeds/*.json`, staged by the CLI from the model folder, not in the f4 allowlist) and translations (`settings.strings` already
+  (`seeds/*.json`) -- DONE by the seeds + menu slice below -- and translations (`settings.strings` already
   travels inside model.json: nothing to apply). The Manager never passes phase f4.
   2026-11-12 T4.5b LANDED (the first allowlisted knobs, with the apply step, the owner's tick and undo): `npdev config set-default`
   (NPDevCli/npdev_config_defaults.py, verb in npdev_cli.py) writes one flat key of config.json `defaults`; its PURE half
@@ -128,8 +129,39 @@ detail: |
   real `generate app` of a relay-made app (create + page + pages.json + theme + confirmed ui.theme.name): static/orders.html is in the
   app, workspace-menu-pages-seed.json has the PAGE entry, themes/index.json default is the chosen theme. NOT done: removing a page or
   a menu entry from a chat (nothing deletes files yet); watching web/, themes/ and pages.json in `npdev dev` (a relay apply rewrites
-  model.json last, so it rebuilds anyway, but a hand edit of a page does not); `menu.json` (groups and nesting) is not in the allowlist;
-  seed data (`seeds/*.json`) is not either; running JS is T4.4. The Manager never passes phase f4.
+  model.json last, so it rebuilds anyway, but a hand edit of a page does not); `menu.json` (groups and nesting) and seed data (`seeds/*.json`) were not in the allowlist
+  then -- both DONE by the next entry; running JS is T4.4. The Manager never passes phase f4.
+  2026-11-12 F4 seeds + menu LANDED (sample data and the menu tree): `seeds/<id>.json` and `menu.json` are applied and undone like a
+  fragment (npdev_relay_files.SUPPORTED, f4.allowed; phase mvp still denies both). SEEDS -- NPDevCli/npdev_relay_seeds.py checks them
+  with seed.schema.json's and SeedDataService's own rules BEFORE any write: the `id` must equal the file name and a `label` must be
+  there (an id that differs fails generation of the WHOLE app in stage_seeds_into_final_app), flat under seeds/, no unknown key (file or
+  record), kind smart|raw, the concept must exist in the model (an error when the model is self-contained; a `seed-concept-unchecked`
+  warning when packs/fragments/contexts may supply it), `seed-field-unknown` warning, a `$ref:` needs an alias declared EARLIER, a
+  `$gen:` generator must exist and a `ref-pick-random` concept must be saved earlier, a raw seed cannot template (alias/repeatOver/
+  count/$ref/$gen), `$file:` is refused (a chat cannot send the file), the bulk rules (repeatOver xor count, needs data, no alias/id),
+  at most `seeds.maxExpandedRecords` rows (10000) and `maxFileBytes` (200000) in relay-ingest-policy.json. The lists there are pinned to
+  seed.schema.json and to SeedDataService's switch by test_relay_seeds. Findings: seed-added / seed-replaced / seed-on-demand (it runs
+  from "Load sample data", not at start). A seed-only answer is a change (JSON compare: re-indenting is not a difference). MENU --
+  `menu.json` lives in npdev_relay_pages (is_page_file now includes it; the same check/changed/prepare seams, so apply/undo needed no
+  new wiring): it is MERGED, never replaced, by the emitter's own node identity (kind + target, or kind + label for a header; a PAGE
+  target compares without `web/`): a node already in the app is updated in place (keys the AI did not send are kept, children merged
+  the same way), new nodes come last. Checked: kinds GROUP|BUSINESS|PAGE (INTERNAL is the seeder's marker row and is refused), a label,
+  a PAGE/BUSINESS target, a PAGE node's page must be sent or already exist (error), a key the emitter ignores (`url`, `items`: warning),
+  a BUSINESS target that is neither a concept nor a panel (warning, skipped when a pack/fragment/auto panel may supply it), a role the
+  model does not declare (warning), depth <= 6 and <= 200 nodes (policy `pages.menu`); `web/orders.html` targets and a lower-case kind are
+  understood (info `menu-normalized`); a page linked by menu.json, the answer's or the app's own, is no longer `page-not-in-menu`; an
+  unreadable existing menu.json refuses the apply before any write (`pages-write-refused`, the pages reason). FOUND AND FIXED ALONG
+  THE WAY: `npdev dev` and `run` (`_generate_phase_captured`, the Manager's way) never staged seeds at all -- only `generate app` did,
+  the same trap `web/` had -- so they now call stage_seeds_into_final_app too, and a seed that is not JSON stops the phase with the
+  reason instead of crashing it. Seeds are staged from the folder of config.json, which is the model folder for every app the relay
+  makes. PROVED on a real `generate app` of a relay-made folder (model + config + seeds/demo.json + a nested menu.json + web/orders.html):
+  data-seeds/demo.json + index.json are in the app, workspace-menu-pages-seed.json holds GROUP Shop -> BUSINESS Customer + PAGE
+  orders.html (target normalised), static/orders.html is there. The app was NOT booted: "Load sample data" was never clicked and the
+  menu never opened in a browser. Tests: test_relay_seeds (34) and test_relay_menu (30); 20 mutations each turned a test red (one survivor
+  was found and its test fixed). NOT done: the f4 PROMPT (relay-prompts-f4.json) still teaches only fragments/contexts/upsert -- the AI
+  is not told it may send themes, pages, menu or seeds, and that text is unmeasured (bench run needed before the Manager passes f4);
+  removing a menu node, page or seed from a chat; type-checking seed field VALUES (the write path does it and names the field);
+  detecting that a seed repeats records already loaded (running one twice adds twice, by design).
   Suggested order (each its own commit, each behind phase f4): T4.2 element upsert (DONE above), T4.1 fragments (DONE, incl. composer),
   T4.5 config proposals (DONE, allowlist empty by finding), T4.3 themes/pages/seed/translations, T4.4 code quarantine (with the owner).
 resolution: >-

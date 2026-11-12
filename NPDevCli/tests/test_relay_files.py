@@ -174,7 +174,7 @@ class TransactionTests(unittest.TestCase):
 
 
 class AnswerFilesTests(unittest.TestCase):
-    def test_fragments_contexts_themes_and_pages_are_applicable_and_everything_else_is_named(self):
+    def test_fragments_contexts_themes_pages_menu_and_seeds_are_applicable_and_everything_else_is_named(self):
         result = {"files": [
             {"path": "themes/dark.json", "status": "allowed", "content": "{}"},
             {"path": "model.json", "status": "allowed", "content": "{}"},
@@ -185,13 +185,16 @@ class AnswerFilesTests(unittest.TestCase):
             {"path": "web/more.css", "status": "allowed", "content": "p{}"},
             {"path": "pages.json", "status": "allowed", "content": "[]"},
             {"path": "menu.json", "status": "allowed", "content": "{}"},
+            {"path": "seeds/demo.json", "status": "allowed", "content": "{}"},
+            {"path": "notes.txt", "status": "allowed", "content": "hello"},
             {"path": "capabilities/X.java", "status": "quarantine", "content": "class X {}"},
             {"path": "secrets/key", "status": "denied"},
         ]}
         supported, unsupported = files.answer_files(result)
         self.assertEqual(supported, {"fragments/a.json": "{\"a\":1}", "contexts/b.json": "{\"b\":1}", "themes/dark.json": "{}",
-                                     "web/page.html": "<p>", "web/more.css": "p{}", "pages.json": "[]"})
-        self.assertEqual(unsupported, ["menu.json"])
+                                     "web/page.html": "<p>", "web/more.css": "p{}", "pages.json": "[]", "menu.json": "{}",
+                                     "seeds/demo.json": "{}"})
+        self.assertEqual(unsupported, ["notes.txt"])
 
 
 class ComposeTests(unittest.TestCase):

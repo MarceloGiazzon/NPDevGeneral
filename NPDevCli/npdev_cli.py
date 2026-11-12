@@ -3260,8 +3260,9 @@ def _generate_phase_captured(
             return False, output
         claim_artifact_dir(artifact_out, final_app_out)
         try:
+            stage_seeds_into_final_app(config.parent, final_app_out)   # the seeds `generate app` stages: `dev` and `run` carry them too
             _emit_static_pages(root, final_app_out, config)
-        except CliError as exc:
+        except (CliError, ValueError) as exc:   # ValueError: a seed file that is not JSON must stop the phase, not crash it
             return False, output + f"\n{exc}"
         return True, output
 

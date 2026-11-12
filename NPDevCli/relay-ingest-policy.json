@@ -34,7 +34,7 @@
         "allowed": [
           "model.json", "npdev-submission.json", "npdev-elements.json", "npdev-config-proposal.json",
           "fragments/*.json", "contexts/*.json", "themes/*.json",
-          "web/*.html", "web/*.css", "web/*.svg", "pages.json"
+          "web/*.html", "web/*.css", "web/*.svg", "pages.json", "menu.json", "seeds/*.json"
         ],
         "quarantine": ["capabilities/*", "conversion-hooks/*", "web/*.js", "web/*.mjs"]
       },
@@ -95,7 +95,23 @@
       { "id": "css-url", "regex": "url\\(\\s*[\"']?\\s*(?:https?:)?//([^/\"'\\s)]+)" },
       { "id": "css-import", "regex": "@import\\s+[\"']?\\s*(?:https?:)?//([^/\"'\\s;)]+)" }
     ],
-    "maxLabelChars": 80
+    "maxLabelChars": 80,
+    "menu": {
+      "_comment": "menu.json (npdev_relay_pages.py; CompanionPagesMenuEmitter flattens it into workspace-menu-pages-seed.json): a tree of {label, kind?, target?, ordinal?, requiredRole?, children?}. kinds are the ones WORKSPACE-MENU-AND-GUIDEPAGES.md names for a node a person can author; INTERNAL is the seeder's own hidden marker row and is refused. nodeKeys are the keys the emitter reads: any other key is ignored by it, so the relay says so. maxNodes / maxDepth bound a tree no menu needs to exceed.",
+      "kinds": ["GROUP", "BUSINESS", "PAGE"],
+      "nodeKeys": ["label", "kind", "target", "ordinal", "requiredRole", "children"],
+      "maxNodes": 200,
+      "maxDepth": 6
+    }
+  },
+  "seeds": {
+    "_comment": "F4 (npdev_relay_seeds.py reads ONLY this section). seeds/<id>.json beside model.json is staged by the CLI into the final app's npdev-seed/data-seeds (stage_seeds_into_final_app) and run on demand by SeedDataService. fileKeys / recordKeys / kinds mirror NPDevContract/schemas/seed.schema.json (additionalProperties:false) and generators mirror SeedDataService's switch -- tests/test_relay_seeds.py pins both. maxFileBytes / maxExpandedRecords stop an answer that would write a file or a bulk block no demo needs (a 16 GB laptop runs the app).",
+    "fileKeys": ["id", "label", "description", "kind", "records"],
+    "recordKeys": ["concept", "alias", "id", "data", "repeatOver", "count"],
+    "kinds": ["smart", "raw"],
+    "generators": ["name", "words", "date-range", "decimal-range", "enum-pick", "ref-pick-random"],
+    "maxFileBytes": 200000,
+    "maxExpandedRecords": 10000
   },
   "elisionPatterns": [
     { "id": "ellipsis-line", "regex": "^[ \\t]*(\\.\\.\\.|\u2026)[ \\t]*,?[ \\t]*$" },

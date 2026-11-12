@@ -29,8 +29,10 @@ from pathlib import Path
 
 import npdev_relay_authoring as authoring
 
-# themes: checked first by npdev_relay_themes (T4.3a); web pages and pages.json: checked first by npdev_relay_pages (T4.3b)
-SUPPORTED = ("fragments/*.json", "contexts/*.json", "themes/*.json", "web/*.html", "web/*.css", "web/*.svg", "pages.json")
+# themes: checked first by npdev_relay_themes (T4.3a); web pages, pages.json and menu.json: checked first by
+# npdev_relay_pages (T4.3b); seeds/*.json: checked first by npdev_relay_seeds
+SUPPORTED = ("fragments/*.json", "contexts/*.json", "themes/*.json", "web/*.html", "web/*.css", "web/*.svg", "pages.json",
+             "menu.json", "seeds/*.json")
 NOT_EXTRA = ("model.json", "npdev-submission.json", "npdev-elements.json",   # elements: EXPANDED into model.json (T4.2)
              "npdev-config-proposal.json")                                    # config proposal: SORTED, never written (T4.5)
 BACKUP_SCHEMA = "npdev-relay-backup.v1"

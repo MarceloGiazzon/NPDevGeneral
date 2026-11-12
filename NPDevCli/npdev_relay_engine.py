@@ -612,11 +612,14 @@ def _after_parsed(session: dict, number: int, result: dict) -> None:
     if unsupported:  # allowed by the ingest policy, but nothing here can apply them yet: never accept part of an answer
         result["outcome"] = "NEEDS_FIX"
         result["errorLines"] = [f"{path} - NPDev cannot apply this kind of file yet - send only model.json, "
-                                "npdev-submission.json and the files under fragments/, contexts/ and themes/" for path in unsupported]
+                                "npdev-submission.json and the files under fragments/, contexts/, themes/, web/ and seeds/ "
+                                "(and pages.json, menu.json)" for path in unsupported]
         return
     if not _check_themes(session, result, fixed):  # T4.3: the generator refuses a bad theme for the WHOLE app
         return
     if not _check_pages(session, result, fixed):   # T4.3b: ... and a web file named like a platform file
+        return
+    if not _check_seeds(session, result, fixed):   # a seed whose id is not its file name fails generation of the whole app too
         return
     try:
         model_path = _validation_model_path(session, number, result, entry, fixed)
@@ -680,6 +683,28 @@ def _check_pages(session: dict, result: dict, model: dict) -> bool:
         return True
     base = authoring.resolve_model_path(session.get("appDir")) if session.get("intent") != "create" else None
     checked = pages_mod.check(sent, model, base.parent if base else None)
+    result["findings"].extend(checked["findings"])
+    if checked["errors"]:
+        result["outcome"] = "NEEDS_FIX"
+        result["errorLines"] = checked["errors"]
+        return False
+    return True
+
+
+def _check_seeds(session: dict, result: dict, model: dict) -> bool:
+    """The answer's seeds/*.json get the seed schema's and the seed runner's rules BEFORE anything is accepted (an id that is not
+    the file name fails every generation of the app; the rest fails when the owner loads the sample data). False when the
+    answer needs a fix."""
+    import npdev_relay_authoring as authoring
+    import npdev_relay_files as files_mod
+    import npdev_relay_seeds as seeds_mod
+
+    extra, _ = files_mod.answer_files(result)
+    sent = {path: text for path, text in extra.items() if seeds_mod.is_seed_path(path)}
+    if not sent:
+        return True
+    base = authoring.resolve_model_path(session.get("appDir")) if session.get("intent") != "create" else None
+    checked = seeds_mod.check(sent, model, base.parent if base else None)
     result["findings"].extend(checked["findings"])
     if checked["errors"]:
         result["outcome"] = "NEEDS_FIX"

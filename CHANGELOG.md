@@ -47,6 +47,21 @@ release. Ships in the next tag.
   which the AI already changes through `model.json` -- the one exception, found later with T4.3, is the app's theme choice
   (`ui.theme.name` / `ui.theme.choices`, a `config.json` default); a knob needs an existing CLI command that writes it before it
   earns an entry.
+- **A browser-AI answer can carry sample data and the menu tree, and `npdev dev` / `run` now carry a model's seeds** (REG-323, F4) --
+  with `--phase f4` an answer may carry `seeds/<id>.json` and `menu.json`, written with the model all or nothing and undone with
+  it. A seed is checked with the seed schema's and the seed runner's rules before anything is written: its `id` must be its file name
+  (otherwise the whole app cannot be generated) and it needs a `label`; the concept must be one of the model's; a `$ref:` needs an
+  alias declared in an earlier record, a `$gen:` generator must exist, a `raw` seed cannot template, a `$file:` is refused (a chat
+  cannot send the file) and one seed may make at most 10,000 rows. `menu.json` (`{label, kind?, target?, ordinal?, requiredRole?,
+  children?}`, nesting allowed) is MERGED with the app's own the way `pages.json` is: the AI may send only the new node, a node
+  already there is updated in place, nothing is dropped; a PAGE node whose page was not sent is sent back, the platform's INTERNAL
+  kind is refused, and a `url` or `items` the menu would ignore, an unknown concept, or a role the model does not declare is a
+  warning. A page linked by `menu.json` is no longer reported as unlinked. **A bug found on the way:** `npdev dev` and `run` (how the
+  Manager runs an app) never staged `seeds/` into the app, only `generate app` did, so "Load sample data" was empty for an app run
+  from the Manager; both now stage them, and a seed that is not JSON stops the phase with the reason. Proved on a real generation of
+  a relay-made folder (seed staged, menu rows `Shop > Customers` + `Shop > Orders page`, page in the static folder); the app was not
+  booted. The f4 prompt still teaches only fragments, contexts and upserts, so an AI is not yet told it may send these files. The
+  Manager never passes phase f4.
 - **A browser-AI answer can carry hand-made pages, and a `web/` folder beside the model is now mounted without a flag** (REG-323,
   T4.3b) -- with `--phase f4` an answer may carry `web/*.html|css|svg` and a `pages.json` (`[{path, label, requiredRole?,
   ordinal?}]`, `path` relative to `web/`). They are written with the model all or nothing and undone with it. The generator
