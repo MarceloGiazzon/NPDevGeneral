@@ -174,7 +174,10 @@ sections:
       also serves a read-only MCP endpoint at `/mcp/<secret>` (the secret lives in the Build folder;
       `./npdev validator rotate-token` makes a new one). It offers six tools only: `npdev_validate`,
       `npdev_core_context`, `npdev_search_examples`, `npdev_search_fix`, `npdev_check_support` and
-      `npdev_get_schema` — nothing that reads a file path, generates or builds. To reach it from the
+      `npdev_get_schema` — nothing that reads a file path, generates or builds. Every `npdev_validate` answer
+      also carries `LINT_*` diagnostics for access-rule and promise mistakes the validator cannot see (see
+      [`PACK_DESIGN.md`](PACK_DESIGN.md) § Access rules that bite). Restarting the service keeps the secret; if the
+      connector answers 404 from the public address, the tunnel is down, not the secret. To reach it from the
       internet, run the script below; it prints the connector address to paste into the AI, and while it
       runs, anyone who has that link can validate models on your computer. The script never downloads a
       tunnel program, so install one yourself. **Use ngrok**: a free account gives you one address that

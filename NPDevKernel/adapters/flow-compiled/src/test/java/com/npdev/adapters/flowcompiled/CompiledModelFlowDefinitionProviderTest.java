@@ -533,6 +533,37 @@ class CompiledModelFlowDefinitionProviderTest {
                 sent.get(com.npdev.kernel.ports.PersistenceCapabilityContract.WRITE_MODE_KEY));
     }
 
+    /**
+     * REG-337: the flow's authenticated actor is stamped into a createConcept save so the adapter can
+     * resolve a $user default; a value a caller smuggled into the payload under the marker key is
+     * replaced by the real actor, and an anonymous run carries no marker at all.
+     */
+    @Test
+    void createConceptStepStampsTheRealActorAndDropsAForgedOne() throws Exception {
+        List<com.npdev.kernel.CapabilityCall> dispatched = new ArrayList<>();
+        KernelRunner runner = new KernelRunner(
+                envelope -> {
+                },
+                requiredFieldEngine(),
+                new CompiledModelFlowDefinitionProvider(compile(conceptWriteModel())),
+                (call, state) -> {
+                    dispatched.add(call);
+                    return com.npdev.kernel.CapabilityResult.success(call.args().get(0));
+                }
+        );
+        String actorKey = com.npdev.kernel.ports.PersistenceCapabilityContract.ACTOR_KEY;
+
+        runner.execute("RecordLine", Map.of("sku", "S-1", "unitPrice", 3, actorKey, "mallory"),
+                com.npdev.kernel.ExecutionContext.of("t1", "alice"));
+        runner.execute("RecordLine", Map.of("sku", "S-2", "unitPrice", 3, actorKey, "mallory"));
+
+        assertEquals(2, dispatched.size());
+        assertEquals("alice", ((Map<?, ?>) dispatched.get(0).args().get(0)).get(actorKey),
+                "the flow's authenticated actor wins over a forged marker");
+        assertFalse(((Map<?, ?>) dispatched.get(1).args().get(0)).containsKey(actorKey),
+                "an anonymous run carries no actor, and a forged marker is dropped");
+    }
+
     private static String generatedActionModel() {
         return """
                 {

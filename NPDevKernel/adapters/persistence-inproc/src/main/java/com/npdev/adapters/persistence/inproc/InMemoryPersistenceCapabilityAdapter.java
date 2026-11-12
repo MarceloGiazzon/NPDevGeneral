@@ -3,6 +3,7 @@ package com.npdev.adapters.persistence.inproc;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.concepts.ConceptGatewayOperation;
 import com.npdev.kernel.concepts.ConceptGatewayRequestContext;
 import com.npdev.kernel.concepts.ConceptGatewaySemanticPolicy;
@@ -71,6 +72,8 @@ public final class InMemoryPersistenceCapabilityAdapter
         // REG-264: a flow updateConcept step marks its save; the marker is never stored.
         boolean updateOnly = PersistenceCapabilityContract.WRITE_MODE_UPDATE.equals(
                 record.remove(PersistenceCapabilityContract.WRITE_MODE_KEY));
+        // REG-337: the flow's authenticated actor, for a $user default on create; never stored.
+        Object flowActor = record.remove(PersistenceCapabilityContract.ACTOR_KEY);
         String conceptIdField = inferredRuntimeIdField(concept);
 
         Object id = record.get("id");
@@ -95,7 +98,7 @@ public final class InMemoryPersistenceCapabilityAdapter
         // ENG-6: defaults are a CREATE-time concern -- a minted id, or an explicit id with no stored
         // record yet. An update never re-defaults (a partial payload must not reset untouched fields).
         if (stored == null) {
-            applyCreateDefaults(concept, record, id);
+            applyCreateDefaults(concept, record, id, flowActor);
         } else {
             Map<String, Object> merged = new LinkedHashMap<>(stored);
             merged.putAll(record);
@@ -329,7 +332,7 @@ public final class InMemoryPersistenceCapabilityAdapter
 
     // ENG-6: same shape as PostgresPersistenceCapabilityAdapter#applyCreateDefaults -- with a
     // semantic policy wired, the full CRUD defaulting pass; without one, the legacy literal pass.
-    private void applyCreateDefaults(Object concept, Map<String, Object> record, Object id) {
+    private void applyCreateDefaults(Object concept, Map<String, Object> record, Object id, Object flowActor) {
         ConceptGatewaySemanticPolicy policy = semanticPolicy;
         if (policy == null) {
             applyFieldDefaults(concept, record);
@@ -341,7 +344,9 @@ public final class InMemoryPersistenceCapabilityAdapter
                 String.valueOf(id),
                 tenantOf(record),
                 record,
-                null,
+                // REG-337: a $user default resolves to the flow's acting user; null = anonymous.
+                flowActor == null || String.valueOf(flowActor).isBlank()
+                        ? null : ExecutionContext.of(tenantOf(record), String.valueOf(flowActor)),
                 Optional.empty());
         ConceptSemanticDecision defaults = policy.applyDefaultsAndDerivedValues(context);
         if (!defaults.allowed()) {

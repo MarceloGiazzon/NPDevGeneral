@@ -408,7 +408,7 @@
   "procedures": [
     {
       "name": "FileLeaveRequest",
-      "description": "Saves the request through the concept gateway as the person who files it, so employeeId is filled with that person's login ($user.id) when the row is created. A flow's own createConcept step does not evaluate a $user default, which would leave employeeId empty and the request invisible to the employee who filed it.",
+      "description": "Saves the request through the concept gateway as the person who files it, so the concept's row-level write rule (employeeId == $user.id) runs on the filing and employeeId is filled with that person's login ($user.id) when the row is created. A flow's own createConcept step fills the $user default too, but does not run the row-level write rule, so an employee could file a request under a colleague's login (REG-338).",
       "steps": [
         {
           "name": "save",

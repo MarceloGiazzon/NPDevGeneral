@@ -2,7 +2,7 @@
   "$schema": "../../schemas/pack.schema.json",
   "dslVersion": "1.0.0",
   "pack": "approvals",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "namespace": "com.npdev.approvals",
   "description": "Built-in NPDev approvals pack: anyone with the 'requester' role files an approval request, a person with the 'approver' role decides it from My tasks (approve or reject, with a comment), and the pack records who decided, when and why. The two roles are logical: the importing app binds them to its own role names with provides.roleBindings { \"requester\": ..., \"approver\": ... }, and composition refuses when either is unbound. A resumed flow applies the decision as the person who started it and without that person's roles, so the rules also admit the platform's trusted resume principal (role ADMIN); who filed a request is recorded on the request itself as their login (requestedBy, filled from $user.id) and is also the starter of its flow execution (My tasks shows it).",
   "category": "other",
@@ -81,7 +81,7 @@
       "name": "RequestApproval",
       "input": { "concept": "ApprovalRequest", "mode": "create" },
       "steps": [
-        { "name": "save-request", "type": "callProcedure", "procedure": "FileApprovalRequest", "input": "$input", "output": "$saved" },
+        { "name": "save-request", "type": "createConcept", "scope": "ApprovalRequest", "input": "$input", "output": "$saved" },
         { "name": "await-decision", "type": "awaitEvent", "awaitEvent": "ApprovalDecided", "awaitRef": "decision",
           "match": { "correlation": false, "payload": { "requestId": "$saved.id" } },
           "timeout": 1209600,
@@ -113,14 +113,6 @@
     }
   ],
   "procedures": [
-    {
-      "name": "FileApprovalRequest",
-      "description": "Saves the request through the concept gateway as the person who files it, so requestedBy is filled with that person's login ($user.id) when the row is created. A flow's own createConcept step does not evaluate a $user default, which would leave requestedBy empty until a decision patch happened to stamp it.",
-      "steps": [
-        { "name": "save", "type": "saveConcept", "concept": "ApprovalRequest", "data": { "input": "$input" }, "target": "request" },
-        { "name": "return-request", "type": "return", "value": "$request" }
-      ]
-    },
     {
       "name": "ApplyApprovalDecision",
       "description": "A human task answered from My tasks publishes ApprovalDecided {requestId, status, comment, completedBy}; this writes the audit row (who decided, when, why) and moves the request itself to the chosen status, unless it already left PENDING. The decision row takes the request's id, so a request has at most one.",

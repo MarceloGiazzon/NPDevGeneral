@@ -16,6 +16,7 @@ import com.npdev.kernel.storage.sql.PostgresDialect;
 import com.npdev.kernel.storage.sql.SqlDialect;
 import com.npdev.kernel.storage.sql.SqlDialects;
 import com.npdev.kernel.storage.sql.UpsertPlan;
+import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.ports.TenantScope;
 import com.npdev.kernel.ports.TenantScopedPersistenceCapabilityContract;
 
@@ -105,6 +106,8 @@ public final class PostgresPersistenceCapabilityAdapter
         // REG-264: a flow updateConcept step marks its save; the marker is never a column.
         boolean updateOnly = PersistenceCapabilityContract.WRITE_MODE_UPDATE.equals(
                 runtimeRecord.remove(PersistenceCapabilityContract.WRITE_MODE_KEY));
+        // REG-337: the flow's authenticated actor, for a $user default on create; never a column.
+        Object flowActor = runtimeRecord.remove(PersistenceCapabilityContract.ACTOR_KEY);
         String conceptIdField = inferredRuntimeIdField(concept, table);
 
         Object id = runtimeRecord.get("id");
@@ -152,7 +155,7 @@ public final class PostgresPersistenceCapabilityAdapter
                         "PERSISTENCE_RECORD_NOT_FOUND: no " + table + " record with id " + id + " to update");
             }
             if (creating) {
-                applyCreateDefaults(concept, runtimeRecord);
+                applyCreateDefaults(concept, runtimeRecord, flowActor);
             } else if (updateOnly) {
                 // REG-263: a modified row moves to the next version, as the REST PUT does. Only when
                 // the caller did not name a version itself and the table keeps one.
@@ -385,7 +388,7 @@ public final class PostgresPersistenceCapabilityAdapter
     // generic CRUD create -- literal and defaultExpression defaults (incl. nextNumber sequences),
     // derived values, lifecycle initialState. Without one (unit tests, bare hosts) the legacy
     // literal-defaultValue-only loop below stays. Called on CREATE only.
-    private void applyCreateDefaults(Object concept, Map<String, Object> runtimeRecord) {
+    private void applyCreateDefaults(Object concept, Map<String, Object> runtimeRecord, Object flowActor) {
         ConceptGatewaySemanticPolicy policy = semanticPolicy;
         if (policy == null) {
             applyFieldDefaults(concept, runtimeRecord);
@@ -403,7 +406,9 @@ public final class PostgresPersistenceCapabilityAdapter
                 idValue == null ? null : String.valueOf(idValue),
                 tenantId,
                 runtimeRecord,
-                null,
+                // REG-337: a $user default resolves to the flow's acting user; null = anonymous.
+                flowActor == null || String.valueOf(flowActor).isBlank()
+                        ? null : ExecutionContext.of(tenantId, String.valueOf(flowActor)),
                 Optional.empty());
         ConceptSemanticDecision defaults = policy.applyDefaultsAndDerivedValues(context);
         if (!defaults.allowed()) {

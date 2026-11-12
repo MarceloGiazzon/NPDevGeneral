@@ -2552,7 +2552,7 @@
       "area": "operations",
       "sectors": [],
       "status": "existing",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "concepts": [
         "ApprovalRequest",
         "ApprovalDecision"

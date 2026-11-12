@@ -1,0 +1,31 @@
+id: REG-338
+title: >-
+  A flow's createConcept step does not run the concept's row-level write rule, so a flow can file a record under another person's login
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-12
+source: >-
+  Found while fixing REG-337 (2026-11-12). With leave's FileLeaveRequest workaround removed, the dom-leave probe check "a flow filing under
+  another employee's login is refused and plants nothing" failed: an employee filed RequestLeave naming a colleague's employeeId and got 202,
+  the request stored for the colleague. Every $user-default and own-records check passed.
+surface: kernel/flow-createConcept, kernel/concept-gateway, packs/leave
+detail: |
+  Concept `access.write` rules (e.g. leave's "employee && employeeId == $user.id") are enforced by the ConceptGateway. A flow's createConcept /
+  updateConcept step reaches persistence through CapabilityInvoker -> adapter.save and never touches the gateway, so the row-level write rule is not
+  evaluated for it; only flow.execute (a role check on the flow) guards the filing. A model author who relies on a write rule to stop a caller
+  creating or changing a record that is not theirs gets that guarantee on REST and not through a flow.
+  leave keeps its FileLeaveRequest procedure (one saveConcept through the gateway as the caller) for exactly this reason, which is why REG-337's
+  "remove the workaround procedures" clause was not carried out for leave. approvals has no owner write rule and went back to createConcept in 1.2.1.
+  Possible fix: run the concept's write access rule (the gateway's authorizeCreate / row check) for a createConcept step as the flow's actor, with a
+  flag on the step if a flow must write on the system's behalf (runAs system already exists for procedures).
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/CapabilityInvoker.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/DefaultConceptGateway.java
+  - NPDevContract/packs/leave/pack.json
+  - NPDevSamples/dom-leave/probe/leave_probe.py
+verification: NOT_VERIFIED
+done_when: >-
+  A createConcept / updateConcept step is refused when the concept's write rule refuses the record for the flow's actor, and leave's
+  FileLeaveRequest procedure can be replaced by a createConcept step with the dom-leave probe still green, including "a flow filing under another
+  employee's login is refused and plants nothing".

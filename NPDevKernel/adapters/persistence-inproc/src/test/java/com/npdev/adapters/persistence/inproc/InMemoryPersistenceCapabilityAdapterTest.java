@@ -98,8 +98,34 @@ class InMemoryPersistenceCapabilityAdapterTest {
             + "{\"name\":\"Ticket\",\"fields\":["
             + "{\"name\":\"id\",\"type\":\"string\",\"id\":true,\"required\":true},"
             + "{\"name\":\"code\",\"type\":\"string\",\"defaultExpression\":\"nextNumber('ticketCode')\"},"
+            + "{\"name\":\"title\",\"type\":\"string\"}]},"
+            + "{\"name\":\"Note\",\"fields\":["
+            + "{\"name\":\"id\",\"type\":\"string\",\"id\":true,\"required\":true},"
+            + "{\"name\":\"owner\",\"type\":\"string\",\"defaultExpression\":\"$user.id\"},"
             + "{\"name\":\"title\",\"type\":\"string\"}]}"
             + "]}";
+
+    @Test
+    void flowCreateResolvesUserDefaultToTheActingUserCarriedByTheMarker() throws Exception {
+        // REG-337: the kernel stamps the flow's authenticated actor into the entity, so a $user.id
+        // default fills the owner exactly as a REST create does; no actor leaves it empty, an explicit
+        // owner is kept, and the marker is never stored.
+        for (boolean withStore : new boolean[] {false, true}) {
+            InMemoryConceptStore store = withStore ? new InMemoryConceptStore() : null;
+            InMemoryPersistenceCapabilityAdapter adapter = flowDefaultsAdapter(store);
+            String actorKey = PersistenceCapabilityContract.ACTOR_KEY;
+
+            Map<?, ?> mine = (Map<?, ?>) adapter.save("Note", Map.of("title", "mine", actorKey, "alice"));
+            assertEquals("alice", mine.get("owner"), "store=" + withStore);
+            assertFalse(mine.containsKey(actorKey), "the marker is never stored");
+
+            Map<?, ?> nobody = (Map<?, ?>) adapter.save("Note", Map.of("title", "nobody"));
+            assertEquals(null, nobody.get("owner"), "store=" + withStore);
+
+            Map<?, ?> named = (Map<?, ?>) adapter.save("Note", Map.of("title", "x", "owner", "bob", actorKey, "alice"));
+            assertEquals("bob", named.get("owner"), "store=" + withStore);
+        }
+    }
 
     private static InMemoryPersistenceCapabilityAdapter flowDefaultsAdapter(InMemoryConceptStore store) throws Exception {
         CompiledModel model = new ModelCompiler().compile(

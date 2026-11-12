@@ -6,6 +6,10 @@ one-line entry here, in the same commit that makes the change. While NPDev has n
 (owner, 2026-11-12) a change ships without an `npdev migrate` codemod; this repo's own models are
 migrated directly in the same commit. Earlier entries name the codemods written before that.
 
+## 2026-11-12 — a flow's createConcept fills a `$user` default; approvals 1.2.1
+
+**What changes.** A record created by a flow's `createConcept` step now gets the acting user in a `defaultExpression` that names `$user` (`$user.id`, `$user.actorId`, `$user.tenantId`), as a REST create does: the kernel stamps the flow's authenticated actor into the save under `PersistenceCapabilityContract.ACTOR_KEY` and the persistence adapters resolve the default from it (REG-337). `approvals` 1.2.1 drops its `FileApprovalRequest` workaround procedure and goes back to a `createConcept` step. `leave` keeps `FileLeaveRequest`, which also runs the row-level write rule that a `createConcept` step skips (REG-338). **Who is affected.** Apps that call `FileApprovalRequest` by name; a custom persistence adapter must strip `ACTOR_KEY` from the entity (the two built-in adapters do).
+
 ## 2026-11-12 — approvals 1.2.0: a request filed through the flow records who filed it
 
 **What changes.** The `RequestApproval` flow now saves the request through a new procedure `FileApprovalRequest` (one `saveConcept` as the caller) instead of a `createConcept` step, so `ApprovalRequest.requestedBy` is the filing login from the moment the row exists. In 1.1.0 it stayed empty while the request was pending, because a flow's own `createConcept` step does not fill a `$user.id` default (REG-337; measured on the new `NPDevSamples/dom-approvals` sample). **Who is affected.** Only apps that read `requestedBy` of a pending request; no model change is needed.

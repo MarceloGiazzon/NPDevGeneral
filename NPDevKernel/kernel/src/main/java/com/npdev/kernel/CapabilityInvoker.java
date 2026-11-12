@@ -895,6 +895,14 @@ final class CapabilityInvoker {
                         stamped.put(String.valueOf(entry.getKey()), entry.getValue());
                     }
                     stamped.put("tenantId", flowStateTenantId(state));
+                    // REG-337: the acting user comes from the flow state (the authenticated
+                    // ExecutionContext), never from the payload -- drop any value the caller smuggled
+                    // into the entity under the marker key before stamping the real one.
+                    stamped.remove(com.npdev.kernel.ports.PersistenceCapabilityContract.ACTOR_KEY);
+                    String flowActor = flowStateActorId(state);
+                    if (flowActor != null) {
+                        stamped.put(com.npdev.kernel.ports.PersistenceCapabilityContract.ACTOR_KEY, flowActor);
+                    }
                     // REG-264: tell the adapter this save is an updateConcept, so it refuses an id
                     // with no row instead of creating one (and merges into the row it finds).
                     FlowStepDefinition.ConceptWrite conceptWrite = step.getConceptWrite();
@@ -1031,6 +1039,16 @@ CapabilityCall call = new CapabilityCall(
      * caller's ExecutionContext at execute() time), falling back to "default" when no tenant claim is
      * present (e.g. an unauthenticated trial boot). Mirrors the generated-CRUD currentTenantId().
      */
+    /** The flow's authenticated actor, or null for an anonymous run (no real user to default to). */
+    private static String flowStateActorId(Map<String, Object> state) {
+        Object actor = state == null ? null : state.get("actorId");
+        String actorId = actor == null ? null : String.valueOf(actor).trim();
+        if (actorId == null || actorId.isBlank()) {
+            return null;
+        }
+        return ExecutionContext.of(flowStateTenantId(state), actorId).hasActor() ? actorId : null;
+    }
+
     private static String flowStateTenantId(Map<String, Object> state) {
         Object tenant = state == null ? null : state.get("tenantId");
         String tenantId = tenant == null ? null : String.valueOf(tenant).trim();

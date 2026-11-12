@@ -3,8 +3,9 @@ title: >-
   A flow's createConcept step does not evaluate a field's $user defaultExpression, so a record filed through a flow keeps that field empty
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-12
+closed: 2026-11-12
 source: >-
   Own-records work on the leave and helpdesk packs (2026-11-12). The dom-leave probe showed requests filed through the RequestLeave flow
   stored with employeeId null although the field declares defaultExpression "$user.id"; a request created over REST gets the login.
@@ -24,13 +25,34 @@ detail: |
   Related trap found at the same time: the row-level write check runs on the incoming data BEFORE defaults are applied, so a write rule
   "role && field == $user.id" refuses every create that leaves the field blank; leave 1.2.0 adds "|| role && employeeId == null" (the default then
   fills the caller's login). A pack author cannot know this from the schema.
+  FIXED 2026-11-12: CapabilityInvoker stamps the flow's authenticated actor (runtime-owned flow state `actorId`, the same source as tenantId; a value
+  a caller smuggled under the marker key is dropped first) into the entity of a flow's persistence save as PersistenceCapabilityContract.ACTOR_KEY.
+  Both persistence adapters strip it and pass a real ExecutionContext into the ENG-6 create-time defaulting pass, so a $user default resolves as on
+  REST; an update never re-defaults. (A first attempt carrying the actor on TenantScope never reached the real path: a generated app dispatches flow
+  saves through SandboxedCapabilityAdapter -> TimeBoundedPluginExecutionEngine to the plain save(concept, entity); that attempt was dropped.)
+  approvals 1.2.1 went back to a createConcept step and its probe (dom-approvals, requestedBy == the filing login for two requesters) is green on a
+  booted app with a wiped DB. leave keeps FileLeaveRequest on purpose: removing it let an employee file under a colleague's login, because a
+  createConcept step skips the concept's row-level write rule -- filed as REG-338. The "|| employeeId == null" write branch stays with it.
 files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/CapabilityInvoker.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/ports/PersistenceCapabilityContract.java
+  - NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java
+  - NPDevKernel/adapters/persistence-inproc/src/main/java/com/npdev/adapters/persistence/inproc/InMemoryPersistenceCapabilityAdapter.java
   - NPDevContract/packs/leave/pack.json
   - NPDevContract/packs/approvals/pack.json
   - NPDevSamples/dom-leave/probe/leave_probe.py
   - NPDevSamples/dom-approvals/probe/approvals_probe.py
-verification: NOT_VERIFIED
+verification: VERIFIED_LIVE
+guard:
+  kind: test
+  ref: >-
+    NPDevKernel/adapters/persistence-postgres/src/test/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapterFlowDefaultsTest.java#flowCreateResolvesUserDefaultToTheActingUserCarriedByTheMarker
+  asserts: >-
+    a flow's save carrying the kernel-stamped actor marker creates a Note whose $user.id defaultExpression field holds that actor (in the returned
+    record and in the table), and the marker is never persisted; CompiledModelFlowDefinitionProviderTest#createConceptStepStampsTheRealActorAndDropsAForgedOne
+    pins the kernel half (real actor stamped, forged value dropped, anonymous run carries none)
+  provenRed: true
 done_when: >-
-  A record created by a flow's createConcept step gets the same $user / now() defaults as a REST create, and the FileLeaveRequest /
-  FileApprovalRequest workarounds and leave's "|| employeeId == null" write branch are removed with the leave and approvals probes still
-  green. (The approvals probe asserting requestedBy == the filing login exists since 2026-11-12.)
+  A record created by a flow's createConcept step gets the same $user defaults as a REST create (met: dom-approvals probe 26/26 on a booted app
+  with createConcept in the flow; adapter and CapabilityInvoker unit tests). The leave workaround is NOT removed: it also enforces the row-level
+  write rule a createConcept step skips, tracked as REG-338.

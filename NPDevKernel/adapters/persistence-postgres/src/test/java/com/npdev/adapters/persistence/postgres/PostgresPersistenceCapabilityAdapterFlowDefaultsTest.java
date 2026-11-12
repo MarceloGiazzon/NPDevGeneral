@@ -51,6 +51,10 @@ class PostgresPersistenceCapabilityAdapterFlowDefaultsTest {
             + "{\"name\":\"id\",\"type\":\"string\",\"id\":true,\"required\":true},"
             + "{\"name\":\"code\",\"type\":\"string\",\"defaultExpression\":\"nextNumber('ticketCode')\"},"
             + "{\"name\":\"title\",\"type\":\"string\"}]},"
+            + "{\"name\":\"Note\",\"fields\":["
+            + "{\"name\":\"id\",\"type\":\"string\",\"id\":true,\"required\":true},"
+            + "{\"name\":\"owner\",\"type\":\"string\",\"defaultExpression\":\"$user.id\"},"
+            + "{\"name\":\"title\",\"type\":\"string\"}]},"
             + "{\"name\":\"Line\",\"fields\":["
             + "{\"name\":\"id\",\"type\":\"string\",\"id\":true,\"required\":true},"
             + "{\"name\":\"sku\",\"type\":\"string\",\"required\":true},"
@@ -75,6 +79,8 @@ class PostgresPersistenceCapabilityAdapterFlowDefaultsTest {
                     + " priority VARCHAR(32), note VARCHAR(200))");
             statement.execute("CREATE TABLE tickets (id VARCHAR(64) PRIMARY KEY, code VARCHAR(32),"
                     + " title VARCHAR(200))");
+            statement.execute("CREATE TABLE notes (id VARCHAR(64) PRIMARY KEY, owner VARCHAR(64),"
+                    + " title VARCHAR(200), tenant_id VARCHAR(64))");
             statement.execute("CREATE TABLE lines (id VARCHAR(64) PRIMARY KEY, sku VARCHAR(64),"
                     + " quantity INT, version BIGINT)");
         }
@@ -114,6 +120,52 @@ class PostgresPersistenceCapabilityAdapterFlowDefaultsTest {
         assertEquals("x", column("orders", "note", "o-1"));
         assertEquals("high", column("orders", "priority", "o-1"),
                 "an update must not re-apply the literal default over an untouched field");
+    }
+
+    /**
+     * REG-337: a flow's save carries the flow's authenticated actor under the kernel-stamped marker
+     * key. A {@code $user.id} defaultExpression must resolve to that user, exactly as it does for a
+     * REST create -- not stay empty (an anonymous context) -- and the marker is never persisted.
+     */
+    @Test
+    void flowCreateResolvesUserDefaultToTheActingUserCarriedByTheMarker() throws SQLException {
+        Map<?, ?> saved = (Map<?, ?>) adapter.save("Note", flowEntity(Map.of("title", "mine"), "alice"));
+
+        assertEquals("alice", saved.get("owner"));
+        assertEquals("alice", column("notes", "owner", saved.get("id")));
+        assertTrue(!saved.containsKey(PersistenceCapabilityContract.ACTOR_KEY), "the marker is never persisted or echoed");
+    }
+
+    @Test
+    void flowCreateWithNoActingUserLeavesTheUserDefaultEmpty() throws SQLException {
+        Map<?, ?> saved = (Map<?, ?>) adapter.save("Note", flowEntity(Map.of("title", "nobody"), null));
+
+        assertEquals(null, saved.get("owner"));
+    }
+
+    @Test
+    void flowCreateKeepsAnOwnerTheStepNamedExplicitly() throws SQLException {
+        Map<?, ?> saved = (Map<?, ?>) adapter.save("Note", flowEntity(Map.of("title", "x", "owner", "bob"), "alice"));
+
+        assertEquals("bob", saved.get("owner"));
+    }
+
+    @Test
+    void anUpdateNeverReDefaultsTheOwnerToTheActingUser() throws SQLException {
+        Map<?, ?> created = (Map<?, ?>) adapter.save("Note", flowEntity(Map.of("title", "t"), "alice"));
+
+        adapter.save("Note", flowEntity(Map.of("id", created.get("id"), "title", "t2"), "carol"));
+
+        assertEquals("alice", column("notes", "owner", created.get("id")),
+                "only a create takes the acting user as the default");
+    }
+
+    private static Map<String, Object> flowEntity(Map<String, Object> fields, String actorId) {
+        Map<String, Object> entity = new java.util.LinkedHashMap<>(fields);
+        if (actorId != null) {
+            entity.put(PersistenceCapabilityContract.ACTOR_KEY, actorId);
+        }
+        return entity;
     }
 
     @Test

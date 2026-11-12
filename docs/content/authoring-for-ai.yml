@@ -159,10 +159,10 @@ sections:
     **Your own code (a custom capability).** For logic no built-in has (surge pricing, scoring):
     `"customCapabilities":[{"name":"surge","type":"SurgeCapability","operations":["multiplier"]}]` plus
     `"bindings":[{"capability":"surge","adapter":"plugin:java-source"}]`, and two files:
-    `capabilities/surge/src/main/java/<pkg>/SurgeCapability.java` (a plain class with a public no-arg constructor;
+    `<app>/capabilities/surge/src/main/java/<pkg>/SurgeCapability.java` (a plain class with a public no-arg constructor;
     one public method per operation taking `Map`/`List` parameters named like the `args` keys and returning
     a `Map`; pure computation only: no files, network, threads, reflection) and
-    `capabilities/surge/capability.plugin.json`:
+    `<app>/capabilities/surge/capability.plugin.json`:
     `{"packageFormatVersion":"1.0","packageId":"<app>-surge-pkg","pluginId":"<app>-surge-plugin","version":"1.0.0","capability":"surge","capabilityType":"SurgeCapability","adapterId":"plugin:java-source","implementation":{"kind":"javaSource","sourceRoot":"capabilities/surge/src/main/java","mainClass":"<pkg>.SurgeCapability","factory":{"kind":"defaultConstructor"}},"operationBindings":[{"operation":"multiplier","method":"multiplier","input":{"mode":"firstArgument","expectedType":"java.util.Map"},"output":{"mode":"returnValue","expectedType":"java.util.Map"}}],"trust":{"mode":"artifact-local-source","source":"external-artifact-bundle","level":"developer-supplied"},"generation":{"mount":"compileIntoGeneratedApp","emitManifestContribution":true,"emitPackageDescriptor":true,"emitBinding":true}}`.
     The app's owner reviews these files before they apply. **In a chat reply that carries only `model.json`
     and `npdev-submission.json` you cannot deliver them:** do not write Java; state the need in
