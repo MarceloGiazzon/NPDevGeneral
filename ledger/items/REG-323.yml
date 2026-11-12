@@ -23,12 +23,9 @@ detail: |
   and a session carries a `phase` (default `mvp`; the Manager never passes another). What is missing is everything behind the list:
   - npdev_relay_apply.py writes ONE file (model.json) with ONE backup (the model as the AI was shown it) and undo restores that one
     file: a multi-file answer needs an all-or-nothing write and an undo of every file;
-  - there is no expander for `npdev-elements.json` (base + upserts by `name` + removals -> the full model); each root key of
-    model.schema.json must first be confirmed to identify its elements by `name`;
-  - the composer (npdev_relay_prompts.py) cannot choose "whole file" vs "upsert" by `len(base model) > target outputBudgetChars * 0.6`
-    (REG-326 landed the MEASUREMENT: `relay start` returns `wholeFileFits` by exactly that rule; the CHOICE still waits for the expander)
-    -- and relay-prompts.json is BENCH-MEASURED: changing prompt text means re-measuring, and the bench compiles the generator from the
-    repo, so never edit platform code while a bench run is on;
+  - (DONE 2026-11-12, see below) there was no expander for `npdev-elements.json`, and the composer could not choose "whole file" vs
+    "upsert" by `len(base model) > target outputBudgetChars * 0.6`; relay-prompts.json is BENCH-MEASURED: changing prompt text means
+    re-measuring, and the bench compiles the generator from the repo, so never edit platform code while a bench run is on;
   - quarantined code (JS pages, Java capabilities) needs PLAN section 8.1's six steps: pattern scan, bytecode inspector, a strong
     acceptance (checkbox and a separate button), provenance `origin: browser-ai`, one-click removal, a second confirmation before a JS
     page becomes public. This is the security-sensitive part: do it last, with the owner.
@@ -53,12 +50,20 @@ detail: |
   file (refused with the way out, never duplicated), a base that moved since the AI was shown it (BASE_MOVED, nothing guessed),
   both model.json and elements sent (the whole model wins, `elements-ignored`). Removals and renames of concepts are copied into the
   npdev-submission.json the gate reads, under whatever the AI sent; removing a concept still needs the owner's confirmation.
-  NOT done by T4.2: (a) the composer does not yet CHOOSE upsert over whole-file when `wholeFileFits` is false and the briefing does
-  not tell the AI the upsert format exists -- relay-prompts.json is bench-measured, so that text change needs a re-measure and no
-  platform edit while the bench runs; (b) an element that lives in a fragment file cannot be upserted (T4.1 + T4.2 together
-  could write it back into that file); (c) a field-level upsert inside a concept is not offered, by design (the schema says to
-  upsert the whole concept); (d) the Manager never passes phase f4, so nothing user-visible changed.
-  Suggested order (each its own commit, each behind phase f4): T4.2 element upsert (DONE above), T4.1 fragments (DONE),
+  NOT done by T4.2: (b) an element that lives in a fragment file cannot be upserted (the composer below shows the AI the fragment
+  FILES instead, and the answer returns the whole changed file); (c) a field-level upsert inside a concept is not offered, by
+  design (the schema says to upsert the whole concept); (d) the Manager never passes phase f4, so nothing user-visible changed.
+  2026-11-12 COMPOSER LANDED (the second half of T4.1 and the CHOICE in T4.2): a phase-f4 change/fix now tells the AI what to send
+  back. `npdev_relay_engine.f4_briefing` picks the mode and `start` returns it as `answerMode`: `files` (the app is made of several
+  files: every fragments/ and contexts/ file is shown as it is, with how to return the changed ones; `modelChars`/`wholeFileFits` then
+  describe the LARGEST single file; a reachable file that cannot be changed from here is named and left out), `upsert` (one file above
+  60% of the answer budget: ask for npdev-elements.json instead of model.json, with the list names read from the policy), `whole`
+  (everything else: NOTHING is added). The text is in its OWN file, NPDevCli/relay-prompts-f4.json, so relay-prompts.json -- bench-measured,
+  its sha256 recorded by the bench -- is untouched and every prompt outside phase f4 is byte-identical to the measured one (test). The
+  briefing is stored as base-f4.txt in the session folder so a fresh-chat prompt carries the same one. **THE f4 TEXT IS NOT MEASURED**:
+  run the relay bench arm on a split app and on a model above the budget before the Manager ever passes phase f4 (and never edit
+  platform Java while the bench runs).
+  Suggested order (each its own commit, each behind phase f4): T4.2 element upsert (DONE above), T4.1 fragments (DONE, incl. composer),
   T4.5 config proposals (each knob located first in the property cascade; no writer, no knob), T4.3 themes/pages/seed/translations,
   T4.4 code quarantine.
 resolution: >-

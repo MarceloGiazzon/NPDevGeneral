@@ -165,6 +165,42 @@ def _profile(target_id: str):
         return None
 
 
+F4_BRIEFING_FILE = "base-f4.txt"  # the f4 briefing round 1 carried, kept so a fresh-chat prompt can carry the same one
+
+
+def f4_briefing(*, phase: str, intent: str, model_path, model_text: str, profile, size) -> dict:
+    """What a phase-f4 change/fix adds to the prompt: {"extra": text, "mode": whole|files|upsert, "chars": int}.
+
+    files   the app is made of several files: show each one the answer may change (the AI cannot edit what it never saw)
+            and say how to return them. `chars` is then the LARGEST single file, the one that must fit in an answer.
+    upsert  one file, too big to write out whole in one answer (plan T4.2's rule, `wholeFileFits`): ask for
+            npdev-elements.json instead of model.json.
+    whole   everything else, and every phase other than f4: NOTHING is added, so the prompt is the measured one."""
+    out = {"extra": "", "mode": "whole", "chars": len(model_text)}
+    if phase != "f4" or intent not in ("change", "fix"):
+        return out
+    import npdev_relay_files as files_mod
+
+    try:
+        reachable = files_mod.reachable(model_path)
+    except files_mod.TreeError:
+        return out  # the app cannot be composed here: the validator will say why; the AI is shown what it always was
+    others = [rel for rel in reachable[1:] if rel != files_mod.LOCK_FILE]
+    p4 = rp.load_f4_prompts()
+    if others:
+        editable = [rel for rel in others if files_mod.is_supported(rel)]
+        folder = Path(model_path).resolve().parent
+        texts = {rel: _read_text(folder / rel) for rel in editable}
+        if texts:
+            out.update(mode="files", chars=max([len(model_text)] + [len(t) for t in texts.values()]),
+                       extra=rp.compose_f4_files(p4, texts, [rel for rel in others if rel not in texts]))
+        return out
+    if profile and not rt.whole_file_fits(profile, len(model_text), 0, size):
+        cfg = ri.load_policy()["elements"]
+        out.update(mode="upsert", extra=rp.compose_f4_upsert(p4, list(cfg["identityKeys"]), list(cfg["wholeFileOnly"])))
+    return out
+
+
 def start(*, intent: str, ask: str, app_dir=None, new_app_name=None, target: str = "generic",
           language: str = "English", interview: bool = False, phase: str = "mvp", errors: str = "",
           answer_size=None, pack_id=None, from_pack=None) -> dict:
@@ -190,9 +226,11 @@ def start(*, intent: str, ask: str, app_dir=None, new_app_name=None, target: str
     if intent == "pack" and not ask:
         raise RelayStageError("say what the reusable part should hold")
     model_text = ""
+    model_file = None
     pack_base_text = None
     if intent in ("change", "fix"):
-        model_text = _read_text(find_model_file(app_dir))
+        model_file = find_model_file(app_dir)
+        model_text = _read_text(model_file)
     if intent == "pack" and from_pack:
         pack_base_text = _read_text(Path(from_pack))
         model_text = pack_base_text  # shown to the AI the way a change shows the current model
@@ -210,17 +248,23 @@ def start(*, intent: str, ask: str, app_dir=None, new_app_name=None, target: str
         raise RelayStageError(str(exc)) from None
     if intent == "pack":
         ask = f"Pack id: {pack_id}\n{ask}"
+    brief = f4_briefing(phase=phase, intent=intent, model_path=model_file, model_text=model_text, profile=profile, size=size) \
+        if model_file is not None else {"extra": "", "mode": "whole", "chars": len(model_text)}
+    if brief["extra"]:
+        (rs.session_dir(session["code"]) / F4_BRIEFING_FILE).write_text(brief["extra"], encoding="utf-8")
     text = rp.compose_round1(rp.load_prompts(), code=session["code"], intent=intent, ask=ask, language=language,
                              knowledge=bundle, model=model_text, errors=errors, interview=interview,
-                             budget=budget if size is not None else None)
+                             budget=budget if size is not None else None, extra=brief["extra"])
     rs.add_round(session, text, "round1")
     result = {"ok": True, "code": session["code"], "intent": intent, "round": 1,
               "bytes": len(text.encode("utf-8")), "knowledgeSha256": manifest["contentSha256"], "prompt": text,
               "errorRedactions": redactions, "answerBudgetChars": budget}
     if intent in ("change", "fix") and profile:
-        # The plan's rule (T4.2): above 60% of the budget the model cannot be rewritten whole in one answer.
-        result["modelChars"] = len(model_text)
-        result["wholeFileFits"] = rt.whole_file_fits(profile, len(model_text), 0, size)
+        # The plan's rule (T4.2): above 60% of the budget the model cannot be rewritten whole in one answer. For an app made
+        # of several files (phase f4) the number is the largest single file: a change returns only the files it changed.
+        result["modelChars"] = brief["chars"]
+        result["wholeFileFits"] = rt.whole_file_fits(profile, brief["chars"], 0, size)
+        result["answerMode"] = brief["mode"]  # whole | files | upsert: what the prompt asked the AI to send back
     return result
 
 
@@ -812,9 +856,12 @@ def _fresh_chat(session: dict, number: int, errors: str, budget: int | None = No
     else:
         base = session.get("baseModelSha256") and rs.session_dir(session["code"]) / "base-model.json"
     model = _read_text(base) if base and base.is_file() else ""
+    briefing = rs.session_dir(session["code"]) / F4_BRIEFING_FILE
+    extra = _read_text(briefing) if briefing.is_file() else ""  # the phase-f4 briefing round 1 carried (files / upsert)
     return rp.compose_fresh_chat(rp.load_prompts(), code=session["code"], rnd=number + 1, ask=session["ask"],
                                  language=session["language"], knowledge=bundle, model=model, errors=errors,
-                                 trail=list(session.get("trail") or []), budget=budget, intent=session.get("intent"))
+                                 trail=list(session.get("trail") or []), budget=budget, intent=session.get("intent"),
+                                 extra=extra)
 
 
 CUT_OFF_OUTCOMES = ("TRUNCATED", "ELIDED")

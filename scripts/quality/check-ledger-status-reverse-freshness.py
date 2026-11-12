@@ -236,10 +236,10 @@ ACCEPTED_R2: dict[str, str] = {
         "pages, quarantined code), worked ONE SLICE PER COMMIT by owner order. Each slice's commit genuinely MODIFIES REG-323.yml "
         "-- its `detail` records what that slice landed and what is still missing -- and also touches the production source of "
         "that slice (REG-326 recorded that the answer-size measurement landed; T4.1 recorded that fragments apply/undo landed; "
-        "T4.2 recorded that the element-upsert expander landed). "
+        "T4.2 recorded that the element-upsert expander landed; the composer slice recorded that the f4 briefing landed). "
         "All are legitimate partial-progress edits whose reconciliation is already written in the item's own text and whose "
-        "conclusion is 'still open': config proposals, themes/pages and code quarantine are untouched, and the prompts "
-        "do not yet tell the AI that fragments or upserts exist. Same shape as PACK-9/REG-170/REG-176/REG-180/SEC-3/REG-317 above."
+        "conclusion is 'still open': config proposals, themes/pages and code quarantine are untouched, the f4 prompt text is not "
+        "bench-measured, and the Manager never passes phase f4. Same shape as PACK-9/REG-170/REG-176/REG-180/SEC-3/REG-317 above."
     ),
 }
 

@@ -396,5 +396,113 @@ class ElementsJourneyTests(ElementsAnswerCase):
         self.assertIn("path-denied", [f["code"] for f in result["findings"]])
 
 
+# ---------------------------------------------------------------------------------------------- what the AI is shown
+
+def big_model() -> dict:
+    model = json.loads(SEED_MODEL)
+    model["concepts"].append(concept("Catalogue", *[f"attribute{i:02d}" for i in range(60)]))
+    return model
+
+
+class ComposerCase(ElementsAnswerCase):
+    def make_split_app(self) -> Path:
+        from test_relay_files import split_model
+        app = self.dir / "splitshop"
+        (app / "fragments").mkdir(parents=True)
+        root, fragments = split_model(json.loads(SEED_MODEL))
+        (app / "model.json").write_text(json.dumps(root, indent=2) + "\n", encoding="utf-8")
+        for path, value in fragments.items():
+            (app / path).write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+        return app
+
+    def make_big_app(self) -> Path:
+        app = self.dir / "bigshop"
+        app.mkdir()
+        (app / "model.json").write_text(json.dumps(big_model(), indent=2) + "\n", encoding="utf-8")
+        return app
+
+    def begin(self, app: Path, phase: str = "f4", **extra) -> dict:
+        return engine.start(intent="change", ask="Add a phone number to the customer", app_dir=str(app), phase=phase,
+                            target="chatgpt", **extra)
+
+
+class ComposerTests(ComposerCase):
+    def test_a_split_app_shows_the_ai_every_file_it_may_change(self):
+        out = self.begin(self.make_split_app())
+        self.assertEqual(out["answerMode"], "files")
+        for rel in ("fragments/customer.json", "fragments/order.json"):
+            self.assertIn(f"File {rel}:", out["prompt"])
+        self.assertIn('"name": "Customer"', out["prompt"])  # the content of the fragment, not only its name
+        self.assertIn('{"$ref": "fragments/<name>.json"}', out["prompt"])  # the template's $$ became a dollar
+        self.assertIn("A file you do not send stays exactly as it is", out["prompt"])
+
+    def test_the_answer_mode_asks_for_the_largest_single_file_not_the_root(self):
+        app = self.make_split_app()
+        fragment = app / "fragments" / "customer.json"
+        value = json.loads(fragment.read_text(encoding="utf-8"))
+        value["concepts"][0]["fields"].extend({"name": f"extra{i:02d}", "type": "string"} for i in range(80))
+        fragment.write_text(json.dumps(value, indent=2), encoding="utf-8")
+        out = self.begin(app, answer_size=4000)
+        self.assertGreater(out["modelChars"], len((app / "model.json").read_text(encoding="utf-8")))
+        self.assertFalse(out["wholeFileFits"])
+        self.assertEqual(out["answerMode"], "files")  # a split app never asks for upserts: its elements live in files
+
+    def test_a_model_above_the_budget_is_asked_for_as_an_upsert_with_the_lists_that_work(self):
+        out = self.begin(self.make_big_app(), answer_size=4000)
+        self.assertFalse(out["wholeFileFits"])
+        self.assertEqual(out["answerMode"], "upsert")
+        self.assertIn("do NOT send model.json", out["prompt"])
+        for key in POLICY["elements"]["identityKeys"] + list(POLICY["elements"]["wholeFileOnly"]):
+            self.assertIn(key, out["prompt"])
+
+    def test_a_model_that_fits_and_every_other_phase_get_exactly_the_measured_prompt(self):
+        small = self.make_app()
+        measured = self.begin(small, phase="mvp")
+        for out in (measured, self.begin(small, phase="f4"), self.begin(self.make_split_app(), phase="mvp"),
+                    self.begin(self.make_big_app(), phase="mvp", answer_size=4000)):
+            self.assertEqual(out["answerMode"], "whole")
+            self.assertNotIn("npdev-elements.json", out["prompt"])
+            self.assertNotIn("File fragments/", out["prompt"])
+        same = engine.start(intent="change", ask="Add a phone number to the customer", app_dir=str(small), phase="f4", target="chatgpt")
+        self.assertEqual(same["prompt"].replace(same["code"], "XXXX"), measured["prompt"].replace(measured["code"], "XXXX"))
+
+    def test_the_upsert_the_prompt_asks_for_is_the_upsert_ingest_accepts(self):
+        app = self.make_big_app()
+        out = self.begin(app, answer_size=4000)
+        self.assertEqual(out["answerMode"], "upsert")
+        code = out["code"]
+        changed = copy.deepcopy(big_model()["concepts"][0])
+        changed["fields"].append({"name": "phone", "type": "string"})
+        result = engine.ingest(code, answer_of(code, 1, {
+            "npdev-elements.json": {"upsert": {"concepts": [changed]}}, "npdev-submission.json": manifest()}), source="paste")
+        self.assertEqual(result["outcome"], "READY", (result["findings"], result.get("errorLines")))
+        self.assertTrue(apply_mod.apply_round(sessions.load(code), None, [])["ok"])
+        written = json.loads((app / "model.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(written["concepts"]), len(big_model()["concepts"]))  # the big concept was never resent
+        self.assertIn("phone", json.dumps(written["concepts"][0]))
+
+    def test_a_fresh_chat_prompt_carries_the_same_briefing(self):
+        out = self.begin(self.make_big_app(), answer_size=4000)
+        session = sessions.load(out["code"])
+        fresh = engine._fresh_chat(session, 1, "something failed")
+        self.assertIn("do NOT send model.json", fresh)
+        plain = self.begin(self.make_app(), phase="mvp")
+        self.assertNotIn("npdev-elements.json", engine._fresh_chat(sessions.load(plain["code"]), 1, "something failed"))
+
+    def test_a_locked_file_is_named_and_a_create_prompt_never_gets_the_briefing(self):
+        p4 = engine.rp.load_f4_prompts()
+        text = engine.rp.compose_f4_files(p4, {"fragments/a.json": "{}"}, ["packs/x/pack.json"])
+        self.assertIn("packs/x/pack.json", text)
+        self.assertIn("cannot be changed from here", text)
+        created = engine.rp.compose_round1(engine.rp.load_prompts(), code="ABCD", intent="create", ask="a shop", language="English",
+                                           knowledge="k", extra=text)
+        self.assertNotIn("File fragments/a.json", created)
+
+    def test_a_backtick_fence_inside_a_fragment_cannot_close_the_listing_early(self):
+        p4 = engine.rp.load_f4_prompts()
+        text = engine.rp.compose_f4_files(p4, {"fragments/a.json": '{"note": "```"}'}, [])
+        self.assertIn("````json", text)
+
+
 if __name__ == "__main__":
     unittest.main()

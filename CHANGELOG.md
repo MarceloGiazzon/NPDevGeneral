@@ -38,8 +38,13 @@ release. Ships in the next tag.
   slips instead of failing: a key in the singular or another case, one element sent as an object, the same element twice (last wins), a
   rename with or without the new content, a removal of something already gone, an element that shrank to under half (warned: an AI that
   thinks upsert merges). An element kept in a fragment file, or a base that moved since the AI was shown it, is refused with the way
-  out and never guessed. Removing a concept still needs the owner's confirmation. Not yet: the composer does not choose upsert over
-  whole-file or tell the AI the format exists (`relay-prompts.json` is bench-measured), and the Manager never passes phase f4.
+  out and never guessed. Removing a concept still needs the owner's confirmation. The Manager never passes phase f4.
+- **A phase-f4 prompt now tells the AI what to send back** (REG-323, T4.1 composer + T4.2 choice) -- `relay start` returns `answerMode`:
+  `files` for an app made of several files (every fragment and context is shown as it is, with how to return the changed ones; the size
+  rule uses the largest single file), `upsert` for one file above 60% of the answer budget (ask for `npdev-elements.json` instead of
+  `model.json`), `whole` for everything else, which adds NOTHING. The text is in its own file, `NPDevCli/relay-prompts-f4.json`, so the
+  bench-measured `relay-prompts.json` is untouched and every other prompt is byte-identical to the measured one. That f4 text is NOT
+  measured yet: run the relay bench arm before the Manager passes phase f4.
 - **A browser-AI answer can carry fragments, written all or nothing and undone file by file** (REG-323, T4.1) -- with `--phase f4`
   an answer may hold `fragments/*.json` and `contexts/*.json` beside `model.json`, for a new app or a change. The check stages the
   app's current files plus the answer's into a folder, so the Java gate and the plain-words preview see the ONE model the files make

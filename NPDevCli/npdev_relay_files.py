@@ -80,6 +80,11 @@ def answer_files(result: dict) -> tuple[dict, list]:
     return supported, sorted(set(unsupported))
 
 
+def is_supported(path: str) -> bool:
+    """True for a file an answer may carry beside model.json today (a fragment or a context)."""
+    return any(fnmatch.fnmatchcase(path, pattern) for pattern in SUPPORTED)
+
+
 def safe_relative(rel) -> str:
     """The path as written, or TreeError: relative, no `..`, no drive, not empty. Callers join it to a folder."""
     text = str(rel).replace("\\", "/") if isinstance(rel, str) else ""
