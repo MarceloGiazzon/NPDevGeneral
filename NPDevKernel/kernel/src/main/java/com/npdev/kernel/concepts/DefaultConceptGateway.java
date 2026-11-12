@@ -802,6 +802,44 @@ public final class DefaultConceptGateway implements ConceptGateway {
     }
 
     /**
+     * REG-338: {@link ConceptGateway#authorizeFlowWrite}'s implementation -- the row-level
+     * {@code access.write} gate of {@link #saveWithinTransaction} for a flow's createConcept /
+     * updateConcept step, with no permission check, no semantics and nothing persisted. The same
+     * {@link #enforceRowWritable}, so a refusal audits and traces exactly like a REST refusal.
+     */
+    @Override
+    public void authorizeFlowWrite(
+            String conceptName,
+            String id,
+            Map<String, Object> data,
+            boolean update,
+            ExecutionContext context
+    ) {
+        ExecutionContext effectiveContext = normalizeContext(context);
+        String tenantId = enforceTenant(null, effectiveContext, "CONCEPT_WRITE", conceptName, id == null ? "*" : id);
+        Optional<ConceptRecord> previous = Optional.empty();
+        if (update) {
+            if (id == null) {
+                return;
+            }
+            previous = store.findById(tenantId, conceptName, id);
+            if (previous.isEmpty()) {
+                return;
+            }
+        }
+        ConceptGatewayRequestContext requestContext = requestContext(
+                ConceptGatewayOperation.SAVE,
+                conceptName,
+                id,
+                tenantId,
+                data == null ? Map.of() : data,
+                effectiveContext,
+                Optional.empty()
+        ).withPreviousRecord(previous);
+        enforceRowWritable(requestContext, "CONCEPT_WRITE");
+    }
+
+    /**
      * LNCH-13: row-level write scoping -- {@link ConceptGatewaySemanticPolicy#isRowWritable}
      * against the previous record (update/delete) or incoming data (create). Unlike the read
      * path (which fails closed to "not found" per-record), a denied write throws immediately:

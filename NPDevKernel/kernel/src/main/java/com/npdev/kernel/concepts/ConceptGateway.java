@@ -122,6 +122,37 @@ public interface ConceptGateway {
                         + request.conceptName() + " rather than proceeding unchecked.");
     }
 
+    /**
+     * REG-338: the ROW-LEVEL {@code access.write} scope check a flow's {@code createConcept} /
+     * {@code updateConcept} step runs as the flow's actor -- and nothing else. A flow's step reaches
+     * persistence through the capability adapter, never through {@link #save}, so without this the
+     * concept's write rule (e.g. leave's {@code employeeId == $user.id}) guarded REST and was not
+     * consulted for a flow, leaving {@code flow.execute} as the only gate on the filing.
+     *
+     * <p>Deliberately narrower than {@link #authorizeCreate}: no {@code concept.write} permission
+     * (a flow may legitimately write rows its caller has no REST write permission on -- that is what
+     * the flow's own {@code flow.execute} role gate is for) and no field-level or semantic checks. The
+     * scope rule runs against the supplied payload for a create, and against the stored row plus the
+     * row as it will be written for an update -- exactly the evaluation {@link #save} makes. An update
+     * of an id with no stored row checks nothing here; the step's own update path reports it missing.
+     *
+     * <p>Fail-closed by default, matching {@link #authorizeWrite}.
+     *
+     * @param id the row id for an update; {@code null} for a create that has no id yet
+     */
+    default void authorizeFlowWrite(
+            String conceptName,
+            String id,
+            java.util.Map<String, Object> data,
+            boolean update,
+            ExecutionContext context
+    ) {
+        throw new ConceptGatewayAccessDeniedException(
+                "AUTHORIZATION_UNAVAILABLE",
+                "This ConceptGateway cannot authorize a flow write; denying "
+                        + conceptName + " rather than proceeding unchecked.");
+    }
+
     void delete(ConceptReadRequest request, ExecutionContext context);
 
     default List<ConceptGatewayTraceRecord> explain() {

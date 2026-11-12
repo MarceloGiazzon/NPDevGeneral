@@ -2,7 +2,7 @@
   "$schema": "../../schemas/pack.schema.json",
   "dslVersion": "1.0.0",
   "pack": "leave",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "namespace": "com.npdev.leave",
   "description": "NPDev leave-request pack: leave types and leave requests decided by an approver. A person with the 'employee' role files a request through the RequestLeave flow; the flow first checks the request's rules (a request that breaks them never reaches an approver) and then puts a task on My tasks for anyone with the 'leaveApprover' role, who approves or rejects it with a comment (the same human-task pattern as the approvals pack); 'hrAdmin' maintains the leave types and may cancel. An employee sees only their own requests, and may file only under their own login (each request records the login of who filed it in employeeId, filled from the signed-in user, and the row rules compare it with the signed-in login); the leaveApprover and hrAdmin roles and ADMIN see every request. A request is PENDING, then APPROVED or REJECTED, and a PENDING or APPROVED request may be CANCELLED. How many days each employee has had approved is derived by a query, never typed in. A resumed flow applies the decision as the person who started it and without that person's roles, so the rules also admit the platform's trusted resume principal (role ADMIN). The three roles are logical: the importing app binds them with provides.roleBindings { \"employee\": ..., \"leaveApprover\": ..., \"hrAdmin\": ... } (composition refuses when one is unbound) and grants them on the pack's concepts in its own roles[]. The flow persists, so the importing app must also declare a persistence capability and bind it (and bind the eventBus): see the dom-leave sample.",
   "category": "other",
@@ -335,8 +335,8 @@
         },
         {
           "name": "save-request",
-          "type": "callProcedure",
-          "procedure": "FileLeaveRequest",
+          "type": "createConcept",
+          "scope": "LeaveRequest",
           "input": "$input",
           "output": "$saved"
         },
@@ -406,26 +406,6 @@
     }
   ],
   "procedures": [
-    {
-      "name": "FileLeaveRequest",
-      "description": "Saves the request through the concept gateway as the person who files it, so the concept's row-level write rule (employeeId == $user.id) runs on the filing and employeeId is filled with that person's login ($user.id) when the row is created. A flow's own createConcept step fills the $user default too, but does not run the row-level write rule, so an employee could file a request under a colleague's login (REG-338).",
-      "steps": [
-        {
-          "name": "save",
-          "type": "saveConcept",
-          "concept": "LeaveRequest",
-          "data": {
-            "input": "$input"
-          },
-          "target": "request"
-        },
-        {
-          "name": "return-request",
-          "type": "return",
-          "value": "$request"
-        }
-      ]
-    },
     {
       "name": "ApplyLeaveDecision",
       "description": "A human task answered from My tasks publishes LeaveDecided {requestId, status, comment, completedBy}; this moves the request to the chosen status and records who decided and why, unless the request already left PENDING (for example the employee's leave was cancelled meanwhile).",

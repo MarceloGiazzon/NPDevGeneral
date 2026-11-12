@@ -659,7 +659,8 @@ public class NpdevCapabilityBindingConfig {
             SchemaValidator schemaValidator,
             MetricsSink metricsSink,
             PermissionEvaluator permissionEvaluator,
-            ObjectProvider<ProcedureRunner> procedureRunnerProvider
+            ObjectProvider<ProcedureRunner> procedureRunnerProvider,
+            ObjectProvider<ConceptGateway> conceptGatewayProvider
     ) {
         CompiledModelFlowDefinitionProvider flowDefinitionProvider =
                 new CompiledModelFlowDefinitionProvider(modelHolder.get());
@@ -682,6 +683,9 @@ public class NpdevCapabilityBindingConfig {
                 metricsSink
         );
         kernelRunner.withPermissionEvaluator(permissionEvaluator);
+        // REG-338: a flow's createConcept / updateConcept step is checked against the concept's
+        // row-level write rule as the flow's actor, the same gateway rule REST writes pass.
+        kernelRunner.withConceptGateway(conceptGatewayProvider.getIfAvailable());
         // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): wires the new callProcedure flow
         // step to the SAME ProcedureRunner/procedure registry PanelRuntime/AggregateRuntime already
         // use, rather than a second, separate procedure-execution mechanism -- ProcedureRunner

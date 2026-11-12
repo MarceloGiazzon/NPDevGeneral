@@ -3,8 +3,9 @@ title: >-
   A flow's createConcept step does not run the concept's row-level write rule, so a flow can file a record under another person's login
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-12
+closed: 2026-11-12
 source: >-
   Found while fixing REG-337 (2026-11-12). With leave's FileLeaveRequest workaround removed, the dom-leave probe check "a flow filing under
   another employee's login is refused and plants nothing" failed: an employee filed RequestLeave naming a colleague's employeeId and got 202,
@@ -19,13 +20,41 @@ detail: |
   "remove the workaround procedures" clause was not carried out for leave. approvals has no owner write rule and went back to createConcept in 1.2.1.
   Possible fix: run the concept's write access rule (the gateway's authorizeCreate / row check) for a createConcept step as the flow's actor, with a
   flag on the step if a flow must write on the system's behalf (runAs system already exists for procedures).
+  FIXED 2026-11-12: a new ConceptGateway.authorizeFlowWrite(concept, id, data, update, context) runs ONLY the row-level access.write rule (the same
+  enforceRowWritable a REST save runs: payload for a create, stored row + the row as it will be written for an update; an update of an id with no
+  stored row checks nothing and the step reports it missing). CapabilityCallStep calls it for a createConcept / updateConcept step before the
+  persistence capability and reports CAPABILITY_ROW_SCOPE_DENIED (kind AUTH, HTTP 422 through REST) without calling the adapter. Deliberately NOT
+  applied: the concept.write permission (a flow may write rows its caller has no REST write permission on; flow.execute is that gate) and the
+  field-level / semantic rules. The actor is the person who started the flow: KernelRunner stamps FlowActor (state keys actorRoles, actorSystem)
+  from the authenticated context, so a step after an awaitEvent is checked as that person and not as the ADMIN-level ExecutionContext.resuming
+  role. NOT checked: the cron scheduler and model seeding (platform principals), and a durable flow instance that started before this change (no
+  roles recorded). KernelRunner.withConceptGateway is optional; the RuntimeHost wires the live gateway. No step flag for "write on the system's
+  behalf" was added: the corpus never needed one (dom-leave, dom-approvals, dsl-conformance-max 144/144 behaviour probes all green); a model that
+  needs it widens the rule with `|| $user.isSystem` or writes through a runAs: "system" procedure (BREAKING.md says so).
+  leave 1.2.1 dropped FileLeaveRequest and files with createConcept; the "|| employeeId == null" write branch stays, because the check runs on the
+  incoming data BEFORE the $user default fills the login. dom-leave probe 74/74 on a booted app with a wiped DB, including "a flow filing under
+  another employee's login is refused and plants nothing" (HTTP 422, stored employeeId None); dom-approvals probe green.
 files:
-  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/CapabilityInvoker.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/CapabilityCallStep.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/FlowActor.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/KernelRunner.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptGateway.java
   - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/DefaultConceptGateway.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevCapabilityBindingConfig.java
   - NPDevContract/packs/leave/pack.json
   - NPDevSamples/dom-leave/probe/leave_probe.py
-verification: NOT_VERIFIED
+verification: VERIFIED_LIVE
+guard:
+  kind: test
+  ref: >-
+    NPDevKernel/kernel/src/test/java/com/npdev/kernel/KernelRunnerFlowRowWriteScopeTest.java#createNamingAnotherOwnerIsRefusedAndThePersistenceCapabilityIsNeverCalled
+  asserts: >-
+    a createConcept step run by an actor whose concept write rule refuses the payload fails with CAPABILITY_ROW_SCOPE_DENIED (AUTH) and the
+    persistence capability is never called; the same file pins updateConcept, no-gateway, platform-principal and post-resume (original actor, not the
+    ADMIN resume role) behaviour, and DefaultConceptGatewayFlowWriteScopeTest pins the gateway rule (create, update, SEC-16 reassignment, missing row,
+    no rule, other tenant)
+  provenRed: true
 done_when: >-
   A createConcept / updateConcept step is refused when the concept's write rule refuses the record for the flow's actor, and leave's
   FileLeaveRequest procedure can be replaced by a createConcept step with the dom-leave probe still green, including "a flow filing under another
-  employee's login is refused and plants nothing".
+  employee's login is refused and plants nothing". MET 2026-11-12.

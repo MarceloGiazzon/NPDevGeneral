@@ -1,6 +1,7 @@
 package com.npdev.kernel;
 
 import com.npdev.dsl.v1.expr.ComputedExpression;
+import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.events.EventEnvelope;
 import com.npdev.kernel.capability.CapabilityPolicyOverrides;
 import com.npdev.kernel.capabilities.CapabilityExecutionPolicy;
@@ -78,6 +79,7 @@ final EventBus eventBus;
     // addition that most existing KernelRunner callers (and all 16 of its constructors) never need
     // to know about; CallProcedureStep fails cleanly with NO_PROCEDURE_RUNNER when unset.
     private ProcedureExecutor procedureExecutor;
+    private ConceptGateway conceptGateway;
     private Map<String, ProcedureDefinition> procedureRegistry = Map.of();
     // R2.4: optional, set-after-construction for the same reason procedureExecutor above is -- the
     // durable scheduled-event table lives in an adapter that depends on this module, so the binding
@@ -121,6 +123,21 @@ final EventBus eventBus;
     public KernelRunner withDeferredEventScheduler(DeferredEventScheduler deferredEventScheduler) {
         this.deferredEventScheduler = deferredEventScheduler;
         return this;
+    }
+
+    /**
+     * REG-338: binds a flow's createConcept / updateConcept steps to the concept's row-level
+     * {@code access.write} rule, evaluated as the flow's actor (see {@link FlowActor}). Optional and
+     * set-after-construction like {@link #withProcedureExecutor}; left null, flow writes are not
+     * row-checked (the behaviour before this existed), so no existing constructor caller changes.
+     */
+    public KernelRunner withConceptGateway(ConceptGateway conceptGateway) {
+        this.conceptGateway = conceptGateway;
+        return this;
+    }
+
+    ConceptGateway conceptGateway() {
+        return conceptGateway;
     }
 
     ProcedureExecutor procedureExecutor() {
@@ -825,6 +842,7 @@ final EventBus eventBus;
         if (effectiveContext.actorId() != null) {
             initialState.put("actorId", effectiveContext.actorId());
         }
+        FlowActor.stamp(initialState, effectiveContext);
         long now = nowEpochMillis();
         FlowInstance initialInstance = FlowInstance.start(
                 executionId,

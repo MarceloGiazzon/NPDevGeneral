@@ -193,6 +193,39 @@ final class CapabilityCallStep {
             }
         }
 
+        // REG-338: a createConcept / updateConcept step must pass the concept's row-level write rule
+        // as the flow's actor, exactly as the REST write does -- the adapter below never consults it.
+        if (conceptWrite != null && runner.conceptGateway() != null) {
+            CapabilityError rowScopeDenied = rowWriteDenial(runner, flow, step, args, state, effectiveContext);
+            if (rowScopeDenied != null) {
+                runner.traceFailedStep(
+                        traceMeta,
+                        step,
+                        traceStepIndex,
+                        stepStartedAt,
+                        stateBefore,
+                        state,
+                        stepInfo,
+                        List.of(),
+                        rowScopeDenied,
+                        stepTraces
+                );
+                return KernelRunner.StepExecutionOutcome.failed(ExecutionResult.capabilityFailed(
+                        flow.getName(),
+                        emittedEvents,
+                        step.getName(),
+                        traceStepIndex,
+                        step.getCapability(),
+                        step.getOperation(),
+                        step.getCapabilityAdapterId(),
+                        rowScopeDenied,
+                        executionId,
+                        Objects.toString(state.get("correlationId"), defaultCorrelationId),
+                        executionId
+                ));
+            }
+        }
+
         String correlationId = Objects.toString(state.get("correlationId"), null);
         stepInfo.put("capability", step.getCapability());
         stepInfo.put("operation", step.getOperation());
@@ -338,5 +371,55 @@ final class CapabilityCallStep {
         }
         state.put("last", output);
         return null;
+    }
+
+    /**
+     * REG-338: runs the concept's row-level write rule for this createConcept / updateConcept step
+     * as the flow's actor (see {@link FlowActor}) and returns the AUTH failure to report, or
+     * {@code null} when the write may proceed. The check is skipped where there is no trustworthy
+     * actor to evaluate (a platform principal, or an instance that predates the actor snapshot) and
+     * when the payload is not an object (nothing to scope-check; the step's own input validation
+     * reports it).
+     */
+    private static CapabilityError rowWriteDenial(
+            KernelRunner runner,
+            FlowDefinition flow,
+            FlowStepDefinition step,
+            List<Object> args,
+            Map<String, Object> state,
+            ExecutionContext effectiveContext
+    ) {
+        if (args == null || args.isEmpty() || !(args.get(0) instanceof Map<?, ?> payload)) {
+            return null;
+        }
+        ExecutionContext actor = FlowActor.writeCheckContext(state, effectiveContext);
+        String conceptName = KernelRunner.resolveInvariantConceptName(step, flow);
+        if (actor == null || conceptName == null || conceptName.isBlank()) {
+            return null;
+        }
+        Map<String, Object> data = new java.util.LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : payload.entrySet()) {
+            data.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        Object rawId = data.get("id");
+        String id = rawId == null || String.valueOf(rawId).isBlank() ? null : String.valueOf(rawId).trim();
+        try {
+            runner.conceptGateway().authorizeFlowWrite(
+                    conceptName, id, data, step.getConceptWrite().isUpdate(), actor);
+            return null;
+        } catch (com.npdev.kernel.concepts.ConceptGatewayAccessDeniedException denied) {
+            return new CapabilityError(
+                    "CAPABILITY_ROW_SCOPE_DENIED",
+                    denied.getMessage(),
+                    CapabilityErrorKind.AUTH,
+                    Map.of(
+                            "capability", step.getCapability(),
+                            "operation", step.getOperation(),
+                            "adapterId", step.getCapabilityAdapterId() == null ? "" : step.getCapabilityAdapterId(),
+                            "concept", conceptName,
+                            "gatewayCode", denied.code()
+                    )
+            );
+        }
     }
 }

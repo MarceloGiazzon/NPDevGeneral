@@ -54,5 +54,5 @@ guard:
   provenRed: true
 done_when: >-
   A record created by a flow's createConcept step gets the same $user defaults as a REST create (met: dom-approvals probe 26/26 on a booted app
-  with createConcept in the flow; adapter and CapabilityInvoker unit tests). The leave workaround is NOT removed: it also enforces the row-level
-  write rule a createConcept step skips, tracked as REG-338.
+  with createConcept in the flow; adapter and CapabilityInvoker unit tests). The leave workaround was kept until REG-338 (a flow's
+  createConcept now runs the row-level write rule) closed the same day; leave 1.2.1 files with createConcept too.
