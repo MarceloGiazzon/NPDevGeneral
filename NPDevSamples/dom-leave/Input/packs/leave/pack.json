@@ -2,9 +2,9 @@
   "$schema": "../../schemas/pack.schema.json",
   "dslVersion": "1.0.0",
   "pack": "leave",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "namespace": "com.npdev.leave",
-  "description": "NPDev leave-request pack: leave types and leave requests decided by an approver. A person with the 'employee' role files a request through the RequestLeave flow; the flow first checks the request's rules (a request that breaks them never reaches an approver) and then puts a task on My tasks for anyone with the 'leaveApprover' role, who approves or rejects it with a comment (the same human-task pattern as the approvals pack); 'hrAdmin' maintains the leave types and may cancel. A request is PENDING, then APPROVED or REJECTED, and a PENDING or APPROVED request may be CANCELLED. How many days each employee has had approved is derived by a query, never typed in. A resumed flow applies the decision as the person who started it and without that person's roles, so the rules also admit the platform's trusted resume principal (role ADMIN). The three roles are logical: the importing app binds them with provides.roleBindings { \"employee\": ..., \"leaveApprover\": ..., \"hrAdmin\": ... } (composition refuses when one is unbound) and grants them on the pack's concepts in its own roles[]. The flow persists, so the importing app must also declare a persistence capability and bind it (and bind the eventBus): see the dom-leave sample.",
+  "description": "NPDev leave-request pack: leave types and leave requests decided by an approver. A person with the 'employee' role files a request through the RequestLeave flow; the flow first checks the request's rules (a request that breaks them never reaches an approver) and then puts a task on My tasks for anyone with the 'leaveApprover' role, who approves or rejects it with a comment (the same human-task pattern as the approvals pack); 'hrAdmin' maintains the leave types and may cancel. An employee sees only their own requests, and may file only under their own login (each request records the login of who filed it in employeeId, filled from the signed-in user, and the row rules compare it with the signed-in login); the leaveApprover and hrAdmin roles and ADMIN see every request. A request is PENDING, then APPROVED or REJECTED, and a PENDING or APPROVED request may be CANCELLED. How many days each employee has had approved is derived by a query, never typed in. A resumed flow applies the decision as the person who started it and without that person's roles, so the rules also admit the platform's trusted resume principal (role ADMIN). The three roles are logical: the importing app binds them with provides.roleBindings { \"employee\": ..., \"leaveApprover\": ..., \"hrAdmin\": ... } (composition refuses when one is unbound) and grants them on the pack's concepts in its own roles[]. The flow persists, so the importing app must also declare a persistence capability and bind it (and bind the eventBus): see the dom-leave sample.",
   "category": "other",
   "author": "NPDev",
   "metadata": {
@@ -17,7 +17,7 @@
       "A request that nobody decides stays PENDING; there is no reminder and no expiry. The flow waits 14 days and then stops waiting, leaving the request PENDING.",
       "Cancelling a request that is waiting on a task leaves the task open; a later decision on it is ignored.",
       "Part-days are allowed down to half a day; hours are not modelled.",
-      "Employees can read every leave request, not only their own: reads are gated by role. A request now records the login of who asked (employeeId, filled from $user.id), so a per-row rule employeeId == $user.id is possible; it is not switched on. Say whether employees may see each other's requests.",
+      "An employee sees only their own leave requests: each request records the login of who filed it (employeeId, filled from $user.id), and the employee role may read, and file, only requests carrying its own login, in lists, single reads and the derived queries (PendingLeave, LeaveTakenByEmployee) alike; a request filed with another login is refused. Approvers, HR and ADMIN see every request. employeeName is still typed in, so the name on a request can differ from the login it belongs to. Say whether an approver should see only their own team's requests.",
       "Creating a request directly (not through the RequestLeave flow) leaves it PENDING with no task for any approver; only the flow puts it in front of someone.",
       "Nobody is notified when a request is decided."
     ]
@@ -293,8 +293,8 @@
         }
       ],
       "access": {
-        "read": "$user.roles.contains('ADMIN') || $user.roles.contains(role('employee')) || $user.roles.contains(role('leaveApprover')) || $user.roles.contains(role('hrAdmin'))",
-        "write": "$user.roles.contains('ADMIN') || $user.roles.contains(role('employee')) || $user.roles.contains(role('leaveApprover')) || $user.roles.contains(role('hrAdmin'))"
+        "read": "$user.roles.contains('ADMIN') || $user.roles.contains(role('leaveApprover')) || $user.roles.contains(role('hrAdmin')) || $user.roles.contains(role('employee')) && employeeId == $user.id",
+        "write": "$user.roles.contains('ADMIN') || $user.roles.contains(role('leaveApprover')) || $user.roles.contains(role('hrAdmin')) || $user.roles.contains(role('employee')) && employeeId == $user.id || $user.roles.contains(role('employee')) && employeeId == null"
       }
     }
   ],
@@ -335,8 +335,8 @@
         },
         {
           "name": "save-request",
-          "type": "createConcept",
-          "scope": "LeaveRequest",
+          "type": "callProcedure",
+          "procedure": "FileLeaveRequest",
           "input": "$input",
           "output": "$saved"
         },
@@ -406,6 +406,26 @@
     }
   ],
   "procedures": [
+    {
+      "name": "FileLeaveRequest",
+      "description": "Saves the request through the concept gateway as the person who files it, so employeeId is filled with that person's login ($user.id) when the row is created. A flow's own createConcept step does not evaluate a $user default, which would leave employeeId empty and the request invisible to the employee who filed it.",
+      "steps": [
+        {
+          "name": "save",
+          "type": "saveConcept",
+          "concept": "LeaveRequest",
+          "data": {
+            "input": "$input"
+          },
+          "target": "request"
+        },
+        {
+          "name": "return-request",
+          "type": "return",
+          "value": "$request"
+        }
+      ]
+    },
     {
       "name": "ApplyLeaveDecision",
       "description": "A human task answered from My tasks publishes LeaveDecided {requestId, status, comment, completedBy}; this moves the request to the chosen status and records who decided and why, unless the request already left PENDING (for example the employee's leave was cancelled meanwhile).",

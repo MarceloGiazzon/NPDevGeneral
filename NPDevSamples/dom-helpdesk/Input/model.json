@@ -4,7 +4,7 @@
   "dslVersion": "1.0.0",
   "version": "1.0",
   "metadata": {
-    "purpose": "DOM-4: a consumer of the built-in helpdesk pack. Binds its three logical roles to REQUESTER, HD_AGENT and HD_MGR and grants them the pack's concepts; probe/helpdesk_probe.py drives the pack's rules against the booted app (role enforcement, the assigned-agent rule, the ticket lifecycle, derived counts)."
+    "purpose": "DOM-4: a consumer of the built-in helpdesk pack. Binds its three logical roles to REQUESTER, HD_AGENT and HD_MGR and grants them the pack's concepts; REQUESTER may read and create tickets, and the pack scopes that read to the tickets the requester raised (requesterId == $user.id). probe/helpdesk_probe.py drives the pack's rules against the booted app (role enforcement, a requester seeing only their own tickets, the assigned-agent rule, the ticket lifecycle, derived counts)."
   },
   "packs": [
     {
@@ -75,6 +75,7 @@
           "read"
         ],
         "helpdesk::Ticket": [
+          "read",
           "create"
         ],
         "helpdesk::TicketComment": [

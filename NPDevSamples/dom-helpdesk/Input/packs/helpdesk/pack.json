@@ -2,16 +2,16 @@
   "$schema": "../../schemas/pack.schema.json",
   "dslVersion": "1.0.0",
   "pack": "helpdesk",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "namespace": "com.npdev.helpdesk",
-  "description": "NPDev helpdesk pack: agents, ticket categories, tickets and ticket comments. A person with the 'requester' role raises tickets and adds comments but cannot read the queue; 'helpdeskAgent' works tickets (takes, waits on the requester, resolves, reopens, closes) and comments; 'helpdeskManager' also maintains agents and categories. A ticket is NEW, then OPEN, PENDING (waiting for the requester) and RESOLVED, and finally CLOSED; a ticket cannot be taken, paused, resolved or reopened without an assigned agent (it may still be closed without action straight from NEW). How many tickets are in each state and how many each agent holds are derived by queries. The three roles are logical: the importing app binds them with provides.roleBindings { \"requester\": ..., \"helpdeskAgent\": ..., \"helpdeskManager\": ... } (composition refuses when one is unbound) and grants them read/create/update on the pack's concepts in its own roles[] (see the dom-helpdesk sample).",
+  "description": "NPDev helpdesk pack: agents, ticket categories, tickets and ticket comments. A person with the 'requester' role raises tickets and adds comments and sees only the tickets they raised themselves (never the queue, and never another requester's ticket); 'helpdeskAgent' works tickets (takes, waits on the requester, resolves, reopens, closes) and comments; 'helpdeskManager' also maintains agents and categories. A ticket is NEW, then OPEN, PENDING (waiting for the requester) and RESOLVED, and finally CLOSED; a ticket cannot be taken, paused, resolved or reopened without an assigned agent (it may still be closed without action straight from NEW). How many tickets are in each state and how many each agent holds are derived by queries. The three roles are logical: the importing app binds them with provides.roleBindings { \"requester\": ..., \"helpdeskAgent\": ..., \"helpdeskManager\": ... } (composition refuses when one is unbound) and grants them read/create/update on the pack's concepts in its own roles[] (see the dom-helpdesk sample).",
   "category": "other",
   "author": "NPDev",
   "metadata": {
     "summary": "Handles support requests. Someone raises a ticket describing a problem; an agent takes it, may ask the requester for more information, resolves it, and a resolved ticket is later closed or reopened. Every ticket carries a priority and a category, and a ticket that is being worked always has an agent. How many tickets are in each state and how many each agent holds is always calculated, never typed in.",
     "reviewNotes": [
       "There are no response or resolution deadlines (SLAs) and no breach warnings. Say what time targets each priority has.",
-      "A requester can raise tickets but cannot see them again: reads are gated by role. The ticket now records the requester's login (requesterId, filled from $user.id), so a per-row rule requesterId == $user.id is possible; it is not switched on. Say whether requesters must see their own tickets.",
+      "A requester sees only the tickets they raised: the ticket records the requester's login (requesterId, filled from $user.id) and the per-row rule requesterId == $user.id is on for the requester role; agents, managers and administrators still see every ticket. The consequence: a requester sees their ticket but not what agents wrote on it, because comments are readable by staff only (a comment carries the author's login, not the requester's, so a per-row rule cannot tell whose ticket it belongs to). Say whether requesters should read the non-internal comments on their own tickets.",
       "Internal notes are a flag on a comment and are hidden only by role (requesters cannot read comments at all). They are not hidden from any agent.",
       "Priority is chosen by whoever raises the ticket and is not recomputed. Say whether agents may change it and whether priority drives assignment.",
       "Assignment is manual: nothing picks an agent, balances load or skips inactive agents. Say how tickets should be routed.",
@@ -354,8 +354,8 @@
         }
       ],
       "access": {
-        "read": "$user.roles.contains('ADMIN') || $user.roles.contains(role('helpdeskManager')) || $user.roles.contains(role('helpdeskAgent')) || $user.roles.contains(role('requester'))",
-        "write": "$user.roles.contains('ADMIN') || $user.roles.contains(role('helpdeskManager')) || $user.roles.contains(role('helpdeskAgent')) || $user.roles.contains(role('requester'))"
+        "read": "$user.roles.contains('ADMIN') || $user.roles.contains(role('helpdeskManager')) || $user.roles.contains(role('helpdeskAgent')) || $user.roles.contains(role('requester')) && requesterId == $user.id",
+        "write": "$user.roles.contains('ADMIN') || $user.roles.contains(role('helpdeskManager')) || $user.roles.contains(role('helpdeskAgent')) || $user.roles.contains(role('requester')) && requesterId == $user.id"
       }
     },
     {

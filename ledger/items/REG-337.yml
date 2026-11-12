@@ -1,0 +1,31 @@
+id: REG-337
+title: >-
+  A flow's createConcept step does not evaluate a field's $user defaultExpression, so a record filed through a flow keeps that field empty
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-12
+source: >-
+  Own-records work on the leave and helpdesk packs (2026-11-12). The dom-leave probe showed requests filed through the RequestLeave flow
+  stored with employeeId null although the field declares defaultExpression "$user.id"; a request created over REST gets the login.
+surface: kernel/flow-createConcept, kernel/concept-gateway, packs/approvals
+detail: |
+  REST create applies a field's defaultExpression (GeneratedCrudRuntimeSupport); a flow step of type createConcept does not evaluate a $user
+  default, so the field stays empty until something else writes it. In leave 1.1.0 that left a pending request invisible to its own employee
+  once reads were scoped to employeeId == $user.id (the decision patch stamped the login later).
+  Worked around in leave 1.2.0: the flow's save step is now callProcedure FileLeaveRequest, one saveConcept through the concept gateway as the
+  caller (not runAs system, which would stamp the system principal instead of the person).
+  Same pattern, NOT verified: approvals 1.1.0 RequestApproval step save-request is a createConcept and ApprovalRequest.requestedBy declares
+  defaultExpression "$user.id", so requestedBy is probably null for every request filed through the flow. No dom-approvals sample or probe exists.
+  Related trap found at the same time: the row-level write check runs on the incoming data BEFORE defaults are applied, so a write rule
+  "role && field == $user.id" refuses every create that leaves the field blank; leave 1.2.0 adds "|| role && employeeId == null" (the default then
+  fills the caller's login). A pack author cannot know this from the schema.
+files:
+  - NPDevContract/packs/leave/pack.json
+  - NPDevContract/packs/approvals/pack.json
+  - NPDevSamples/dom-leave/probe/leave_probe.py
+verification: NOT_VERIFIED
+done_when: >-
+  A record created by a flow's createConcept step gets the same $user / now() defaults as a REST create, a probe asserts
+  approvals ApprovalRequest.requestedBy equals the login that filed it through RequestApproval, and leave's FileLeaveRequest workaround
+  and the "|| employeeId == null" write branch are removed with the leave probe still green.
