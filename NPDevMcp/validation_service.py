@@ -54,6 +54,7 @@ _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
+import pack_lint as _pack_lint  # noqa: E402
 import server as _mcp_server  # noqa: E402  (after the sys.path line on purpose)
 
 SERVICE_VERSION = "1.0.0"
@@ -560,6 +561,7 @@ class ValidationService:
                 return 503, rejected_payload(
                     "validator_unavailable", "The validator did not produce a report.",
                     validator=self.validator_name, elapsed_ms=elapsed(), detail=detail or None)
+            report = _pack_lint.merge_into_report(report, _pack_lint.lint_model(model))
             payload = build_service_response(
                 report, max_diagnostics=max_diagnostics, severity=severity, temp_dir=resolved,
                 extra_roots=(scratch, self.repo_root), elapsed_ms=elapsed(),

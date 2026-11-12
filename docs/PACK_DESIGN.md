@@ -136,6 +136,24 @@ Some specifics worth knowing before you pick one:
   witnesses are the `labeling` pack (`dsl-conformance-max` + both `pack9-role-binding-*` apps) and
   `NPDevContract/packs/identity` mirrored into `NPDevSamples/probes/p6-satellite-extension`.
 
+## Access rules that bite
+
+Found in the first packs written by a browser AI (2026-11-12); `NPDevMcp/pack_lint.py` reports them on every
+`npdev_validate` answer, so a pack author hears about them before a human reviewer does.
+
+- **An own-record write rule must admit a blank owner.** The row check runs on the incoming data before field
+  defaults, so `write: ... role('x') && ownerId == $user.id` refuses every create that leaves `ownerId` blank,
+  even with `defaultExpression: "$user.id"`. Add `|| role('x') && ownerId == null` (the `leave` pack does).
+  Lint code `LINT_OWNER_WRITE_NO_BLANK` (error).
+- **A child is never more readable than its parent.** A rule sees only its own concept's fields, so copy the
+  restricting field (`confidential`, an owner login) onto versions, attachments, lines and comments.
+  `LINT_CHILD_LESS_RESTRICTED`.
+- **Optional numbers in a `derivedExpression` make the result empty.** Make the input required with default 0.
+  `LINT_DERIVED_OPTIONAL`.
+- **"Append-only", "immutable" and "separate per company" are promises, not notes.** Enforce them with access,
+  an invariant or a terminal state, or do not say them. `LINT_UNENFORCED_PROMISE`.
+- **Everything in a pack is English**, no accented characters. `LINT_NON_ENGLISH`.
+
 ## See also
 
 - [`docs/MANAGER.md`](MANAGER.md) § 9 · Packs — the Manager's Packs tab: what's resolved and locked
