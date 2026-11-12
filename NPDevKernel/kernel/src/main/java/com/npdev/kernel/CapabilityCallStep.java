@@ -193,8 +193,9 @@ final class CapabilityCallStep {
             }
         }
 
-        // REG-338: a createConcept / updateConcept step must pass the concept's row-level write rule
-        // as the flow's actor, exactly as the REST write does -- the adapter below never consults it.
+        // REG-338 / REG-330: a createConcept / updateConcept step must pass the concept's row-level and
+        // field-level write rules as the flow's actor, exactly as the REST write does -- the adapter
+        // below never consults them.
         if (conceptWrite != null && runner.conceptGateway() != null) {
             CapabilityError rowScopeDenied = rowWriteDenial(runner, flow, step, args, state, effectiveContext);
             if (rowScopeDenied != null) {
@@ -374,7 +375,7 @@ final class CapabilityCallStep {
     }
 
     /**
-     * REG-338: runs the concept's row-level write rule for this createConcept / updateConcept step
+     * REG-338 / REG-330: runs the concept's row-level and field-level write rules for this createConcept / updateConcept step
      * as the flow's actor (see {@link FlowActor}) and returns the AUTH failure to report, or
      * {@code null} when the write may proceed. The check is skipped where there is no trustworthy
      * actor to evaluate (a platform principal, or an instance that predates the actor snapshot) and
@@ -409,7 +410,7 @@ final class CapabilityCallStep {
             return null;
         } catch (com.npdev.kernel.concepts.ConceptGatewayAccessDeniedException denied) {
             return new CapabilityError(
-                    "CAPABILITY_ROW_SCOPE_DENIED",
+                    "CAPABILITY_WRITE_SCOPE_DENIED",
                     denied.getMessage(),
                     CapabilityErrorKind.AUTH,
                     Map.of(

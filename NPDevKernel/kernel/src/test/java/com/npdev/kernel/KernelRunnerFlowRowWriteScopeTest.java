@@ -87,7 +87,7 @@ final class KernelRunnerFlowRowWriteScopeTest {
         ExecutionResult result = rig.runner.execute("FileTicket", Map.of("ownerId", "alice"), BOB);
 
         assertEquals(ExecutionStatus.CAPABILITY_FAILED, result.getStatus());
-        assertEquals("CAPABILITY_ROW_SCOPE_DENIED", result.getCapabilityError().code());
+        assertEquals("CAPABILITY_WRITE_SCOPE_DENIED", result.getCapabilityError().code());
         assertEquals(CapabilityErrorKind.AUTH, result.getCapabilityError().kind());
         assertEquals(0, rig.persisted.get(), "a refused filing plants nothing");
     }
@@ -110,12 +110,40 @@ final class KernelRunnerFlowRowWriteScopeTest {
         Rig rig = new Rig(FlowStepDefinition.ConceptWrite.UPDATE, DefaultConceptGateway.governedBy(store, ticketModel()));
 
         ExecutionResult refused = rig.runner.execute("FileTicket", Map.of("id", "T1", "note", "x"), BOB);
-        assertEquals("CAPABILITY_ROW_SCOPE_DENIED", refused.getCapabilityError().code());
+        assertEquals("CAPABILITY_WRITE_SCOPE_DENIED", refused.getCapabilityError().code());
         assertEquals(0, rig.persisted.get());
 
         ExecutionResult allowed = rig.runner.execute("FileTicket", Map.of("id", "T1", "note", "x"), ALICE);
         assertEquals(ExecutionStatus.OK, allowed.getStatus());
         assertEquals(1, rig.persisted.get());
+    }
+
+    @Test
+    void createSettingAProtectedFieldIsRefusedAsAFieldWriteDenialBeforeThePersistenceCapabilityIsCalled() {
+        CompiledConcept account = new CompiledConcept(
+                "Ticket", "Ticket", "tickets",
+                List.of(
+                        new CompiledField("id", "string", "String", true, true, false),
+                        new CompiledField("ownerId", "string", "String", false, true, false),
+                        new CompiledField(
+                                "priority", "string", "String", false, false, false,
+                                List.of(), null, null, null, null, List.of(), null, null, null, null,
+                                false, null,
+                                new com.npdev.dsl.v1.compiled.CompiledFieldAccess(null, "$user.actorId == 'boss'"))
+                ),
+                List.of(), List.of(), null, null, null, null, List.of(), null
+        );
+        Rig rig = new Rig(FlowStepDefinition.ConceptWrite.CREATE, DefaultConceptGateway.governedBy(
+                new InMemoryConceptStore(),
+                new CompiledModel("test", "1.0.0", "1.0.0", Map.of(account.getName(), account))));
+
+        ExecutionResult refused = rig.runner.execute("FileTicket", Map.of("ownerId", "alice", "priority", "URGENT"), ALICE);
+
+        assertEquals("CAPABILITY_WRITE_SCOPE_DENIED", refused.getCapabilityError().code());
+        assertEquals("FIELD_SCOPE_DENIED", refused.getCapabilityError().details().get("gatewayCode"));
+        assertEquals(0, rig.persisted.get());
+        assertEquals(ExecutionStatus.OK,
+                rig.runner.execute("FileTicket", Map.of("ownerId", "alice"), ALICE).getStatus());
     }
 
     @Test

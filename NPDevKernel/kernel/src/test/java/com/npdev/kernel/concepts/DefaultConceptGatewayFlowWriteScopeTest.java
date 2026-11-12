@@ -104,6 +104,61 @@ class DefaultConceptGatewayFlowWriteScopeTest {
         assertDoesNotThrow(() -> gateway.authorizeFlowWrite("Note", null, Map.of("body", "x"), false, BOB));
     }
 
+    private static CompiledModel payrollModel() {
+        CompiledConcept payroll = new CompiledConcept(
+                "Payroll", "Payroll", "payrolls",
+                List.of(
+                        new CompiledField("id", "string", "String", true, true, false),
+                        new CompiledField("employeeName", "string", "String", false, false, false),
+                        new CompiledField(
+                                "salary", "int", "Integer", false, false, false,
+                                List.of(), null, null, null, null, List.of(), null, null, null, null,
+                                false, null,
+                                new com.npdev.dsl.v1.compiled.CompiledFieldAccess(
+                                        null, "$user.actorId == 'manager-1'"))
+                ),
+                List.of(), List.of(), null, null, null, null, List.of(), null
+        );
+        return new CompiledModel("test", "1.0.0", "1.0.0", Map.of(payroll.getName(), payroll));
+    }
+
+    private static final ExecutionContext MANAGER =
+            new ExecutionContext("tenant-a", "manager-1", Map.of(), java.util.Set.of("MANAGER"));
+    private static final ExecutionContext OPERATOR =
+            new ExecutionContext("tenant-a", "operator-a", Map.of(), java.util.Set.of("USER"));
+
+    @Test
+    void createSettingAFieldTheActorMayNotWriteIsRefusedAndNothingIsStored() {
+        InMemoryConceptStore store = new InMemoryConceptStore();
+        DefaultConceptGateway gateway = DefaultConceptGateway.governedBy(store, payrollModel());
+
+        ConceptGatewayAccessDeniedException denied = assertThrows(ConceptGatewayAccessDeniedException.class,
+                () -> gateway.authorizeFlowWrite("Payroll", null,
+                        Map.of("employeeName", "Ana", "salary", 9000), false, OPERATOR));
+
+        assertEquals("FIELD_SCOPE_DENIED", denied.code());
+        assertTrue(store.findAll("tenant-a", "Payroll").isEmpty(), "the check persists nothing");
+        assertDoesNotThrow(() -> gateway.authorizeFlowWrite("Payroll", null,
+                Map.of("employeeName", "Ana", "salary", 9000), false, MANAGER));
+        assertDoesNotThrow(() -> gateway.authorizeFlowWrite("Payroll", null,
+                Map.of("employeeName", "Ana"), false, OPERATOR), "a create that leaves the protected field alone is fine");
+    }
+
+    @Test
+    void updateChangingAProtectedFieldIsRefusedButResendingItsStoredValueIsNot() {
+        InMemoryConceptStore store = new InMemoryConceptStore();
+        store.save(new ConceptRecord("Payroll", "P1", "tenant-a", Map.of("employeeName", "Ana", "salary", 1000)));
+        DefaultConceptGateway gateway = DefaultConceptGateway.governedBy(store, payrollModel());
+
+        assertThrows(ConceptGatewayAccessDeniedException.class, () -> gateway.authorizeFlowWrite(
+                "Payroll", "P1", Map.of("salary", 9000), true, OPERATOR));
+        assertDoesNotThrow(() -> gateway.authorizeFlowWrite(
+                "Payroll", "P1", Map.of("employeeName", "Bia", "salary", 1000), true, OPERATOR),
+                "REST ignores an unchanged protected field, and so does the flow check");
+        assertDoesNotThrow(() -> gateway.authorizeFlowWrite(
+                "Payroll", "P1", Map.of("salary", 9000), true, MANAGER));
+    }
+
     @Test
     void anotherTenantsContextCannotReachARowOfThisTenant() {
         InMemoryConceptStore store = new InMemoryConceptStore();

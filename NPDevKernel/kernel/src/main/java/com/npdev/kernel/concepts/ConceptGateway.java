@@ -123,18 +123,22 @@ public interface ConceptGateway {
     }
 
     /**
-     * REG-338: the ROW-LEVEL {@code access.write} scope check a flow's {@code createConcept} /
-     * {@code updateConcept} step runs as the flow's actor -- and nothing else. A flow's step reaches
-     * persistence through the capability adapter, never through {@link #save}, so without this the
-     * concept's write rule (e.g. leave's {@code employeeId == $user.id}) guarded REST and was not
-     * consulted for a flow, leaving {@code flow.execute} as the only gate on the filing.
+     * REG-338 / REG-330: the {@code access.write} scope checks a flow's {@code createConcept} /
+     * {@code updateConcept} step runs as the flow's actor: the ROW rule, then the FIELD rules. A
+     * flow's step reaches persistence through the capability adapter, never through {@link #save}, so
+     * without this the concept's write rules (e.g. leave's {@code employeeId == $user.id}, or a field
+     * only a dispatcher may write) guarded REST and were not consulted for a flow, leaving
+     * {@code flow.execute} as the only gate.
      *
      * <p>Deliberately narrower than {@link #authorizeCreate}: no {@code concept.write} permission
      * (a flow may legitimately write rows its caller has no REST write permission on -- that is what
-     * the flow's own {@code flow.execute} role gate is for) and no field-level or semantic checks. The
-     * scope rule runs against the supplied payload for a create, and against the stored row plus the
-     * row as it will be written for an update -- exactly the evaluation {@link #save} makes. An update
-     * of an id with no stored row checks nothing here; the step's own update path reports it missing.
+     * the flow's own {@code flow.execute} role gate is for) and no semantic checks (defaults,
+     * lifecycle, rule profiles). The row rule runs against the supplied payload for a create, and
+     * against the stored row plus the row as it will be written for an update; the field rules look
+     * only at fields whose value the step changes -- exactly the evaluation {@link #save} makes. An
+     * update of an id with no stored row checks nothing here; the step's own update path reports it
+     * missing. A write that must touch what its caller may not goes through a {@code runAs: "system"}
+     * procedure.
      *
      * <p>Fail-closed by default, matching {@link #authorizeWrite}.
      *

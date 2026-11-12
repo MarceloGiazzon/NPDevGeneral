@@ -278,6 +278,15 @@ def stage_offer(r: Run):
             ride.get("status") == "ACCEPTED" and ride.get("driverAccount") == "driver1" and ride.get("driverPlate"), ride)
     s, rider_view = r.get("rides", rid, "rider1")
     r.check("offer: the rider sees the ride (and the driver's name), not the Driver row", s == 200, s)
+    # REG-330: a flow's updateConcept obeys the concept's FIELD write rules as the caller, like the REST
+    # PUT does. driverAccount is writable only by the Dispatcher or the platform; rider1 owns the row
+    # (the row rule passes) and is allowed to run CancelRide, so only the field rule can stop this.
+    s, b = r.flow("CancelRide", {"id": rid, "status": "CANCELLED", "driverAccount": "rider1"}, "rider1")
+    r.check("offer: a rider's CancelRide naming driverAccount is refused (field rule, REG-330)",
+            s in (400, 403, 409, 422), f"{s} {str(b)[:300]}")
+    after = r.ride(rid)
+    r.check("offer: ...and the ride kept its driver and its status (nothing written)",
+            after.get("driverAccount") == "driver1" and after.get("status") == "ACCEPTED", after)
     # 2. decline -> next driver
     r.set_driver("driver3", -23.5700, -46.6500)
     _, _, rid2 = r.request_ride("rider2")

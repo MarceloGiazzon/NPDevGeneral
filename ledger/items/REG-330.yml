@@ -4,8 +4,9 @@ title: >-
   field the concept would refuse them over the REST concept API
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-11
+closed: 2026-11-12
 source: >-
   Ride-hailing sample S2 cancel stage (2026-11-11): rider2 called POST /api/v1/flows/CancelRide/execute with
   cancelledByDriverFlag=1 and got 200, although field access.write for that flag is `driverAccount == $user.id || Dispatcher ||
@@ -23,10 +24,28 @@ detail: |
   dsl/generator/runtimehost suites: flows that rely on writing as the caller may start to fail), or (b) record it as an accepted
   boundary with a behaviour probe that pins the current behaviour, or (c) make `validate model` warn when a flow's saved concept
   has field-level access.write rules.
+  FIXED 2026-11-12 (owner: option a -- "no legacy to keep, free to change what is needed"): the REG-338 check ConceptGateway.authorizeFlowWrite now
+  also runs the concept's FIELD write rules (the same enforceFieldWriteAccess a REST save runs, looking only at fields whose value the step CHANGES),
+  so a flow's createConcept/updateConcept as the calling person is refused with CAPABILITY_WRITE_SCOPE_DENIED (kind AUTH, details.gatewayCode
+  FIELD_SCOPE_DENIED) before the persistence capability is called. Renamed from CAPABILITY_ROW_SCOPE_DENIED, which covered only the row rule.
+  A write that must touch what its caller may not goes through a runAs: "system" procedure (the platform and the cron scheduler are not checked).
+  Corpus: no model needed migrating -- dsl-conformance-max 144/144 behaviour probes and the full ride-hailing run (76/76, six stages) are green with
+  the check live; ride-hailing's CompleteRide/CancelRide send only {id, status}. New witness: drive_s2.py `offer` stage -- a rider's CancelRide naming
+  driverAccount (the row rule passes, the field rule is Dispatcher/system only) is refused and the ride keeps its driver and its status.
 files:
   - NPDevKernel/kernel/src/main/java/com/npdev/kernel/CapabilityInvoker.java
   - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/DefaultConceptGateway.java
   - NPDevSamples/ride-hailing/Input/model.json
+verification: VERIFIED_LIVE
+guard:
+  kind: test
+  ref: >-
+    NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/DefaultConceptGatewayFlowWriteScopeTest.java#createSettingAFieldTheActorMayNotWriteIsRefusedAndNothingIsStored
+  asserts: >-
+    a flow write that sets a field only another actor may write is refused with FIELD_SCOPE_DENIED and nothing is stored, while a create that
+    leaves the field alone, an update that resends the stored value, and the permitted actor all pass; KernelRunnerFlowRowWriteScopeTest pins
+    the runner half (CAPABILITY_WRITE_SCOPE_DENIED, the persistence capability never called)
+  provenRed: true
 done_when: >-
   Either a flow save is refused for a field the caller may not write (with a behaviour probe), or the gap is a named accepted
   boundary with its witness and the validator says so.

@@ -802,10 +802,12 @@ public final class DefaultConceptGateway implements ConceptGateway {
     }
 
     /**
-     * REG-338: {@link ConceptGateway#authorizeFlowWrite}'s implementation -- the row-level
-     * {@code access.write} gate of {@link #saveWithinTransaction} for a flow's createConcept /
-     * updateConcept step, with no permission check, no semantics and nothing persisted. The same
-     * {@link #enforceRowWritable}, so a refusal audits and traces exactly like a REST refusal.
+     * REG-338 / REG-330: {@link ConceptGateway#authorizeFlowWrite}'s implementation -- the two
+     * {@code access.write} gates of {@link #saveWithinTransaction} (row scope, then field scope) for
+     * a flow's createConcept / updateConcept step, with no permission check, no semantics and nothing
+     * persisted. The same {@link #enforceRowWritable} and {@link #enforceFieldWriteAccess}, so a
+     * refusal audits and traces exactly like a REST refusal. Field scope looks only at fields whose
+     * value the step CHANGES (a payload that resends the stored value of a protected field is fine).
      */
     @Override
     public void authorizeFlowWrite(
@@ -837,6 +839,7 @@ public final class DefaultConceptGateway implements ConceptGateway {
                 Optional.empty()
         ).withPreviousRecord(previous);
         enforceRowWritable(requestContext, "CONCEPT_WRITE");
+        enforceFieldWriteAccess(requestContext, "CONCEPT_WRITE");
     }
 
     /**

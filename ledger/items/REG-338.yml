@@ -23,9 +23,9 @@ detail: |
   FIXED 2026-11-12: a new ConceptGateway.authorizeFlowWrite(concept, id, data, update, context) runs ONLY the row-level access.write rule (the same
   enforceRowWritable a REST save runs: payload for a create, stored row + the row as it will be written for an update; an update of an id with no
   stored row checks nothing and the step reports it missing). CapabilityCallStep calls it for a createConcept / updateConcept step before the
-  persistence capability and reports CAPABILITY_ROW_SCOPE_DENIED (kind AUTH, HTTP 422 through REST) without calling the adapter. Deliberately NOT
+  persistence capability and reports CAPABILITY_WRITE_SCOPE_DENIED (kind AUTH, HTTP 422 through REST) without calling the adapter. Deliberately NOT
   applied: the concept.write permission (a flow may write rows its caller has no REST write permission on; flow.execute is that gate) and the
-  field-level / semantic rules. The actor is the person who started the flow: KernelRunner stamps FlowActor (state keys actorRoles, actorSystem)
+  semantic rules. The FIELD write rules were added the same day under REG-330. The actor is the person who started the flow: KernelRunner stamps FlowActor (state keys actorRoles, actorSystem)
   from the authenticated context, so a step after an awaitEvent is checked as that person and not as the ADMIN-level ExecutionContext.resuming
   role. NOT checked: the cron scheduler and model seeding (platform principals), and a durable flow instance that started before this change (no
   roles recorded). KernelRunner.withConceptGateway is optional; the RuntimeHost wires the live gateway. No step flag for "write on the system's
@@ -49,7 +49,7 @@ guard:
   ref: >-
     NPDevKernel/kernel/src/test/java/com/npdev/kernel/KernelRunnerFlowRowWriteScopeTest.java#createNamingAnotherOwnerIsRefusedAndThePersistenceCapabilityIsNeverCalled
   asserts: >-
-    a createConcept step run by an actor whose concept write rule refuses the payload fails with CAPABILITY_ROW_SCOPE_DENIED (AUTH) and the
+    a createConcept step run by an actor whose concept write rule refuses the payload fails with CAPABILITY_WRITE_SCOPE_DENIED (AUTH) and the
     persistence capability is never called; the same file pins updateConcept, no-gateway, platform-principal and post-resume (original actor, not the
     ADMIN resume role) behaviour, and DefaultConceptGatewayFlowWriteScopeTest pins the gateway rule (create, update, SEC-16 reassignment, missing row,
     no rule, other tenant)
