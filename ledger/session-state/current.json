@@ -1,19 +1,24 @@
 {
-  "closedAt": "2026-11-12T06:26:57.9996502Z",
+  "closedAt": "2026-11-12T18:13:01.1879014Z",
   "branch": "main",
-  "head": "ea07cdad",
-  "headSubject": "docs: pack authoring -- parentField, pack-qualified rollup, validator lint and tunnel notes",
-  "summary": "Reviewed two browser-AI pack rounds (13 packs wave 1, then 6 modules 1.0.1): found access/promise defects, sent 18-item feedback, added NPDevMcp/pack_lint.py (5 LINT_* codes) to the validation service, strengthened the outside-repo authoring guide and validate_pack.py, documented rules in PACK_DESIGN/AUTHORING_WITH_AI. Verified the public ngrok connector returns the lint; the 'token changed' report was really a dead tunnel.",
-  "nextStep": "Owner re-uploads D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PACK_AUTHORING_BROWSER_AI_2026-11-12\\NPDEV_PACK_AUTHORING_GUIDE_FOR_BROWSER_AI.md and FEEDBACK_WAVE1.md to the browser AI. When its next Downloads zip arrives (foundations 7 packs still unanswered: items 10-17; quotes needs rollup from 'quotes::QuoteLine'), run validate_pack.py on each pack in that folder, then build a dom-quotes/dom-leads consumer sample with probe. Separately, verify the dependabot branch check (git fetch --prune && git branch -r) and the REG-337 approvals state from the previous NEXT.",
-  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PACK_SINGLE_OWNER_2026-11-12\\PLAN.md",
-  "blocked": "",
-  "verified": "NPDevMcp test_pack_lint (15) + test_validation_service (52) green; live POST to local and public ngrok /mcp returned LINT_OWNER_WRITE_NO_BLANK; check-doc-inventory, check-markdown-links, check-no-markdown-reads, check-record-surfaces, portable-tooling OK. NOT run: run-all-gates, any probe on a generated app for the new browser-AI packs.",
-  "dirtyCount": 0,
-  "dirtyFiles": [],
+  "head": "4b7c6c47",
+  "headSubject": "fix(kernel)!: a flow's createConcept/updateConcept also runs the concept's FIELD write rules as the flow's actor (REG-330)",
+  "summary": "Owner answered D1-D4 (D1 A, D2 A, D3 yes, D4 commit; no legacy). DONE and pushed to main: REG-338 b56eae99 (flow createConcept/updateConcept runs the row write rule as the flow's actor; leave 1.2.1), REG-327 db065cb2 (persistence capability+binding were ALREADY derived by ModelCompiler.addImplicitPersistence since c25b7fea; proved on a booted scratch sample; the authoring contract was the stale half, fixed), REG-330 4b7c6c47 (field write rules also enforced for a flow, error renamed CAPABILITY_WRITE_SCOPE_DENIED, ride-hailing drive_s2 witness), D4 commits 4c00458d + f761519b (run_digest heartbeat, kernel coverage floor 72.0869). Browser-AI pack guide regenerated and corrected (outside repo). Owner-facing list: D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PENDENCIAS_2026-11-12\\PENDENCIAS.md. NOT done: D3/F4 (REG-323) not started in code; CI 'AI Knowledge Gate' is RED on GitHub since 2026-11-12 04:53Z for NPDevMcp python coverage (floor ratcheted on Windows 78.8146, Linux CI measures 78.4994) -- owner has not yet said 'corrige o CI'.",
+  "nextStep": "(1) If the owner said 'corrige o CI': mark NPDevMcp platformDependent in scripts/policy/coverage-baseline.json and pin the floor at the CI value, or add NPDevMcp/tests for the lint code (memory ci-aiknowledge-npdevmcp-coverage-windows-vs-linux); then gh run list --workflow 'AI Knowledge Gate'. (2) START D3 = REG-323 F4, owner said YES with 'good parsing, anticipate common situations, be imaginative'. Order, one commit each, behind phase f4: T4.2 element upsert FIRST (pure expander + tests per impl/TASKS.md T4.2; kit schema BROWSER_AI_RELAY_PLAN_2026-11-09\\impl\\schemas\\ai-relay-elements.schema.json -> schemas/ai/; confirm per root key of model.schema.json that elements are identified by name; composer picks whole-file vs upsert via wholeFileFits; parsing brief = a CASE per common AI-answer situation: truncated answer, ellipsis/'rest unchanged' elision, several fenced blocks, trailing commas/smart quotes/BOM/NBSP, same element twice (last wins), renamed element (renamedFrom), removal of a missing element, upsert against a stale base, wrong root key), then T4.1 composer shows fragments, T4.5 config proposals (allowlist only), T4.3 themes/pages(html css svg)/seed/translations; T4.4 JS+Java code quarantine LAST and ONLY WITH THE OWNER (security-sensitive, PLAN 8.1). Read first: ledger/items/REG-323.yml, impl/TASKS.md T4.*, NPDevCli/npdev_relay_files.py, npdev_relay_apply.py, relay-ingest-policy.json, impl/reference/relay_ingest.py. relay-prompts.json is bench-measured: do not edit prompt text without re-measuring; never edit platform Java while a bench/gate runs. (3) Owner tasks pending (see PENDENCIAS.md): T1 re-upload the regenerated guide + FEEDBACK_WAVE1.md to the browser AI and say 'o zip chegou' -> run validate_pack.py on each pack and build dom-quotes/dom-leads with a probe.",
+  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\BROWSER_AI_RELAY_PLAN_2026-11-09\\impl\\TASKS.md",
+  "blocked": "AI Knowledge Gate CI red until the owner says corrige o CI; browser-AI pack work waits for the owner's zip; F4 code quarantine (T4.4) needs the owner present",
+  "verified": "REG-338: kernel gate green, dom-leave probe 74/74, dom-approvals green, dsl-conformance-max 144/144; REG-327: scratch sample with no persistence declaration booted, flow 200 + record stored, ImplicitPersistenceTest proven red; REG-330: kernel tests green (new tests proven red 3/18), conformance 144/144, full ride-hailing 76/76 incl. new field-rule witness; D4: 54 unittest green. NOT run: full run-all-gates.ps1 on the final HEAD (CI: kernel gate, engine support, journeys, f6, security green; AI Knowledge Gate red for the NPDevMcp coverage reason)",
+  "dirtyCount": 2,
+  "dirtyFiles": [
+    " M ledger/session-state/current.json",
+    " M ledger/session-state/history.jsonl"
+  ],
   "unpushed": 0,
   "landedCommits": [
-    "ea07cdad docs: pack authoring -- parentField, pack-qualified rollup, validator lint and tunnel notes",
-    "929baa83 feat(mcp): validation service lints access and promise mistakes found in browser-AI packs",
-    "00063820 feat(packs)!: approvals 1.2.0 -- a request filed through the flow records who filed it"
+    "4b7c6c47 fix(kernel)!: a flow's createConcept/updateConcept also runs the concept's FIELD write rules as the flow's actor (REG-330)",
+    "db065cb2 docs(authoring): a flow that saves needs nothing declared -- close REG-327 (derived persistence)",
+    "f761519b chore(coverage): kernel floor 71.782 -> 72.0869 (ratcheted by the REG-338 tests)",
+    "4c00458d feat(digest): a wrapped command is never a black box -- [hb] heartbeat with RUNNING/QUIET/STALLED? and a soft warnCommands list",
+    "b56eae99 fix(kernel,packs)!: a flow's createConcept/updateConcept runs the concept's row-level write rule as the flow's actor (REG-338)"
   ]
 }
