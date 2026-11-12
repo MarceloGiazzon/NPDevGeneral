@@ -1,11 +1,11 @@
-<title>Árvore de Packs NPDev</title>
+<title>NPDev Pack Tree</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-/* Layout: one view at a time (Horizonte -> Perto de você -> Mapa completo) beside a persistent "Seu app" panel;
-   pack detail opens as a side sheet. Shape encodes level everywhere: circle = fundamento, hexagon = módulo,
-   octagon = solução. Single dark look by choice. */
+/* Layout: one view at a time (Horizon -> Near you -> Full map) beside a persistent "Your app" panel;
+   pack detail opens as a side sheet. Shape encodes level everywhere: circle = foundation, hexagon = module,
+   octagon = solution. Single dark look by choice. */
 :root {
   color-scheme: dark;
   --ink: #0b1820; --ink-2: #11242f; --ink-3: #173140; --line: #25424f;
@@ -51,9 +51,9 @@ main { min-width: 0; }
 
 /* shapes = level */
 .glyph { flex: none; width: 38px; height: 38px; display: grid; place-items: center; background: var(--gc, var(--muted)); color: #0b1820; font-family: var(--f-display); font-weight: 700; font-size: 12px; }
-.glyph.fundamentos { border-radius: 50%; width: 32px; height: 32px; margin: 3px; font-size: 11px; }
-.glyph.modulos { clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); height: 42px; }
-.glyph.solucoes { clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%); width: 42px; height: 42px; }
+.glyph.foundations { border-radius: 50%; width: 32px; height: 32px; margin: 3px; font-size: 11px; }
+.glyph.modules { clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); height: 42px; }
+.glyph.solutions { clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%); width: 42px; height: 42px; }
 
 /* section heads */
 .sec-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 26px 0 12px; }
@@ -109,9 +109,9 @@ main { min-width: 0; }
 .chip { font-size: 12px; padding: 4px 9px; border-radius: 99px; background: var(--ink-3); border: 1px solid var(--line); cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
 .chip.ex { border-color: var(--brass); }
 .chip i { width: 8px; height: 8px; display: inline-block; background: var(--gc); }
-.chip i.fundamentos { border-radius: 50%; }
-.chip i.modulos { clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); }
-.chip i.solucoes { clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%); }
+.chip i.foundations { border-radius: 50%; }
+.chip i.modules { clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); }
+.chip i.solutions { clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%); }
 .empty { border: 1px dashed var(--line); border-radius: 10px; padding: 22px; color: var(--muted); line-height: 1.5; }
 .empty b { color: var(--text); }
 .far { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); }
@@ -147,7 +147,7 @@ svg.edges { position: absolute; inset: 0; pointer-events: none; overflow: visibl
 .node.prereq { box-shadow: 0 0 0 2px var(--cyan); }
 .node.dim { opacity: .2; }
 .node .glyph { width: 30px; height: 30px; font-size: 10px; }
-.node .glyph.modulos { height: 33px; } .node .glyph.solucoes { width: 32px; height: 32px; } .node .glyph.fundamentos { width: 26px; height: 26px; margin: 2px; }
+.node .glyph.modules { height: 33px; } .node .glyph.solutions { width: 32px; height: 32px; } .node .glyph.foundations { width: 26px; height: 26px; margin: 2px; }
 .node .nm { min-width: 0; }
 .node .nm b { display: block; font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .node .nm small { display: block; font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -202,55 +202,55 @@ details summary { cursor: pointer; }
 
 <header class="top">
   <div class="brand">
-    <h1>Packs NPDev</h1>
-    <p>Blocos prontos para montar um app. <b>Fundamentos</b> são as peças técnicas, <b>módulos</b> controlam uma área do negócio e <b>soluções</b> são sistemas prontos para um tipo de negócio.</p>
-    <p class="note" id="src">Lendo catálogo…</p>
+    <h1>NPDev Packs</h1>
+    <p>Ready-made building blocks for assembling an app. <b>Foundations</b> are the technical pieces, <b>modules</b> cover one area of the business and <b>solutions</b> are complete systems for a type of business.</p>
+    <p class="note" id="src">Loading catalog…</p>
   </div>
 </header>
 
 <div class="nav">
-  <div class="tabs" role="tablist" aria-label="Distância">
-    <button role="tab" id="tab-horizon" data-view="horizon" aria-selected="true">Horizonte<small>tudo o que existe</small></button>
-    <button role="tab" id="tab-near" data-view="near" aria-selected="false">Perto de você<small>o próximo passo</small></button>
-    <button role="tab" id="tab-map" data-view="map" aria-selected="false">Mapa completo<small>dependências</small></button>
+  <div class="tabs" role="tablist" aria-label="Distance">
+    <button role="tab" id="tab-horizon" data-view="horizon" aria-selected="true">Horizon<small>everything that exists</small></button>
+    <button role="tab" id="tab-near" data-view="near" aria-selected="false">Near you<small>the next step</small></button>
+    <button role="tab" id="tab-map" data-view="map" aria-selected="false">Full map<small>dependencies</small></button>
   </div>
-  <input id="q" class="search" type="search" placeholder="Buscar: agenda, Pix, dentista…" aria-label="Buscar packs">
+  <input id="q" class="search" type="search" placeholder="Search: scheduling, payments, dentist…" aria-label="Search packs">
 </div>
 
 <div class="layout">
   <main>
     <section class="drawer card" id="drawer" hidden>
-      <div class="row"><div><div class="eyebrow">Entrada</div><h2>Carregar JSON</h2></div><button class="btn small" id="btnClose">Fechar</button></div>
-      <p class="note">Cole um <b>model.json</b> para marcar os packs que ele já usa, ou um <b>catálogo</b> (com <code>packs[].kind</code>) para trocar o catálogo.</p>
-      <textarea id="jsonIn" spellcheck="false" aria-label="JSON de entrada"></textarea>
+      <div class="row"><div><div class="eyebrow">Input</div><h2>Load JSON</h2></div><button class="btn small" id="btnClose">Close</button></div>
+      <p class="note">Paste a <b>model.json</b> to mark the packs it already uses, or a <b>catalog</b> (with <code>packs[].kind</code>) to replace the catalog.</p>
+      <textarea id="jsonIn" spellcheck="false" aria-label="Input JSON"></textarea>
       <div class="row" style="justify-content:flex-start;margin-top:8px">
-        <button class="btn gold" id="btnApply">Aplicar</button>
-        <label class="btn" for="file">Abrir arquivo…</label><input id="file" type="file" accept=".json,application/json" hidden>
-        <button class="btn" id="btnShowCat">Mostrar catálogo atual</button>
+        <button class="btn gold" id="btnApply">Apply</button>
+        <label class="btn" for="file">Open file…</label><input id="file" type="file" accept=".json,application/json" hidden>
+        <button class="btn" id="btnShowCat">Show current catalog</button>
         <span class="msg" id="msg" role="status"></span>
       </div>
     </section>
     <div id="view"></div>
   </main>
 
-  <aside class="app" aria-label="Seu app">
+  <aside class="app" aria-label="Your app">
     <div class="card" id="appCard">
-      <div class="eyebrow">Seu app</div>
+      <div class="eyebrow">Your app</div>
       <div class="app-stats">
         <div><b id="stPacks">0</b><span>packs</span></div>
-        <div><b id="stConcepts">0</b><span>conceitos prontos</span></div>
-        <div><b id="stLines">0</b><span>linhas no model</span></div>
+        <div><b id="stConcepts">0</b><span>ready-made concepts</span></div>
+        <div><b id="stLines">0</b><span>lines in the model</span></div>
       </div>
       <div class="chosen" id="chosen"></div>
       <ul class="checks" id="checks"></ul>
       <details id="catHealth"></details>
     </div>
     <div class="card">
-      <div class="row"><div><div class="eyebrow">Saída</div><h2>Trecho do model.json</h2></div><button class="btn small" id="btnCopy">Copiar</button></div>
+      <div class="row"><div><div class="eyebrow">Output</div><h2>model.json excerpt</h2></div><button class="btn small" id="btnCopy">Copy</button></div>
       <pre class="json" id="out"></pre>
       <div class="row" style="justify-content:flex-start;margin-top:10px">
-        <button class="btn small" id="btnLoad">Carregar JSON</button>
-        <button class="btn small" id="btnClear">Esvaziar app</button>
+        <button class="btn small" id="btnLoad">Load JSON</button>
+        <button class="btn small" id="btnClear">Empty app</button>
       </div>
     </div>
   </aside>
@@ -265,8 +265,8 @@ const STORE = "npdev-pack-tree:v3";
 const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
 const SHOW = 7;
 let C, byId, depth, dependents, owners, levelOf, areaById, sectorById, solutionsOf;
-const S = { explicit: new Set(), view: "horizon", open: { type: "sector", id: "saude" }, q: "", detail: null, zoom: 1,
-            mapLevels: new Set(["fundamentos", "modulos", "solucoes"]), mapSector: "", hover: null, expand: {} };
+const S = { explicit: new Set(), view: "horizon", open: { type: "sector", id: "health" }, q: "", detail: null, zoom: 1,
+            mapLevels: new Set(["foundations", "modules", "solutions"]), mapSector: "", hover: null, expand: {} };
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const alias = (id) => id.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
@@ -277,26 +277,26 @@ function restore() { try { return JSON.parse(localStorage.getItem(STORE) || "nul
 
 /* ---------------- catalog ---------------- */
 function prepare(c) {
-  if (!c || !Array.isArray(c.packs) || !c.packs.length) throw new Error("O catálogo precisa de um array packs.");
+  if (!c || !Array.isArray(c.packs) || !c.packs.length) throw new Error("The catalog needs a packs array.");
   const ids = new Map();
   c.packs.forEach((p, i) => {
-    if (!p?.id) throw new Error(`packs[${i}] não tem id.`);
-    if (ids.has(p.id)) throw new Error(`O id "${p.id}" aparece duas vezes.`);
+    if (!p?.id) throw new Error(`packs[${i}] has no id.`);
+    if (ids.has(p.id)) throw new Error(`The id "${p.id}" appears twice.`);
     p.requires = p.requires || []; p.concepts = p.concepts || []; p.sectors = p.sectors || [];
     p.kind = p.kind || "module"; p.status = p.status === "existing" ? "existing" : "proposed"; p.name = p.name || p.id;
     ids.set(p.id, p);
   });
-  c.packs.forEach((p) => p.requires.forEach((r) => { if (!ids.has(r)) throw new Error(`"${p.id}" requer "${r}", que não está no catálogo.`); }));
+  c.packs.forEach((p) => p.requires.forEach((r) => { if (!ids.has(r)) throw new Error(`"${p.id}" requires "${r}", which is not in the catalog.`); }));
   const d = new Map(), visiting = new Set();
   const dep = (id) => {
     if (d.has(id)) return d.get(id);
-    if (visiting.has(id)) throw new Error(`Dependência circular em "${id}".`);
+    if (visiting.has(id)) throw new Error(`Circular dependency at "${id}".`);
     visiting.add(id); const v = ids.get(id).requires.reduce((m, r) => Math.max(m, dep(r) + 1), 0); visiting.delete(id); d.set(id, v); return v;
   };
   c.packs.forEach((p) => dep(p.id));
   const dn = new Map(c.packs.map((p) => [p.id, []])); c.packs.forEach((p) => p.requires.forEach((r) => dn.get(r).push(p.id)));
   const ow = new Map(); c.packs.forEach((p) => p.concepts.forEach((x) => { if (!ow.has(x)) ow.set(x, []); ow.get(x).push(p.id); }));
-  const levels = c.levels || [{ id: "fundamentos", name: "Fundamentos", kinds: ["data-type", "rule", "capability"] }, { id: "modulos", name: "Módulos", kinds: ["module", "specialization"] }, { id: "solucoes", name: "Soluções", kinds: ["solution"] }];
+  const levels = c.levels || [{ id: "foundations", name: "Foundations", kinds: ["data-type", "rule", "capability"] }, { id: "modules", name: "Modules", kinds: ["module", "specialization"] }, { id: "solutions", name: "Solutions", kinds: ["solution"] }];
   const lv = new Map(); levels.forEach((l) => l.kinds.forEach((k) => lv.set(k, l.id)));
   const sol = new Map(); c.packs.filter((p) => p.kind === "solution").forEach((s) => (s.includes || []).forEach((x) => { if (!sol.has(x)) sol.set(x, []); sol.get(x).push(s.id); }));
   return { c: { ...c, levels, kinds: c.kinds || {}, areas: c.areas || [], sectors: c.sectors || [] }, ids, d, dn, ow, lv, sol };
@@ -304,11 +304,11 @@ function prepare(c) {
 function load(c, from, keep) {
   const r = prepare(c);
   C = r.c; byId = r.ids; depth = r.d; dependents = r.dn; owners = r.ow; solutionsOf = r.sol;
-  levelOf = (p) => r.lv.get(p.kind) || "modulos";
+  levelOf = (p) => r.lv.get(p.kind) || "modules";
   areaById = new Map(C.areas.map((a) => [a.id, a])); sectorById = new Map(C.sectors.map((s) => [s.id, s]));
   S.explicit = new Set([...(keep ? S.explicit : [])].filter((id) => byId.has(id)));
   const s = c.source || {};
-  $("src").innerHTML = `Catálogo: <b>${esc(s.label || from)}</b> <span class="pill ${s.kind === "generated" ? "ready" : "prop"}">${esc(s.kind === "generated" ? "gerado" : s.kind || "sem origem")}</span>${s.updated ? ` · ${esc(s.updated)}` : ""}`;
+  $("src").innerHTML = `Catalog: <b>${esc(s.label || from)}</b> <span class="pill ${s.kind === "generated" ? "ready" : "prop"}">${esc(s.kind === "generated" ? "generated" : s.kind || "no source")}</span>${s.updated ? ` · ${esc(s.updated)}` : ""}`;
   render();
 }
 
@@ -332,15 +332,15 @@ function statusPill(p) {
   if (p.kind === "solution") {
     const all = [...ancestors(p.id)].map((x) => byId.get(x)).filter((x) => x.kind !== "solution");
     const ready = all.filter((x) => x.status === "existing").length;
-    return `<span class="pill ${ready === all.length ? "ready" : "prop"}">${ready} de ${all.length} prontos</span>`;
+    return `<span class="pill ${ready === all.length ? "ready" : "prop"}">${ready} of ${all.length} ready</span>`;
   }
-  return p.status === "existing" ? `<span class="pill ready">pronto · v${esc(p.version || "?")}</span>` : `<span class="pill prop">proposto${p.wave ? " · onda " + esc(p.wave) : ""}</span>`;
+  return p.status === "existing" ? `<span class="pill ready">ready · v${esc(p.version || "?")}</span>` : `<span class="pill prop">proposed${p.wave ? " · wave " + esc(p.wave) : ""}</span>`;
 }
 function card(p, eff, extra = "") {
   const e = eff.get(p.id), lvl = levelOf(p);
   const btn = e === "auto"
-    ? `<button class="add auto" data-add="${esc(p.id)}" title="Já vem como pré-requisito. Clique para fixar." aria-label="Fixar ${esc(p.name)} no app">✓</button>`
-    : `<button class="add" data-add="${esc(p.id)}" aria-pressed="${e === "explicit"}" aria-label="${e ? "Tirar" : "Pôr"} ${esc(p.name)} no app">${e ? "✓" : "+"}</button>`;
+    ? `<button class="add auto" data-add="${esc(p.id)}" title="Already included as a prerequisite. Click to pin." aria-label="Pin ${esc(p.name)} in app">✓</button>`
+    : `<button class="add" data-add="${esc(p.id)}" aria-pressed="${e === "explicit"}" aria-label="${e ? "Remove" : "Add"} ${esc(p.name)} ${e ? "from" : "to"} app">${e ? "✓" : "+"}</button>`;
   return `<article class="pcard ${p.status === "proposed" ? "proposed" : ""} ${e ? "inapp" : ""}">
     <span class="glyph ${lvl}" style="--gc:${colorOf(p)}" aria-hidden="true">${esc(glyphOf(p))}</span>
     <button class="body" data-open="${esc(p.id)}"><b>${esc(p.name)}</b><span class="need">${esc(p.need || p.summary)}</span>
@@ -349,40 +349,40 @@ function card(p, eff, extra = "") {
 function cardList(list, eff, key, extraFn) {
   const open = S.expand[key]; const shown = open ? list : list.slice(0, SHOW);
   return `<div class="cards">${shown.map((p) => card(p, eff, extraFn ? extraFn(p) : "")).join("")}</div>` +
-    (list.length > SHOW ? `<div class="more"><button class="linkish" data-expand="${esc(key)}">${open ? "Mostrar menos" : `Ver todos (${list.length})`}</button></div>` : "");
+    (list.length > SHOW ? `<div class="more"><button class="linkish" data-expand="${esc(key)}">${open ? "Show less" : `Show all (${list.length})`}</button></div>` : "");
 }
-const byReadyThenName = (a, b) => (a.status === b.status ? 0 : a.status === "existing" ? -1 : 1) || (a.wave || 9) - (b.wave || 9) || a.name.localeCompare(b.name, "pt");
+const byReadyThenName = (a, b) => (a.status === b.status ? 0 : a.status === "existing" ? -1 : 1) || (a.wave || 9) - (b.wave || 9) || a.name.localeCompare(b.name, "en");
 
-/* ---------------- Horizonte ---------------- */
+/* ---------------- Horizon ---------------- */
 function viewHorizon(eff) {
   const sols = C.packs.filter((p) => p.kind === "solution");
   const ready = C.packs.filter((p) => p.status === "existing").length;
   let h = `<div class="horizon-stats">
-    <div><b>${C.packs.length}</b><span>packs no catálogo</span></div>
-    <div><b>${sols.length}</b><span>soluções prontas para montar</span></div>
-    <div><b>${C.sectors.length}</b><span>setores de negócio</span></div>
-    <div><b>${ready}</b><span>já disponíveis hoje</span></div></div>`;
+    <div><b>${C.packs.length}</b><span>packs in the catalog</span></div>
+    <div><b>${sols.length}</b><span>solutions ready to assemble</span></div>
+    <div><b>${C.sectors.length}</b><span>business sectors</span></div>
+    <div><b>${ready}</b><span>available today</span></div></div>`;
 
-  h += `<div class="sec-head"><h2>Soluções por negócio</h2><p>Escolha o seu setor.</p></div><div class="tiles">`;
+  h += `<div class="sec-head"><h2>Solutions by business</h2><p>Pick your sector.</p></div><div class="tiles">`;
   C.sectors.forEach((s) => {
     const inS = C.packs.filter((p) => p.sectors.includes(s.id));
     const ns = inS.filter((p) => p.kind === "solution").length, nm = inS.length - ns;
     const sel = S.open.type === "sector" && S.open.id === s.id;
     const have = inS.filter((p) => eff.has(p.id)).length;
-    h += `<button class="tile" data-tile="sector:${esc(s.id)}" aria-expanded="${sel}"><b>${esc(s.name)}</b><span>${ns} soluções · ${nm} módulos e fundamentos</span>
-      <div class="bar" title="${have} no seu app"><i style="width:${inS.length ? (have / inS.length) * 100 : 0}%"></i></div></button>`;
+    h += `<button class="tile" data-tile="sector:${esc(s.id)}" aria-expanded="${sel}"><b>${esc(s.name)}</b><span>${ns} solutions · ${nm} modules and foundations</span>
+      <div class="bar" title="${have} in your app"><i style="width:${inS.length ? (have / inS.length) * 100 : 0}%"></i></div></button>`;
     if (sel) h += drillSector(s, inS, eff);
   });
   const genSols = sols.filter((p) => !p.sectors.length);
   h += `</div>`;
-  if (genSols.length) h += `<div class="group-label" style="margin-top:14px">Para qualquer setor</div>${cardList(genSols, eff, "gen-sol")}`;
+  if (genSols.length) h += `<div class="group-label" style="margin-top:14px">For any sector</div>${cardList(genSols, eff, "gen-sol")}`;
 
-  h += `<div class="sec-head"><h2>Para qualquer negócio</h2><p>Módulos e fundamentos por área, sem setor específico.</p></div><div class="tiles">`;
+  h += `<div class="sec-head"><h2>For any business</h2><p>Modules and foundations by area, not tied to a specific sector.</p></div><div class="tiles">`;
   C.areas.forEach((a) => {
     const inA = C.packs.filter((p) => p.area === a.id && !p.sectors.length);
-    const nm = inA.filter((p) => levelOf(p) === "modulos").length, nf = inA.length - nm;
+    const nm = inA.filter((p) => levelOf(p) === "modules").length, nf = inA.length - nm;
     const sel = S.open.type === "area" && S.open.id === a.id;
-    h += `<button class="tile area" style="--gc:${a.color}" data-tile="area:${esc(a.id)}" aria-expanded="${sel}"><b>${esc(a.name)}</b><span>${nm} módulos · ${nf} fundamentos</span></button>`;
+    h += `<button class="tile area" style="--gc:${a.color}" data-tile="area:${esc(a.id)}" aria-expanded="${sel}"><b>${esc(a.name)}</b><span>${nm} modules · ${nf} foundations</span></button>`;
     if (sel) h += drillArea(a, inA, eff);
   });
   return h + `</div>`;
@@ -390,22 +390,22 @@ function viewHorizon(eff) {
 function drillSector(s, inS, eff) {
   const sols = inS.filter((p) => p.kind === "solution").sort(byReadyThenName);
   const mods = inS.filter((p) => p.kind !== "solution").sort(byReadyThenName);
-  return `<div class="drill"><h3>${esc(s.name)}</h3><p class="sub">Comece por uma solução pronta, ou monte o seu com os módulos do setor.</p>
-    <div class="group-label">Soluções (${sols.length})</div>${sols.length ? cardList(sols, eff, "s-sol-" + s.id) : `<p class="note">Nenhuma ainda.</p>`}
-    <div class="group-label">Módulos e fundamentos do setor (${mods.length})</div>${cardList(mods, eff, "s-mod-" + s.id)}</div>`;
+  return `<div class="drill"><h3>${esc(s.name)}</h3><p class="sub">Start from a ready-made solution, or build your own from the sector's modules.</p>
+    <div class="group-label">Solutions (${sols.length})</div>${sols.length ? cardList(sols, eff, "s-sol-" + s.id) : `<p class="note">None yet.</p>`}
+    <div class="group-label">Sector modules and foundations (${mods.length})</div>${cardList(mods, eff, "s-mod-" + s.id)}</div>`;
 }
 function drillArea(a, inA, eff) {
-  const mods = inA.filter((p) => levelOf(p) === "modulos").sort(byReadyThenName);
-  const fund = inA.filter((p) => levelOf(p) === "fundamentos").sort(byReadyThenName);
+  const mods = inA.filter((p) => levelOf(p) === "modules").sort(byReadyThenName);
+  const fund = inA.filter((p) => levelOf(p) === "foundations").sort(byReadyThenName);
   const sectorOnes = C.packs.filter((p) => p.area === a.id && p.sectors.length).length;
-  return `<div class="drill"><h3>${esc(a.name)}</h3><p class="sub">${sectorOnes ? `Mais ${sectorOnes} pack(s) desta área são de setores específicos e aparecem no setor.` : ""}</p>
-    ${mods.length ? `<div class="group-label">Módulos (${mods.length})</div>${cardList(mods, eff, "a-mod-" + a.id)}` : ""}
-    ${fund.length ? `<div class="group-label">Fundamentos (${fund.length})</div>${cardList(fund, eff, "a-fun-" + a.id)}` : ""}</div>`;
+  return `<div class="drill"><h3>${esc(a.name)}</h3><p class="sub">${sectorOnes ? `${sectorOnes} more pack(s) in this area are sector-specific and appear under that sector.` : ""}</p>
+    ${mods.length ? `<div class="group-label">Modules (${mods.length})</div>${cardList(mods, eff, "a-mod-" + a.id)}` : ""}
+    ${fund.length ? `<div class="group-label">Foundations (${fund.length})</div>${cardList(fund, eff, "a-fun-" + a.id)}` : ""}</div>`;
 }
 
-/* ---------------- Perto de você ---------------- */
+/* ---------------- Near you ---------------- */
 function viewNear(eff) {
-  if (!eff.size) return `<div class="empty"><b>Seu app ainda está vazio.</b><br>Escolha uma solução ou um módulo no <button class="linkish" data-goview="horizon">Horizonte</button>, ou <button class="linkish" data-load>carregue um model.json</button>. Daí esta tela mostra o que está ao seu alcance.</div>`;
+  if (!eff.size) return `<div class="empty"><b>Your app is still empty.</b><br>Pick a solution or a module on <button class="linkish" data-goview="horizon">Horizon</button>, or <button class="linkish" data-load>load a model.json</button>. This view then shows what is within your reach.</div>`;
   const sectors = appSectors(eff);
   const score = (p) => {
     const sm = p.sectors.some((s) => sectors.has(s)) ? 3 : p.sectors.length ? -3 : 1;
@@ -419,23 +419,23 @@ function viewNear(eff) {
     if (!miss.length) now.push(p); else if (miss.length === 1) step.push(Object.assign(p, { _miss: miss[0] })); else far.push(p);
   });
   now.sort((a, b) => score(b) - score(a)); step.sort((a, b) => score(b) - score(a));
-  const have = [...eff.keys()].map((id) => byId.get(id)).sort((a, b) => (eff.get(a.id) === "explicit" ? -1 : 1) - (eff.get(b.id) === "explicit" ? -1 : 1) || a.name.localeCompare(b.name, "pt"));
+  const have = [...eff.keys()].map((id) => byId.get(id)).sort((a, b) => (eff.get(a.id) === "explicit" ? -1 : 1) - (eff.get(b.id) === "explicit" ? -1 : 1) || a.name.localeCompare(b.name, "en"));
   const sols = C.packs.filter((p) => p.kind === "solution" && !eff.has(p.id)).map((s) => {
     const inc = s.includes || []; const got = inc.filter((x) => eff.has(x)).length; return { s, got, n: inc.length };
   }).filter((x) => x.got > 0).sort((a, b) => b.got / b.n - a.got / a.n).slice(0, 3);
-  const sectorTxt = sectors.size ? [...sectors].map((x) => sectorById.get(x)?.name || x).join(", ") : "nenhum setor específico";
+  const sectorTxt = sectors.size ? [...sectors].map((x) => sectorById.get(x)?.name || x).join(", ") : "no specific sector";
 
-  let h = `<section class="band"><h2>Você já tem <span class="n">${have.length} packs · setor: ${esc(sectorTxt)}</span></h2>
-    <p>Em destaque, os que você escolheu; o resto veio como pré-requisito.</p><div class="chiprow">` +
+  let h = `<section class="band"><h2>You already have <span class="n">${have.length} packs · sector: ${esc(sectorTxt)}</span></h2>
+    <p>Highlighted are the ones you chose; the rest came in as prerequisites.</p><div class="chiprow">` +
     have.map((p) => `<button class="chip ${eff.get(p.id) === "explicit" ? "ex" : ""}" data-open="${esc(p.id)}"><i class="${levelOf(p)}" style="--gc:${colorOf(p)}"></i>${esc(p.name)}</button>`).join("") + `</div></section>`;
-  h += `<section class="band"><h2>Disponível agora <span class="n">${now.length}</span></h2><p>Todos os pré-requisitos já estão no seu app. Primeiro os que mais combinam com o seu setor.</p>${now.length ? cardList(now, eff, "near-now") : `<p class="note">Nada neste círculo.</p>`}</section>`;
-  h += `<section class="band"><h2>A um passo <span class="n">${step.length}</span></h2><p>Falta só um pré-requisito; ao adicionar, ele entra junto.</p>${step.length ? cardList(step, eff, "near-step", (p) => `<span class="miss">falta: ${esc(byId.get(p._miss).name)}</span>`) : `<p class="note">Nada neste círculo.</p>`}</section>`;
-  if (sols.length) h += `<section class="band"><h2>Soluções que já cobrem parte do seu app</h2><p>Trocar seus packs por uma solução deixa o model mais curto.</p>${cardList(sols.map((x) => x.s), eff, "near-sol", (p) => { const x = sols.find((y) => y.s === p); return `<span class="miss">você já tem ${x.got} de ${x.n}</span>`; })}</section>`;
-  h += `<section class="band"><div class="far"><b>${far.length}</b><span>packs mais longe, a dois ou mais passos.</span><button class="btn small" data-goview="map">Ver no mapa completo</button></div></section>`;
+  h += `<section class="band"><h2>Available now <span class="n">${now.length}</span></h2><p>All prerequisites are already in your app. The best matches for your sector come first.</p>${now.length ? cardList(now, eff, "near-now") : `<p class="note">Nothing in this circle.</p>`}</section>`;
+  h += `<section class="band"><h2>One step away <span class="n">${step.length}</span></h2><p>Only one prerequisite is missing; adding the pack brings it in too.</p>${step.length ? cardList(step, eff, "near-step", (p) => `<span class="miss">missing: ${esc(byId.get(p._miss).name)}</span>`) : `<p class="note">Nothing in this circle.</p>`}</section>`;
+  if (sols.length) h += `<section class="band"><h2>Solutions that already cover part of your app</h2><p>Replacing your packs with a solution makes the model shorter.</p>${cardList(sols.map((x) => x.s), eff, "near-sol", (p) => { const x = sols.find((y) => y.s === p); return `<span class="miss">you already have ${x.got} of ${x.n}</span>`; })}</section>`;
+  h += `<section class="band"><div class="far"><b>${far.length}</b><span>packs further out, two or more steps away.</span><button class="btn small" data-goview="map">View in the full map</button></div></section>`;
   return h;
 }
 
-/* ---------------- Busca ---------------- */
+/* ---------------- Search ---------------- */
 function searchHits() {
   const q = S.q.trim().toLowerCase(); if (!q) return [];
   return C.packs.map((p) => {
@@ -446,33 +446,33 @@ function searchHits() {
 }
 function viewSearch(eff) {
   const hits = searchHits();
-  if (!hits.length) return `<div class="empty">Nada encontrado para <b>${esc(S.q)}</b>. Tente uma necessidade, como "cobrar", "agenda" ou "estoque".</div>`;
+  if (!hits.length) return `<div class="empty">Nothing found for <b>${esc(S.q)}</b>. Try a need, such as "invoicing", "scheduling" or "inventory".</div>`;
   return C.levels.slice().reverse().map((l) => {
     const xs = hits.filter((p) => levelOf(p) === l.id); if (!xs.length) return "";
     return `<div class="group-label">${esc(l.name)} (${xs.length})</div>${cardList(xs, eff, "q-" + l.id)}`;
   }).join("");
 }
 
-/* ---------------- Mapa completo ---------------- */
+/* ---------------- Full map ---------------- */
 const NW = 196, NH = 50, COLW = 232, ERA_H = 54, LABEL_W = 148, GAP = 10, LANE_PAD = 14;
 const pos = new Map();
 function viewMap() {
   const lvBtns = C.levels.map((l) => `<button class="toggle" data-lv="${esc(l.id)}" aria-pressed="${S.mapLevels.has(l.id)}"><span class="glyph ${l.id}" style="--gc:var(--muted);width:12px;height:12px;margin:0"></span>${esc(l.name)}</button>`).join("");
   return `<div class="map-tools">${lvBtns}
-    <select class="btn" id="mapSector" aria-label="Destacar setor"><option value="">Todos os setores</option>${C.sectors.map((s) => `<option value="${esc(s.id)}" ${S.mapSector === s.id ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select>
-    <span class="note" style="margin:0">Passe o mouse para ver o caminho de pré-requisitos.</span>
-    <span style="margin-left:auto;display:inline-flex;gap:4px;align-items:center"><button class="btn small" id="zOut" aria-label="Diminuir zoom">−</button><span id="zVal" class="note" style="margin:0;min-width:3em;text-align:center">${Math.round(S.zoom * 100)}%</span><button class="btn small" id="zIn" aria-label="Aumentar zoom">+</button></span></div>
+    <select class="btn" id="mapSector" aria-label="Highlight sector"><option value="">All sectors</option>${C.sectors.map((s) => `<option value="${esc(s.id)}" ${S.mapSector === s.id ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select>
+    <span class="note" style="margin:0">Hover to see the prerequisite path.</span>
+    <span style="margin-left:auto;display:inline-flex;gap:4px;align-items:center"><button class="btn small" id="zOut" aria-label="Zoom out">−</button><span id="zVal" class="note" style="margin:0;min-width:3em;text-align:center">${Math.round(S.zoom * 100)}%</span><button class="btn small" id="zIn" aria-label="Zoom in">+</button></span></div>
     <div class="tree-wrap" id="treeWrap"><div class="canvas" id="canvas"></div></div>`;
 }
 function buildMap() {
   const canvas = $("canvas"); if (!canvas) return; pos.clear();
   const visible = C.packs.filter((p) => S.mapLevels.has(levelOf(p)));
-  if (!visible.length) { canvas.innerHTML = `<p class="empty" style="margin:20px">Ligue pelo menos um nível acima.</p>`; return; }
+  if (!visible.length) { canvas.innerHTML = `<p class="empty" style="margin:20px">Turn on at least one level above.</p>`; return; }
   const maxD = Math.max(...visible.map((p) => depth.get(p.id)));
   const width = LABEL_W + (maxD + 1) * COLW + 20;
-  const lanes = [...C.areas.map((a) => ({ id: a.id, name: a.name, color: a.color })), { id: "__sol", name: "Soluções", color: "#d8b25c" }];
-  let html = `<div class="era-row" style="width:${width}px"><div class="era corner" style="width:${LABEL_W}px"><span>Área</span></div>` +
-    Array.from({ length: maxD + 1 }, (_, i) => `<div class="era" style="width:${COLW}px"><b>Era ${ROMAN[i] || i + 1}</b><span>${i === 0 ? "sem pré-requisito" : i + " nível(is) acima"}</span></div>`).join("") + `</div>`;
+  const lanes = [...C.areas.map((a) => ({ id: a.id, name: a.name, color: a.color })), { id: "__sol", name: "Solutions", color: "#d8b25c" }];
+  let html = `<div class="era-row" style="width:${width}px"><div class="era corner" style="width:${LABEL_W}px"><span>Area</span></div>` +
+    Array.from({ length: maxD + 1 }, (_, i) => `<div class="era" style="width:${COLW}px"><b>Era ${ROMAN[i] || i + 1}</b><span>${i === 0 ? "no prerequisites" : i + " level(s) up"}</span></div>`).join("") + `</div>`;
   for (let i = 0; i <= maxD; i++) html += `<div class="era-col" style="left:${LABEL_W + i * COLW}px"></div>`;
   let y = ERA_H;
   lanes.forEach((lane) => {
@@ -486,7 +486,7 @@ function buildMap() {
       pos.set(p.id, { x, y: ny });
       html += `<button class="node ${p.status === "proposed" ? "proposed" : ""}" data-node="${esc(p.id)}" style="left:${x}px;top:${ny}px;width:${NW}px;height:${NH}px">
         <span class="glyph ${levelOf(p)}" style="--gc:${colorOf(p)}" aria-hidden="true">${esc(glyphOf(p))}</span>
-        <span class="nm"><b>${esc(p.name)}</b><small>${esc(kindName(p))} · ${p.status === "existing" ? "pronto" : "proposto"}</small></span></button>`;
+        <span class="nm"><b>${esc(p.name)}</b><small>${esc(kindName(p))} · ${p.status === "existing" ? "ready" : "proposed"}</small></span></button>`;
     }));
     y += h;
   });
@@ -523,7 +523,7 @@ function paintMap() {
   });
 }
 
-/* ---------------- detalhe ---------------- */
+/* ---------------- detail ---------------- */
 function openDetail(id) { S.detail = id; renderSheet(); }
 function closeDetail() { S.detail = null; $("sheet").hidden = true; $("scrim").hidden = true; }
 function renderSheet() {
@@ -534,29 +534,29 @@ function renderSheet() {
   const inSol = solutionsOf.get(p.id) || [];
   const area = areaById.get(p.area)?.name, secs = p.sectors.map((s) => sectorById.get(s)?.name || s).join(", ");
   const lvl = C.levels.find((l) => l.id === levelOf(p));
-  const state = e === "explicit" ? "Está no seu app, escolhido por você." : e === "auto" ? "Está no seu app como pré-requisito de outro pack." : "Fora do seu app.";
+  const state = e === "explicit" ? "In your app, chosen by you." : e === "auto" ? "In your app as a prerequisite of another pack." : "Not in your app.";
   const sec = (t, body) => body ? `<div class="sec"><h3>${t}</h3>${body}</div>` : "";
-  $("sheet").innerHTML = `<button class="btn small close" id="sheetClose" aria-label="Fechar">✕</button>
+  $("sheet").innerHTML = `<button class="btn small close" id="sheetClose" aria-label="Close">✕</button>
     <div class="eyebrow">${esc(lvl?.name)} · ${esc(kindName(p))}${area ? " · " + esc(area) : ""}${secs ? " · " + esc(secs) : ""}</div>
     <h2 id="sheetTitle">${esc(p.name)}</h2>
     <p class="need-big">${esc(p.need || "")}</p>
     ${p.kind !== "solution" ? `<p class="summary">${esc(p.summary || "")}</p>` : ""}
     <div class="tagrow">${statusPill(p)}</div>
-    <div class="sec"><button class="btn ${S.explicit.has(p.id) ? "" : "gold"}" data-add="${esc(p.id)}">${S.explicit.has(p.id) ? "Tirar do app" : e === "auto" ? "Fixar no app" : "Pôr no app"}</button><p class="note">${state}</p></div>
-    ${p.kind === "solution" ? sec(`Inclui (${(p.includes || []).length})`, `<div class="chiprow">${(p.includes || []).map(link).join("")}</div>`) : ""}
-    ${sec(`Conceitos (${p.concepts.length})`, p.concepts.length ? `<div class="tagrow">${p.concepts.map((c) => `<span class="tag ${owners.get(c).length > 1 ? "bad" : ""}" title="${owners.get(c).length > 1 ? "Também declarado em " + esc(owners.get(c).filter((x) => x !== p.id).join(", ")) : ""}">${esc(c)}</span>`).join("")}</div>` : "")}
-    ${sec("Vale para", (p.appliesTo || []).length ? `<div class="tagrow">${p.appliesTo.map((c) => `<span class="tag">${esc(c)}</span>`).join("")}</div>` : "")}
-    ${sec("Especializa", (p.specializations || []).length ? `<div class="spec">${p.specializations.map(([a, b]) => `<div>${esc(a)} <em>especializa</em> ${esc(b)}</div>`).join("")}</div>` : "")}
-    ${sec("Guarda dados sobre", (p.satellites || []).length ? `<div class="spec">${p.satellites.map(([a, b]) => `<div>${esc(a)} <em>é satélite de</em> ${esc(b)}</div>`).join("")}</div><p class="note">O registro principal vive no pack de origem; aqui ficam só os dados deste pack sobre ele.</p>` : "")}
-    ${sec("O app precisa ligar", (p.capabilities || []).length ? `<div class="tagrow">${p.capabilities.map((c) => `<span class="tag">${esc(c)}</span>`).join("")}</div><p class="note">Contrato externo: o app informa o provedor real em <code>provides</code>.</p>` : "")}
-    ${p.kind !== "solution" ? sec("Depende de", p.requires.length ? `<div class="chiprow">${p.requires.map(link).join("")}</div>` : `<p class="note">Nada. Pode ser o primeiro.</p>`) : ""}
-    ${sec(`Libera (${deps.length})`, deps.length ? `<div class="chiprow">${deps.slice(0, 12).map(link).join("")}</div>${deps.length > 12 ? `<p class="note">e mais ${deps.length - 12}.</p>` : ""}` : "")}
-    ${sec("Faz parte das soluções", inSol.length ? `<div class="chiprow">${inSol.map(link).join("")}</div>` : "")}`;
+    <div class="sec"><button class="btn ${S.explicit.has(p.id) ? "" : "gold"}" data-add="${esc(p.id)}">${S.explicit.has(p.id) ? "Remove from app" : e === "auto" ? "Pin in app" : "Add to app"}</button><p class="note">${state}</p></div>
+    ${p.kind === "solution" ? sec(`Includes (${(p.includes || []).length})`, `<div class="chiprow">${(p.includes || []).map(link).join("")}</div>`) : ""}
+    ${sec(`Concepts (${p.concepts.length})`, p.concepts.length ? `<div class="tagrow">${p.concepts.map((c) => `<span class="tag ${owners.get(c).length > 1 ? "bad" : ""}" title="${owners.get(c).length > 1 ? "Also declared in " + esc(owners.get(c).filter((x) => x !== p.id).join(", ")) : ""}">${esc(c)}</span>`).join("")}</div>` : "")}
+    ${sec("Applies to", (p.appliesTo || []).length ? `<div class="tagrow">${p.appliesTo.map((c) => `<span class="tag">${esc(c)}</span>`).join("")}</div>` : "")}
+    ${sec("Specializes", (p.specializations || []).length ? `<div class="spec">${p.specializations.map(([a, b]) => `<div>${esc(a)} <em>specializes</em> ${esc(b)}</div>`).join("")}</div>` : "")}
+    ${sec("Keeps data about", (p.satellites || []).length ? `<div class="spec">${p.satellites.map(([a, b]) => `<div>${esc(a)} <em>is a satellite of</em> ${esc(b)}</div>`).join("")}</div><p class="note">The main record lives in the originating pack; only this pack's own data about it is kept here.</p>` : "")}
+    ${sec("The app must connect", (p.capabilities || []).length ? `<div class="tagrow">${p.capabilities.map((c) => `<span class="tag">${esc(c)}</span>`).join("")}</div><p class="note">External contract: the app supplies the real provider in <code>provides</code>.</p>` : "")}
+    ${p.kind !== "solution" ? sec("Depends on", p.requires.length ? `<div class="chiprow">${p.requires.map(link).join("")}</div>` : `<p class="note">Nothing. It can be the first.</p>`) : ""}
+    ${sec(`Unlocks (${deps.length})`, deps.length ? `<div class="chiprow">${deps.slice(0, 12).map(link).join("")}</div>${deps.length > 12 ? `<p class="note">and ${deps.length - 12} more.</p>` : ""}` : "")}
+    ${sec("Part of solutions", inSol.length ? `<div class="chiprow">${inSol.map(link).join("")}</div>` : "")}`;
   $("sheet").hidden = false; $("scrim").hidden = false;
   $("sheetClose").onclick = closeDetail; $("sheetClose").focus();
 }
 
-/* ---------------- painel Seu app ---------------- */
+/* ---------------- Your app panel ---------------- */
 function renderApp(eff) {
   const list = [...eff.keys()].map((id) => byId.get(id));
   const sols = [...S.explicit].map((id) => byId.get(id)).filter((p) => p.kind === "solution");
@@ -571,32 +571,32 @@ function renderApp(eff) {
   $("stConcepts").textContent = list.reduce((n, p) => n + p.concepts.length, 0);
   $("stLines").textContent = refs.length;
   $("chosen").innerHTML = [...S.explicit].map((id) => byId.get(id)).map((p) =>
-    `<span class="chip ex"><i class="${levelOf(p)}" style="--gc:${colorOf(p)}"></i><button style="color:inherit;font-size:12px;padding:0" data-open="${esc(p.id)}">${esc(p.name)}</button><button data-add="${esc(p.id)}" aria-label="Tirar ${esc(p.name)}">×</button></span>`).join("") ||
-    `<span class="note" style="margin:0">Nada escolhido ainda.</span>`;
+    `<span class="chip ex"><i class="${levelOf(p)}" style="--gc:${colorOf(p)}"></i><button style="color:inherit;font-size:12px;padding:0" data-open="${esc(p.id)}">${esc(p.name)}</button><button data-add="${esc(p.id)}" aria-label="Remove ${esc(p.name)}">×</button></span>`).join("") ||
+    `<span class="note" style="margin:0">Nothing chosen yet.</span>`;
 
   const seen = new Map(); list.forEach((p) => p.concepts.forEach((c) => { if (!seen.has(c)) seen.set(c, []); seen.get(c).push(p.id); }));
   const conflicts = [...seen].filter(([, o]) => o.length > 1);
   const proposed = list.filter((p) => p.status === "proposed" && p.kind !== "solution");
   const li = [];
   if (list.length) {
-    li.push(conflicts.length ? conflicts.map(([c, o]) => `<li class="bad">Conceito <code>${esc(c)}</code> vem de ${o.map((x) => esc(byId.get(x).name)).join(" e ")}. Fique com um deles antes de gerar.</li>`).join("") : `<li class="ok">Nenhum conceito repetido entre os packs.</li>`);
-    li.push(proposed.length ? `<li class="bad">${proposed.length} de ${list.filter((p) => p.kind !== "solution").length} packs ainda não existem. O app só gera quando todos estiverem prontos.</li>` : `<li class="ok">Todos os packs já existem.</li>`);
-    if (caps.length) li.push(`<li class="info">Ligar provedor real para: ${caps.map((c) => `<code>${esc(c)}</code>`).join(", ")}.</li>`);
-    if (sols.length && covered.size) li.push(`<li class="info">As soluções escolhidas já trazem ${covered.size} packs; o model fica com ${refs.length} linha(s).</li>`);
+    li.push(conflicts.length ? conflicts.map(([c, o]) => `<li class="bad">Concept <code>${esc(c)}</code> comes from ${o.map((x) => esc(byId.get(x).name)).join(" and ")}. Keep only one of them before generating.</li>`).join("") : `<li class="ok">No repeated concepts across the packs.</li>`);
+    li.push(proposed.length ? `<li class="bad">${proposed.length} of ${list.filter((p) => p.kind !== "solution").length} packs do not exist yet. The app can only be generated once all of them are ready.</li>` : `<li class="ok">All packs already exist.</li>`);
+    if (caps.length) li.push(`<li class="info">Connect a real provider for: ${caps.map((c) => `<code>${esc(c)}</code>`).join(", ")}.</li>`);
+    if (sols.length && covered.size) li.push(`<li class="info">The chosen solutions already bring ${covered.size} packs; the model ends up with ${refs.length} line(s).</li>`);
   }
   $("checks").innerHTML = li.join("");
   $("appCard").classList.toggle("alert", conflicts.length > 0);
 
   const issues = [];
-  owners.forEach((o, c) => { if (o.length > 1) issues.push(`Conceito <code>${esc(c)}</code> declarado em ${o.map(esc).join(" e ")}.`); });
+  owners.forEach((o, c) => { if (o.length > 1) issues.push(`Concept <code>${esc(c)}</code> declared in ${o.map(esc).join(" and ")}.`); });
   C.packs.forEach((p) => {
     const pool = new Set(p.concepts); ancestors(p.id).forEach((x) => byId.get(x).concepts.forEach((c) => pool.add(c)));
-    (p.specializations || []).forEach(([a, b]) => { if (!pool.has(b)) issues.push(`${esc(p.id)}: <code>${esc(a)}</code> especializa <code>${esc(b)}</code>, que não vem de um pré-requisito.`); });
-    (p.appliesTo || []).forEach((c) => { if (!pool.has(c)) issues.push(`${esc(p.id)}: a regra vale para <code>${esc(c)}</code>, que não vem de um pré-requisito.`); });
-    if (p.kind === "specialization" && !(p.specializations || []).length) issues.push(`${esc(p.id)} é especialização mas não diz o que especializa.`);
-    if (!p.need) issues.push(`${esc(p.id)} não tem a frase de necessidade.`);
+    (p.specializations || []).forEach(([a, b]) => { if (!pool.has(b)) issues.push(`${esc(p.id)}: <code>${esc(a)}</code> specializes <code>${esc(b)}</code>, which does not come from a prerequisite.`); });
+    (p.appliesTo || []).forEach((c) => { if (!pool.has(c)) issues.push(`${esc(p.id)}: the rule applies to <code>${esc(c)}</code>, which does not come from a prerequisite.`); });
+    if (p.kind === "specialization" && !(p.specializations || []).length) issues.push(`${esc(p.id)} is a specialization but does not say what it specializes.`);
+    if (!p.need) issues.push(`${esc(p.id)} has no need statement.`);
   });
-  $("catHealth").innerHTML = `<summary>Saúde do catálogo: ${issues.length ? `<span class="warn">${issues.length} aviso(s)</span>` : "sem avisos"}</summary>` + (issues.length ? `<ul class="checks">${issues.map((i) => `<li class="bad">${i}</li>`).join("")}</ul>` : "");
+  $("catHealth").innerHTML = `<summary>Catalog health: ${issues.length ? `<span class="warn">${issues.length} warning(s)</span>` : "no warnings"}</summary>` + (issues.length ? `<ul class="checks">${issues.map((i) => `<li class="bad">${i}</li>`).join("")}</ul>` : "");
 }
 
 /* ---------------- render ---------------- */
@@ -605,7 +605,7 @@ function render() {
   const eff = effective();
   document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(!S.q && b.dataset.view === S.view)));
   const v = $("view");
-  if (S.q) v.innerHTML = `<div class="sec-head"><h2>Resultados</h2><p><button class="linkish" id="clearQ">Limpar busca</button></p></div>` + viewSearch(eff);
+  if (S.q) v.innerHTML = `<div class="sec-head"><h2>Results</h2><p><button class="linkish" id="clearQ">Clear search</button></p></div>` + viewSearch(eff);
   else if (S.view === "near") v.innerHTML = viewNear(eff);
   else if (S.view === "map") { v.innerHTML = viewMap(); buildMap(); wireMap(); }
   else v.innerHTML = viewHorizon(eff);
@@ -641,11 +641,11 @@ $("scrim").onclick = closeDetail;
 
 function setMsg(t, ok) { const m = $("msg"); m.textContent = t; m.className = "msg " + (ok ? "ok" : "err"); }
 function applyJson(text) {
-  let j; try { j = JSON.parse(text); } catch (e) { setMsg("JSON inválido: " + e.message, false); return; }
+  let j; try { j = JSON.parse(text); } catch (e) { setMsg("Invalid JSON: " + e.message, false); return; }
   try {
-    if (Array.isArray(j?.packs) && j.packs.some((p) => p && typeof p.id === "string")) { load(j, "JSON colado", true); setMsg(`Catálogo aplicado: ${j.packs.length} packs.`, true); return; }
+    if (Array.isArray(j?.packs) && j.packs.some((p) => p && typeof p.id === "string")) { load(j, "Pasted JSON", true); setMsg(`Catalog applied: ${j.packs.length} packs.`, true); return; }
     if (Array.isArray(j?.packs) && j.packs.some((p) => p && (p.$ref || p.as || p.from))) {
-      if (!C) { setMsg("Carregue um catálogo antes.", false); return; }
+      if (!C) { setMsg("Load a catalog first.", false); return; }
       const found = [], missing = [];
       j.packs.forEach((r) => {
         const m = /packs\/([^/]+)\/pack\.json/.exec(r.$ref || "") || /\/\/packs\/([^@]+)@/.exec(r.from || "");
@@ -653,22 +653,22 @@ function applyJson(text) {
         hit ? found.push(hit) : missing.push(r.as || r.$ref || r.from || "?");
       });
       S.explicit = new Set(found); S.view = "near"; S.q = ""; render();
-      setMsg(`Model lido: ${found.length} packs marcados` + (missing.length ? `. Fora do catálogo: ${missing.join(", ")}.` : "."), !missing.length);
+      setMsg(`Model read: ${found.length} packs marked` + (missing.length ? `. Not in the catalog: ${missing.join(", ")}.` : "."), !missing.length);
       return;
     }
-    setMsg("Formato não reconhecido. Esperado: model.json (packs[].$ref) ou catálogo (packs[].id).", false);
+    setMsg("Unrecognized format. Expected: model.json (packs[].$ref) or catalog (packs[].id).", false);
   } catch (e) { setMsg(e.message, false); }
 }
 $("btnLoad").onclick = () => { $("drawer").hidden = !$("drawer").hidden; if (!$("drawer").hidden && !$("jsonIn").value && S.json) $("jsonIn").value = S.json; };
 $("btnClose").onclick = () => { $("drawer").hidden = true; };
 $("btnApply").onclick = () => applyJson($("jsonIn").value);
-$("btnShowCat").onclick = () => { if (!C) return; $("jsonIn").value = JSON.stringify(C, null, 2); setMsg("Catálogo atual no campo. Edite e aplique.", true); };
+$("btnShowCat").onclick = () => { if (!C) return; $("jsonIn").value = JSON.stringify(C, null, 2); setMsg("The current catalog is in the field. Edit it, then apply.", true); };
 $("file").onchange = (e) => { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { $("jsonIn").value = r.result; applyJson(r.result); }; r.readAsText(f); e.target.value = ""; };
 $("btnClear").onclick = () => { S.explicit.clear(); render(); };
 $("btnCopy").onclick = async () => {
-  try { await navigator.clipboard.writeText(S.json || ""); $("btnCopy").textContent = "Copiado"; }
-  catch { const r = document.createRange(); r.selectNodeContents($("out")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $("btnCopy").textContent = "Selecionado, Ctrl+C"; }
-  setTimeout(() => { $("btnCopy").textContent = "Copiar"; }, 1800);
+  try { await navigator.clipboard.writeText(S.json || ""); $("btnCopy").textContent = "Copied"; }
+  catch { const r = document.createRange(); r.selectNodeContents($("out")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $("btnCopy").textContent = "Selected, press Ctrl+C"; }
+  setTimeout(() => { $("btnCopy").textContent = "Copy"; }, 1800);
 };
 
 fetch(CATALOG_URL, { cache: "no-store" })
@@ -679,5 +679,5 @@ fetch(CATALOG_URL, { cache: "no-store" })
     else if (c.packs.some((p) => p.id === "dental-clinic")) S.explicit = new Set(["dental-clinic"]);
     load(c, CATALOG_URL, true);
   })
-  .catch((e) => { $("src").innerHTML = `<span class="warn">Não consegui ler ${CATALOG_URL} (${esc(e.message)}). Use Carregar JSON para colar um catálogo.</span>`; $("drawer").hidden = false; });
+  .catch((e) => { $("src").innerHTML = `<span class="warn">Could not read ${CATALOG_URL} (${esc(e.message)}). Use Load JSON to paste a catalog.</span>`; $("drawer").hidden = false; });
 </script>

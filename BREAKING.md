@@ -2,8 +2,9 @@
 
 NPDev is pre-1.0 and deliberately unstable — see the "Stability policy" section in `README.md` for
 why. Every breaking change to the model DSL, generated code layout, or internal APIs gets a
-one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
-codemod that rewrites existing models automatically.
+one-line entry here, in the same commit that makes the change. While NPDev has no outside users
+(owner, 2026-11-12) a change ships without an `npdev migrate` codemod; this repo's own models are
+migrated directly in the same commit. Earlier entries name the codemods written before that.
 
 ## 2026-11-12 — sales, purchasing and inventory 2.0.0: customer, supplier and product have one owner
 

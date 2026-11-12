@@ -805,6 +805,9 @@ try {
     # only outside CI is --no-baseline-ok passed.
     $baselineArgs = @()
     if ($env:CI -ne 'true') { $baselineArgs += '--no-baseline-ok' }
+    # Pre-users (owner, 2026-11-12): NPDev has no users and no data to protect, so a missing version bump is
+    # reported, not enforced. Remove --advisory once there is an outside user.
+    $baselineArgs += '--advisory'
     & $py "scripts/quality/check-pack-diff-gate.py" @baselineArgs
     if ($LASTEXITCODE -ne 0) {
         $failures += "a built-in pack changed on this branch without a correctly-sized version bump: see scripts/quality/check-pack-diff-gate.py output above -- bump the version (major for a BREAKING change, minor for ADDITIVE, patch for PATCH-only), then `npdev pack publish <old> <new> --write` to also stamp the empty migrations chain entry"

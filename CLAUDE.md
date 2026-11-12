@@ -350,9 +350,12 @@ relevant section **before** the first edit.
 ## Stability policy
 
 NPDev is pre-1.0 and deliberately unstable (`README.md`'s "Stability policy" and `BREAKING.md`).
-**Every breaking change to the model DSL, generated code layout, or internal APIs ships its
-`npdev migrate` codemod in the same commit**, plus a one-line `BREAKING.md` entry — never land the
-break first and the codemod later.
+**Pre-users setting (owner, 2026-11-12): NPDev has NO users, NO running systems and NO data to
+preserve — change anything freely.** A breaking change to the model DSL, generated code layout,
+internal APIs or a built-in pack does NOT need an `npdev migrate` codemod: migrate this repo's own
+corpus directly in the same commit, and add a one-line `BREAKING.md` entry. Pack version bumps are
+reported, not enforced (`check-pack-diff-gate.py --advisory`). Restore the codemod rule and drop
+`--advisory` when the first outside user arrives.
 
 ## Environment notes
 

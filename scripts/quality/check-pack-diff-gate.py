@@ -193,11 +193,16 @@ def main(argv: list[str]) -> int:
                          "`before` sha). An all-zeros sha counts as not given.")
     ap.add_argument("--no-baseline-ok", action="store_true",
                     help="do not fail when no baseline resolves or the only one IS HEAD (local runs only)")
+    ap.add_argument("--advisory", action="store_true",
+                    help="report a missing or undersized version bump as a WARNING and exit 0. The pre-users "
+                         "setting (owner, 2026-11-12): NPDev has no users and no data to protect, so a pack "
+                         "version is informational until the first outside user; run-ai-knowledge-gate.ps1 "
+                         "passes this flag. Drop it to make the gate blocking again.")
     args = ap.parse_args(argv[1:])
 
     merge_base, head, how = resolve_baseline(args.base)
     if merge_base is None or merge_base == head:
-        if not args.no_baseline_ok:
+        if not args.no_baseline_ok and not args.advisory:
             print(f"FAIL: no meaningful baseline to diff the built-in packs against -- {how}. Comparing "
                   f"HEAD to itself proves nothing (REG-296). Pass --base <rev> (CI exports "
                   f"NPDEV_BASELINE_REV), or --no-baseline-ok for a local run.", file=sys.stderr)
@@ -233,6 +238,12 @@ def main(argv: list[str]) -> int:
         print(f"\nFull results written to {args.json}")
 
     failing = [r for r in results if r["status"] in ("refused", "missing")]
+    if failing and args.advisory:
+        print(f"\nWARNING (advisory, pre-users): {len(failing)} pack(s) changed without a correctly-sized version bump:")
+        for r in failing:
+            report = r.get("report", {})
+            print(f"  - {r['label']}: {report.get('message', r.get('reason'))}")
+        return 0
     if failing:
         print(f"\nFAIL: {len(failing)} pack(s) changed on this branch without a correctly-sized version bump:", file=sys.stderr)
         for r in failing:

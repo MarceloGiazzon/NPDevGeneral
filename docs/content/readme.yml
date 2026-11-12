@@ -489,8 +489,9 @@ sections:
       agent writes them from your specification. **A breaking DSL change costs one regeneration, not a
       migration project.** We would rather fix a design mistake than carry it for a decade.
 
-      Every breaking change ships with an `npdev migrate` codemod that rewrites existing models
-      automatically, a one-line entry in `BREAKING.md`, and the reason it was worth breaking.
+      Every breaking change gets a one-line entry in `BREAKING.md` with the reason it was worth breaking.
+      While NPDev has no outside users, changes ship without an `npdev migrate` codemod; codemods return
+      with the first users.
 
       **If you need frozen APIs today, NPDev is not ready for you.** We freeze at 1.0, and not one release
       before.
