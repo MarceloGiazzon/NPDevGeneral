@@ -4,8 +4,9 @@ title: >-
   until `persistence` is declared as a capability AND bound to `repository` -- and the AI authoring contract said never to write it
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-11-11
+closed: 2026-11-12
 source: >-
   Ride-hailing sample S1 (2026-11-11, AppGen/apps/ride-hailing-s1): a model written exactly as the authoring contract taught
   (no persistence capability, no persistence binding) validated clean, generated and compiled, then the app died at boot with
@@ -24,6 +25,24 @@ detail: |
   Still open (owner decision): (a) the platform derives the capability and binding whenever any flow has a saving step (preferred:
   "accepted implies enforced", nothing for an AI to forget), or (b) `validate model` reports it as an error with a suggestedFix.
   Either way add a behaviour probe or a validator test that a saving flow without the declaration is not silently accepted.
+  DECIDED 2026-11-12 (owner: option a, derive) and FOUND ALREADY IMPLEMENTED: ModelCompiler.addImplicitPersistence (commit c25b7fea, 2026-10-31)
+  adds the persistence capability and the repository binding for any model whose flows compile to a persistence capabilityCall; an explicit
+  declaration wins. The 2026-11-11 boot failure came from the AppGen generator-runtime jar cache, which is not auto-synced and predated that
+  commit. Verified end to end 2026-11-12: a scratch sample with golden-contact-intake's model (a createConcept flow, capabilities[notification]
+  only, NO persistence capability or binding) generated, booted on a wiped H2 database and ran SubmitContactMessage -> HTTP 200 status OK, the
+  record present in the list. The authoring contract (docs/content/authoring-for-ai.yml, regenerated into docs/ai/AUTHORING_FOR_AI.md) was the
+  stale half: it told authors a saving flow needs both declarations; it now says nothing needs declaring. Same lesson as REG-144-style caches:
+  after a platform change, refresh AppGen\generator-runtime before judging a model (prepare-npdev-generator-runtime.ps1).
+verification: VERIFIED_LIVE
+guard:
+  kind: test
+  ref: >-
+    NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/ImplicitPersistenceTest.java#aPersistingFlowWithNoDeclarationGetsTheRepositoryBindingAndTheCapability
+  asserts: >-
+    a model whose only flow is a createConcept step and that declares no persistence capability or binding compiles to a persistence
+    capability plus a persistence -> repository binding (and the sibling tests pin: binding without capability gets the capability, an
+    explicit binding wins, a model with no persisting flow gets nothing)
+  provenRed: true
 done_when: >-
   A model with a saving flow and no persistence declaration either starts (derived) or is refused by `npdev validate model` with
   a named error and suggestedFix; the "Reuse and extend" paragraph of the authoring contract is then simplified to match.

@@ -24,9 +24,9 @@ A model of only `concepts` + `fields` is a complete app: every concept gets REST
 checks of `required`, `unique`, `min`/`max`/`maxLength`, enum, reference, `lifecycle` and
 `invariants`. **Do not write:**
 - create/update/delete flows or `invariantCheck` steps that only save a record;
-- a `persistence` capability, or `persistence`/`eventBus` bindings, **while the model has no
-  flow** (derived; `repository` and `inproc` are the only values anyway). A flow that saves
-  needs them: see "Reuse and extend";
+- a `persistence` capability, or `persistence`/`eventBus` bindings (derived: a flow with
+  `createConcept`/`updateConcept` gets `persistence` bound to `repository` on its own, and
+  `repository` and `inproc` are the only values anyway);
 - an invariant restating a field flag (`x != null && x != ''` → `required`; one-field unique →
   `unique: true`; `x >= 0` → `"min": 0`). Invariants are for cross-field rules;
 - `ui.label` equal to the humanized name (`dueDate` → "Due Date"). `missing_*_label` warnings
@@ -96,10 +96,9 @@ Exact shapes (verified); copy them, do not invent keys.
 
 ## Reuse and extend: packs, fragments, your own code, outside APIs
 
-**A flow that saves needs persistence declared.** `createConcept`/`updateConcept` steps fail at
-app start (validation still passes) unless the model has
-`"capabilities":[{"name":"persistence","type":"PersistenceCapability","operations":["save","unique","findById"]}]`
-and `"bindings":[{"capability":"persistence","adapter":"repository"}]`. Pure CRUD needs neither.
+**A flow that saves needs nothing declared.** A `createConcept`/`updateConcept` step gets the
+`persistence` capability and its `repository` binding derived, with the operations the flows
+use. Declare them yourself only to bind a different adapter; an explicit declaration wins.
 
 **Packs: reuse a published concept set instead of inventing it.** Add to `packs[]` (no other keys
 than `from`, optional `as`); concepts of the pack are named `<as or id>::<Concept>`, e.g.
