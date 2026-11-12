@@ -1,0 +1,465 @@
+<title>Árvore de Packs NPDev</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: era columns (computed from prerequisite depth) x domain lanes, a tech-tree canvas with a
+   right-hand codex panel holding the focused pack and the generated model JSON. Single dark look by choice. */
+:root {
+  color-scheme: dark;
+  --ink: #0b1820;        /* ground */
+  --ink-2: #11242f;      /* panels */
+  --ink-3: #173140;      /* raised */
+  --line: #25424f;
+  --brass: #d8b25c;      /* researched / selected */
+  --brass-dim: #8a7444;
+  --cyan: #74c7d0;       /* blueprint = proposed */
+  --text: #e9e3d3;
+  --muted: #94a5a8;
+  --danger: #e58a7a;
+  --f-display: "Cinzel", "Trajan Pro", Georgia, serif;
+  --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", Consolas, ui-monospace, monospace;
+}
+html, body { height: 100%; }
+body {
+  background: var(--ink); color: var(--text); font-family: var(--f-body); font-size: 14px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 18px 28px;
+  background-image:
+    radial-gradient(circle at 20% -10%, rgba(216,178,92,.10), transparent 45%),
+    radial-gradient(circle at 110% 30%, rgba(116,199,208,.07), transparent 40%);
+}
+* { box-sizing: border-box; }
+button, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+header.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; margin-bottom: 14px; }
+.brand h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(22px, 3.2vw, 34px); letter-spacing: .06em; margin: 0; color: var(--brass); text-wrap: balance; }
+.brand p { margin: 4px 0 0; color: var(--muted); max-width: 64ch; line-height: 1.45; }
+.stats { display: flex; gap: 18px; font-variant-numeric: tabular-nums; }
+.stat b { display: block; font-family: var(--f-display); font-size: 22px; color: var(--text); }
+.stat span { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+.search { flex: 1 1 220px; min-width: 0; max-width: 340px; background: var(--ink-2); border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { background: var(--ink-2); border: 0; padding: 7px 12px; cursor: pointer; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--ink-3); color: var(--brass); }
+.btn { background: var(--ink-2); border: 1px solid var(--line); border-radius: 6px; padding: 7px 14px; cursor: pointer; }
+.btn:hover { border-color: var(--brass-dim); }
+.btn.gold { background: linear-gradient(#e3c272, #b8913f); color: #1c1608; border-color: #e3c272; font-weight: 600; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--muted); margin-left: auto; }
+.legend i { display: inline-block; width: 18px; height: 11px; border-radius: 3px; vertical-align: -1px; margin-right: 6px; }
+.lg-ex { border: 1.5px solid var(--brass-dim); background: var(--ink-3); }
+.lg-pr { border: 1.5px dashed var(--cyan); }
+.lg-sel { background: var(--brass); }
+.lg-auto { border: 1.5px solid var(--brass); background: repeating-linear-gradient(45deg, rgba(216,178,92,.35) 0 3px, transparent 3px 6px); }
+
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 14px; align-items: start; }
+@media (max-width: 980px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---- tree ---- */
+.tree-wrap { position: relative; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background:
+  linear-gradient(rgba(11,24,32,.6), rgba(11,24,32,.6)),
+  repeating-linear-gradient(0deg, transparent 0 39px, rgba(116,199,208,.05) 39px 40px),
+  repeating-linear-gradient(90deg, transparent 0 39px, rgba(116,199,208,.05) 39px 40px);
+  max-height: calc(100vh - 170px); min-height: 420px; }
+.canvas { position: relative; }
+svg.edges { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.edge { fill: none; stroke: #2e5160; stroke-width: 1.4; transition: stroke .2s, opacity .2s; }
+.edge.lit { stroke: var(--brass); stroke-width: 2.2; filter: drop-shadow(0 0 3px rgba(216,178,92,.6)); }
+.edge.hot { stroke: var(--cyan); stroke-width: 2.2; }
+.edge.dim { opacity: .25; }
+.era { position: absolute; top: 0; height: 58px; display: flex; flex-direction: column; justify-content: center; align-items: center; border-bottom: 1px solid var(--line); border-left: 1px solid rgba(37,66,79,.6); background: rgba(17,36,47,.92); z-index: 3; }
+.era b { font-family: var(--f-display); font-size: 18px; color: var(--brass); letter-spacing: .1em; }
+.era span { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+.era-col { position: absolute; top: 58px; bottom: 0; border-left: 1px solid rgba(37,66,79,.45); }
+.lane { position: absolute; left: 0; right: 0; border-top: 1px solid rgba(37,66,79,.7); }
+.lane-label { position: sticky; left: 0; z-index: 4; width: 128px; padding: 10px 10px 10px 12px; background: linear-gradient(90deg, rgba(11,24,32,.97) 75%, transparent); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--lh); font-weight: 600; line-height: 1.3; }
+.node { position: absolute; display: flex; align-items: center; gap: 10px; text-align: left; padding: 8px 10px 8px 8px; border-radius: 8px; border: 1.5px solid var(--brass-dim); background: var(--ink-3); cursor: pointer; z-index: 2; transition: transform .15s, box-shadow .2s, opacity .2s, background .2s; }
+.node:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(0,0,0,.45); }
+.node.proposed { border-style: dashed; border-color: var(--cyan); background: rgba(23,49,64,.55); }
+.node.auto { border: 1.5px solid var(--brass); background: repeating-linear-gradient(45deg, rgba(216,178,92,.16) 0 4px, rgba(23,49,64,.9) 4px 9px); }
+.node.sel { border: 1.5px solid #f0d38a; background: linear-gradient(135deg, #e3c272, #a8833a); color: #1b1407; box-shadow: 0 0 0 3px rgba(216,178,92,.18), 0 0 22px rgba(216,178,92,.35); }
+.node.sel small { color: #3b2e12; }
+.node.focus { outline: 2px solid var(--text); outline-offset: 3px; }
+.node.prereq { box-shadow: 0 0 0 2px var(--cyan); }
+.node.dim { opacity: .28; }
+.hex { flex: none; width: 38px; height: 42px; display: grid; place-items: center; clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); background: var(--lh); color: #0b1820; font-family: var(--f-display); font-weight: 700; font-size: 13px; letter-spacing: .02em; }
+.node.sel .hex { background: #1b1407; color: #e3c272; }
+.nm { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.nm b { font-weight: 600; font-size: 13px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nm small { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nm small .p { color: var(--cyan); letter-spacing: .08em; text-transform: uppercase; font-size: 10px; }
+
+/* ---- codex ---- */
+aside.codex { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.card { background: var(--ink-2); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+.card h2 { font-family: var(--f-display); font-size: 19px; margin: 0; color: var(--text); letter-spacing: .03em; text-wrap: balance; }
+.eyebrow { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.pill { display: inline-block; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; padding: 2px 7px; border-radius: 99px; border: 1px solid; }
+.pill.ex { color: var(--brass); border-color: var(--brass-dim); }
+.pill.pr { color: var(--cyan); border-color: var(--cyan); border-style: dashed; }
+.summary { color: var(--text); line-height: 1.5; margin: 10px 0 12px; opacity: .92; }
+.sec { margin-top: 12px; }
+.sec h3 { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; font-weight: 600; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-family: var(--f-mono); font-size: 12px; padding: 3px 8px; border-radius: 4px; background: var(--ink-3); border: 1px solid var(--line); }
+.chip.link { cursor: pointer; font-family: var(--f-body); }
+.chip.link:hover { border-color: var(--brass-dim); }
+.spec { font-family: var(--f-mono); font-size: 12px; line-height: 1.7; }
+.spec em { font-style: normal; color: var(--muted); }
+.actions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+.note { font-size: 12px; color: var(--muted); line-height: 1.45; margin: 8px 0 0; }
+.warn { color: var(--danger); }
+pre.json { margin: 10px 0 0; padding: 12px; background: #08131a; border: 1px solid var(--line); border-radius: 8px; font-family: var(--f-mono); font-size: 12px; line-height: 1.5; overflow: auto; max-height: 340px; white-space: pre; }
+.k { color: var(--cyan); } .s { color: #e3c272; } .n { color: #b8d58c; }
+.out-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+
+/* ---- loader drawer ---- */
+.drawer { margin-bottom: 12px; }
+.drawer textarea { width: 100%; min-height: 220px; background: #08131a; border: 1px solid var(--line); border-radius: 8px; padding: 10px; font-family: var(--f-mono); font-size: 12px; resize: vertical; }
+.drawer .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.msg { font-size: 12px; }
+.msg.ok { color: #b8d58c; } .msg.err { color: var(--danger); }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<header class="top">
+  <div class="brand">
+    <h1>Árvore de Packs</h1>
+    <p>Cada pack é uma tecnologia. Escolha os que o seu app precisa e os pré-requisitos entram junto. O JSON ao lado é o trecho <code>packs</code> do model.json resultante.</p>
+    <p class="note" id="src">Lendo catálogo…</p>
+  </div>
+  <div class="stats" aria-live="polite">
+    <div class="stat"><b id="stPacks">0</b><span>packs no app</span></div>
+    <div class="stat"><b id="stConcepts">0</b><span>conceitos herdados</span></div>
+    <div class="stat"><b id="stProposed">0</b><span>a construir</span></div>
+  </div>
+</header>
+
+<div class="toolbar">
+  <input id="q" class="search" type="search" placeholder="Buscar pack ou conceito (ex.: Appointment)" aria-label="Buscar pack ou conceito">
+  <div class="seg" role="group" aria-label="Filtrar por situação">
+    <button id="fAll" aria-pressed="true" data-f="all">Todos</button>
+    <button id="fEx" aria-pressed="false" data-f="existing">Existentes</button>
+    <button id="fPr" aria-pressed="false" data-f="proposed">Propostos</button>
+  </div>
+  <button class="btn" id="btnLoad">Carregar JSON</button>
+  <button class="btn" id="btnClear">Limpar seleção</button>
+  <div class="legend">
+    <span><i class="lg-ex"></i>existe</span>
+    <span><i class="lg-pr"></i>proposto</span>
+    <span><i class="lg-sel"></i>escolhido</span>
+    <span><i class="lg-auto"></i>pré-requisito</span>
+  </div>
+</div>
+
+<section class="drawer card" id="drawer" hidden>
+  <div class="eyebrow">Entrada</div>
+  <p class="note" style="margin-top:0">Cole um <b>catálogo</b> (objeto com <code>packs[]</code> contendo <code>id</code>, <code>name</code>, <code>lane</code>, <code>requires</code>…) para trocar a árvore, ou um <b>model.json</b> (com <code>packs[].$ref</code>/<code>as</code>) para marcar os packs que ele já usa.</p>
+  <textarea id="jsonIn" spellcheck="false" aria-label="JSON de entrada"></textarea>
+  <div class="row">
+    <button class="btn gold" id="btnApply">Aplicar</button>
+    <button class="btn" id="btnShowCat">Mostrar catálogo atual</button>
+    <label class="btn" for="file">Abrir arquivo…</label>
+    <input id="file" type="file" accept=".json,application/json" hidden>
+    <button class="btn" id="btnClose">Fechar</button>
+    <span class="msg" id="msg" role="status"></span>
+  </div>
+</section>
+
+<div class="layout">
+  <div class="tree-wrap" id="treeWrap"><div class="canvas" id="canvas"></div></div>
+  <aside class="codex">
+    <div class="card" id="detail"></div>
+    <div class="card">
+      <div class="out-head">
+        <div><div class="eyebrow" style="margin:0">Saída</div><h2>Trecho do model.json</h2></div>
+        <button class="btn" id="btnCopy">Copiar</button>
+      </div>
+      <pre class="json" id="out"></pre>
+      <p class="note" id="outNote"></p>
+    </div>
+  </aside>
+</div>
+
+<script>
+/* ===================== Catalog =====================
+   Read from pack-catalog.json, published next to this page. Today it is a hand-written dummy for
+   planning; later the same format is emitted by the generator script from the real pack.json files. */
+const CATALOG_URL = "pack-catalog.json";
+
+
+/* ===================== state ===================== */
+const NW = 206, NH = 60, COLW = 248, ERA_H = 58, LABEL_W = 136, GAP = 14, LANE_PAD = 18;
+let cat, byId, depth, dependents;
+const state = { explicit: new Set(["dental", "payments"]), focus: "dental", hover: null, filter: "all", q: "" };
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+
+function prepare(c) {
+  if (!c || !Array.isArray(c.packs) || !c.packs.length) throw new Error("O catálogo precisa de um array packs com pelo menos um item.");
+  const ids = new Map();
+  c.packs.forEach((p, i) => {
+    if (!p || typeof p.id !== "string" || !p.id) throw new Error(`packs[${i}] não tem id.`);
+    if (ids.has(p.id)) throw new Error(`O id "${p.id}" aparece duas vezes.`);
+    p.name = p.name || p.id; p.requires = p.requires || []; p.concepts = p.concepts || [];
+    p.status = p.status === "existing" ? "existing" : "proposed"; p.lane = p.lane || "other";
+    ids.set(p.id, p);
+  });
+  c.packs.forEach((p) => p.requires.forEach((r) => { if (!ids.has(r)) throw new Error(`"${p.id}" requer "${r}", que não está no catálogo.`); }));
+  const lanes = (c.lanes || []).slice();
+  const known = new Set(lanes.map((l) => l.id));
+  c.packs.forEach((p) => { if (!known.has(p.lane)) { known.add(p.lane); lanes.push({ id: p.lane, name: p.lane, color: "#9aa9ad" }); } });
+  const d = new Map(), visiting = new Set();
+  const dep = (id) => {
+    if (d.has(id)) return d.get(id);
+    if (visiting.has(id)) throw new Error(`Dependência circular passando por "${id}".`);
+    visiting.add(id);
+    const v = ids.get(id).requires.reduce((m, r) => Math.max(m, dep(r) + 1), 0);
+    visiting.delete(id); d.set(id, v); return v;
+  };
+  c.packs.forEach((p) => dep(p.id));
+  const dn = new Map(c.packs.map((p) => [p.id, []]));
+  c.packs.forEach((p) => p.requires.forEach((r) => dn.get(r).push(p.id)));
+  return { c: { ...c, lanes }, ids, d, dn };
+}
+
+function load(c, keepSel) {
+  const r = prepare(c);
+  cat = r.c; byId = r.ids; depth = r.d; dependents = r.dn;
+  if (!keepSel) { state.explicit = new Set(); state.focus = cat.packs[0].id; }
+  state.explicit = new Set([...state.explicit].filter((id) => byId.has(id)));
+  if (!byId.has(state.focus)) state.focus = cat.packs[0].id;
+  build(); update();
+}
+
+function effective() {
+  const eff = new Map();
+  const walk = (id) => { byId.get(id).requires.forEach((r) => { if (!eff.has(r)) { eff.set(r, "auto"); walk(r); } }); };
+  state.explicit.forEach((id) => eff.set(id, "explicit"));
+  state.explicit.forEach(walk);
+  return eff;
+}
+function ancestors(id, acc = new Set()) { byId.get(id).requires.forEach((r) => { if (!acc.has(r)) { acc.add(r); ancestors(r, acc); } }); return acc; }
+
+/* ===================== tree ===================== */
+const pos = new Map();
+function build() {
+  const canvas = $("canvas"); canvas.innerHTML = ""; pos.clear();
+  const maxD = Math.max(...depth.values());
+  const width = LABEL_W + (maxD + 1) * COLW + 20;
+  let y = ERA_H;
+  const eras = cat.eras || [];
+  for (let i = 0; i <= maxD; i++) {
+    const e = document.createElement("div"); e.className = "era";
+    e.style.left = (LABEL_W + i * COLW) + "px"; e.style.width = COLW + "px";
+    e.innerHTML = `<b>Era ${ROMAN[i] || i + 1}</b><span>${esc(eras[i] || "")}</span>`;
+    canvas.appendChild(e);
+    const col = document.createElement("div"); col.className = "era-col"; col.style.left = (LABEL_W + i * COLW) + "px"; canvas.appendChild(col);
+  }
+  const corner = document.createElement("div"); corner.className = "era"; corner.style.left = "0"; corner.style.width = LABEL_W + "px";
+  corner.innerHTML = `<span>Domínio</span>`; canvas.appendChild(corner);
+
+  cat.lanes.forEach((lane) => {
+    const packs = cat.packs.filter((p) => p.lane === lane.id);
+    if (!packs.length) return;
+    const cells = new Map();
+    packs.forEach((p) => { const k = depth.get(p.id); if (!cells.has(k)) cells.set(k, []); cells.get(k).push(p); });
+    const rows = Math.max(...[...cells.values()].map((a) => a.length));
+    const h = LANE_PAD * 2 + rows * NH + (rows - 1) * GAP;
+    const L = document.createElement("div"); L.className = "lane"; L.style.top = y + "px"; L.style.height = h + "px";
+    L.style.setProperty("--lh", lane.color || "#9aa9ad");
+    L.innerHTML = `<div class="lane-label">${esc(lane.name)}</div>`; canvas.appendChild(L);
+    cells.forEach((arr, k) => arr.forEach((p, i) => {
+      const x = LABEL_W + k * COLW + (COLW - NW) / 2;
+      const ny = y + LANE_PAD + i * (NH + GAP) + ((rows - arr.length) * (NH + GAP)) / 2;
+      pos.set(p.id, { x, y: ny });
+      const b = document.createElement("button");
+      b.className = "node" + (p.status === "proposed" ? " proposed" : "");
+      b.dataset.id = p.id; b.style.left = x + "px"; b.style.top = ny + "px"; b.style.width = NW + "px"; b.style.height = NH + "px";
+      b.style.setProperty("--lh", lane.color || "#9aa9ad");
+      const meta = p.status === "existing" ? `v${esc(p.version || "?")}` : `<span class="p">proposto</span>`;
+      b.innerHTML = `<span class="hex" aria-hidden="true">${esc(p.glyph || p.name.slice(0, 2))}</span><span class="nm"><b>${esc(p.name)}</b><small>${p.concepts.length} conceitos · ${meta}</small></span>`;
+      b.setAttribute("aria-label", `${p.name}, ${p.status === "existing" ? "existe" : "proposto"}`);
+      b.addEventListener("click", () => toggle(p.id));
+      b.addEventListener("mouseenter", () => { state.hover = p.id; paint(); });
+      b.addEventListener("mouseleave", () => { state.hover = null; paint(); });
+      b.addEventListener("focus", () => { state.hover = p.id; paint(); });
+      b.addEventListener("blur", () => { state.hover = null; paint(); });
+      canvas.appendChild(b);
+    }));
+    y += h;
+  });
+  canvas.style.width = width + "px"; canvas.style.height = (y + 10) + "px";
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS, "svg"); svg.setAttribute("class", "edges");
+  svg.setAttribute("width", width); svg.setAttribute("height", y + 10);
+  cat.packs.forEach((p) => p.requires.forEach((r) => {
+    const a = pos.get(r), b = pos.get(p.id);
+    const x1 = a.x + NW, y1 = a.y + NH / 2, x2 = b.x, y2 = b.y + NH / 2, dx = Math.max(30, (x2 - x1) / 2);
+    const path = document.createElementNS(svgNS, "path");
+    path.setAttribute("d", `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`);
+    path.setAttribute("class", "edge"); path.dataset.from = r; path.dataset.to = p.id;
+    svg.appendChild(path);
+  }));
+  canvas.prepend(svg);
+}
+
+function matches(p) {
+  if (state.filter !== "all" && p.status !== state.filter) return false;
+  const q = state.q.trim().toLowerCase();
+  if (!q) return true;
+  return [p.id, p.name, p.summary || "", ...p.concepts].some((t) => t.toLowerCase().includes(q));
+}
+
+function paint() {
+  const eff = effective();
+  const hov = state.hover ? ancestors(state.hover) : new Set();
+  document.querySelectorAll(".node").forEach((n) => {
+    const id = n.dataset.id, p = byId.get(id), e = eff.get(id);
+    n.classList.toggle("sel", e === "explicit");
+    n.classList.toggle("auto", e === "auto");
+    n.classList.toggle("focus", id === state.focus);
+    n.classList.toggle("prereq", hov.has(id));
+    n.classList.toggle("dim", !matches(p));
+    n.setAttribute("aria-pressed", e === "explicit" ? "true" : "false");
+  });
+  document.querySelectorAll(".edge").forEach((e) => {
+    const f = e.dataset.from, t = e.dataset.to;
+    e.classList.toggle("lit", eff.has(f) && eff.has(t));
+    e.classList.toggle("hot", !!state.hover && (t === state.hover || hov.has(t)) && hov.has(f));
+    e.classList.toggle("dim", !matches(byId.get(f)) || !matches(byId.get(t)));
+  });
+}
+
+function toggle(id) {
+  if (state.explicit.has(id)) state.explicit.delete(id); else state.explicit.add(id);
+  state.focus = id; update();
+}
+
+/* ===================== codex ===================== */
+function renderDetail() {
+  const p = byId.get(state.focus); if (!p) return;
+  const lane = cat.lanes.find((l) => l.id === p.lane);
+  const eff = effective(), e = eff.get(p.id);
+  const d = depth.get(p.id);
+  const req = p.requires.map((r) => `<button class="chip link" data-go="${esc(r)}">${esc(byId.get(r).name)}</button>`).join("") || `<span class="note" style="margin:0">Nenhum. Pode ser o primeiro.</span>`;
+  const unl = dependents.get(p.id).map((r) => `<button class="chip link" data-go="${esc(r)}">${esc(byId.get(r).name)}</button>`).join("") || `<span class="note" style="margin:0">Nenhum ainda.</span>`;
+  const specs = (p.specializations || []).map(([a, b]) => `<div>${esc(a)} <em>especializa</em> ${esc(b)}</div>`).join("");
+  const caps = (p.capabilities || []).map((c) => `<span class="chip">${esc(c)}</span>`).join("");
+  const stateTxt = e === "explicit" ? "Escolhido por você." : e === "auto" ? "Incluído porque outro pack escolhido depende dele." : "Fora do app.";
+  $("detail").innerHTML = `
+    <div class="eyebrow"><span>${esc(lane ? lane.name : p.lane)}</span><span>· Era ${ROMAN[d] || d + 1}</span>
+      ${p.status === "existing" ? `<span class="pill ex">existe · v${esc(p.version || "?")}</span>` : `<span class="pill pr">proposto</span>`}</div>
+    <h2>${esc(p.name)}</h2>
+    <p class="summary">${esc(p.summary || "")}</p>
+    <div class="sec"><h3>Conceitos (${p.concepts.length})</h3><div class="chips">${p.concepts.map((c) => `<span class="chip">${esc(c)}</span>`).join("")}</div></div>
+    ${specs ? `<div class="sec"><h3>Especializações</h3><div class="spec">${specs}</div></div>` : ""}
+    ${caps ? `<div class="sec"><h3>Precisa da capacidade</h3><div class="chips">${caps}</div></div>` : ""}
+    <div class="sec"><h3>Pré-requisitos</h3><div class="chips">${req}</div></div>
+    <div class="sec"><h3>Desbloqueia</h3><div class="chips">${unl}</div></div>
+    <div class="actions">
+      <button class="btn ${state.explicit.has(p.id) ? "" : "gold"}" id="btnToggle">${state.explicit.has(p.id) ? "Remover do app" : "Adicionar ao app"}</button>
+    </div>
+    <p class="note">${stateTxt}</p>`;
+  $("btnToggle").onclick = () => toggle(p.id);
+  $("detail").querySelectorAll("[data-go]").forEach((b) => b.onclick = () => { state.focus = b.dataset.go; update(); scrollToNode(b.dataset.go); });
+}
+
+function scrollToNode(id) {
+  const p = pos.get(id), w = $("treeWrap"); if (!p) return;
+  w.scrollTo({ left: Math.max(0, p.x - w.clientWidth / 2 + NW / 2), top: Math.max(0, p.y - w.clientHeight / 2), behavior: "smooth" });
+}
+
+const alias = (id) => id.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
+let lastJson = "";
+function renderOutput() {
+  const eff = effective();
+  const list = [...eff.keys()].map((id) => byId.get(id))
+    .sort((a, b) => depth.get(a.id) - depth.get(b.id) || a.id.localeCompare(b.id));
+  const out = { packs: list.map((p) => ({ "$ref": `packs/${p.id}/pack.json`, "as": alias(p.id) })) };
+  const caps = [...new Set(list.flatMap((p) => p.capabilities || []))].sort();
+  if (caps.length) out.provides = { capabilities: caps };
+  lastJson = JSON.stringify(out, null, 2);
+  $("out").innerHTML = esc(lastJson)
+    .replace(/(&quot;[^&]*?&quot;)(\s*:)/g, '<span class="k">$1</span>$2')
+    .replace(/(:\s*)(&quot;.*?&quot;)/g, '$1<span class="s">$2</span>');
+  const proposed = list.filter((p) => p.status === "proposed");
+  const concepts = list.reduce((n, p) => n + p.concepts.length, 0);
+  $("stPacks").textContent = list.length; $("stConcepts").textContent = concepts; $("stProposed").textContent = proposed.length;
+  $("outNote").innerHTML = !list.length ? "Nenhum pack escolhido. Clique em um nó da árvore."
+    : (proposed.length ? `<span class="warn">${proposed.length} destes packs ainda não existem:</span> ${proposed.map((p) => esc(p.id)).join(", ")}. O trecho só gera depois que forem construídos.` : "Todos os packs existem hoje em NPDevContract/packs.")
+      + (caps.length ? ` O app precisa fornecer as capacidades listadas em <code>provides</code>.` : "");
+}
+
+function update() { paint(); renderDetail(); renderOutput(); }
+
+/* ===================== input JSON ===================== */
+function setMsg(t, ok) { const m = $("msg"); m.textContent = t; m.className = "msg " + (ok ? "ok" : "err"); }
+function applyJson(text) {
+  let j;
+  try { j = JSON.parse(text); } catch (e) { setMsg("JSON inválido: " + e.message, false); return; }
+  const isCatalog = j && Array.isArray(j.packs) && j.packs.some((p) => p && typeof p.id === "string");
+  const isModel = j && Array.isArray(j.packs) && j.packs.some((p) => p && (p.$ref || p.as || p.from));
+  try {
+    if (isCatalog) { load(j, true); setMsg(`Catálogo aplicado: ${j.packs.length} packs.`, true); return; }
+    if (isModel) {
+      const found = [], missing = [];
+      j.packs.forEach((r) => {
+        const m = /packs\/([^/]+)\/pack\.json/.exec(r.$ref || "") || /\/\/packs\/([^@]+)@/.exec(r.from || "");
+        const cand = m ? m[1] : null;
+        const hit = (cand && byId.has(cand) && cand) || cat.packs.find((p) => alias(p.id) === r.as || p.id === r.as)?.id;
+        if (hit) found.push(hit); else missing.push(r.as || r.$ref || r.from || "?");
+      });
+      state.explicit = new Set(found); if (found[0]) state.focus = found[0];
+      update();
+      setMsg(`Model lido: ${found.length} packs marcados` + (missing.length ? `. Fora do catálogo: ${missing.join(", ")}.` : "."), !missing.length);
+      return;
+    }
+    setMsg("Não reconheci o formato. Esperado: catálogo (packs[].id) ou model.json (packs[].$ref).", false);
+  } catch (e) { setMsg(e.message, false); }
+}
+
+$("btnLoad").onclick = () => { const d = $("drawer"); d.hidden = !d.hidden; if (!d.hidden && !$("jsonIn").value && lastJson) $("jsonIn").value = JSON.stringify({ packs: JSON.parse(lastJson).packs }, null, 2); };
+$("btnClose").onclick = () => { $("drawer").hidden = true; };
+$("btnApply").onclick = () => applyJson($("jsonIn").value);
+$("btnShowCat").onclick = () => {
+  if (!cat) { setMsg("Nenhum catálogo carregado ainda.", false); return; }
+  const clean = { catalogVersion: cat.catalogVersion, source: cat.source, eras: cat.eras, lanes: cat.lanes, packs: cat.packs.map(({ id, name, glyph, lane, status, version, summary, concepts, specializations, requires, capabilities }) =>
+    Object.fromEntries(Object.entries({ id, name, glyph, lane, status, version, summary, concepts, specializations, requires, capabilities }).filter(([, v]) => v !== undefined))) };
+  $("jsonIn").value = JSON.stringify(clean, null, 2); setMsg("Catálogo atual no campo. Edite e aplique.", true);
+};
+$("file").onchange = (e) => { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { $("jsonIn").value = r.result; applyJson(r.result); }; r.readAsText(f); e.target.value = ""; };
+$("btnClear").onclick = () => { state.explicit.clear(); update(); };
+$("q").addEventListener("input", (e) => { state.q = e.target.value; paint(); });
+document.querySelectorAll(".seg button").forEach((b) => b.onclick = () => {
+  state.filter = b.dataset.f; document.querySelectorAll(".seg button").forEach((x) => x.setAttribute("aria-pressed", x === b ? "true" : "false")); paint();
+});
+$("btnCopy").onclick = async () => {
+  try { await navigator.clipboard.writeText(lastJson); $("btnCopy").textContent = "Copiado"; }
+  catch { const r = document.createRange(); r.selectNodeContents($("out")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $("btnCopy").textContent = "Selecionado, use Ctrl+C"; }
+  setTimeout(() => { $("btnCopy").textContent = "Copiar"; }, 1800);
+};
+
+function showSource(c, from) {
+  const s = c.source || {};
+  const kind = s.kind === "generated" ? "gerado" : s.kind === "dummy" ? "dummy" : (s.kind || "sem origem");
+  $("src").innerHTML = `Catálogo: <b>${esc(s.label || from)}</b> <span class="pill ${s.kind === "generated" ? "ex" : "pr"}">${esc(kind)}</span>${s.updated ? ` · ${esc(s.updated)}` : ""}`;
+}
+const _load = load;
+load = (c, keep) => { _load(c, keep); showSource(c, "JSON colado"); };
+
+fetch(CATALOG_URL, { cache: "no-store" })
+  .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+  .then((c) => { load(c, true); showSource(c, CATALOG_URL); requestAnimationFrame(() => scrollToNode(byId.has("clinic") ? "clinic" : cat.packs[0].id)); })
+  .catch((e) => {
+    $("src").innerHTML = `<span class="warn">Não consegui ler ${CATALOG_URL} (${esc(e.message)}). Use Carregar JSON para colar um catálogo.</span>`;
+    $("drawer").hidden = false;
+  });
+</script>

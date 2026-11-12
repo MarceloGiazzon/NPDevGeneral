@@ -1,0 +1,772 @@
+{
+  "catalogVersion": 1,
+  "source": {
+    "kind": "dummy",
+    "label": "Catálogo dummy de planejamento",
+    "note": "Escrito à mão para planejamento. Será substituído pelo JSON gerado a partir dos pack.json reais + roadmap dos propostos.",
+    "updated": "2026-11-11"
+  },
+  "eras": [
+    "Fundação",
+    "Base",
+    "Núcleo",
+    "Domínio",
+    "Vertical",
+    "Especialidade",
+    "Nicho"
+  ],
+  "lanes": [
+    {
+      "id": "platform",
+      "name": "Plataforma",
+      "color": "#8fa9bf"
+    },
+    {
+      "id": "people",
+      "name": "Pessoas e organizações",
+      "color": "#dc9c6e"
+    },
+    {
+      "id": "ops",
+      "name": "Operação interna",
+      "color": "#aebb6e"
+    },
+    {
+      "id": "commerce",
+      "name": "Comércio e finanças",
+      "color": "#d8b25c"
+    },
+    {
+      "id": "supply",
+      "name": "Suprimentos e logística",
+      "color": "#82b67c"
+    },
+    {
+      "id": "services",
+      "name": "Serviços e agenda",
+      "color": "#74c7d0"
+    },
+    {
+      "id": "health",
+      "name": "Saúde",
+      "color": "#e48383"
+    },
+    {
+      "id": "beauty",
+      "name": "Beleza e bem-estar",
+      "color": "#c891d8"
+    }
+  ],
+  "packs": [
+    {
+      "id": "identity",
+      "name": "Identidade",
+      "glyph": "Id",
+      "lane": "platform",
+      "status": "existing",
+      "version": "1.4.0",
+      "summary": "Usuários, papéis e suas atribuições, com sessões, MFA, identidades externas e redefinição de senha.",
+      "concepts": [
+        "User",
+        "Role",
+        "UserRole",
+        "PasswordResetToken",
+        "UserRolePermission",
+        "ExternalIdentity",
+        "UserMfa",
+        "UserSession"
+      ],
+      "requires": []
+    },
+    {
+      "id": "workspace",
+      "name": "Workspace",
+      "glyph": "Ws",
+      "lane": "platform",
+      "status": "existing",
+      "version": "1.1.0",
+      "summary": "Menus de navegação e valores de propriedades do app.",
+      "concepts": [
+        "Menu",
+        "PropertyValue"
+      ],
+      "requires": []
+    },
+    {
+      "id": "tracing",
+      "name": "Rastreamento",
+      "glyph": "Tr",
+      "lane": "platform",
+      "status": "existing",
+      "version": "1.0.2",
+      "summary": "Retenção declarativa de traces, painel de leitura e redação segura de dados sensíveis.",
+      "concepts": [
+        "TraceEntry"
+      ],
+      "requires": []
+    },
+    {
+      "id": "notification",
+      "name": "Notificações",
+      "glyph": "Nt",
+      "lane": "platform",
+      "status": "existing",
+      "version": "1.0.0",
+      "summary": "Trilha de auditoria das mensagens enviadas e um contrato plugável de envio de e-mail.",
+      "concepts": [
+        "OutgoingMessage"
+      ],
+      "requires": [],
+      "capabilities": [
+        "sendMail"
+      ]
+    },
+    {
+      "id": "br-core",
+      "name": "Brasil essencial",
+      "glyph": "BR",
+      "lane": "platform",
+      "status": "proposed",
+      "summary": "Tipos de campo validados para o Brasil: CPF, CNPJ, CEP com endereço, telefone e chave Pix. Usado por quase todo pack de negócio daqui.",
+      "concepts": [
+        "TaxId (CPF/CNPJ)",
+        "BrAddress (CEP)",
+        "PixKey"
+      ],
+      "requires": []
+    },
+    {
+      "id": "documents",
+      "name": "Documentos",
+      "glyph": "Dc",
+      "lane": "platform",
+      "status": "proposed",
+      "summary": "Arquivos anexados a qualquer registro, com versões e quem enviou.",
+      "concepts": [
+        "Document",
+        "DocumentVersion",
+        "Attachment"
+      ],
+      "requires": [
+        "identity"
+      ]
+    },
+    {
+      "id": "consent-lgpd",
+      "name": "Consentimento LGPD",
+      "glyph": "Lg",
+      "lane": "platform",
+      "status": "proposed",
+      "summary": "Termos, aceite registrado por pessoa e pedidos do titular (acesso, correção, exclusão).",
+      "concepts": [
+        "ConsentTerm",
+        "ConsentGrant",
+        "DataSubjectRequest"
+      ],
+      "requires": [
+        "person"
+      ]
+    },
+    {
+      "id": "person",
+      "name": "Pessoa e perfis",
+      "glyph": "Pe",
+      "lane": "people",
+      "status": "proposed",
+      "summary": "Uma pessoa, vários perfis. A mesma Person pode ser paciente, cliente e entregador. Os verticais especializam PersonProfile em vez de criar outro tipo de usuário.",
+      "concepts": [
+        "Person",
+        "PersonProfile"
+      ],
+      "requires": [
+        "identity",
+        "br-core"
+      ]
+    },
+    {
+      "id": "contacts",
+      "name": "Contatos",
+      "glyph": "Ct",
+      "lane": "people",
+      "status": "existing",
+      "version": "1.0.0",
+      "summary": "Organizações (clientes, fornecedores, parceiros), as pessoas que trabalham nelas e seus endereços.",
+      "concepts": [
+        "Organization",
+        "Contact",
+        "Address"
+      ],
+      "requires": []
+    },
+    {
+      "id": "staff",
+      "name": "Equipe",
+      "glyph": "Eq",
+      "lane": "people",
+      "status": "proposed",
+      "summary": "Funcionários, times e turnos. Base para escalas, comissões e quem atende.",
+      "concepts": [
+        "Employee",
+        "Team",
+        "Shift"
+      ],
+      "specializations": [
+        [
+          "Employee",
+          "PersonProfile"
+        ]
+      ],
+      "requires": [
+        "person"
+      ]
+    },
+    {
+      "id": "approvals",
+      "name": "Aprovações",
+      "glyph": "Ap",
+      "lane": "ops",
+      "status": "existing",
+      "version": "1.0.0",
+      "summary": "Quem tem o papel requester abre um pedido de aprovação, e o aprovador decide.",
+      "concepts": [
+        "ApprovalRequest",
+        "ApprovalDecision"
+      ],
+      "requires": []
+    },
+    {
+      "id": "leave",
+      "name": "Férias e ausências",
+      "glyph": "Fé",
+      "lane": "ops",
+      "status": "existing",
+      "version": "1.0.0",
+      "summary": "Tipos de ausência e pedidos decididos por um aprovador.",
+      "concepts": [
+        "LeaveType",
+        "LeaveRequest"
+      ],
+      "requires": [
+        "approvals"
+      ]
+    },
+    {
+      "id": "helpdesk",
+      "name": "Helpdesk",
+      "glyph": "Hd",
+      "lane": "ops",
+      "status": "existing",
+      "version": "1.0.0",
+      "summary": "Agentes, categorias, chamados e comentários.",
+      "concepts": [
+        "HelpdeskAgent",
+        "TicketCategory",
+        "Ticket",
+        "TicketComment"
+      ],
+      "requires": []
+    },
+    {
+      "id": "catalog",
+      "name": "Catálogo de produtos",
+      "glyph": "Cp",
+      "lane": "commerce",
+      "status": "proposed",
+      "summary": "Cadastro mestre de produtos e serviços, com variações e categorias. Vendas, estoque e verticais apontam para ele.",
+      "concepts": [
+        "Product",
+        "ProductVariant",
+        "ProductCategory"
+      ],
+      "requires": []
+    },
+    {
+      "id": "sales",
+      "name": "Vendas",
+      "glyph": "Vd",
+      "lane": "commerce",
+      "status": "existing",
+      "version": "1.0.0",
+      "summary": "Clientes, lista de preços, pedidos de venda com itens e faturas.",
+      "concepts": [
+        "Customer",
+        "SalesItem",
+        "SalesOrder",
+        "SalesOrderLine",
+        "Invoice"
+      ],
+      "requires": []
+    },
+    {
+      "id": "payments",
+      "name": "Pagamentos",
+      "glyph": "Pg",
+      "lane": "commerce",
+      "status": "proposed",
+      "summary": "Cobranças, meios de pagamento e estornos, com Pix nativo. O gateway real entra como capacidade plugável.",
+      "concepts": [
+        "Payment",
+        "PaymentMethod",
+        "PixCharge",
+        "Refund"
+      ],
+      "requires": [
+        "br-core"
+      ],
+      "capabilities": [
+        "paymentGateway"
+      ]
+    },
+    {
+      "id": "price-lists",
+      "name": "Listas de preço",
+      "glyph": "Lp",
+      "lane": "commerce",
+      "status": "proposed",
+      "summary": "Várias tabelas de preço por canal, cliente ou período, com regras de desconto.",
+      "concepts": [
+        "PriceList",
+        "PriceListEntry",
+        "DiscountRule"
+      ],
+      "requires": [
+        "sales",
+        "catalog"
+      ]
+    },
+    {
+      "id": "fiscal-br",
+      "name": "Nota fiscal",
+      "glyph": "NF",
+      "lane": "commerce",
+      "status": "proposed",
+      "summary": "NF-e e NFS-e a partir de pedidos e faturas, com perfil tributário. A emissão real é uma capacidade plugável.",
+      "concepts": [
+        "FiscalDocument",
+        "FiscalItem",
+        "TaxProfile"
+      ],
+      "requires": [
+        "sales",
+        "br-core"
+      ],
+      "capabilities": [
+        "fiscalAuthority"
+      ]
+    },
+    {
+      "id": "subscriptions",
+      "name": "Assinaturas",
+      "glyph": "As",
+      "lane": "commerce",
+      "status": "proposed",
+      "summary": "Planos, assinaturas e ciclos de cobrança recorrente.",
+      "concepts": [
+        "Plan",
+        "Subscription",
+        "BillingCycle"
+      ],
+      "requires": [
+        "payments",
+        "contacts"
+      ]
+    },
+    {
+      "id": "retail-store",
+      "name": "Loja física",
+      "glyph": "Lj",
+      "lane": "commerce",
+      "status": "proposed",
+      "summary": "Ponto de venda, caixa e venda de balcão, ligada ao estoque.",
+      "concepts": [
+        "PointOfSale",
+        "CashRegister",
+        "StoreSale"
+      ],
+      "specializations": [
+        [
+          "StoreSale",
+          "SalesOrder"
+        ]
+      ],
+      "requires": [
+        "sales",
+        "catalog",
+        "inventory",
+        "payments"
+      ]
+    },
+    {
+      "id": "inventory",
+      "name": "Estoque",
+      "glyph": "Es",
+      "lane": "supply",
+      "status": "existing",
+      "version": "1.0.0",
+      "summary": "Armazéns, posições, produtos e um razão de movimentações.",
+      "concepts": [
+        "Warehouse",
+        "StorageLocation",
+        "Product",
+        "StockMovement"
+      ],
+      "requires": []
+    },
+    {
+      "id": "purchasing",
+      "name": "Compras",
+      "glyph": "Co",
+      "lane": "supply",
+      "status": "existing",
+      "version": "1.0.0",
+      "summary": "Fornecedores, itens compráveis, pedidos de compra com itens e contas a pagar.",
+      "concepts": [
+        "Supplier",
+        "PurchaseItem",
+        "PurchaseOrder",
+        "PurchaseOrderLine",
+        "SupplierBill"
+      ],
+      "requires": []
+    },
+    {
+      "id": "providers",
+      "name": "Prestadores",
+      "glyph": "Pr",
+      "lane": "supply",
+      "status": "proposed",
+      "summary": "Prestadores de serviço, contratos e níveis de serviço acordados.",
+      "concepts": [
+        "Provider",
+        "ProviderContract",
+        "ServiceLevel"
+      ],
+      "requires": [
+        "contacts"
+      ]
+    },
+    {
+      "id": "storage-units",
+      "name": "Unidades de armazenagem",
+      "glyph": "Ua",
+      "lane": "supply",
+      "status": "proposed",
+      "summary": "Paletes, caixas e contêineres rastreados como unidades, com seus movimentos.",
+      "concepts": [
+        "StorageUnit",
+        "UnitContent",
+        "UnitMovement"
+      ],
+      "requires": [
+        "inventory"
+      ]
+    },
+    {
+      "id": "shipping",
+      "name": "Expedição",
+      "glyph": "Ex",
+      "lane": "supply",
+      "status": "proposed",
+      "summary": "Remessas, manifestos de carga e transportadoras.",
+      "concepts": [
+        "Shipment",
+        "Manifest",
+        "ManifestLine",
+        "Carrier"
+      ],
+      "requires": [
+        "inventory",
+        "contacts"
+      ]
+    },
+    {
+      "id": "delivery",
+      "name": "Delivery",
+      "glyph": "Dl",
+      "lane": "supply",
+      "status": "proposed",
+      "summary": "Pedido de entrega, entregador, rota e comprovante de entrega.",
+      "concepts": [
+        "DeliveryOrder",
+        "Courier",
+        "DeliveryRoute",
+        "ProofOfDelivery"
+      ],
+      "specializations": [
+        [
+          "Courier",
+          "PersonProfile"
+        ]
+      ],
+      "requires": [
+        "shipping",
+        "person",
+        "payments"
+      ]
+    },
+    {
+      "id": "food-delivery",
+      "name": "Delivery de comida",
+      "glyph": "Dc",
+      "lane": "supply",
+      "status": "proposed",
+      "summary": "Cardápio, adicionais e comanda de cozinha.",
+      "concepts": [
+        "MenuItem",
+        "MenuAddon",
+        "KitchenTicket"
+      ],
+      "specializations": [
+        [
+          "MenuItem",
+          "Product"
+        ],
+        [
+          "FoodOrder",
+          "DeliveryOrder"
+        ]
+      ],
+      "requires": [
+        "delivery",
+        "catalog"
+      ]
+    },
+    {
+      "id": "pharmacy-delivery",
+      "name": "Delivery de farmácia",
+      "glyph": "Df",
+      "lane": "supply",
+      "status": "proposed",
+      "summary": "Receita, item controlado e conferência na entrega.",
+      "concepts": [
+        "Prescription",
+        "ControlledItem",
+        "DispenseCheck"
+      ],
+      "specializations": [
+        [
+          "ControlledItem",
+          "Product"
+        ]
+      ],
+      "requires": [
+        "delivery",
+        "catalog",
+        "documents"
+      ]
+    },
+    {
+      "id": "scheduling",
+      "name": "Agenda",
+      "glyph": "Ag",
+      "lane": "services",
+      "status": "proposed",
+      "summary": "Recursos (pessoa, sala, equipamento), disponibilidade e reservas. Evita conflito de horário.",
+      "concepts": [
+        "Resource",
+        "Availability",
+        "Booking"
+      ],
+      "requires": [
+        "person"
+      ]
+    },
+    {
+      "id": "appointments",
+      "name": "Atendimentos e visitas",
+      "glyph": "At",
+      "lane": "services",
+      "status": "proposed",
+      "summary": "Agendamento com check-in, no-show e visita realizada. Todo vertical de serviço especializa Appointment.",
+      "concepts": [
+        "Appointment",
+        "Visit",
+        "CheckIn"
+      ],
+      "specializations": [
+        [
+          "Appointment",
+          "Booking"
+        ]
+      ],
+      "requires": [
+        "scheduling"
+      ]
+    },
+    {
+      "id": "field-service",
+      "name": "Serviço em campo",
+      "glyph": "Sc",
+      "lane": "services",
+      "status": "proposed",
+      "summary": "Ordem de serviço no endereço do cliente, relatório da visita e peças usadas.",
+      "concepts": [
+        "WorkOrder",
+        "VisitReport",
+        "PartUsed"
+      ],
+      "specializations": [
+        [
+          "WorkOrder",
+          "Appointment"
+        ]
+      ],
+      "requires": [
+        "appointments",
+        "inventory"
+      ]
+    },
+    {
+      "id": "clinic",
+      "name": "Clínica",
+      "glyph": "Cl",
+      "lane": "health",
+      "status": "proposed",
+      "summary": "Paciente, atendimento, evolução clínica e convênio. Base de todas as especialidades.",
+      "concepts": [
+        "PatientProfile",
+        "Attendance",
+        "ClinicalNote",
+        "HealthInsurance"
+      ],
+      "specializations": [
+        [
+          "PatientProfile",
+          "PersonProfile"
+        ],
+        [
+          "Attendance",
+          "Appointment"
+        ]
+      ],
+      "requires": [
+        "appointments",
+        "consent-lgpd",
+        "documents"
+      ]
+    },
+    {
+      "id": "dental",
+      "name": "Odontologia",
+      "glyph": "Od",
+      "lane": "health",
+      "status": "proposed",
+      "summary": "Odontograma, plano de tratamento e procedimento por dente.",
+      "concepts": [
+        "DentalAttendance",
+        "ToothChart",
+        "TreatmentPlan"
+      ],
+      "specializations": [
+        [
+          "DentalAttendance",
+          "Attendance"
+        ]
+      ],
+      "requires": [
+        "clinic"
+      ]
+    },
+    {
+      "id": "cardiology",
+      "name": "Cardiologia",
+      "glyph": "Ca",
+      "lane": "health",
+      "status": "proposed",
+      "summary": "Consulta cardiológica, ECG e escore de risco.",
+      "concepts": [
+        "CardioAttendance",
+        "EcgExam",
+        "RiskScore"
+      ],
+      "specializations": [
+        [
+          "CardioAttendance",
+          "Attendance"
+        ]
+      ],
+      "requires": [
+        "clinic"
+      ]
+    },
+    {
+      "id": "radiology",
+      "name": "Radiologia",
+      "glyph": "Rx",
+      "lane": "health",
+      "status": "proposed",
+      "summary": "Pedido de exame de imagem, execução e laudo.",
+      "concepts": [
+        "ImagingOrder",
+        "ImagingExam",
+        "RadiologyReport"
+      ],
+      "specializations": [
+        [
+          "ImagingExam",
+          "Attendance"
+        ]
+      ],
+      "requires": [
+        "clinic"
+      ]
+    },
+    {
+      "id": "beauty-salon",
+      "name": "Salão de beleza",
+      "glyph": "Sb",
+      "lane": "beauty",
+      "status": "proposed",
+      "summary": "Serviços, profissional, reserva de horário e comissão.",
+      "concepts": [
+        "BeautyService",
+        "Professional",
+        "ServiceBooking",
+        "Commission"
+      ],
+      "specializations": [
+        [
+          "BeautyService",
+          "Product"
+        ],
+        [
+          "Professional",
+          "PersonProfile"
+        ],
+        [
+          "ServiceBooking",
+          "Appointment"
+        ]
+      ],
+      "requires": [
+        "appointments",
+        "catalog",
+        "payments"
+      ]
+    },
+    {
+      "id": "aesthetics",
+      "name": "Estética",
+      "glyph": "Et",
+      "lane": "beauty",
+      "status": "proposed",
+      "summary": "Procedimento estético com termo de consentimento e fotos de antes e depois.",
+      "concepts": [
+        "AestheticProcedure",
+        "BeforeAfterPhoto",
+        "ProcedureConsent"
+      ],
+      "specializations": [
+        [
+          "AestheticProcedure",
+          "ServiceBooking"
+        ]
+      ],
+      "requires": [
+        "beauty-salon",
+        "consent-lgpd",
+        "documents"
+      ]
+    }
+  ]
+}
