@@ -989,6 +989,10 @@ pub async fn run_relay_start(
     if let Some(t) = target {
         args.extend(["--target", t]);
     }
+    // A change or a fix to an existing app may also carry a look, pages, menu and sample data (phase f4); a new app stays on the base phase.
+    if matches!(intent, "change" | "fix") {
+        args.extend(["--phase", "f4"]);
+    }
     if interview {
         args.push("--interview");
     }
@@ -3226,6 +3230,7 @@ mod relay_pipe_tests {
         assert!(has_pair(&argv, "--intent", "fix") && has_pair(&argv, "--app-dir", "some/app"), "{argv:?}");
         assert!(has_pair(&argv, "--new-app-name", "Loja") && has_pair(&argv, "--target", "claude"), "{argv:?}");
         assert!(has_pair(&argv, "--language", "Portuguese (Brazil)") && argv.iter().any(|a| a == "--interview"), "{argv:?}");
+        assert!(has_pair(&argv, "--phase", "f4"), "a fix of an app asks for phase f4: {argv:?}");
         assert_eq!(argv.last().map(String::as_str), Some("--json"), "{argv:?}");
         assert!(!argv.iter().any(|a| a.contains("Corrija") || a.contains("compilar")), "no content on argv: {argv:?}");
         for file in result["files"].as_array().unwrap() {
