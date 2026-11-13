@@ -38,7 +38,7 @@
     promptText: "",
     result: null, // the last answer the CLI checked (the READY one drives the preview)
     applied: null, // what relay_apply said
-    undone: false, // the applied answer was taken back: the CLI session is answer-received again, so "something else" must close it
+    undone: false, // the applied answer was taken back: the CLI session is answer-received again, so asking for another thing must close it
     busy: false,
     expanded: {}, // a finished step the user opened again
     scanned: false,
