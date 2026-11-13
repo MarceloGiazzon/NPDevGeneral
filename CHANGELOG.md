@@ -47,6 +47,13 @@ release. Ships in the next tag.
   which the AI already changes through `model.json` -- the one exception, found later with T4.3, is the app's theme choice
   (`ui.theme.name` / `ui.theme.choices`, a `config.json` default); a knob needs an existing CLI command that writes it before it
   earns an entry.
+- **The f4 prompt was measured with a new bench arm, and the bench found three defects in it** (REG-323, F4) -- `scripts/ai/bench/relay_f4_arm.py`
+  runs an f4 change through the real engine against one free model (smoke test: 5 cases, one run each; not a pass rate). With the new
+  text 4 of 5 cases were complete in the first round; without it no AI used a theme, page, menu or seed. Fixed: a repair follow-up
+  now says to resend EVERY file (it said `files=2` and, for a partial answer, "send only the model and the manifest", so an AI that fixed
+  a theme's contrast lost its page, menu and sample data); an app too big to send whole can now be changed by a look, page, menu or
+  sample data alone (an empty `npdev-elements.json` is accepted when other files carry the change; alone it is still refused); and
+  the prompt lists the colour names a theme may use. The Manager still never passes phase f4.
 - **The f4 prompt now tells a browser AI it may send themes, pages, a menu and sample data -- and the Manager shows the app-look change as an optional tick** (REG-323, F4) --
   every `--phase f4` change or fix prompt carries a short section after its file briefing: `themes/<id>.json` (with `basedOn`), `web/*.html|css|svg`
   plus `pages.json`, `menu.json`, `seeds/<id>.json`, and `npdev-config-proposal.json` as the way to choose the app's theme; each with an

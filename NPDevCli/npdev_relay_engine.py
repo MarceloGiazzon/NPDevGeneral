@@ -834,7 +834,8 @@ def _expand_elements(session: dict, number: int, result: dict) -> bool:
             composed = files_mod.compose(model_path)
     except files_mod.TreeError:
         return base_moved("app-model-unreadable")
-    expanded = elements_mod.expand(base, elements, ri.load_policy(), composed=composed)
+    carries_change = any(f["path"] not in ("npdev-elements.json", "npdev-submission.json") for f in allowed)
+    expanded = elements_mod.expand(base, elements, ri.load_policy(), composed=composed, allow_empty=carries_change)
     result["findings"].extend(expanded["findings"])
     if not expanded["ok"]:
         return needs_fix(*expanded["errors"])
@@ -991,6 +992,13 @@ def _fresh_chat(session: dict, number: int, errors: str, budget: int | None = No
                                  extra=extra)
 
 
+def _f4_repair(session: dict):
+    """The f4 repair texts for a phase-f4 change/fix (its answer is several files checked as a whole), else None."""
+    if session.get("phase") == "f4" and session.get("intent") in ("change", "fix"):
+        return rp.load_f4_prompts()
+    return None
+
+
 CUT_OFF_OUTCOMES = ("TRUNCATED", "ELIDED")
 
 
@@ -1032,7 +1040,7 @@ def _attach_next(session: dict, number: int, result: dict) -> None:
     if outcome in SAME_CHAT_OUTCOMES:
         budget = _cutoff_budget(session, result)
         text = rp.compose_same_chat(rp.load_prompts(), code=session["code"], rnd=number + 1, outcome=outcome,
-                                    errors=errors, budget=budget, intent=session.get("intent"))
+                                    errors=errors, budget=budget, intent=session.get("intent"), p4=_f4_repair(session))
         result["next"] = {"kind": "copy-prompt", "messageId": outcome, "prompt": text,
                           "freshChatPrompt": _fresh_chat(session, number, errors, budget)}
         return

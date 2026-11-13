@@ -176,6 +176,19 @@ detail: |
   says the settings were applied when `configApplied` is non-empty. Tested: 5 new check-manager-ui-render.mjs checks, 3 new
   test_relay_config tests, 16 test_relay_prompts_f4 tests. NOT proved: Apply of a config change on the REAL Manager window (the render
   test stubs the CLI), and nothing was booted.
+  F4 PROMPT MEASURED (2026-11-12): new bench arm scripts/ai/bench/relay_f4_arm.py (the relay arm only creates apps) plays the person
+  for an f4 CHANGE through the real engine.start/ingest, 5 cases (whole / split / above-budget upsert x a look+page+menu+seed ask, a
+  look-only ask, a data-only ask), each with and without the `more` text. ONE model (nvidia/nemotron-3-ultra-550b-a55b, free), ONE run
+  per cell: a smoke test, not a pass rate. Result on the final text (f4-run-5): 4/5 complete in round 1, the upsert case READY without
+  the theme selection. Control (previous f4 prompt, f4-run-4): no AI ever sent a theme/page/menu/seed, the look went into model.json,
+  3/5 never READY. FOUND BY THE BENCH AND FIXED: (1) a repair follow-up in f4 said `files=2`, 'the COMPLETE corrected files' and, for
+  PARTIAL, 'send model.json and npdev-submission.json, do not send other files' -> an AI fixing a theme contrast error resent only the
+  theme and lost its page/menu/seed (now relay-prompts-f4.json `repair`/`repairPartial`, only for an f4 change/fix; every other phase is
+  byte-identical); (2) for an app too big to send whole, a change that is only a look/page/menu/seed had no valid answer (the prompt
+  forbade model.json and an empty npdev-elements.json was refused) -> `expand(allow_empty=)`: empty elements are accepted when the
+  answer's other files are the change; (3) the AI invented theme colours (accentHover) and picked a status yellow at 3.04:1 -> the text
+  lists the 13 colour names and says to send only the colours that change. Bench artifacts: <BuildRoot>/ai-bench/relay-f4/f4-run-{4,5}.
+  NOT measured: another model, a chat UI, a second run, a non-English ask. The Manager still never passes phase f4.
   Suggested order (each its own commit, each behind phase f4): T4.2 element upsert (DONE above), T4.1 fragments (DONE, incl. composer),
   T4.5 config proposals (DONE, allowlist empty by finding), T4.3 themes/pages/seed/translations, T4.4 code quarantine (with the owner).
 resolution: >-

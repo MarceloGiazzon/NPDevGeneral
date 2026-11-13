@@ -120,13 +120,26 @@ def compose_round1(p: dict, *, code: str, intent: str, ask: str, language: str, 
     return _wrap(p, code, 1, "\n\n".join(parts))
 
 
+F4_FILES_EXPECTED = "<the number of files you send>"   # the measured text says files=2, which is wrong for a several-file f4 answer
+F4_REPAIR_OUTCOMES = ("NEEDS_FIX", "PARTIAL", "BAD_JSON", "ELIDED", "TRUNCATED")
+
+
 def compose_same_chat(p: dict, *, code: str, rnd: int, outcome: str, errors: str = "",
-                      budget: int | None = None, intent: str | None = None) -> str | None:
+                      budget: int | None = None, intent: str | None = None, p4: dict | None = None) -> str | None:
     """The short follow-up for the same chat, or None when the outcome needs the USER, not the AI
     (QUESTIONS, LIMIT_REACHED, STALE_ROUND, WRONG_SESSION, PROMPT_ECHO, READY).
 
     budget: given only for a REPEATED cut-off of a new app (TRUNCATED/ELIDED): asking the same chat for the same
-    size again would be cut at the same place, so the follow-up asks for a smaller core instead."""
+    size again would be cut at the same place, so the follow-up asks for a smaller core instead.
+
+    p4: given for a phase-f4 change/fix (relay-prompts-f4.json). Its answer is several files checked as a whole, so a follow-up
+    must say "send every file again" (`repair`), and PARTIAL's measured text, which tells the AI to send only the model and the
+    manifest, is replaced by `repairPartial`. Without p4 nothing changes: every other phase keeps the measured text."""
+    if p4 and outcome in F4_REPAIR_OUTCOMES and intent != "pack" and not (budget and outcome in ("TRUNCATED", "ELIDED")):
+        if outcome == "PARTIAL":
+            return _wrap(p, code, rnd, _t(p4["repairPartial"], code=code, round=rnd, errors=clip(errors), files=F4_FILES_EXPECTED))
+        base = p["sameChat"][outcome]
+        return _wrap(p, code, rnd, _t(base, code=code, round=rnd, errors=clip(errors), files_expected=F4_FILES_EXPECTED) + "\n\n" + p4["repair"])
     if budget and outcome in ("TRUNCATED", "ELIDED"):
         return _wrap(p, code, rnd, _t(p["smaller"], code=code, round=rnd, budget=budget, files_expected=2))
     template = (p["pack"]["sameChat"].get(outcome) if intent == "pack" else None) or p["sameChat"].get(outcome)

@@ -67,6 +67,10 @@
     "scripts/ai/bench/relay_arm.py": {
       "invocation": "orchestrated"
     },
+    "scripts/ai/bench/relay_f4_arm.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
     "scripts/ai/bench/run_bench.py": {
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"

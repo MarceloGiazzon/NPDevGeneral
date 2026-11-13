@@ -190,7 +190,7 @@ def _in_fragment_error(key: str, name: str, how: str) -> str:
             "send the complete model.json and that file instead")
 
 
-def expand(base, elements, policy: dict, *, composed=None) -> dict:
+def expand(base, elements, policy: dict, *, composed=None, allow_empty: bool = False) -> dict:
     """Apply `elements` to `base`.
 
     base      the model as the AI was shown it (the app's model.json, parsed).
@@ -198,6 +198,9 @@ def expand(base, elements, policy: dict, *, composed=None) -> dict:
     policy    relay-ingest-policy.json (its `elements` section).
     composed  optional, for an app made of several files: the one model they compose into. Elements that live there
               and not in `base` are kept in a file of their own and are refused (a clear error), never duplicated.
+    allow_empty  an elements file that changes nothing is an error (the AI mistook what it must send) UNLESS the answer carries
+              other files that are the change (a theme, a page, a menu, sample data): then the model stays as it is. Without it
+              a theme-only change to an app too big to send whole had NO way to be expressed (bench f4-run-4, f4-all-big).
 
     Returns {"ok", "model", "errors", "findings", "changes", "manifest"}; `model` is None when ok is False.
     `manifest` = what the AI's own npdev-submission.json would say about the removals and renames of CONCEPTS (the
@@ -224,8 +227,11 @@ def expand(base, elements, policy: dict, *, composed=None) -> dict:
     removals = _parse_removals(elements, cfg, errors, findings)
     renames = _parse_renames(elements, errors)
     if not (upserts or removals or renames) and not errors:
-        errors.append("npdev-elements.json - it changes nothing (no upsert, remove or renames) - send the elements "
-                      "to create or change")
+        if allow_empty:   # the answer's other files (a theme, a page, a menu, sample data) are the change: the model stays as it is
+            findings.append(_finding("elements-empty", "info"))
+        else:
+            errors.append("npdev-elements.json - it changes nothing (no upsert, remove or renames) - send the elements "
+                          "to create or change")
     if errors:
         return failed()
 
