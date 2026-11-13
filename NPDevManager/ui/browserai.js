@@ -38,6 +38,7 @@
     promptText: "",
     result: null, // the last answer the CLI checked (the READY one drives the preview)
     applied: null, // what relay_apply said
+    undone: false, // the applied answer was taken back: the CLI session is answer-received again, so "something else" must close it
     busy: false,
     expanded: {}, // a finished step the user opened again
     scanned: false,
@@ -961,6 +962,7 @@
         return note("browserai-apply-note", why || "The change could not be applied. Nothing was changed.", true);
       }
       S.applied = r;
+      S.undone = false;
       conversationClosed(S.code);
       note("browserai-apply-note", ""); // "Applying…" must not stay behind the folded step
       showDone(r);
@@ -1247,6 +1249,7 @@
         return note("browserai-progress", WENT_WRONG, true);
       }
       if (r && r.ok === true) {
+        S.undone = true;
         $("browserai-undo").hidden = true;
         note("browserai-launch", "The app still shows the change until you update it.");
         showLaunchButtons({ rebuild: !!S.builtAppDir });
@@ -1296,6 +1299,7 @@
     S.promptText = "";
     S.result = null;
     S.applied = null;
+    S.undone = false;
     S.launchToken++; // a build still running goes on, but no longer draws here
     S.launching = false;
     S.builtAppDir = null;
@@ -1452,7 +1456,8 @@
     $("browserai-outcome-button").addEventListener("click", onOutcomeButton);
     $("browserai-apply").addEventListener("click", onApply);
     $("browserai-else").addEventListener("click", () => startOver(true));
-    $("browserai-again").addEventListener("click", () => startOver(false));
+    // After a plain apply the conversation is already closed; after an Undo it is open again, so give it up.
+    $("browserai-again").addEventListener("click", () => startOver(S.undone));
     $("browserai-rebuild").addEventListener("click", launch);
     $("browserai-fix").addEventListener("click", onFix);
     $("browserai-open").addEventListener("click", onOpenApp);

@@ -1392,6 +1392,9 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   });
   await page.click("#browserai-again");
   await page.waitForTimeout(250);
+  // an Undo put the answer back to answer-received in the CLI, so "something else" afterwards gives that conversation up
+  check("browser AI: 'Ask for something else' after an Undo closes that conversation in the CLI",
+    (await page.evaluate(() => window.__relayAborts.length)) === 1, JSON.stringify(await page.evaluate(() => window.__relayAborts)));
   check("browser AI: starting over empties the rounds list", !(await shown("#browserai-rounds-wrap")) && (await page.$$eval("#browserai-rounds li", (l) => l.length)) === 0, "");
   check("browser AI: starting over re-reads the list, so the app just made can be picked for the next change",
     (await page.$$eval("#browserai-app option", (o) => o.map((x) => x.textContent))).includes("freshly-made"), "");
@@ -1405,7 +1408,7 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   await page.click("#browserai-else");
   await page.waitForTimeout(200);
   check("browser AI: 'Ask for something else' on a preview closes that conversation",
-    (await page.evaluate(() => window.__relayAborts.length)) === 1 && (await shown("#browserai-ask")), "");
+    (await page.evaluate(() => window.__relayAborts.length)) === 2 && (await shown("#browserai-ask")), "");
 
   // REG-323 F4: what the AI asked for OUTSIDE the model (the app's look) is an OPTIONAL tick the CLI describes: it starts unticked,
   // never gates Apply, only an applicable one is a box (the rest is told as a line), and only the ticked one is sent back.
