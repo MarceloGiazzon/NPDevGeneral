@@ -6,6 +6,10 @@ one-line entry here, in the same commit that makes the change. While NPDev has n
 (owner, 2026-11-12) a change ships without an `npdev migrate` codemod; this repo's own models are
 migrated directly in the same commit. Earlier entries name the codemods written before that.
 
+## 2026-11-14 — `sensitive: true` is a runtime guarantee (REG-339)
+
+**What changes.** A field marked `sensitive` with no `access.read` rule of its own is omitted from every generated read, list and query response for every caller, administrators included (it was only redacted in audit trails, agent tools and search). Declaring `access.read` on the field is the explicit grant that returns it to whoever passes the rule. **Migrated:** dsl-conformance-max `WidgetOrder.customerEmail` (the owner key) now declares `access.read`; the sensitive-field probe asserts the value is never returned.
+
 ## 2026-11-14 — default deny: a model with roles must say who may touch every concept (REG-339)
 
 **What changes.** When a model declares `roles[]`, every concept (except system concepts and the built-in identity/workspace/tracing packs) needs a role grant in `roles[].concepts`, an `access` read/write rule, or an explicit `"access": {"read": "true", "write": "true"}` (open on purpose); otherwise validation fails with "Concept X has no read/write rule and roles exist". A model with no roles keeps today's authenticated access and gets one warning naming the concepts. The generated permission manifest agrees: such a concept is super-user only. The literals `true`/`false` are now valid `access.read` rules for aggregate queries. **Migrated:** dsl-conformance-max (own concepts opened on purpose, pack concepts granted to WarehouseManager), dom-sales/dom-purchasing (contacts::Contact/Address follow Organization's grants), pigmentampas (Brewery/Cap: Member read, Curator full), AppGen WmsOffice (26 concepts opened on purpose; owner to narrow).

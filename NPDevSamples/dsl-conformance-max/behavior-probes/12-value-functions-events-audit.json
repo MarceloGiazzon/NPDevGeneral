@@ -208,7 +208,7 @@
       "keywords": [
         "field.sensitive"
       ],
-      "description": "A sensitive field (ShelfLayout.keeperEmail) is stored and read back in clear, but its value never reaches the audit trail: the CRUD_CREATE audit row's fieldDiff shows keeperEmail as *** -> *** while an ordinary field (name) of the same row is recorded in clear, and the raw secret appears nowhere in the audit response. GET /api/audit needs READ_AUDIT (the run's ADMIN key).",
+      "description": "A sensitive field (ShelfLayout.keeperEmail) is stored but NEVER returned by a read (FORM P0-T5: no field read rule means omitted for every caller), and its value never reaches the audit trail: the CRUD_CREATE audit row's fieldDiff shows keeperEmail as *** -> *** while an ordinary field (name) of the same row is recorded in clear, and the raw secret appears nowhere in the audit response. GET /api/audit needs READ_AUDIT (the run's ADMIN key).",
       "steps": [
         {
           "name": "create with a sensitive value",
@@ -228,14 +228,12 @@
           }
         },
         {
-          "name": "record keeps the value in clear",
+          "name": "the read never returns the sensitive value (runtime guarantee, no field read rule)",
           "method": "GET",
           "path": "/api/shelf_layouts/${lid}",
           "expect": {
             "status": 200,
-            "json": {
-              "$.keeperEmail": "secret-keeper@example.test"
-            }
+            "notText": "secret-keeper@example.test"
           }
         },
         {

@@ -280,6 +280,7 @@
           "type": "string",
           "required": true,
           "sensitive": true,
+          "access": { "read": "customerEmail == $user.id || $user.isSystem" },
           "ui": { "label": "Customer email" }
         },
         {

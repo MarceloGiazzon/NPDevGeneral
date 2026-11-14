@@ -138,7 +138,10 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
                 schema == null ? null : schema.getDefaultValue(),
                 schema == null ? null : schema.getDefaultExpression(),
                 schema == null ? null : schema.getDerivedExpression(),
-                false,
+                // FORM P0-T5 (REG-339): `sensitive: true` is a runtime guarantee. A sensitive field with no read
+                // rule of its own is omitted from every gateway read/list/query response; declaring
+                // `access.read` on the field is the explicit grant that brings it back for whoever passes the rule.
+                field.isSensitive() && (field.getAccess() == null || !hasText(field.getAccess().getRead())),
                 field.getReferenceTarget(),
                 fieldAccessRulesOf(field.getAccess())
         );

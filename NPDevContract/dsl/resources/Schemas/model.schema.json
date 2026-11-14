@@ -2154,7 +2154,7 @@
         "sensitive": {
           "type": "boolean",
           "default": false,
-          "description": "ADR-0009: marks this field for redaction before it may appear in any external-AI review pack (docs/adr/ADR-0009-external-ai-delegation.md). Authoring-time, and specific to pack building -- independent of the platform's runtime EventRedactionPolicy family. Redaction is by FIELD NAME and applies globally: marking any concept's field sensitive redacts that key name in traces and event payloads across all concepts. Deliberately over-redacts rather than risk missing an occurrence."
+          "description": "ADR-0009: marks this field for redaction before it may appear in any external-AI review pack (docs/adr/ADR-0009-external-ai-delegation.md). Authoring-time, and specific to pack building -- independent of the platform's runtime EventRedactionPolicy family. Redaction is by FIELD NAME and applies globally: marking any concept's field sensitive redacts that key name in traces and event payloads across all concepts. Deliberately over-redacts rather than risk missing an occurrence. RUNTIME GUARANTEE (FORM P0-T5): a sensitive field with no `access.read` rule of its own is omitted from every generated read, list and query response for every caller, including administrators, is never offered to agent tools or search, and is redacted in audit trails. Declaring `access.read` on the field is the explicit grant that returns it to whoever passes the rule."
         },
         "connectable": {
           "type": "string",

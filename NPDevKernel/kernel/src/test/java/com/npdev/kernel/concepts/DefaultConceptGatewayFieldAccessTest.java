@@ -122,4 +122,60 @@ class DefaultConceptGatewayFieldAccessTest {
 
         assertEquals(1200, updated.data().get("salary"));
     }
+
+    // ---- FORM P0-T5 (REG-339): `sensitive: true` is a runtime guarantee ----
+
+    private static CompiledModel vaultModel(CompiledFieldAccess apiKeyAccess) {
+        CompiledConcept vault = new CompiledConcept(
+                "Vault", "Vault", "vaults",
+                List.of(
+                        new CompiledField("id", "string", "String", true, true, false),
+                        new CompiledField("label", "string", "String", false, false, false),
+                        new CompiledField(
+                                "apiKey", "string", "String", false, false, false,
+                                List.of(), null, null, null, null, List.of(), null, null, null, null,
+                                true, null, apiKeyAccess)
+                ),
+                List.of(), List.of(), null, null, null, null, List.of(), null
+        );
+        return new CompiledModel("test", "1.0.0", "1.0.0", Map.of(vault.getName(), vault));
+    }
+
+    @Test
+    void aSensitiveFieldWithNoReadRuleIsNeverReturnedToAnyCaller() {
+        DefaultConceptGateway gateway = DefaultConceptGateway.governedBy(new InMemoryConceptStore(), vaultModel(null));
+        gateway.save(new ConceptWriteRequest("Vault", "v-1", "tenant-a",
+                Map.of("id", "v-1", "label", "prod", "apiKey", "sk-live-123")), manager());
+
+        ConceptRecord read = gateway.read(new ConceptReadRequest("Vault", "v-1", "tenant-a"), manager()).orElseThrow();
+        assertFalse(read.data().containsKey("apiKey"), "sensitive, no read rule: omitted even for the manager");
+        assertEquals("prod", read.data().get("label"));
+        assertFalse(gateway.list(new ConceptListRequest("Vault", "tenant-a", null, null), manager()).get(0).data().containsKey("apiKey"));
+    }
+
+    @Test
+    void aSensitiveFieldWithAnExplicitReadRuleIsReturnedOnlyToWhoPassesIt() {
+        CompiledFieldAccess rule = new CompiledFieldAccess("$user.actorId == 'manager-1'", null);
+        DefaultConceptGateway gateway = DefaultConceptGateway.governedBy(new InMemoryConceptStore(), vaultModel(rule));
+        gateway.save(new ConceptWriteRequest("Vault", "v-1", "tenant-a",
+                Map.of("id", "v-1", "label", "prod", "apiKey", "sk-live-123")), manager());
+
+        assertEquals("sk-live-123",
+                gateway.read(new ConceptReadRequest("Vault", "v-1", "tenant-a"), manager()).orElseThrow().data().get("apiKey"));
+        assertFalse(gateway.read(new ConceptReadRequest("Vault", "v-1", "tenant-a"), nonManager()).orElseThrow()
+                .data().containsKey("apiKey"));
+    }
+
+    @Test
+    void anUpdateThroughTheGatewayDoesNotWipeAHiddenSensitiveField() {
+        InMemoryConceptStore store = new InMemoryConceptStore();
+        DefaultConceptGateway gateway = DefaultConceptGateway.governedBy(store, vaultModel(null));
+        gateway.save(new ConceptWriteRequest("Vault", "v-1", "tenant-a",
+                Map.of("id", "v-1", "label", "prod", "apiKey", "sk-live-123")), manager());
+        gateway.save(new ConceptWriteRequest("Vault", "v-1", "tenant-a",
+                Map.of("id", "v-1", "label", "renamed", "apiKey", "sk-live-123")), manager());
+
+        Object stored = store.findById("tenant-a", "Vault", "v-1").orElseThrow().data().get("apiKey");
+        assertEquals("sk-live-123", stored);
+    }
 }
