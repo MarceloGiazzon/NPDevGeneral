@@ -22,7 +22,11 @@
 .PARAMETER KeepRunning
     After the stages ran, leave the app and the three mocks up and print the URL and the logins the setup stage
     created, so you can open the app in a browser or call the API by hand. Pressing Enter stops everything this
-    script started. Interactive use only.
+    script started. Interactive use only (or pass -HoldSeconds).
+
+.PARAMETER HoldSeconds
+    With -KeepRunning: sleep this many seconds instead of waiting for Enter (Read-Host gets EOF when the script
+    runs in the background and would stop the app at once). 0 = wait for Enter.
 #>
 param(
     [string]$SampleId = "ride-hailing",
@@ -35,6 +39,7 @@ param(
     [switch]$ReuseBuild,
     [string]$ModelFile = "",
     [switch]$KeepRunning,
+    [int]$HoldSeconds = 0,
     [string]$ReportPath = "scripts/reports/out/ride-hailing-report.json"
 )
 
@@ -193,6 +198,21 @@ try {
     $report.stages.drive = if ($driveExit -eq 0) { "passed" } else { "failed (see $driveOut)" }
     $report.status = if ($driveExit -eq 0) { "passed" } else { "failed" }
     Write-JsonReport
+    if ($driveExit -eq 0 -and $Stages -eq "all") {
+        # FORM P0-T4: the NEGATIVE probe. 76 positive checks stayed green while a rider could read every password hash;
+        # this asks every role what it can see that it must NOT, against the expect file next to the sample.
+        Write-Section "Exposure matrix (what each role must NOT see)"
+        $expectFile = Join-Path $samplesRoot "$SampleId\exposure-expect.json"
+        $exposureOut = Join-Path $evidenceDir "exposure.json"
+        $env:NPDEV_PROBE_PASSWORD = "Ride-hailing-S2-pass-1"
+        & $py -I (Join-Path $repoRoot "scripts\quality\exposure_matrix.py") --base $baseUrl --app-dir $appRoot --admin-user admin `
+            --user admin --user disp1 --user rider1 --user driver1 --expect $expectFile --write-probe --out $exposureOut 2>&1 | Tee-Object -FilePath (Join-Path $evidenceDir "exposure.txt") | Out-Host
+        $exposureExit = $LASTEXITCODE
+        Remove-Item Env:\NPDEV_PROBE_PASSWORD -ErrorAction SilentlyContinue
+        $report.stages.exposure = if ($exposureExit -eq 0) { "passed" } else { "failed (see $exposureOut)" }
+        if ($exposureExit -ne 0) { $driveExit = $exposureExit; $report.status = "failed" }
+        Write-JsonReport
+    }
     if ($Stages -eq "all") {
         & $py (Join-Path $repoRoot "scripts\quality\cadence_state.py") record --id "ride-hailing-s2" --tier T1 --result $report.status 2>&1 | Out-Null
     }
@@ -204,7 +224,7 @@ try {
         Write-Host "App (browser / API) : $baseUrl"
         Write-Host "Logins from the setup stage (password Ride-hailing-S2-pass-1): admin, rider1, rider2, driver1, driver2, driver3, disp1"
         Write-Host "Mocks               : payments http://127.0.0.1:$PspPort/mock/log   push http://127.0.0.1:$PushPort   routes http://127.0.0.1:$RoutePort"
-        [void](Read-Host "Press Enter to stop the app and the mocks")
+        if ($HoldSeconds -gt 0) { Start-Sleep -Seconds $HoldSeconds } else { [void](Read-Host "Press Enter to stop the app and the mocks") }
     }
     if ($driveExit -ne 0) { throw "The ride-hailing acceptance run failed -- see $driveOut." }
     Write-Host "Ride-hailing acceptance green." -ForegroundColor Green

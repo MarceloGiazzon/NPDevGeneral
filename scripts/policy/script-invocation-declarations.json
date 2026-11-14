@@ -783,6 +783,9 @@
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"
     },
+    "scripts/quality/exposure_matrix.py": {
+      "invocation": "orchestrated"
+    },
     "scripts/quality/run-f6-showcase.ps1": {
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"

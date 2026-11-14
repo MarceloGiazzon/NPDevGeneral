@@ -1,0 +1,10 @@
+{
+  "_comment": "FORM P0-T4: what each role of the ride-hailing sample may see, checked by scripts/quality/exposure_matrix.py after the full acceptance run. '*' is the default for every route not listed: closed for everyone but admin, so a NEW concept stays closed until someone opens it on purpose.",
+  "rides":        { "disp1": "some", "rider1": "some", "driver1": "some" },
+  "payments":     { "disp1": "some", "rider1": "some", "driver1": "none" },
+  "riders":       { "disp1": "some", "rider1": "some", "driver1": "none" },
+  "drivers":      { "disp1": "some", "rider1": "none", "driver1": "some" },
+  "ride_offers":  { "disp1": "some", "rider1": "none", "driver1": "some" },
+  "zones":        { "disp1": "some", "rider1": "none", "driver1": "none" },
+  "*":            { "disp1": "none", "rider1": "none", "driver1": "none" }
+}
