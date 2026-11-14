@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Roles and users: {@code roles[].concepts} drives the static CRUD permission manifest. A concept
  * named by any role is granted only to the roles naming it, per operation ({@code read} covers
- * list); the built-in "user" role loses it. A concept no role names stays open to "user" AND to
+ * list); the built-in "user" role loses it. A concept no role names but with an access rule stays open to "user" AND to
  * every declared role, so a login holding only an app role needs no extra USER row.
  */
 class RuntimeApiEmitterRoleConceptGrantsTest {
@@ -37,7 +37,8 @@ class RuntimeApiEmitterRoleConceptGrantsTest {
               "dslVersion": "1.0.0",
               "version": "v1",
               "concepts": [
-                { "name": "Widget", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] },
+                { "name": "Widget", "access": { "read": "true", "write": "true" }, "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] },
+                { "name": "Orphan", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] },
                 { "name": "Mosaic", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
               ],
               "capabilities": [
@@ -93,6 +94,15 @@ class RuntimeApiEmitterRoleConceptGrantsTest {
         }
         assertTrue(hasGrant("event.publish", "member"),
                 "a declared role that may write must clear the mutation-event gate too: " + manifest);
+    }
+
+    /** FORM P0 (REG-339): roles exist, no role names the concept and it has no access rule -> super-user only. */
+    @Test
+    void aConceptWithNoRuleAndNoGrantIsClosedToEveryNonSuperUserRoleWhenRolesExist() {
+        for (String role : new String[]{"user", "member", "visitor", "auditor"}) {
+            assertFalse(hasGrant("read:orphan", role), role + ": " + manifest);
+            assertFalse(hasGrant("create:orphan", role), role + ": " + manifest);
+        }
     }
 
     private static boolean hasGrant(String permission, String role) {

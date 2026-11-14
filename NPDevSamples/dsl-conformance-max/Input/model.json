@@ -117,7 +117,12 @@
     {
       "name": "WarehouseManager",
       "grants": ["EXECUTE_FLOW", "READ_EXECUTIONS", "READ_FLOW_DEFINITIONS"],
-      "concepts": { "WidgetSupplier": ["read", "create", "update", "delete"] }
+      "concepts": { "WidgetSupplier": ["read", "create", "update", "delete"],
+      "billing::Invoice": ["read", "create", "update", "delete"],
+      "isolated-a::Ledger": ["read", "create", "update", "delete"],
+      "isolated-b::Ledger": ["read", "create", "update", "delete"],
+      "shipping::DeliveryAttempt": ["read", "create", "update", "delete"],
+      "shipping::Shipment": ["read", "create", "update", "delete"] }
     },
     {
       "name": "SupplierViewer",
@@ -229,7 +234,7 @@
       "events": [
         { "name": "ShelfLayoutRegistered", "mode": "create", "payload": [ { "name": "id", "type": "uuid" } ] }
       ],
-      "access": { "public": { "fields": ["name", "rows", "cols"] } }
+      "access": { "read": "true", "write": "true", "public": { "fields": ["name", "rows", "cols"] } }
     },
     {
       "name": "ShelfSlot",
@@ -243,7 +248,7 @@
         { "name": "entryId", "type": "reference", "required": true, "ui": { "label": "Catalogue entry" },
           "reference": { "target": "WidgetCatalogEntry", "displayField": "displayName" } }
       ],
-      "access": { "public": { "fields": ["row", "col", "entryId"], "scope": "aggregate" } }
+      "access": { "read": "true", "write": "true", "public": { "fields": ["row", "col", "entryId"], "scope": "aggregate" } }
     },
     {
       "name": "WidgetOrder",
@@ -372,7 +377,7 @@
       }
     },
     {
-      "name": "WidgetOrderLine",
+      "name": "WidgetOrderLine", "access": { "read": "true", "write": "true" },
       "truthLevel": "T2",
       "ui": {
         "label": "Widget order line"
@@ -439,7 +444,7 @@
       ]
     },
     {
-      "name": "WidgetOrderLineNote",
+      "name": "WidgetOrderLineNote", "access": { "read": "true", "write": "true" },
       "truthLevel": "T4",
       "ui": {
         "label": "Widget order line note"
@@ -461,7 +466,7 @@
       ]
     },
     {
-      "name": "WidgetOrderAudit",
+      "name": "WidgetOrderAudit", "access": { "read": "true", "write": "true" },
       "truthLevel": "T2",
       "ui": {
         "label": "Widget order audit"
@@ -536,6 +541,7 @@
         }
       ],
       "access": {
+        "read": "true", "write": "true",
         "public": {
           "where": "discontinued == false",
           "fields": ["sku", "displayName", "unitPrice"]
@@ -543,7 +549,7 @@
       }
     },
     {
-      "name": "PromotedWidgetCatalogEntry",
+      "name": "PromotedWidgetCatalogEntry", "access": { "read": "true", "write": "true" },
       "extends": "WidgetCatalogEntry",
       "truthLevel": "T2",
       "ui": {
@@ -567,7 +573,7 @@
       ]
     },
     {
-      "name": "WidgetShipmentEvent",
+      "name": "WidgetShipmentEvent", "access": { "read": "true", "write": "true" },
       "truthLevel": "T2",
       "ui": {
         "label": "Widget shipment event"
@@ -600,7 +606,7 @@
       ]
     },
     {
-      "name": "ConversionDemoCustomer",
+      "name": "ConversionDemoCustomer", "access": { "read": "true", "write": "true" },
       "truthLevel": "T2",
       "ui": { "label": "Conversion Demo Customer" },
       "fields": [
@@ -615,7 +621,7 @@
       ]
     },
     {
-      "name": "ConversionDemoOrder",
+      "name": "ConversionDemoOrder", "access": { "read": "true", "write": "true" },
       "truthLevel": "T2",
       "ui": { "label": "Conversion Demo Order" },
       "fields": [
@@ -630,7 +636,7 @@
       ]
     },
     {
-      "name": "ConversionDemoProduct",
+      "name": "ConversionDemoProduct", "access": { "read": "true", "write": "true" },
       "truthLevel": "T2",
       "ui": { "label": "Conversion Demo Product" },
       "fields": [
@@ -639,7 +645,7 @@
       ]
     },
     {
-      "name": "ConversionDemoOrderLine",
+      "name": "ConversionDemoOrderLine", "access": { "read": "true", "write": "true" },
       "truthLevel": "T2",
       "ui": { "label": "Conversion Demo Order Line" },
       "fields": [
@@ -660,7 +666,7 @@
       ]
     },
     {
-      "name": "WidgetShowcase",
+      "name": "WidgetShowcase", "access": { "read": "true", "write": "true" },
       "truthLevel": "T2",
       "ui": { "label": "Widget showcase" },
       "fields": [
@@ -721,7 +727,7 @@
       ]
     },
     {
-      "name": "WidgetPriceListEntry",
+      "name": "WidgetPriceListEntry", "access": { "read": "true", "write": "true" },
       "truthLevel": "T2",
       "temporal": true,
       "ui": { "label": "Widget price list entry" },
@@ -744,7 +750,7 @@
       ]
     },
     {
-      "name": "StockLocation",
+      "name": "StockLocation", "access": { "read": "true", "write": "true" },
       "truthLevel": "T2",
       "ui": { "label": "Stock location", "selectionTools": false },
       "fields": [
@@ -757,7 +763,7 @@
       ]
     },
     {
-      "name": "StockTransfer",
+      "name": "StockTransfer", "access": { "read": "true", "write": "true" },
       "truthLevel": "T2",
       "ui": { "label": "Stock transfer" },
       "fields": [
@@ -783,7 +789,7 @@
       }
     },
     {
-      "name": "StockTransferItem",
+      "name": "StockTransferItem", "access": { "read": "true", "write": "true" },
       "truthLevel": "T2",
       "ui": { "label": "Stock transfer item" },
       "fields": [
@@ -794,7 +800,7 @@
       ]
     },
     {
-      "name": "StockTransferPosition",
+      "name": "StockTransferPosition", "access": { "read": "true", "write": "true" },
       "truthLevel": "T2",
       "ui": { "label": "Stock transfer position" },
       "fields": [
@@ -814,7 +820,7 @@
       ]
     },
     {
-      "name": "WidgetEnforcementDemo",
+      "name": "WidgetEnforcementDemo", "access": { "read": "true", "write": "true" },
       "truthLevel": "T2",
       "ui": { "label": "Widget enforcement demo", "offlineWrite": true },
       "fields": [
@@ -892,7 +898,7 @@
       ]
     },
     {
-      "name": "WidgetBondAnchorDemo",
+      "name": "WidgetBondAnchorDemo", "access": { "read": "true", "write": "true" },
       "truthLevel": "T2",
       "ui": { "label": "Widget bond anchor demo", "description": "ENF-1: a connectable natural-key anchor (code). Unique per tenant -- a second tenant may reuse a code -- and the target of WidgetBondChildDemo.anchorCode via code." },
       "fields": [
@@ -902,7 +908,7 @@
       ]
     },
     {
-      "name": "WidgetBondChildDemo",
+      "name": "WidgetBondChildDemo", "access": { "read": "true", "write": "true" },
       "truthLevel": "T2",
       "ui": { "label": "Widget bond child demo" },
       "fields": [
@@ -913,7 +919,7 @@
       ]
     },
     {
-      "name": "WidgetRenameDemo",
+      "name": "WidgetRenameDemo", "access": { "read": "true", "write": "true" },
       "truthLevel": "T2",
       "ui": { "label": "Widget rename demo", "description": "ENF-1: model-revisions/rename-identity.json renames contactPhone by its uid alone and region by renamedFrom; 95-rename-identity-restart.json proves both columns keep their rows across the restart." },
       "fields": [
@@ -924,7 +930,7 @@
       ]
     },
     {
-      "name": "WidgetTableRenameDemo",
+      "name": "WidgetTableRenameDemo", "access": { "read": "true", "write": "true" },
       "truthLevel": "T2",
       "ui": { "label": "Widget table rename demo", "description": "ENF-1: renamed to WidgetTableRenamedDemo (renamedFrom) by model-revisions/rename-identity.json." },
       "fields": [
@@ -933,7 +939,7 @@
       ]
     },
     {
-      "name": "WidgetTableUidDemo",
+      "name": "WidgetTableUidDemo", "access": { "read": "true", "write": "true" },
       "truthLevel": "T2",
       "uid": "wtu00000000000001",
       "ui": { "label": "Widget table uid demo", "description": "ENF-1: renamed to WidgetTableUidRenamedDemo by its uid alone (no renamedFrom), and code to codeName by its field uid alone, by model-revisions/rename-identity.json." },
@@ -955,7 +961,7 @@
       "access": { "read": "true", "write": "true" }
     },
     {
-      "name": "LabelStats",
+      "name": "LabelStats", "access": { "read": "true", "write": "true" },
       "satelliteOf": "labeling::Label",
       "truthLevel": "T2",
       "ui": { "label": "Label stats", "description": "ENF-1: a satellite of the labeling pack's Label -- its own FK-linked table, one row per label. A live model reload refuses field changes on it (60-live-add-field.json)." },
@@ -967,7 +973,7 @@
       ]
     },
     {
-      "name": "WidgetReviewDemo",
+      "name": "WidgetReviewDemo", "access": { "read": "true", "write": "true" },
       "truthLevel": "T2",
       "ui": { "label": "Widget review demo" },
       "fields": [
@@ -1005,7 +1011,7 @@
       }
     },
     {
-      "name": "WidgetSeedDemo",
+      "name": "WidgetSeedDemo", "access": { "read": "true", "write": "true" },
       "truthLevel": "T2",
       "ui": { "label": "Widget seed demo" },
       "fields": [

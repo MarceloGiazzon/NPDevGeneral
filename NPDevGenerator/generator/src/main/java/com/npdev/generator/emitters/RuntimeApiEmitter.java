@@ -534,8 +534,17 @@ writer.writeRelative(
                 List<String> holders = new ArrayList<>();
                 Map<String, Set<String>> restriction = restrictedConcepts.get(conceptKey);
                 if (restriction == null) {
-                    holders.add("user");
-                    holders.addAll(declaredRoleKeys);
+                    // FORM P0 (REG-339), default deny: when the model declares roles, a concept that no role
+                    // names AND that has no access rule is super-user only (the validator already refuses such a
+                    // model; this keeps a concept added live, or a skipped validator, closed). A model without
+                    // roles, or a concept with an explicit access rule, keeps the open default.
+                    boolean hasAccessRule = concept.getAccess() != null
+                            && ((concept.getAccess().getRead() != null && !concept.getAccess().getRead().isBlank())
+                            || (concept.getAccess().getWrite() != null && !concept.getAccess().getWrite().isBlank()));
+                    if (declaredRoleKeys.isEmpty() || hasAccessRule) {
+                        holders.add("user");
+                        holders.addAll(declaredRoleKeys);
+                    }
                 } else {
                     restriction.forEach((roleKey, operations) -> {
                         if (operations.contains(operation)) {

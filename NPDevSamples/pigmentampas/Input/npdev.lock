@@ -1,24 +1,35 @@
 {
-  "schemaVersion" : "npdev-lock.v1",
-  "packs" : {
-    "identity" : {
-      "resolvedVersion" : "1.4.0",
-      "digest" : "sha256:d3e42c9c27eae8dcfd159605c38b4e847653a148c758dc8cbb7f8c237722b21a",
-      "sourcePath" : "sha256/d3e42c9c27eae8dcfd159605c38b4e847653a148c758dc8cbb7f8c237722b21a/pack.json",
-      "from" : "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/identity@identity-1.4.0"
+  "schemaVersion": "npdev-lock.v1",
+  "packs": {
+    "identity": {
+      "resolvedVersion": "1.5.0",
+      "digest": "sha256:c9c0e0b20f5d283e708b569e5792c7989a12b9a5b1f34e4768e2e59d9a933544",
+      "sourcePath": "sha256/c9c0e0b20f5d283e708b569e5792c7989a12b9a5b1f34e4768e2e59d9a933544/pack.json",
+      "from": "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/identity@identity-1.5.0",
+      "signature": {
+        "status": "unsigned",
+        "allowedUnsigned": true
+      }
     },
-    "tracing" : {
-      "resolvedVersion" : "1.0.2",
-      "digest" : "sha256:8040f3c6db4c8b138de3c4278e4df68379865333b97b5d0fd9f9717b796b9575",
-      "sourcePath" : "sha256/8040f3c6db4c8b138de3c4278e4df68379865333b97b5d0fd9f9717b796b9575/pack.json",
-      "from" : "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/tracing@tracing-1.0.2"
+    "tracing": {
+      "resolvedVersion": "1.0.2",
+      "digest": "sha256:0e666f641ff21acff2517b6f6bd4573ede4474f0f939190492a38c0021f2b8ed",
+      "sourcePath": "sha256/0e666f641ff21acff2517b6f6bd4573ede4474f0f939190492a38c0021f2b8ed/pack.json",
+      "from": "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/tracing@tracing-1.0.2",
+      "signature": {
+        "status": "unsigned",
+        "allowedUnsigned": true
+      }
     },
-    "workspace" : {
-      "resolvedVersion" : "1.1.0",
-      "digest" : "sha256:bbc08e6dad012455ec4b56469428864f0564ff099108ec7f0908c3d13a1400c8",
-      "sourcePath" : "sha256/bbc08e6dad012455ec4b56469428864f0564ff099108ec7f0908c3d13a1400c8/pack.json",
-      "migratedVersion" : "1.1.0",
-      "from" : "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/workspace@workspace-1.1.0"
+    "workspace": {
+      "resolvedVersion": "1.1.0",
+      "digest": "sha256:9f72e92331f806fac39242f6cf9115d9157d26b0892972440c6acd51f65382c1",
+      "sourcePath": "sha256/9f72e92331f806fac39242f6cf9115d9157d26b0892972440c6acd51f65382c1/pack.json",
+      "from": "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/workspace@workspace-1.1.0",
+      "signature": {
+        "status": "unsigned",
+        "allowedUnsigned": true
+      }
     }
   }
 }

@@ -33,8 +33,8 @@ class RoleGrantValidationTest {
                   "dslVersion": "1.0.0",
                   "version": "1.0",
                   "concepts": [
-                    { "name": "WorkOrder", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] },
-                    { "name": "Asset", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
+                    { "name": "WorkOrder", "access": { "read": "true", "write": "true" }, "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] },
+                    { "name": "Asset", "access": { "read": "true", "write": "true" }, "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
                   ],
                   "roles": %s
                 }

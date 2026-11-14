@@ -63,6 +63,58 @@ final class RoleValidation {
         }
     }
 
+    /** Built-in platform packs whose concepts are super-user only by construction (mirror of BuiltinPackComposer.BUILTIN_PACK_ALIASES). */
+    private static final Set<String> BUILTIN_PACK_IDS = Set.of("identity", "workspace", "tracing");
+
+    /**
+     * FORM P0 (REG-339), default deny. A model that declares {@code roles[]} must say who may touch every
+     * concept: a role's {@code concepts} grant, an {@code access} read/write rule, or an explicit
+     * {@code access: {read: "true", write: "true"}} (open on purpose). A concept with none of these used to
+     * be open to every signed-in user; now it is an error. A model with NO roles keeps today's
+     * authenticated access and gets one warning that names the concepts. System concepts and the built-in
+     * identity / workspace / tracing packs are exempt (platform-owned, super-user only).
+     */
+    static void validateDefaultDeny(ModelAst modelAst, List<String> errors, List<String> warnings) {
+        Set<String> grantedConcepts = new HashSet<>();
+        for (RoleAst role : modelAst.getRoles()) {
+            for (String concept : role.concepts().keySet()) {
+                grantedConcepts.add(normalize(concept));
+            }
+        }
+        List<String> unruled = new java.util.ArrayList<>();
+        for (ConceptAst concept : modelAst.getConcepts()) {
+            if (concept.isSystem()) {
+                continue;
+            }
+            if (concept.getOrigin() != null && BUILTIN_PACK_IDS.contains(concept.getOrigin().packId())) {
+                continue;
+            }
+            var access = concept.getAccess();
+            if (access != null && (hasText(access.getRead()) || hasText(access.getWrite()))) {
+                continue;
+            }
+            if (grantedConcepts.contains(normalize(concept.getName()))) {
+                continue;
+            }
+            unruled.add(concept.getName());
+        }
+        if (unruled.isEmpty()) {
+            return;
+        }
+        if (modelAst.getRoles().isEmpty()) {
+            warnings.add("Model declares no roles, so every signed-in user can read and write these concepts: "
+                    + String.join(", ", unruled)
+                    + " -- add roles[] with concept grants, or an access rule per concept, to restrict them");
+            return;
+        }
+        for (String name : unruled) {
+            errors.add("Concept " + name + " has no read/write rule and roles exist: add an access rule or a role grant, "
+                    + "or write \"access\": {\"read\": \"true\", \"write\": \"true\"} to open it on purpose"
+                    + " -- suggestedFix: add \"" + name + "\" to a role's concepts (for example "
+                    + "\"concepts\": {\"" + name + "\": [\"read\"]}) or give the concept an access block");
+        }
+    }
+
     private static void validateGrantName(String grant, String here, Map<String, ConceptAst> entitiesByLower,
                                           List<String> errors) {
         String upper = grant.trim().toUpperCase(Locale.ROOT);

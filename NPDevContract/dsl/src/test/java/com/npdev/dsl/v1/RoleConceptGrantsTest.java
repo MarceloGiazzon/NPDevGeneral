@@ -31,7 +31,7 @@ class RoleConceptGrantsTest {
     private static final String CONCEPTS = """
               "concepts": [
                 { "name": "Mosaic", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] },
-                { "name": "Cap", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
+                { "name": "Cap", "access": { "read": "true", "write": "true" }, "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
               ],
             """;
 

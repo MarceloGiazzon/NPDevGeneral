@@ -64,6 +64,18 @@
           "create",
           "update",
           "delete"
+        ],
+        "contacts::Contact": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ],
+        "contacts::Address": [
+          "read",
+          "create",
+          "update",
+          "delete"
         ]
       }
     },
@@ -94,6 +106,12 @@
         ],
         "products::Product": [
           "read"
+        ],
+        "contacts::Contact": [
+          "read"
+        ],
+        "contacts::Address": [
+          "read"
         ]
       }
     },
@@ -121,6 +139,12 @@
           "read"
         ],
         "products::Product": [
+          "read"
+        ],
+        "contacts::Contact": [
+          "read"
+        ],
+        "contacts::Address": [
           "read"
         ]
       }

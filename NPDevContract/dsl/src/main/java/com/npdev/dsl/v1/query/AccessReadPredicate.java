@@ -72,6 +72,14 @@ public final class AccessReadPredicate {
                 if (clause.isEmpty()) {
                     return Optional.empty();
                 }
+                // FORM P0: the literals true / false are the "open on purpose" and "closed" rules; they carry no row filter.
+                if (clause.equalsIgnoreCase("true")) {
+                    continue;
+                }
+                if (clause.equalsIgnoreCase("false")) {
+                    groupFalse = true;
+                    continue;
+                }
                 Matcher role = ROLE_CHECK.matcher(clause);
                 if (role.matches()) {
                     boolean holds = hasRole.test(role.group(2));

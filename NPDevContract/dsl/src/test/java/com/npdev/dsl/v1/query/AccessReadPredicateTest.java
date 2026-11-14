@@ -24,6 +24,14 @@ class AccessReadPredicateTest {
     }
 
     @Test
+    void theLiteralsTrueAndFalseAreTheOpenAndClosedRules() {
+        assertEquals(AccessReadPredicate.Kind.ALL, translate("true", "", false).kind());
+        assertEquals(AccessReadPredicate.Kind.NONE, translate("false", "", false).kind());
+        assertEquals("status != 'DRAFT'", translate("true && status != 'DRAFT'", "", false).where());
+        assertTrue(AccessReadPredicate.isTranslatable("true", ""));
+    }
+
+    @Test
     void joinPrefixIsAppliedToEveryClause() {
         assertEquals("mosaicId.ownerUsername == 'ana' || mosaicId.status != 'DRAFT'",
                 translate("ownerUsername == $user.id || status != 'DRAFT'", "mosaicId.", false).where());

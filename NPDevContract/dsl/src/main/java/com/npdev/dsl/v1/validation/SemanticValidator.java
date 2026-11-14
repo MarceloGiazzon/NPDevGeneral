@@ -159,6 +159,7 @@ public final class SemanticValidator {
         // and where, interaction predicates, procedure $var.field reads).
         ReferenceIntegrityValidation.validate(effectiveModel, errors);
         RoleValidation.validateRoles(effectiveModel, entitiesByLower, errors);
+        RoleValidation.validateDefaultDeny(effectiveModel, errors, semanticWarnings);
         WebhookValidation.validateWebhooks(effectiveModel, errors);
         HttpConnectorValidation.validate(effectiveModel, errors);
         SequenceValidation.validateSequences(effectiveModel, errors);
