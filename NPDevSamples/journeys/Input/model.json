@@ -11,18 +11,6 @@
   ],
   "concepts": [
     {
-      "name": "Credential",
-      "ui": { "label": "Credential" },
-      "fields": [
-        { "name": "id", "type": "uuid", "id": true, "required": true },
-        { "name": "userId", "type": "reference", "required": true, "unique": true,
-          "ui": { "label": "Identity user" },
-          "reference": { "target": "identity::User", "onDelete": "cascade" } },
-        { "name": "passwordHash", "type": "string", "required": true, "maxLength": 200,
-          "ui": { "label": "Password hash" } }
-      ]
-    },
-    {
       "name": "JourneyNote",
       "ui": { "label": "Journey note" },
       "fields": [

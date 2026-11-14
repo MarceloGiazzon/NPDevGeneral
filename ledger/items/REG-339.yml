@@ -1,0 +1,31 @@
+id: REG-339
+title: >-
+  Any signed-in user reads and writes every password hash: the jwt credential concept is an ordinary open app concept
+type: BUG
+severity: P0
+status: OPEN
+opened: 2026-11-13
+source: >-
+  Found 2026-11-13 in the ride-hailing sample with a real browser and REST (FORM plan P0). A signed-in RIDER gets every passwordHash from
+  GET /api/concepts/credentials and PUT /api/concepts/credentials/{id} on another user's row returns 200 (the test PUT wrote back the same
+  value). 76/76 positive acceptance checks stayed green: nothing tested what a role must NOT see.
+surface: generator/RuntimeAuthPropertiesEmitter, packs/identity, dsl/SemanticValidator, runtimehost/generic-crud
+detail: |
+  Root causes: (1) a concept with no `access` and no role grant is open to any authenticated user; (2) the credential store is platform state
+  modelled as app data; (3) RuntimeAuthPropertiesEmitter finds the credential table by SNIFFING for a field named passwordHash / senhaHash /
+  password / senha (HASH_FIELD_SUFFIXES), so with jwt the model MUST declare such a concept and nothing protects it; (4) no negative probe.
+  The same unprotected concept is declared in NPDevSamples/journeys, NPDevSamples/pigmentampas, NPDevSamples/ride-hailing and
+  AppGen/apps/_official/Pigmentampa. The login page offers "Create account", so anyone who can sign up reaches it. The full takeover (rewrite the
+  admin's hash, then log in) was not executed; every part of it was observed.
+  Fix (owner answered D4 on 2026-11-13: system concept in the identity pack): identity::Credential with "system": true, excluded from every
+  generated surface; the emitter points at it and the name sniffing is deleted; the validator refuses an app concept that carries a password hash;
+  default deny for a concept with no rule when roles exist; `sensitive` becomes a runtime guarantee; an exposure-matrix probe per sample.
+files:
+  - NPDevContract/packs/identity/pack.json
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RuntimeAuthPropertiesEmitter.java
+  - NPDevSamples/ride-hailing/Input/model.json
+  - NPDevSamples/journeys
+  - NPDevSamples/pigmentampas
+done_when: >-
+  credentials is not an endpoint any more (404 for admin and for a rider); no corpus model declares a credential concept; a model with roles and
+  an unruled concept fails validation; the exposure-matrix probe passes on ride-hailing and fails on the pre-fix build; journeys stay green.

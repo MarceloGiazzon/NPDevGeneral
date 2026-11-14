@@ -15,6 +15,7 @@ public final class ConceptAst extends EntityAst {
     private final boolean temporal;
     private final String uid;
     private final List<RollupAst> rollups;
+    private final boolean system;
 
     public ConceptAst(String name, List<FieldAst> fields, List<InvariantAst> invariants) {
         this(name, null, null, fields, invariants, List.of(), null, null, null, null, List.of());
@@ -314,6 +315,33 @@ public final class ConceptAst extends EntityAst {
             List<RollupAst> rollups,
             CollaborationAst collaboration
     ) {
+        this(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, truthLevel, module, indexes, access, renamedFrom, satelliteOf, origin, softDelete, temporal, uid, rollups, collaboration, false);
+    }
+
+    /** FORM P0: platform-owned (system) concept -- see isSystem. */
+    public ConceptAst(
+            String name,
+            String extendsName,
+            String specializesName,
+            List<FieldAst> fields,
+            List<InvariantAst> invariants,
+            List<EventAst> events,
+            LifecycleAst lifecycle,
+            PresentationMetadataAst ui,
+            TruthLevel truthLevel,
+            String module,
+            List<IndexAst> indexes,
+            ConceptAccessAst access,
+            String renamedFrom,
+            String satelliteOf,
+            OriginAst origin,
+            boolean softDelete,
+            boolean temporal,
+            String uid,
+            List<RollupAst> rollups,
+            CollaborationAst collaboration,
+            boolean system
+    ) {
         super(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, truthLevel);
         this.module = (module == null || module.isBlank()) ? null : module;
         this.indexes = indexes == null ? List.of() : List.copyOf(indexes);
@@ -326,6 +354,14 @@ public final class ConceptAst extends EntityAst {
         this.uid = uid;
         this.rollups = rollups == null ? List.of() : List.copyOf(rollups);
         this.collaboration = collaboration;
+        this.system = system;
+    }
+
+    /** FORM P0: true if the platform owns this concept (e.g. the identity pack's Credential). A system concept has
+     *  no generated REST route, menu entry, export, seed UI, agent tool or catalog entry; only platform code
+     *  (auth controllers) reads or writes it. Default false. */
+    public boolean isSystem() {
+        return system;
     }
 
     /** PROC-5/PROC-6: declared {@code collaboration} (comment thread / attachments on every record); null if none. */

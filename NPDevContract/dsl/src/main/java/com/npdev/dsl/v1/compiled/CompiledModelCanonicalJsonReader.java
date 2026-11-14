@@ -896,7 +896,8 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "uid"),
                 toRollups(node.get("rollups")),
                 toStringList(node.get("fieldOrder")),
-                toCollaboration(node.get("collaboration"))
+                toCollaboration(node.get("collaboration")),
+                booleanValue(node, "system")
         );
     }
 

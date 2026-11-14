@@ -371,6 +371,11 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             if (concept.getTableName() == null || concept.getTableName().isBlank()) {
                 continue;
             }
+            if (concept.isSystem()) {
+                // FORM P0: a platform-owned concept (the identity pack's Credential, reset tokens, MFA secrets,
+                // sessions) gets no REST route, menu entry, manifest entry or UI surface.
+                continue;
+            }
             idField(concept);
             out.add(concept);
         }

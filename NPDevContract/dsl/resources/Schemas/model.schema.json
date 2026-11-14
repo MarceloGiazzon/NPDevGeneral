@@ -1879,6 +1879,11 @@
           "default": false,
           "description": "R5.4: this concept's rows are never physically deleted. A generated delete flips a platform-managed `deletedAt` timestamp instead of removing the row; every generated read (list/page/aggregate/existsUnique/reference finder) excludes a row with `deletedAt` set, and a generated restore action clears it. A `unique:true` field (or compound-unique invariant) is enforced among live (non-deleted) rows only -- a value freed by a soft delete can be reused immediately."
         },
+        "system": {
+          "type": "boolean",
+          "default": false,
+          "description": "FORM P0: the platform owns this concept (for example the identity pack's Credential, which holds password hashes). A system concept gets NO generated REST route, menu entry, export/import, seed screen, agent/MCP tool or catalog listing; only platform code (the auth controllers) reads or writes it. Apps never declare one for credentials: the identity pack provides it, and a model concept carrying a password hash is a validation error."
+        },
         "temporal": {
           "type": "boolean",
           "default": false,

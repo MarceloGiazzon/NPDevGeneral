@@ -249,7 +249,8 @@ public final class ModelResolver {
                 concept.isTemporal(),
                 concept.getUid(),
                 concept.getRollups(),
-                concept.getCollaboration()
+                concept.getCollaboration(),
+                concept.isSystem()
         );
     }
 
@@ -356,7 +357,9 @@ public final class ModelResolver {
                 // reference that targets it.
                 specialization.getRollups(),
                 // PROC-5: the specialization's own declaration wins, else the base's carries over.
-                specialization.getCollaboration() != null ? specialization.getCollaboration() : base.getCollaboration()
+                specialization.getCollaboration() != null ? specialization.getCollaboration() : base.getCollaboration(),
+                // FORM P0: sticky-true, like softDelete -- a specialization cannot make a platform-owned concept public.
+                specialization.isSystem() || base.isSystem()
         );
     }
 

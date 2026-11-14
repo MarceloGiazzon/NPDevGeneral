@@ -2462,6 +2462,9 @@ public final class CompiledMetadataCanonicalJson {
 
     private static List<CompiledConcept> sortedConcepts(CompiledModel model) {
         List<CompiledConcept> concepts = new ArrayList<>(model.getConcepts());
+        // FORM P0: a platform-owned (system) concept is not part of the app-facing metadata catalogs
+        // (concepts / fields / references / actions ...), so no export, UI, agent or discovery surface lists it.
+        concepts.removeIf(CompiledConcept::isSystem);
         concepts.sort(Comparator.comparing(concept -> normalize(concept.getName())));
         return concepts;
     }

@@ -12,6 +12,7 @@ public final class CompiledConcept extends CompiledEntity {
     private final String satelliteOf;
     private final CompiledOrigin origin;
     private final boolean softDelete;
+    private final boolean system;
     private final boolean temporal;
     private final String uid;
     private final List<CompiledRollup> rollups;
@@ -338,6 +339,34 @@ public final class CompiledConcept extends CompiledEntity {
             List<String> fieldOrder,
             CompiledCollaboration collaboration
     ) {
+        this(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel, module, indexes, access, renamedFrom, satelliteOf, origin, softDelete, temporal, uid, rollups, fieldOrder, collaboration, false);
+    }
+
+    /** FORM P0: platform-owned (system) concept -- see isSystem. */
+    public CompiledConcept(
+            String name,
+            String className,
+            String tableName,
+            List<CompiledField> fields,
+            List<String> expressionInvariants,
+            List<CompiledInvariant> invariants,
+            CompiledLifecycle lifecycle,
+            CompiledPresentationMetadata ui,
+            String truthLevel,
+            String module,
+            List<CompiledIndex> indexes,
+            CompiledConceptAccess access,
+            String renamedFrom,
+            String satelliteOf,
+            CompiledOrigin origin,
+            boolean softDelete,
+            boolean temporal,
+            String uid,
+            List<CompiledRollup> rollups,
+            List<String> fieldOrder,
+            CompiledCollaboration collaboration,
+            boolean system
+    ) {
         super(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel);
         this.module = (module == null || module.isBlank()) ? null : module;
         this.indexes = indexes == null ? List.of() : List.copyOf(indexes);
@@ -351,6 +380,13 @@ public final class CompiledConcept extends CompiledEntity {
         this.rollups = rollups == null ? List.of() : List.copyOf(rollups);
         this.fieldOrder = fieldOrder == null ? List.of() : List.copyOf(fieldOrder);
         this.collaboration = collaboration;
+        this.system = system;
+    }
+
+    /** FORM P0: true if the platform owns this concept (no generated route, menu entry, export, seed UI, agent tool
+     *  or catalog entry; only platform code reads or writes it). Default false. */
+    public boolean isSystem() {
+        return system;
     }
 
     /** PROC-5/PROC-6: compiled {@code collaboration} (comment thread / attachments on every record); null if none. */

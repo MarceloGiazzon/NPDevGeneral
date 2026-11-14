@@ -75,6 +75,7 @@ public final class OpenApiDocumentBuilder {
         schemas.put("FlowExecutionResponse", flowResponseSchema());
 
         List<CompiledConcept> concepts = new ArrayList<>(model.getConcepts());
+        concepts.removeIf(CompiledConcept::isSystem); // FORM P0: platform-owned concepts have no public API
         concepts.sort(Comparator.comparing(CompiledConcept::getName, String.CASE_INSENSITIVE_ORDER));
         for (CompiledConcept concept : concepts) {
             addConcept(concept, model.getContexts(), schemas, paths);

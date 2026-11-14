@@ -74,6 +74,9 @@ public final class GlobalSearchService {
 
         List<Hit> hits = new ArrayList<>();
         for (CompiledConcept concept : compiled.getConcepts()) {
+            if (concept.isSystem()) {
+                continue; // FORM P0: platform-owned concepts are never searchable
+            }
             List<String> fields = searchableFields(concept);
             if (fields.isEmpty()) {
                 continue;

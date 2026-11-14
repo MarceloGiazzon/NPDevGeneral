@@ -85,6 +85,7 @@ public final class LiveConceptCrudSupport {
         for (CompiledConcept concept : liveModel.getConcepts()) {
             String route = SqlIdentifierSupport.restCollectionName(concept, liveModel.getContexts());
             if (route.equals(requestedRoute)
+                    && !concept.isSystem()
                     && NewConceptSchemaProvisioner.outOfScopeReason(concept, liveModel) == null) {
                 return Optional.of(buildOps(concept, route, gateway, context));
             }

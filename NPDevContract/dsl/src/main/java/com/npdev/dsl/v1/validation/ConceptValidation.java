@@ -577,6 +577,39 @@ final class ConceptValidation {
      * {@code where=} filter the caller supplies, not a new schema-level identity key, so there is
      * nothing further to validate here without inventing that surface speculatively.
      */
+    /** Field names that mean "this concept stores a login password hash" (FORM P0 / REG-339). */
+    private static final java.util.Set<String> PASSWORD_HASH_FIELD_NAMES =
+            java.util.Set.of("passwordhash", "senhahash", "password", "senha");
+
+    /**
+     * FORM P0 (REG-339): when the identity pack is composed it owns the credential store (its
+     * {@code system} concept Credential). An app concept that also carries a password-hash field would
+     * duplicate the password store as ordinary, openly readable app data -- the exact leak this rule
+     * closes -- so it is refused with the fix spelled out.
+     */
+    static void validateNoCredentialConcept(ModelAst effectiveModel, List<String> errors) {
+        boolean identityPackPresent = effectiveModel.getConcepts().stream()
+                .anyMatch(c -> c.getOrigin() != null && "identity".equals(c.getOrigin().packId()));
+        if (!identityPackPresent) {
+            return;
+        }
+        for (ConceptAst concept : effectiveModel.getConcepts()) {
+            if (concept.isSystem()) {
+                continue;
+            }
+            for (FieldAst field : concept.getFields()) {
+                if (field.getName() != null
+                        && PASSWORD_HASH_FIELD_NAMES.contains(field.getName().toLowerCase(java.util.Locale.ROOT))) {
+                    errors.add("Concept " + concept.getName() + ": field \"" + field.getName()
+                            + "\" looks like a password hash. The identity pack owns credentials (its system concept"
+                            + " Credential); remove concept " + concept.getName() + " (it would duplicate the password store"
+                            + " as ordinary, readable app data)");
+                    break;
+                }
+            }
+        }
+    }
+
     static void validateConceptTemporal(
             ModelAst effectiveModel,
             List<String> errors

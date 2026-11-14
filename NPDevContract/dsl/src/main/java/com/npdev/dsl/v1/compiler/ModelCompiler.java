@@ -397,7 +397,8 @@ public final class ModelCompiler {
                             effective.fields().stream().map(FieldAst::getName).toList(),
                             concept.getCollaboration() == null ? null
                                     : new com.npdev.dsl.v1.compiled.CompiledCollaboration(
-                                            concept.getCollaboration().comments(), concept.getCollaboration().attachments())
+                                            concept.getCollaboration().comments(), concept.getCollaboration().attachments()),
+                            concept.isSystem()
                     )
             );
             List<String> invariantRefs = new ArrayList<>(invariantsByCanonicalRef.keySet());

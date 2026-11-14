@@ -421,8 +421,9 @@ public final class JsonModelParser {
             boolean conceptSoftDelete = ent.has("softDelete") && ent.get("softDelete").asBoolean(false);
             boolean conceptTemporal = ent.has("temporal") && ent.get("temporal").asBoolean(false);
             String conceptUid = readText(ent, "uid");
+            boolean conceptSystem = ent.has("system") && ent.get("system").asBoolean(false);
             ConceptAst concept = new ConceptAst(name, extendsName, specializesName, fields, invariants, conceptEvents, lifecycle, conceptUi, truthLevel, module, indexes, access, conceptRenamedFrom, conceptSatelliteOf, originFor(originByQualifiedMemberName, "concepts", name), conceptSoftDelete, conceptTemporal, conceptUid,
-                    readRollups(name, ent.get("rollups")), readCollaboration(name, ent.get("collaboration")));
+                    readRollups(name, ent.get("rollups")), readCollaboration(name, ent.get("collaboration")), conceptSystem);
             concepts.add(concept);
             conceptsByLowerName.put(name.toLowerCase(Locale.ROOT), concept);
         }

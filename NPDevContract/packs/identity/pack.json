@@ -2,7 +2,7 @@
   "$schema": "../../schemas/pack.schema.json",
   "dslVersion": "1.0.0",
   "pack": "identity",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "namespace": "com.npdev.identity",
   "description": "Built-in NPDev identity model: users, roles, and their assignments. Intended as the persistent backing for in-app super-user administration and per-user preferences.",
   "category": "security",
@@ -44,7 +44,18 @@
       ]
     },
     {
+      "name": "Credential",
+      "system": true,
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "userId", "type": "reference", "required": true, "unique": true,
+          "reference": { "target": "User", "onDelete": "cascade" } },
+        { "name": "passwordHash", "type": "string", "required": true, "maxLength": 200 }
+      ]
+    },
+    {
       "name": "PasswordResetToken",
+      "system": true,
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
         { "name": "userId", "type": "reference", "required": true,
@@ -82,6 +93,7 @@
     },
     {
       "name": "UserMfa",
+      "system": true,
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
         { "name": "userId", "type": "reference", "required": true,
@@ -97,6 +109,7 @@
     },
     {
       "name": "UserSession",
+      "system": true,
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
         { "name": "sessionId", "type": "string", "required": true, "maxLength": 64 },

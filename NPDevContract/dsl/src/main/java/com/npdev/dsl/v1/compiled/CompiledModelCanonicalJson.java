@@ -1001,6 +1001,10 @@ public final class CompiledModelCanonicalJson {
             node.put("satelliteOf", safe(concept.getSatelliteOf()));
             node.put("softDelete", concept.isSoftDelete());
             node.put("temporal", concept.isTemporal());
+            if (concept.isSystem()) {
+                // FORM P0: key omitted unless true, so every existing canonical JSON stays byte-identical.
+                node.put("system", true);
+            }
             if (!concept.getRollups().isEmpty()) {
                 // P8 prelude: key omitted when undeclared, so every existing canonical JSON stays byte-identical.
                 ArrayNode rollupsNode = node.putArray("rollups");
