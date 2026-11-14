@@ -32,12 +32,39 @@ import cadence_state  # noqa: E402
 REQUIRED_FIELDS = ["id", "tier", "maxStaleness", "invokedBy", "description"]
 VALID_TIERS = {"T0", "T1", "T2", "T3"}
 
+# FORM P1-T1: every check also says WHICH LEVEL runs it, what it PROTECTS, which changed paths TRIGGER it and what it COSTS,
+# so `select_checks.py` can run only what a change needs. Tier (staleness deadline) and level (cost knob) stay orthogonal.
+LEVEL_FIELDS = ["level", "protects", "triggers", "costSeconds"]
+VALID_LEVELS = ["core", "standard", "extended", "release", "paperwork"]
+VALID_PROTECTS = {"security", "correctness", "determinism", "ux", "ai-knowledge", "docs", "hygiene", "performance"}
+
 # run-all-gates.ps1 assigns betaRelease and weeklyPaperwork to T3 by convention (item 4's split;
 # GATE-SPLIT, 2026-08-25 W4.5, reuses the same tier for a second, differently-reasoned deferred
 # gate rather than inventing a fifth tier), every other gate name in its $gates array is T2. Kept
 # explicit here rather than inferred, so a future change to which gates are T3 is a one-line,
 # reviewable diff in this exact spot.
 GATE_TIER_OVERRIDES = {"betaRelease": "T3", "weeklyPaperwork": "T3"}
+
+
+def level_field_failures(check_id, entry):
+    """FORM P1-T1: validate the four level fields of one registry entry (costSeconds 0 is valid, so test presence)."""
+    out = []
+    absent = [f for f in LEVEL_FIELDS if f not in entry]
+    if absent:
+        return [f"Check '{check_id}' is missing level field(s): {', '.join(absent)}"]
+    if entry["level"] not in VALID_LEVELS:
+        out.append(f"Check '{check_id}' has unknown level '{entry['level']}' (expected one of {VALID_LEVELS})")
+    if entry["protects"] not in VALID_PROTECTS:
+        out.append(f"Check '{check_id}' has unknown protects '{entry['protects']}' (expected one of {sorted(VALID_PROTECTS)})")
+    triggers = entry["triggers"]
+    if not isinstance(triggers, list) or not triggers or not all(isinstance(t, str) and t for t in triggers):
+        out.append(f"Check '{check_id}' needs triggers: a non-empty list of path globs")
+    cost = entry["costSeconds"]
+    if isinstance(cost, bool) or not isinstance(cost, (int, float)) or cost < 0:
+        out.append(f"Check '{check_id}' needs costSeconds: a number >= 0")
+    if entry["protects"] == "security" and entry["level"] in ("extended", "release", "paperwork"):
+        out.append(f"Check '{check_id}' protects security, so its level may not be below standard (found '{entry['level']}')")
+    return out
 
 
 def load_cadence_checks():
@@ -84,6 +111,7 @@ def main(argv):
             missing = [field for field in REQUIRED_FIELDS if not entry.get(field)]
             if missing:
                 failures.append(f"Check '{check_id}' is missing required field(s): {', '.join(missing)}")
+            failures.extend(level_field_failures(check_id, entry))
             tier = entry.get("tier")
             if tier and tier not in VALID_TIERS:
                 failures.append(f"Check '{check_id}' has unknown tier '{tier}' (expected one of {sorted(VALID_TIERS)})")

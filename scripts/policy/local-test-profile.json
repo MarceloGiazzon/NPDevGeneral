@@ -1,8 +1,55 @@
 {
   "schemaVersion": "npdev-local-test-profile.v1",
-  "checkLevel": "normal",
-  "checkLevels": ["very_low", "low", "normal", "high", "extra_high", "full"],
-  "enabledEngines": ["h2", "sqlserver"],
-  "allEngines": ["h2", "sqlserver", "postgres", "mysql", "minio"],
-  "note": "Local-machine default only. CI (CI=true) ignores this file and always runs its full matrix -- this exists purely to keep a developer/agent machine from spinning up Docker/Postgres/MySQL/MinIO by default. Raise checkLevel or add postgres/mysql/minio to enabledEngines to opt back in for a specific task. Read by scripts/quality/test_profile.py; consumed by NPDevKernel PostgresTestSupport.java (via NPDEV_TEST_PROFILE_ENGINES), NPDevKernel/adapters/file-store-objectstore's S3ObjectStoreFileStoreAdapterMinioLiveTest.java (same env var, its own local minioEnabled() -- RUN-31 item 2), and scripts/proofs/run-item20-postgres-proof.ps1 / scripts/quality/run-docker-linux-proof.ps1 (via docker_allowed())."
+  "checkLevel": "low",
+  "checkLevels": [
+    "very_low",
+    "low",
+    "normal",
+    "high",
+    "extra_high",
+    "full"
+  ],
+  "enabledEngines": [
+    "h2",
+    "sqlserver"
+  ],
+  "allEngines": [
+    "h2",
+    "sqlserver",
+    "postgres",
+    "mysql",
+    "minio"
+  ],
+  "note": "Local-machine default only. CI (CI=true) ignores this file and always runs its full matrix -- this exists purely to keep a developer/agent machine from spinning up Docker/Postgres/MySQL/MinIO by default. Raise checkLevel or add postgres/mysql/minio to enabledEngines to opt back in for a specific task. Read by scripts/quality/test_profile.py; consumed by NPDevKernel PostgresTestSupport.java (via NPDEV_TEST_PROFILE_ENGINES), NPDevKernel/adapters/file-store-objectstore's S3ObjectStoreFileStoreAdapterMinioLiveTest.java (same env var, its own local minioEnabled() -- RUN-31 item 2), and scripts/proofs/run-item20-postgres-proof.ps1 / scripts/quality/run-docker-linux-proof.ps1 (via docker_allowed()). checkLevel is the agent/owner default and now also drives scripts/quality/select_checks.py (FORM P1): `low` = core + standard checks whose triggers match the changed paths; high and above also run the extended/release/paperwork levels regardless of triggers. CI always runs full.",
+  "checkLevelMap": {
+    "very_low": [
+      "core"
+    ],
+    "low": [
+      "core",
+      "standard"
+    ],
+    "normal": [
+      "core",
+      "standard"
+    ],
+    "high": [
+      "core",
+      "standard",
+      "extended"
+    ],
+    "extra_high": [
+      "core",
+      "standard",
+      "extended",
+      "release"
+    ],
+    "full": [
+      "core",
+      "standard",
+      "extended",
+      "release",
+      "paperwork"
+    ]
+  }
 }

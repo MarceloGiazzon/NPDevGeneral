@@ -191,6 +191,13 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
 - **Wrap long/noisy runs in the digest runner** so the full log goes to disk and only the verdict
   enters context: `python scripts/ai/run_digest.py -- pwsh -NoProfile -File scripts/quality/run-all-gates.ps1`.
   Patterns live in `scripts/policy/output-digest-policy.json`; add a family there, never in the script.
+- **Which checks to run after a change (FORM P1, start here):** every check in `scripts/quality/verification-cadence.json` carries
+  a `level` (core / standard / extended / release / paperwork), `protects`, path `triggers` and `costSeconds`;
+  `scripts/policy/local-test-profile.json` `checkLevel` (default `low` = core + standard) says how much to run.
+  `python scripts/quality/select_checks.py` prints ONLY the checks the changed paths need (docs-only change: none; DSL + schema change:
+  about 6 checks, ~7 min). `--level high` adds the extended level (whole gates, once a day or at the end of a phase), `--level full` adds
+  release + paperwork; `--list-levels` shows the map, `--json` is for scripts. Run the selected checks and the touched module's own tests,
+  not `run-all-gates.ps1`. Tier (staleness deadline) and level (cost) are separate: keep both on every registry entry.
 - **Quality gates — "all gates green" means ONE command:**
   `pwsh -NoProfile -File scripts/quality/run-all-gates.ps1` (T2). It runs **four** gates by default,
   in this order, and keeps going past a failure so you see every red in one run:
