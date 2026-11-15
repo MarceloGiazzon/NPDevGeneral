@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """`npdev pack workshop` -- where AI-authored packs arrive, are checked and are promoted (FORM P6).
 
-This file holds INGEST (P6-T2). `test`, `status`, `feedback` and `promote` land in later tasks and share this layout.
+This file holds INGEST (P6-T2) and TEST (P6-T3: ladder rungs 1-3, rung 4 recorded as not run). `status`, `feedback`
+and `promote` land in later tasks and share this layout.
 
 The workshop is layer 2 (definitions), like AppGen/apps: OUTSIDE the repo. Root = `--root`, else $NPDEV_PACK_WORKSHOP,
 else a `PackWorkshop` folder next to the Build root. Never a hardcoded drive.
@@ -9,6 +10,7 @@ else a `PackWorkshop` folder next to the Build root. Never a hardcoded drive.
     <root>/inbox/<sha12>__<zip name>              immutable copy of every accepted delivery (duplicates found by hash)
     <root>/packs/<area>/<packId>/<version>/       pack.json, handoff.json, example-model.json, probes/*.json
     <root>/batches/<batchId>.json                 one record per batch, one entry per delivery
+    <root>/runs/<pack>@<version>/<stamp>/         verdict.json (+ static/compose/validate/access-lint text) from `test`
 
 Rules (the X0 family: refuse, never guess):
   * a delivery has `batch.json` at its root, valid against NPDevContract/schemas/pack-workshop/batch.schema.json, and
@@ -28,8 +30,11 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import stat
+import subprocess
 import sys
+import time
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -260,6 +265,290 @@ def _record_batch(root: Path, batch: dict, sha12: str, zip_name: str, packs: lis
     path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
 
 
+# ---------------------------------------------------------------------------------------------------------------
+# TEST (P6-T3): the status ladder. Each rung needs the previous one; the first failure stops it and writes
+# `feedbackForAi` lines (where - what - how to fix). Rungs: valid -> composes -> secure -> probed (not built yet).
+# ---------------------------------------------------------------------------------------------------------------
+
+def _semver(text) -> tuple:
+    return tuple(int(x) for x in str(text).split(".")) if VERSION.match(str(text or "")) else ()
+
+
+def find_pack_dir(root: Path, pack_id: str, version: str | None = None) -> Path | None:
+    """packs/<area>/<packId>/<version>/ -- the named version, else the highest one, in any area."""
+    candidates = []
+    for folder in (root / "packs").glob(f"*/{pack_id}/*"):
+        if (folder / "pack.json").is_file() and _semver(folder.name):
+            candidates.append((_semver(folder.name), folder))
+    if version:
+        return next((f for _, f in candidates if f.name == version), None)
+    return max(candidates, key=lambda c: c[0])[1] if candidates else None
+
+
+def make_pack_finder(root: Path):
+    """pack id -> pack.json path: the workshop's newest version first, then the repo's built-in packs."""
+    builtin = _repo_root() / "NPDevContract" / "packs"
+
+    def find(pack_id: str) -> Path | None:
+        folder = find_pack_dir(root, pack_id)
+        if folder:
+            return folder / "pack.json"
+        path = builtin / pack_id / "pack.json"
+        return path if path.is_file() else None
+    return find
+
+
+def lint_pack(path: Path) -> tuple[list[str], list[str]]:
+    """Static checks for mistakes the schema validator cannot see (from the authoring guide's validate_pack.py).
+    Returns (errors, warnings), each line written as where - what - how to fix."""
+    raw = path.read_bytes().decode("utf-8", "replace")
+    doc = json.loads(raw)
+    errors: list[str] = []
+    warnings: list[str] = []
+    for i, ch in enumerate(raw):
+        if ord(ch) > 127:
+            warnings.append(f"pack.json near {raw[max(0, i - 20):i + 10]!r} - non-ASCII character U+{ord(ch):04X}; everything in a "
+                            f"pack is English - translate it (for example 'correction letter (CC-e)')")
+            break
+    concepts = {c["name"]: c for c in doc.get("concepts", []) if isinstance(c, dict) and "name" in c}
+    for c in concepts.values():
+        access = c.get("access") or {}
+        write = access.get("write", "")
+        read = access.get("read", "")
+        if not access:
+            warnings.append(f"{c['name']}.access - the concept has no access rule of its own, so it relies on the consuming app's "
+                            f"roles - add access.read / access.write, or open it on purpose with \"true\"")
+        for fld in sorted(set(re.findall(r"&&\s*(\w+)\s*==\s*\$user\.id", write))):
+            if not re.search(rf"\b{fld}\s*==\s*null", write):
+                errors.append(f"{c['name']}.access.write - it requires '{fld} == $user.id' but has no '{fld} == null' alternative: "
+                              f"the row check runs BEFORE defaults, so a create that leaves {fld} blank is refused - add "
+                              f"\"|| role('x') && {fld} == null\"")
+        if re.search(r"&&\s*\w+\s*==\s*(\$user\.id|false|true)", read):
+            for child in concepts.values():
+                for f in child.get("fields", []):
+                    if f.get("type") == "reference" and (f.get("reference") or {}).get("target") == c["name"]:
+                        if not re.search(r"&&\s*\w+\s*==", (child.get("access") or {}).get("read", "")):
+                            warnings.append(f"{child['name']}.access.read - it points to {c['name']} (row-restricted read) but has no row "
+                                            f"restriction itself: anyone who may read {child['name']} sees children of rows they cannot "
+                                            f"see - copy the owner/flag onto the child, or say so in metadata.reviewNotes")
+        for rollup in c.get("rollups", []):
+            if "::" not in str(rollup.get("from", "")):
+                errors.append(f"{c['name']}.rollups[{rollup.get('field')}].from - '{rollup.get('from')}' is not pack-qualified: it "
+                              f"passes alone and fails on composition - write '{doc.get('pack')}::{rollup.get('from')}'")
+        fields = {f["name"]: f for f in c.get("fields", []) if "name" in f}
+        for f in c.get("fields", []):
+            for name in re.findall(r"[A-Za-z_]\w*", f.get("derivedExpression") or ""):
+                if name in fields and not fields[name].get("required") and fields[name].get("type") in ("decimal", "integer"):
+                    warnings.append(f"{c['name']}.{f['name']}.derivedExpression - it uses the optional number '{name}': a null makes the "
+                                    f"result null or an error - make '{name}' required with default 0, or guard it")
+    for sentence in str(doc.get("metadata", {}).get("summary", "")).split(". "):
+        if re.search(r"separate|isolated|segregat|immutable|append-only|cannot be (edited|deleted)", sentence, re.I):
+            warnings.append(f"metadata.summary - it claims '{sentence[:80]}': make sure the model ENFORCES it (access or invariant); "
+                            f"if it is only a convention, say so in the summary")
+    return errors, warnings
+
+
+def compose_scratch(pack_id: str, scratch: Path, find) -> tuple[Path, list[str], list[str]]:
+    """Build a throwaway consumer model around the pack and every pack it depends on.
+    Returns (model.json path, composition order, role tokens). Raises WorkshopError for a missing dependency."""
+    order: list[str] = []
+    seen: set[str] = set()
+
+    def visit(pid: str) -> None:
+        if pid in seen:
+            return
+        seen.add(pid)
+        path = find(pid)
+        if path is None:
+            raise WorkshopError(f"pack.json packs - the pack '{pid}' is needed (directly or through a dependency) but is neither in the "
+                                f"workshop nor built in - deliver it first, or remove the dependency")
+        for dep in json.loads(path.read_text(encoding="utf-8")).get("packs", []):
+            if isinstance(dep, dict) and "pack" in dep:
+                visit(dep["pack"])
+        order.append(pid)
+
+    visit(pack_id)
+    if scratch.exists():
+        shutil.rmtree(scratch)
+    (scratch / "packs").mkdir(parents=True)
+    roles: set[str] = set()
+    caps: set[str] = set()
+    for pid in order:
+        text = find(pid).read_text(encoding="utf-8")
+        (scratch / "packs" / pid).mkdir()
+        (scratch / "packs" / pid / "pack.json").write_text(text, encoding="utf-8")
+        roles |= set(re.findall(r"role\('([A-Za-z0-9_-]+)'\)", text))
+        requires = json.loads(text).get("requires", {})
+        roles |= set(requires.get("roles", []))
+        caps |= set(requires.get("capabilities", []))
+    target = json.loads(find(pack_id).read_text(encoding="utf-8"))
+    model: dict = {"dslVersion": "1.0.0", "version": "1.0", "namespace": "scratch.packcheck",
+                   "packs": [{"$ref": f"packs/{pid}/pack.json", "as": pid} for pid in order]}
+    if roles:
+        model["provides"] = {"roleBindings": {r: r.upper() for r in sorted(roles)}}
+        grants = {f"{pack_id}::{c['name']}": ["read"] for c in target.get("concepts", [])}
+        model["roles"] = [{"name": r.upper(), "concepts": grants} for r in sorted(roles)]
+    if caps:
+        model.setdefault("provides", {})["capabilities"] = sorted(caps)
+    if not target.get("concepts"):
+        # a data-type / capability-only pack cannot validate alone: one probe concept, one field per domainType
+        model["concepts"] = [{"name": "Probe", "ui": {"label": "Probe"}, "fields": [
+            {"name": "id", "type": "uuid", "id": True, "required": True, "ui": {"label": "Id"}}]
+            + [{"name": "f" + t["name"], "type": "string", "domainType": t["name"], "ui": {"label": t["name"]}}
+               for t in target.get("domainTypes", [])]}]
+    path = scratch / "model.json"
+    path.write_text(json.dumps(model, indent=1), encoding="utf-8")
+    return path, order, sorted(roles)
+
+
+def _default_validate(cli, model_path: Path, report_path: Path):
+    """The Java validator's report, or None when this machine cannot run it (nobody's fault, never a rejection)."""
+    try:
+        cli.run_validate_semantic(model_path, report_path, quiet=True)
+    except (Exception, SystemExit):  # noqa: BLE001
+        return None
+    try:
+        return json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _default_update(cli, model_path: Path) -> tuple[bool, str]:
+    """`npdev pack update --allow-unsigned`: resolves the composed packs and writes npdev.lock next to the model."""
+    command = [sys.executable, str(Path(cli.__file__).resolve()), "pack", "update", "--model", str(model_path), "--allow-unsigned"]
+    done = subprocess.run(command, capture_output=True, text=True)
+    return done.returncode == 0, (done.stdout + done.stderr)[-1500:]
+
+
+def _diagnostic_lines(report: dict, severity: str = "error") -> list[str]:
+    lines: list[str] = []
+    for item in report.get("diagnostics") or []:
+        if item.get("severity", "error") != severity:
+            continue
+        parts = [str(item.get("path") or ""), str(item.get("message") or ""), str(item.get("hint") or item.get("suggestedFix") or "")]
+        line = " - ".join(p.strip() for p in parts if p.strip())
+        if line and line not in lines:
+            lines.append(line)
+    return lines
+
+
+def _step(steps: list, name: str, started: float, result: str, detail: str = "", evidence: str | None = None) -> None:
+    entry = {"step": name, "result": result, "seconds": round(time.monotonic() - started, 2)}
+    if detail:
+        entry["detail"] = detail[:500]
+    if evidence:
+        entry["evidence"] = evidence
+    steps.append(entry)
+
+
+def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stamp: str | None = None,
+              validate=None, update=None) -> dict:
+    """Run the ladder for one pack. Writes runs/<pack>@<version>/<stamp>/ and returns the verdict dict.
+    `validate(model_path, report_path) -> report|None` and `update(model_path) -> (ok, text)` are injectable for tests."""
+    folder = find_pack_dir(root, pack_id, version)
+    if folder is None:
+        raise WorkshopError(f"{pack_id}{'@' + version if version else ''} is not in the workshop ({root}); ingest it first")
+    version = folder.name
+    stamp = stamp or datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    run = root / "runs" / f"{pack_id}@{version}" / stamp
+    run.mkdir(parents=True, exist_ok=True)
+    validate = validate or (lambda model, report: _default_validate(cli, model, report))
+    update = update or (lambda model: _default_update(cli, model))
+    pack_path = folder / "pack.json"
+    text = pack_path.read_text(encoding="utf-8")
+    steps: list[dict] = []
+    feedback: list[str] = []
+
+    def finish(final: str) -> dict:
+        verdict = {"schemaVersion": "npdev-pack-verdict.v1", "pack": pack_id, "version": version, "status": final, "steps": steps}
+        if feedback:
+            verdict["feedbackForAi"] = feedback
+        _validate("verdict", verdict, "the verdict")
+        (run / "verdict.json").write_text(json.dumps(verdict, indent=2) + "\n", encoding="utf-8")
+        verdict["_run"] = str(run)
+        return verdict
+
+    # rung 1: valid -- pack.schema.json + the relay's static checks (id, secrets, NPDev-owned fields, bindings)
+    started = time.monotonic()
+    import npdev_relay_pack
+    try:
+        pack = json.loads(text)
+    except ValueError as exc:
+        _step(steps, "static", started, "fail", f"pack.json is not valid JSON ({exc})")
+        feedback.append("pack.json - it is not valid JSON - fix the syntax and resend the whole file")
+        return finish("rejected")
+    lines = npdev_relay_pack.static_errors(pack, pack_id, text)
+    handoff_path = folder / "handoff.json"
+    if handoff_path.is_file():
+        handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
+        unanswered = [c["id"] for c in handoff.get("checklist", []) if c.get("answer") == "no"]
+        if unanswered:
+            lines.append(f"handoff.json checklist - answered 'no' for {', '.join(unanswered)} - fix the pack until the answer is yes")
+    (run / "static.txt").write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+    if lines:
+        _step(steps, "static", started, "fail", f"{len(lines)} problem(s)", "static.txt")
+        feedback.extend(lines)
+        return finish("rejected")
+    _step(steps, "static", started, "pass")
+    status = "valid"
+
+    # rung 2: composes -- the pack and its dependencies in a throwaway consumer, validated by the model validator
+    started = time.monotonic()
+    try:
+        model_path, order, roles = compose_scratch(pack_id, run / "compose", make_pack_finder(root))
+    except WorkshopError as exc:
+        (run / "compose.txt").write_text(str(exc) + "\n", encoding="utf-8")
+        _step(steps, "compose", started, "fail", str(exc), "compose.txt")
+        feedback.append(str(exc))
+        return finish("rejected")
+    log = [f"composed: {order}", f"role tokens: {roles}"]
+    if len(order) > 1:
+        ok, output = update(model_path)
+        log.append("pack update: " + ("ok" if ok else output))
+        if not ok:
+            (run / "compose.txt").write_text("\n".join(log) + "\n", encoding="utf-8")
+            _step(steps, "compose", started, "fail", "npdev pack update refused the composition", "compose.txt")
+            tail = output.strip().splitlines()[-1][:300] if output.strip() else ""
+            feedback.append("pack.json packs - the dependencies could not be resolved together" + (f" - {tail}" if tail else ""))
+            return finish("rejected")
+    report = validate(model_path, run / "validate.json")
+    if report is None:
+        log.append("the model validator is not available on this machine; nothing was decided")
+        (run / "compose.txt").write_text("\n".join(log) + "\n", encoding="utf-8")
+        _step(steps, "compose", started, "skipped", "the model validator cannot run on this machine (no Java/jar/Gradle)", "compose.txt")
+        return finish(status)
+    errors = _diagnostic_lines(report)
+    warns = _diagnostic_lines(report, "warning")
+    (run / "validate.txt").write_text("\n".join([f"status: {report.get('status')}"] + [f"error: {e}" for e in errors]
+                                                + [f"warning: {w}" for w in warns]) + "\n", encoding="utf-8")
+    (run / "compose.txt").write_text("\n".join(log) + "\n", encoding="utf-8")
+    if report.get("status") == "failed" or errors:
+        _step(steps, "compose", started, "fail", f"{len(errors)} validator error(s)", "validate.txt")
+        feedback.extend(errors[:20] or ["an application importing this pack does not validate"])
+        return finish("rejected")
+    _step(steps, "compose", started, "pass", f"with {', '.join(o for o in order if o != pack_id) or 'no dependencies'}")
+    status = "composes"
+
+    # rung 3: secure -- the access lint (errors fail; warnings are reported, never silently dropped)
+    started = time.monotonic()
+    lint_errors, lint_warnings = lint_pack(pack_path)
+    (run / "access-lint.txt").write_text("\n".join([f"error: {e}" for e in lint_errors] + [f"warning: {w}" for w in lint_warnings]) + "\n",
+                                         encoding="utf-8")
+    if lint_errors:
+        _step(steps, "access-lint", started, "fail", f"{len(lint_errors)} error(s), {len(lint_warnings)} warning(s)", "access-lint.txt")
+        feedback.extend(lint_errors)
+        return finish("rejected")
+    _step(steps, "access-lint", started, "pass", f"{len(lint_warnings)} warning(s)" if lint_warnings else "")
+    status = "secure"
+    feedback.extend(f"(warning) {w}" for w in lint_warnings)
+
+    # rung 4: probed -- needs a generated consumer booted on a free port plus a pack-probe file format; not built yet.
+    # Recorded as skipped so the verdict never claims a rung it did not climb.
+    started = time.monotonic()
+    _step(steps, "behavior-probes", started, "skipped", "rung 4 (generate, boot, run probes + exposure matrix) is not implemented yet")
+    return finish(status)
+
+
 def downloads_dir(override: str | None) -> Path:
     return Path(override).expanduser() if override else Path.home() / "Downloads"
 
@@ -275,12 +564,18 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
                         help="take a delivery that has no batch.json, as this batch id (e.g. w1-modules)")
     ingest.add_argument("--root", default=None, help=f"workshop root (default: ${ENV_ROOT}, else PackWorkshop next to the Build root)")
     ingest.add_argument("--json", action="store_true")
+    test = sub.add_parser("test", help="Run the status ladder (valid, composes, secure) on one workshop pack; writes runs/.../verdict.json.")
+    test.add_argument("pack", help="<packId> or <packId>@<version> (default: the highest version in the workshop)")
+    test.add_argument("--root", default=None, help=f"workshop root (default: ${ENV_ROOT}, else PackWorkshop next to the Build root)")
+    test.add_argument("--json", action="store_true")
 
 
 def main(cli, args: argparse.Namespace) -> int:
     command = getattr(args, "workshop_command", None)
+    if command == "test":
+        return _main_test(cli, args)
     if command != "ingest":
-        print("usage: npdev pack workshop ingest [<zip> ...] [--downloads]", file=sys.stderr)
+        print("usage: npdev pack workshop ingest [<zip> ...] [--downloads] | test <packId>[@version]", file=sys.stderr)
         return 2
     root = workshop_root(cli, args.root)
     zips = [Path(z) for z in args.zips]
@@ -316,3 +611,22 @@ def main(cli, args: argparse.Namespace) -> int:
             if out["status"] == "refused":
                 print(f"      why:  {out['reason']}")
     return 1 if failed else 0
+
+
+def _main_test(cli, args: argparse.Namespace) -> int:
+    root = workshop_root(cli, args.root)
+    pack_id, _, version = args.pack.partition("@")
+    try:
+        verdict = test_pack(cli, root, pack_id, version or None)
+    except WorkshopError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(verdict, indent=2))
+    else:
+        print(f"{verdict['pack']}@{verdict['version']}: {verdict['status'].upper()}   ({verdict['_run']})")
+        for step in verdict["steps"]:
+            print(f"  {step['result'].upper():8} {step['step']:16} {step.get('seconds', 0):6.1f}s  {step.get('detail', '')}")
+        for line in verdict.get("feedbackForAi", []):
+            print(f"  feedback: {line}")
+    return 1 if verdict["status"] == "rejected" else 0
