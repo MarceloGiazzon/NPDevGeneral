@@ -69,6 +69,12 @@
 .PARAMETER StopOnFirstFailure
     Stop at the first failing gate instead of running the rest.
 
+.PARAMETER Level
+    FORM P1-T4. Run only the checks the registry selects for the changed paths at this level
+    (core|standard|extended|release|paperwork, a profile name such as low/high/full, or "default" for
+    the profile's checkLevel) via scripts/quality/run_selected.py. Absent = the four T2 gates as before.
+    Not combinable with -Only/-IncludeReleaseGate/-IncludePaperwork. -DryRun prints the plan only.
+
 .PARAMETER IncludeReleaseGate
     Also run betaRelease (T3) on a bare, no-args invocation. Off by default since item 4 -- pass
     this, or -Only betaRelease, or use `npdev verify --tier T3`, when you actually want release
@@ -92,11 +98,31 @@ param(
     [string[]]$Only = @(),
     [switch]$StopOnFirstFailure,
     [switch]$IncludeReleaseGate,
-    [switch]$IncludePaperwork
+    [switch]$IncludePaperwork,
+    [string]$Level = "",
+    [switch]$DryRun
 )
 
 $ErrorActionPreference = "Continue"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+
+# FORM P1-T4: -Level hands the whole decision to the check registry instead of the fixed gate list.
+# `-Level core|standard|extended|release|paperwork` or a profile name (very_low..full, "default" = the
+# profile's checkLevel) runs ONLY the checks scripts/quality/select_checks.py selects for the changed paths
+# (core/standard are trigger-matched; extended and up run whole, whatever changed). A bare invocation is
+# unchanged: the four T2 gates. -Level and -Only/-Include* are different questions, so they do not mix.
+if ($Level) {
+    if ($Only.Count -gt 0 -or $IncludeReleaseGate -or $IncludePaperwork) {
+        Write-Host "-Level selects checks from the registry; do not combine it with -Only, -IncludeReleaseGate or -IncludePaperwork." -ForegroundColor Red
+        exit 2
+    }
+    $pyLevel = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } elseif (Get-Command python3 -ErrorAction SilentlyContinue) { "python3" } else { "py" }
+    $levelArgs = @((Join-Path $PSScriptRoot "run_selected.py"))
+    if ($Level -ne "default") { $levelArgs += @("--level", $Level) }
+    if ($DryRun) { $levelArgs += "--dry-run" }
+    Push-Location $repoRoot
+    try { & $pyLevel @levelArgs; exit $LASTEXITCODE } finally { Pop-Location }
+}
 
 $gates = @(
     [pscustomobject]@{ Name = "generator";       Script = "scripts/quality/run-generator-gate.ps1";          Why = "codegen engine"; Tier = "T2" }

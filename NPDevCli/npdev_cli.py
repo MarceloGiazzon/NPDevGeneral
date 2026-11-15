@@ -10422,6 +10422,25 @@ def run_verify_panel(args: argparse.Namespace) -> int:
     return npdev_panel.print_repo_panel(as_human_table=table)
 
 
+def run_verify_level(args: argparse.Namespace) -> int:
+    """FORM P1-T4: `npdev verify --level X` -- run only the checks the registry selects for the changed
+    paths (scripts/quality/run_selected.py). Exit code is the runner's: 0 green, 1 a check failed or was
+    not run. Unlike --tier it does not cross-check remote CI: a level run is a local change check, not a
+    "Move closed" or "release-ready" claim; use --tier T2/T3 for those."""
+    root = repo_root()
+    if getattr(args, "tier", None):
+        raise CliError("--level and --tier are two spellings of one question; give one.")
+    script = root / "scripts" / "quality" / "run_selected.py"
+    if not script.exists():
+        raise CliError(f"run_selected.py not found: {script}")
+    cmd = [sys.executable or "python", str(script)]
+    if args.level != "default":
+        cmd += ["--level", args.level]
+    if getattr(args, "dry_run", False):
+        cmd.append("--dry-run")
+    return subprocess.run(cmd, cwd=root).returncode
+
+
 def run_verify(args: argparse.Namespace) -> dict:
     """Fast Lane plan item 6 (2026-08-01): one entry point for all four verification tiers,
     reading the same staleness ledger every tier writes to (scripts/quality/cadence_state.py)
@@ -18414,6 +18433,16 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--tier", required=False, choices=["T0", "T1", "T2", "T3"],
                          help="Fast Lane plan tiers -- T0 inner loop, T1 fast gate (one canary app), "
                               "T2 full gate (run-all-gates.ps1), T3 release ceremony.")
+    # FORM P1-T4: --level is the new spelling. It asks the check registry (scripts/quality/select_checks.py)
+    # which checks the changed paths need and runs only those, recording each in the same cadence ledger.
+    verify.add_argument("--level", default=None, metavar="LEVEL",
+                         help="Run only the checks the changed paths need at this level: core, standard, "
+                              "extended, release, paperwork, or a profile name (very_low, low, normal, high, "
+                              "extra_high, full). Roughly: T0 = core, T1 = core+standard, T2 = extended "
+                              "(all gates, whatever changed), T3 = release. 'default' uses the profile's "
+                              "checkLevel (scripts/policy/local-test-profile.json).")
+    verify.add_argument("--dry-run", action="store_true",
+                         help="--level only: print which checks would run and their cost; run nothing.")
     verify.add_argument("--panel", action="store_true",
                          help="Print the verification panel (npdev-verification-panel.v1) instead of "
                               "running a tier. With --json, the raw contract document; otherwise a "
@@ -19256,6 +19285,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_verify_panel(args)
         if args.command == "verify" and getattr(args, "run", None):
             return run_verify_execute(args)
+        if args.command == "verify" and getattr(args, "level", None):
+            return run_verify_level(args)
         if args.command == "verify":
             result = run_verify(args)
             print(json.dumps(result, indent=2))

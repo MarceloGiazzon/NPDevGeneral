@@ -790,6 +790,9 @@
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"
     },
+    "scripts/quality/run_selected.py": {
+      "invocation": "orchestrated"
+    },
     "scripts/quality/run-f6-showcase.ps1": {
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"

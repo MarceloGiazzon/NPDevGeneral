@@ -169,9 +169,11 @@ try {
     # -- T0: dsl-test-touched-area (context-dependent) ---------------------------------------------
     if ($DslTestFilter) {
         Write-Section "T0: gradlew :NPDevContract:dsl:test --tests $DslTestFilter"
-        Push-Location (Join-Path $repoRoot "NPDevContract")
+        # The wrapper lives at the repo root (root Gradle wires :NPDevContract:dsl); NPDevContract/ has none,
+        # so the old Push-Location NPDevContract + ":dsl:test" threw "Gradle wrapper not found" before any test ran.
+        Push-Location $repoRoot
         try {
-            & (Get-NPDevGradleWrapperExecutable (Get-Location).Path) ":dsl:test" "--tests" $DslTestFilter "--console=plain" | Out-Host
+            & (Get-NPDevGradleWrapperExecutable (Get-Location).Path) ":NPDevContract:dsl:test" "--tests" $DslTestFilter "--console=plain" | Out-Host
             $exit = $LASTEXITCODE
         } finally {
             Pop-Location
