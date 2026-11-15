@@ -267,6 +267,31 @@ class GeneratedCrudRuntimeSupportKernelPortsTest {
     }
 
     @Test
+    void isCrudPermitted_answersWithoutAuditingOrThrowing() {
+        List<AuditRecord> captured = new ArrayList<>();
+        AuditLogStore capturingStore = new AuditLogStore() {
+            @Override
+            public void append(AuditRecord record) {
+                captured.add(record);
+            }
+
+            @Override
+            public List<AuditRecord> search(AuditQuery query) {
+                return List.of();
+            }
+        };
+        PermissionEvaluator readOnly = (subject, requirement) -> requirement.permission().startsWith("read:")
+                ? PermissionDecision.allow("ok")
+                : PermissionDecision.deny("test_deny", "denied");
+
+        GeneratedCrudRuntimeSupport support = supportWith(capturingStore, readOnly, IdempotencyStore.noop());
+
+        assertEquals(true, support.isCrudPermitted("Order", "READ", ExecutionContext.anonymous()));
+        assertEquals(false, support.isCrudPermitted("Order", "CREATE", ExecutionContext.anonymous()));
+        assertEquals(0, captured.size(), "asking is not a denied attempt: no audit row");
+    }
+
+    @Test
     void auditCrudMutation_doesNotThrowWhenAuditStoreFails() {
         AuditLogStore failingStore = new AuditLogStore() {
             @Override

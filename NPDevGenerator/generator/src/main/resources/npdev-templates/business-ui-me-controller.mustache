@@ -2,6 +2,7 @@ package {{controllerPackage}};
 
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
+import com.npdev.runtime.support.GeneratedCrudRuntimeSupport;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -11,16 +12,19 @@ import java.util.Map;
 
 /**
  * Exposes the current authenticated principal (id, tenant, roles) so the Business UI can decide
- * whether to surface the super-user / admin section. This is presentation support only; actual
- * endpoint authorization is enforced by the runtime kernel.
+ * whether to surface the super-user / admin section, and (GET /api/me/permissions) which concepts
+ * the principal may touch so the UI can hide what it could never open. This is presentation support
+ * only; actual endpoint authorization is enforced by the runtime kernel.
  */
 @RestController
 public class GeneratedMeController {
 
     private final RuntimeContextService runtimeContextService;
+    private final GeneratedCrudRuntimeSupport runtimeSupport;
 
-    public GeneratedMeController(RuntimeContextService runtimeContextService) {
+    public GeneratedMeController(RuntimeContextService runtimeContextService, GeneratedCrudRuntimeSupport runtimeSupport) {
         this.runtimeContextService = runtimeContextService;
+        this.runtimeSupport = runtimeSupport;
     }
 
     @GetMapping("/api/me")
@@ -31,5 +35,33 @@ public class GeneratedMeController {
         body.put("tenantId", context.tenantId());
         body.put("roles", context.roles());
         return body;
+    }
+
+    /**
+     * Role-level CRUD permissions per concept, computed by the SAME check the generated services enforce
+     * ({@code GeneratedCrudRuntimeSupport.isCrudPermitted}), so the menu can never promise what the API refuses.
+     * A row-level {@code access.read} rule is data-dependent and is not evaluated here: {@code read: true} means
+     * "may open the concept", and the list itself still shows only the rows the rule lets this caller see.
+     */
+    @GetMapping("/api/me/permissions")
+    public Map<String, Object> permissions(HttpServletRequest request) {
+        ExecutionContext context = runtimeContextService.currentContext(request);
+        Map<String, Object> concepts = new LinkedHashMap<>();
+{{#concepts}}
+        concepts.put("{{conceptName}}", permissionsOf("{{conceptName}}", context));
+{{/concepts}}
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("concepts", concepts);
+        return body;
+    }
+
+    private Map<String, Boolean> permissionsOf(String conceptName, ExecutionContext context) {
+        Map<String, Boolean> operations = new LinkedHashMap<>();
+        operations.put("read", runtimeSupport.isCrudPermitted(conceptName, "READ", context));
+        operations.put("list", runtimeSupport.isCrudPermitted(conceptName, "LIST", context));
+        operations.put("create", runtimeSupport.isCrudPermitted(conceptName, "CREATE", context));
+        operations.put("update", runtimeSupport.isCrudPermitted(conceptName, "UPDATE", context));
+        operations.put("delete", runtimeSupport.isCrudPermitted(conceptName, "DELETE", context));
+        return operations;
     }
 }

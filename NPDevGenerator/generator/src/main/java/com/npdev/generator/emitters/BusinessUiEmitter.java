@@ -578,6 +578,16 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             Map<String, Object> node = new LinkedHashMap<>();
             node.put("conceptName", concept.getName());
             node.put("displayName", displayName(concept));
+            if (!hasDeclaredLabel(concept)) {
+                // "Create ride", not "Create Rides": the singular of the derived label. Absent when the author wrote
+                // ui.label, which the UI then uses exactly as written.
+                node.put("singularName", displayBaseName(concept.getName()));
+            }
+            if (concept.getAccess() != null && concept.getAccess().getRead() != null
+                    && !concept.getAccess().getRead().isBlank()) {
+                // An access.read rule shows each caller only their own rows; the UI uses this to explain an empty list.
+                node.put("rowScoped", true);
+            }
             node.put("admin", isAdminConcept(concept));
             // PK-2: route stays LOGICAL (alias-preserving), deliberately decoupled from the physical
             // SQL table name below -- a pack version bump must never silently rename a client's
@@ -801,6 +811,9 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         return tableDisplay;
     }
 
+    /** Most list columns a concept with no declared selection opens with (the rest sit behind the Columns toggle). */
+    static final int DEFAULT_COLUMN_BUDGET = 7;
+
     private static Map<String, Object> manifestList(CompiledConcept concept, CompiledField idField, List<String> declaredColumns) {
         List<String> shown = concept.getFieldsInDeclaredOrder().stream()
                 .filter(BusinessUiEmitter::isShowInUi)
@@ -815,6 +828,11 @@ public final class BusinessUiEmitter extends AbstractEmitter {
 
         Map<String, Object> list = new LinkedHashMap<>();
         list.put("columns", columns);
+        if ((declaredColumns == null || declaredColumns.isEmpty()) && columns.size() > DEFAULT_COLUMN_BUDGET) {
+            // Column budget: key present only when it trims something, so a small concept's manifest is unchanged.
+            // The UI opens with these and keeps the rest one click away in the Columns toggle.
+            list.put("defaultColumns", columns.subList(0, DEFAULT_COLUMN_BUDGET));
+        }
         list.put("defaultSort", sort);
         list.put("pageSize", 20);
         list.put("maxPageSize", 100);
@@ -844,6 +862,11 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         // B19: delegates to SqlIdentifierSupport.conceptEndpointBase, the SAME helper
         // AutoPanelExpander's no-panel band picker projection uses -- one definition of this route.
         return SqlIdentifierSupport.conceptEndpointBase(concept, contexts);
+    }
+
+    private static boolean hasDeclaredLabel(CompiledConcept concept) {
+        CompiledPresentationMetadata ui = concept.getUi();
+        return ui != null && ui.getLabel() != null && !ui.getLabel().isBlank();
     }
 
     private static String displayName(CompiledConcept concept) {

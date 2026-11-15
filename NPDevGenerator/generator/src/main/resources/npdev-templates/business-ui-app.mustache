@@ -36,6 +36,9 @@
     roles: [],
     isSuperUser: false,
     actorId: "",
+    // GET /api/me/permissions: { concepts: { <conceptName>: {read,list,create,update,delete} } }. null = unknown
+    // (the request failed or predates the endpoint): never hide anything on a guess -- the API enforces anyway.
+    permissions: null,
     store: { packs: [], discoverable: false, loading: false, loaded: false, filter: "", installedIntents: {} },
     // P6.4 Box Inspector: application/modules/boxes/capabilities come from /api/admin/box (the
     // enriched box-manifest.json); graph comes from the separate /api/admin/box/graph endpoint
@@ -687,7 +690,7 @@
         // R7.4: which model-declared columns the user has hidden from this grid (names, not
         // indices, so hiding survives a column being reordered upstream), and the saved-views
         // cache/selection -- both purely client-side until a Save action writes them out.
-        hiddenColumns: [],
+        hiddenColumns: defaultHiddenColumns(concept),
         savedViews: { mine: [], shared: [], loaded: false, loading: false },
         activeViewToken: "",
         // R7.8: bulk selection is page-scoped client state -- an array of string ids, reset by
@@ -1041,7 +1044,7 @@
     return Boolean(off.queueAdd({
       concept: concept.conceptName, conceptLabel: concept.displayName,
       method: mode === "edit" ? "PUT" : "POST", url: url, body: body, baseVersion: baseVersion,
-      summary: (mode === "edit" ? "Update " : "New ") + concept.displayName
+      summary: (mode === "edit" ? "Update " : "New ") + singularLabel(concept)
     }));
   }
 
@@ -1135,8 +1138,21 @@
       return [];
     }
     return state.manifest.concepts.filter(function (c) {
-      return !conceptIsAdmin(c) || state.isSuperUser;
+      return (!conceptIsAdmin(c) || state.isSuperUser) && conceptAllows(c, "list");
     });
+  }
+
+  // True unless /api/me/permissions positively said this principal may not do `operation` on the concept.
+  function conceptAllows(concept, operation) {
+    const known = state.permissions && state.permissions.concepts && state.permissions.concepts[concept.conceptName];
+    return !known || known[operation] !== false;
+  }
+
+  // "Rides" -> "ride" for "Create ride" / "New ride". The manifest carries singularName only when the label was
+  // derived from the concept name; an author-declared ui.label is used exactly as written. Acronyms keep their case.
+  function singularLabel(concept) {
+    const base = humanize(concept.singularName || concept.displayName || "");
+    return /^[A-Z][a-z]/.test(base) ? base.charAt(0).toLowerCase() + base.slice(1) : base;
   }
 
   function render() {
@@ -1494,7 +1510,7 @@
       const formHeader = document.createElement("div");
       formHeader.className = "panel-header";
       const formTitle = document.createElement("h2");
-      formTitle.textContent = (panel.formMode.mode === "edit" ? "Edit " : "New ") + concept.displayName;
+      formTitle.textContent = (panel.formMode.mode === "edit" ? "Edit " : "New ") + singularLabel(concept);
       formHeader.appendChild(formTitle);
       const backActions = document.createElement("div");
       backActions.className = "panel-actions";
@@ -1531,7 +1547,9 @@
 
     const actions = document.createElement("div");
     actions.className = "panel-actions";
-    actions.appendChild(button("New", "primary", function () { openForm(concept, "create", null); }));
+    if (conceptAllows(concept, "create")) {
+      actions.appendChild(button("New", "primary", function () { openForm(concept, "create", null); }));
+    }
     actions.appendChild(button("Refresh", "", function () { loadPanel(concept); }));
     actions.appendChild(button("Clear", "", function () {
       panel.filter = "";
@@ -1833,16 +1851,24 @@
     const hasActiveFilter = Boolean(panel.filter) || columnFiltersActive(panel);
     const message = document.createElement("p");
     message.className = "empty-state-message";
+    // Why an empty list is empty, in the order a person would ask: filters, no access to the concept at all,
+    // a rule that shows each role only its own rows, and only then "nothing has been created".
     message.textContent = hasActiveFilter
         ? "No " + concept.displayName + " match the current filters."
-        : "No " + concept.displayName + " yet.";
+        : !conceptAllows(concept, "list")
+            ? "Your role cannot see " + concept.displayName + "."
+            : concept.rowScoped
+                ? "No " + concept.displayName + " to show: your role only sees the ones that belong to it."
+                : "No " + concept.displayName + " yet.";
     wrap.appendChild(message);
 
     const actions = document.createElement("div");
     actions.className = "empty-state-actions";
-    actions.appendChild(button("Create " + concept.displayName, "primary", function () {
-      openForm(concept, "create", null);
-    }));
+    if (conceptAllows(concept, "create")) {
+      actions.appendChild(button("Create " + singularLabel(concept), "primary", function () {
+        openForm(concept, "create", null);
+      }));
+    }
     if (!hasActiveFilter && canManageSeeds() && state.seeds.loaded && state.seeds.available.length) {
       const multiple = state.seeds.available.length > 1;
       state.seeds.available.forEach(function (seed) {
@@ -2171,6 +2197,14 @@
   // set unchanged). When passed, columns the user hid via the Columns toggle are excluded -- this is
   // the ONE place "column set" actually takes effect, so a saved view's hiddenColumns and this
   // function agree by construction rather than by two independent filters staying in sync.
+  // Column budget: a concept with more fields than the manifest's list.defaultColumns opens with only those
+  // columns; the rest start hidden and are one click away in the Columns toggle (saved views still win).
+  function defaultHiddenColumns(concept) {
+    const defaults = concept.list && Array.isArray(concept.list.defaultColumns) ? concept.list.defaultColumns : null;
+    const columns = concept.list && Array.isArray(concept.list.columns) ? concept.list.columns : [];
+    return defaults ? columns.filter(function (name) { return defaults.indexOf(name) === -1; }) : [];
+  }
+
   function visibleFields(concept, panel) {
     const columns = concept.list && Array.isArray(concept.list.columns) ? concept.list.columns : [];
     const byName = Object.fromEntries(concept.fields.map(function (field) { return [field.name, field]; }));
@@ -3020,7 +3054,7 @@
   function openForm(concept, mode, record) {
     if (isModalPresentation(concept)) {
       const form = buildFormElement(concept, mode, record, closeModal);
-      openModal(mode === "edit" ? "Edit " + concept.displayName : "New " + concept.displayName, form,
+      openModal(mode === "edit" ? "Edit " + singularLabel(concept) : "New " + singularLabel(concept), form,
         function () { return confirmIfDirty(form); });
       return;
     }
@@ -3939,6 +3973,11 @@
       const me = await fetchJson("/api/me", { method: "GET", headers: headers() });
       state.roles = Array.isArray(me.roles) ? me.roles : [];
       state.actorId = me.actorId || "";
+      try {
+        state.permissions = await fetchJson("/api/me/permissions", { method: "GET", headers: headers() });
+      } catch (permissionError) {
+        state.permissions = null;
+      }
       shellOffline().setPrincipal({ tenantId: me.tenantId || "", actorId: state.actorId, roles: state.roles });
       // MOB-2: changes queued during an earlier offline session go up as soon as we are signed in again.
       window.setTimeout(function () { syncPendingWrites(); }, 0);

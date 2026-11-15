@@ -10,7 +10,7 @@ proof for UI/runtime changes; tests alone don't exercise the generated page.
 
 ## Harness
 - In-repo runner: `NPDevSamples/scripts/browser/scrapforai-harness.ps1` (per-sample copies also live beside some samples, e.g. `NPDevSamples/12works/gift-idea-tracker/`).
-- External engine: `D:\WorkSpace\ScrapForAILegacy` (Playwright). Start/auth it per its own README.
+- External engine (ScrapForAI, Playwright): never a fixed path -- it is discovered. Run `npdev monitor engine --json` to see where it is (or that it is not found). Start/auth it per its own README.
 
 ## Non-negotiable gotchas (each has burned a session before)
 - **Navigate to `http://127.0.0.1:<port>`, NOT `localhost`.** The SSRF allowlist + browser context

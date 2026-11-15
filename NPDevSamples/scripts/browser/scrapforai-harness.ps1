@@ -1,8 +1,8 @@
 # ScrapForAI browser-verification harness (shared library, dot-source this file).
 #
 # Purpose: drive a locally-booted generated NPDev app's real vanilla-JS UI in a
-# headless browser via Marcelo's ScrapForAI exploration runner
-# (D:\WorkSpace\ScrapForAILegacy), and assert on the structured evidence it
+# headless browser via the ScrapForAI exploration runner (discovered, never
+# hardcoded: see `npdev monitor engine --json`), and assert on the structured evidence it
 # returns -- console errors, page errors, network failures, unexpected external
 # requests, screenshots. This catches the class of client-side rendering bugs
 # the existing HTTP-only demonstrate/verify scripts structurally cannot.
@@ -18,7 +18,7 @@
 #    booted app's origin, or every routine 400s at its first `goto`.
 #  - dotenv does NOT override process env, and we launch from a cwd without a
 #    .env, so the env we pass fully controls the server config -- we never touch
-#    Marcelo's checked-in ScrapForAILegacy\.env.
+#    engine's own checked-in .env.
 #  - The generated business UI auto-authenticates from manifest devKeyHint
 #    ("api-dev" -> super-user); routines also fill #apiKey explicitly + reload
 #    for determinism, so no credentials block is needed in a routine.
@@ -29,11 +29,8 @@ $ErrorActionPreference = "Stop"
 # Reuse the sample helpers (Info/Ok/Fail/Ensure-*). Idempotent to re-dot-source.
 . (Join-Path (Split-Path -Parent $PSScriptRoot) "sample-common.ps1")
 
-# MONITOR_PLAN D9 / C1. This line used to be
-#
-#     $script:ScrapForAIDefaultRoot = "D:\WorkSpace\ScrapForAILegacy"
-#
-# -- an author's drive letter, used whenever no override was given, in the harness the Monitor is
+# MONITOR_PLAN D9 / C1. This file used to hold a default engine root -- an author's drive letter and
+# directory, used whenever no override was given, in the harness the Monitor is
 # built on. That is the family PORT-1 removed from six emitters on 2026-08-10 and REG-144 removed
 # from eleven root resolvers before that, and the obvious way to implement "detect the engine" was
 # to copy this constant into the Manager.

@@ -13,7 +13,7 @@
     drive_s2.py stages (comma list, or `all`). `setup` always runs first.
 
 .PARAMETER ReuseBuild
-    Skip generate + build; boot what is already under the sample's Output\App.
+    Skip generate + build; boot what is already under <BuildRoot>\samples\ride-hailing\App (never inside the repo).
 
 .PARAMETER ModelFile
     Optional model.json to copy over the sample's Input\model.json first (iterating on a staged model; the
@@ -89,8 +89,14 @@ function Write-JsonReport {
 }
 
 $samplesRoot = Get-NPDevSamplesRoot -ScriptRoot (Join-Path $repoRoot "NPDevSamples\scripts")
-New-Item -ItemType Directory -Force -Path (Join-Path $samplesRoot "$SampleId\Output") | Out-Null
-$sample = Resolve-NPDevSample -SamplesRoot $samplesRoot -SampleId $SampleId
+# P0-T6: build output lives under <BuildRoot>\samples\<id> (like run-f6-showcase.ps1), never inside the repo.
+$outputRoot = Join-Path (Join-Path (Get-NPDevBuildRoot $repoRoot) "samples") $SampleId
+$sample = [pscustomobject]@{
+    ConfigPath    = Join-Path $samplesRoot "$SampleId\Input\config.json"
+    OutputRoot    = $outputRoot
+    AppRoot       = Join-Path $outputRoot "App"
+    RunOutputRoot = Join-Path $outputRoot "RunOutput"
+}
 $config = Read-SampleConfig -Sample $sample
 if ($Port -le 0) { $Port = Get-ConfigInt -Config $config -Path @("runtime", "serverPort") -Fallback 8150 }
 $appRoot = $sample.AppRoot
@@ -109,7 +115,7 @@ if (-not [string]::IsNullOrWhiteSpace($ModelFile)) {
 
 if (-not $ReuseBuild) {
     Write-Section "Generating $SampleId"
-    & pwsh -NoProfile -File (Join-Path $repoRoot "NPDevSamples\scripts\generate-sample-app.ps1") -SampleId $SampleId | Out-Host
+    & pwsh -NoProfile -File (Join-Path $repoRoot "NPDevSamples\scripts\generate-sample-app.ps1") -SampleId $SampleId -OutputRoot $outputRoot | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "Generation failed for $SampleId." }
     $report.stages.generate = "passed"
     $gradlew = Get-NPDevGradleWrapperExecutable $appRoot

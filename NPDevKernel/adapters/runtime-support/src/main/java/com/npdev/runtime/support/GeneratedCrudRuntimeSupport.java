@@ -2606,6 +2606,21 @@ public final class GeneratedCrudRuntimeSupport {
 
     public void checkCrudPermission(String conceptName, String operation, ExecutionContext ctx) {
         ExecutionContext safeCtx = ctx == null ? ExecutionContext.anonymous() : ctx;
+        if (!isCrudPermitted(conceptName, operation, safeCtx)) {
+            appendCrudAudit(conceptName, operation, null, "DENY", safeCtx, null, null);
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "forbidden: " + conceptName + "." + operation);
+        }
+    }
+
+    /**
+     * The decision {@link #checkCrudPermission} enforces, without the side effects (no audit row, no
+     * exception): {@code GET /api/me/permissions} asks it once per concept and operation so the UI can hide
+     * what the caller could never open. Role-level only -- a row-level {@code access.read}/{@code access.write}
+     * rule is data-dependent, so "permitted" here means "may touch the concept", not "may see every row".
+     */
+    public boolean isCrudPermitted(String conceptName, String operation, ExecutionContext ctx) {
+        ExecutionContext safeCtx = ctx == null ? ExecutionContext.anonymous() : ctx;
         PermissionSubject subject = new PermissionSubject(
                 safeCtx.actorId(), safeCtx.tenantId(),
                 new ArrayList<>(safeCtx.roles()), List.of()
@@ -2615,11 +2630,7 @@ public final class GeneratedCrudRuntimeSupport {
                 conceptName, conceptName
         );
         PermissionDecision decision = permissionEvaluator.evaluate(subject, requirement);
-        if (decision != null && !decision.allowed()) {
-            appendCrudAudit(conceptName, operation, null, "DENY", safeCtx, null, null);
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "forbidden: " + conceptName + "." + operation);
-        }
+        return decision == null || decision.allowed();
     }
 
     public void auditCrudMutation(String conceptName, String operation, String resourceId,
