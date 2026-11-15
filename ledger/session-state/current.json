@@ -1,25 +1,21 @@
 {
-  "closedAt": "2026-11-14T23:45:07.8396631Z",
+  "closedAt": "2026-11-15T01:56:15.3808050Z",
   "branch": "main",
-  "head": "0470d111",
-  "headSubject": "feat(quality): gate levels -- every check says level/protects/triggers/cost, and select_checks.py runs only what a change needs (FORM P1-T1/T3/T5)",
-  "summary": "FORM plan (OutsideRepo/NPDEV_FORM_PLAN_2026-11-13): P0 security core done and pushed -- identity pack owns the password store as system concept (fee0d936), default deny (533e1ac7), exposure-matrix probe wired into run-ride-hailing, sensitive field runtime guarantee, plus P1 registry level fields + select_checks.py + checkLevel low (0470d111). journeys 36/36, ride-hailing 76/76 + matrix, behaviour probes 144/144.",
-  "nextStep": "Continue D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\NPDEV_FORM_PLAN_2026-11-13\\impl\\TASKS.md: P1-T4 (run-all-gates.ps1 -Level + npdev verify --level), P1-T2 (split aiKnowledge into registry entries; instrument step timing first), then P0-T6 leftovers and P0-T7 back-office quick wins; progress table in impl\\PROGRESS.md.",
-  "plan": "",
+  "head": "2e1a54bb",
+  "headSubject": "feat(packs): `npdev pack workshop ingest` -- AI-delivered pack zips into the PackWorkshop (FORM P6-T1/T2)",
+  "summary": "FORM plan: pushed P1-T4 (run_selected.py, run-all-gates -Level, npdev verify --level), P0-T6/T7 (ride-hailing output to Build; /api/me/permissions, column budget, singular labels, empty-list reasons, verified live + screenshots), P1-T7/T8/T9 (twin-pair filter, monthly paperwork, verify --audit), P6-T1/T2 (npdev pack workshop ingest + 3 schemas). Two research agents finished P2-T1 and P2-T2 (concept-map.json, step-vocabulary.json, outside the repo). Owner ordered LESS GATES: P1-T2 dropped, an in-flight aiKnowledge run was stopped and its instrumentation reverted.",
+  "nextStep": "Implement P6-T3 in NPDevCli/npdev_pack_workshop.py: 'npdev pack workshop test <packId>[@version]' ladder rungs 1-4 (schema+static relay checks via NPDevCli/npdev_relay_pack.py, composition via a module form of D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PACK_AUTHORING_BROWSER_AI_2026-11-12\\validate_pack.py, access lint, probes), writing runs/<pack>@<version>/<stamp>/verdict.json against NPDevContract/schemas/pack-workshop/verdict.schema.json; then P6-T5 status/feedback/promote. Spec: D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\NPDEV_FORM_PLAN_2026-11-13\\impl\\TASKS.md (P6) and impl\\PROGRESS.md. Do NOT run whole gates. Owner questions for P2-T6 are in PROGRESS.md (ruleProfiles future feature? keep name settings?).",
+  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\NPDEV_FORM_PLAN_2026-11-13\\impl\\TASKS.md",
   "blocked": "",
-  "verified": "dsl suite, generator emitter tests, kernel gateway tests, run-journeys, run-ride-hailing -Stages all (76/76 + exposure), run-behavior-probes 144/144, schema-mirror, twin-pair, cadence-coverage, doc-inventory, script-inventory. NOT run: run-all-gates.ps1, aiKnowledge gate, WmsOffice/pigmentampas builds.",
+  "verified": "No gate ran (owner: less gates). Targeted only: dsl suite via run_selected (green, 72 s), BusinessUi* emitter tests incl. new BackOffice test (green), runtime-support kernel-ports test (green), 13 workshop ingest tests + 14 run_selected/twin-pair + 6 audit unit tests (green), live ride-hailing app probed per role + screenshots, cheap checkers (twin-pair 54/54, cadence-coverage, script-inventory, record-surfaces, doc-inventory, workflow YAML). NOT run: run-all-gates, aiKnowledge, behaviour probes, canary, shell-scenarios, full generator suite.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "0470d111 feat(quality): gate levels -- every check says level/protects/triggers/cost, and select_checks.py runs only what a change needs (FORM P1-T1/T3/T5)",
-    "cb2600a7 feat(security): `sensitive: true` is a runtime guarantee -- never returned unless the field declares its own read rule (FORM P0-T5, REG-339)",
-    "42bd2998 feat(quality): exposure matrix probe -- what each role must NOT see, run after the ride-hailing acceptance (FORM P0-T4, REG-339)",
-    "533e1ac7 feat(security): default deny -- a model with roles must say who may touch every concept (FORM P0-T3, REG-339)",
-    "fee0d936 feat(security): the identity pack owns the password store as a system concept, and no generated surface exposes it (FORM P0-T0/T1/T2, REG-339)",
-    "e3f3cb25 chore(quality): coverage floors ratchet up after a full run-all-gates (kernel 72.1097, RuntimeHost 32.15)",
-    "a892ce0d fix(manager): a comment in browserai.js no longer reads as an untranslated UI string, which turned the AI Knowledge Gate red on f7e7c6ed",
-    "f7e7c6ed fix(manager): 'Ask for something else' after an Undo closes the conversation in the CLI, which Undo had left open as answer-received (REG-323 F4)",
-    "9d4a943f chore(session): handoff after REG-323 F4 phase f4 in the Manager"
+    "2e1a54bb feat(packs): `npdev pack workshop ingest` -- AI-delivered pack zips into the PackWorkshop (FORM P6-T1/T2)",
+    "9e808002 feat(quality): twin-pair rules run only when touched, paperwork goes monthly, `npdev verify --audit` (FORM P1-T7/T8/T9)",
+    "4608bc1a feat(ui): back-office quick wins -- menu follows permissions, column budget, singular labels, honest empty lists (FORM P0-T7); ride-hailing output moves to Build (P0-T6)",
+    "87c2b651 feat(quality): run the selected checks -- run-all-gates.ps1 -Level and npdev verify --level (FORM P1-T4)",
+    "80739905 chore(session): handoff after FORM plan P0 core + P1 levels"
   ]
 }
