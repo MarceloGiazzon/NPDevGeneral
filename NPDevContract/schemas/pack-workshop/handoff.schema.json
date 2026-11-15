@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "npdev:pack-workshop:handoff.v1",
+  "title": "Pack workshop handoff (one per pack: the self-review checklist as data)",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "pack",
+    "version",
+    "checklist",
+    "limits"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-pack-handoff.v1"
+    },
+    "pack": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "checklist": {
+      "type": "array",
+      "description": "One answer per item of the guide's self-review checklist (section 12). Every item id must appear; 'n/a' needs a reason.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "answer"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "e.g. own-record-write-null-owner, sensitive-fields-closed, child-rows-inherit-parent-visibility"
+          },
+          "answer": {
+            "enum": [
+              "yes",
+              "no",
+              "n/a"
+            ]
+          },
+          "evidence": {
+            "type": "string",
+            "description": "where in pack.json, or why n/a"
+          }
+        }
+      }
+    },
+    "limits": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "What the pack does NOT do. The first entry becomes the catalog card's 'limit' line."
+    },
+    "probesIncluded": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "file names under packs/<id>/probes/"
+    },
+    "exampleModel": {
+      "type": "boolean",
+      "description": "true when packs/<id>/example-model.json is in the zip"
+    }
+  }
+}

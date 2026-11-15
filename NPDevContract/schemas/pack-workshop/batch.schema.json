@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "npdev:pack-workshop:batch.v1",
+  "title": "Pack workshop batch (root of every delivery zip)",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "batchId",
+    "author",
+    "guideVersion",
+    "packs"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-pack-batch.v1"
+    },
+    "batchId": {
+      "type": "string",
+      "pattern": "^w[0-9]+-[a-z0-9-]+$",
+      "description": "wave + lot, e.g. w1-modules. The zip is named npdev-packs__<batchId>__<YYYYMMDD-HHMM>.zip"
+    },
+    "author": {
+      "type": "object",
+      "required": [
+        "kind",
+        "model"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "browser-ai",
+            "api-ai",
+            "human"
+          ]
+        },
+        "model": {
+          "type": "string",
+          "description": "as the AI names itself, e.g. 'gemini-3.6-flash'"
+        },
+        "conversation": {
+          "type": "string",
+          "description": "optional link or relay code"
+        }
+      }
+    },
+    "guideVersion": {
+      "type": "string",
+      "description": "version line printed at the top of the authoring guide the AI used"
+    },
+    "packs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "pack",
+          "version",
+          "roadmapId"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "pack": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "version": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+          },
+          "roadmapId": {
+            "type": "string",
+            "description": "id in NPDevContract/pack-catalog/pack-roadmap.json"
+          },
+          "replaces": {
+            "type": "string",
+            "description": "previous version this one fixes, if any"
+          }
+        }
+      }
+    }
+  }
+}

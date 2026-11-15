@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "npdev:pack-workshop:verdict.v1",
+  "title": "Pack workshop verdict (written by `npdev pack workshop test`)",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "pack",
+    "version",
+    "status",
+    "steps"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-pack-verdict.v1"
+    },
+    "pack": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "delivered",
+        "valid",
+        "composes",
+        "secure",
+        "probed",
+        "browsed",
+        "reviewed",
+        "published",
+        "rejected"
+      ],
+      "description": "the HIGHEST rung reached; rejected = stopped with feedback written"
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "step",
+          "result"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "step": {
+            "enum": [
+              "static",
+              "schema",
+              "compose",
+              "access-lint",
+              "exposure-matrix",
+              "behavior-probes",
+              "screens",
+              "owner-review",
+              "publish"
+            ]
+          },
+          "result": {
+            "enum": [
+              "pass",
+              "fail",
+              "skipped"
+            ]
+          },
+          "seconds": {
+            "type": "number"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "string",
+            "description": "path under runs/<pack>@<version>/<stamp>/"
+          }
+        }
+      }
+    },
+    "feedbackForAi": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "where - what - how to fix lines, pasted back to the authoring AI"
+    }
+  }
+}

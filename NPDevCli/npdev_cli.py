@@ -17484,6 +17484,12 @@ def build_parser() -> argparse.ArgumentParser:
                                    "and recorded in the pack's own metadata.unresolvedReferences instead "
                                    "of refusing the export")
 
+    # FORM P6: where AI-authored packs arrive and are checked (maintainer tooling; ingest first, test/status/promote follow).
+    import npdev_pack_workshop
+    pack_workshop = pack_sub.add_parser(
+        "workshop", help="Take AI-delivered pack zips into the PackWorkshop (outside the repo): ingest, then test and promote."
+    )
+    npdev_pack_workshop.add_arguments(pack_workshop)
     pack_diff = pack_sub.add_parser(
         "diff", help="Classify every difference between two pack.json documents as ADDITIVE/BREAKING/PATCH."
     )
@@ -19082,6 +19088,9 @@ def main(argv: list[str] | None = None) -> int:
             return run_pack_verify(args)
         if args.command == "pack" and args.pack_command == "deprecate":
             return run_pack_deprecate(args)
+        if args.command == "pack" and args.pack_command == "workshop":
+            import npdev_pack_workshop
+            return npdev_pack_workshop.main(sys.modules[__name__], args)
         if args.command == "pack" and args.pack_command == "search":
             return run_pack_search(args)
         if args.command == "pack" and args.pack_command == "build-catalog":
