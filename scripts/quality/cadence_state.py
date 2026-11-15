@@ -144,6 +144,12 @@ def cmd_record(args):
     }
     history.append({k: entry[k] for k in ("lastRun", "result", "durationSeconds")})
     entry["history"] = history[-20:]  # keep the last 20 runs, no more
+    # FORM P1-T9: two dates that outlive the 20-run window, so `audit` can say "has not failed since X" honestly.
+    first_seen = prior.get("firstRecordedAt") or (history[0]["lastRun"] if history and history[0].get("lastRun") else now)
+    entry["firstRecordedAt"] = first_seen
+    last_failed = now if args.result == "failed" else prior.get("lastFailedAt")
+    if last_failed:
+        entry["lastFailedAt"] = last_failed
     state[args.id] = entry
     write_state(state)
     print(f"Recorded {args.id} ({args.tier}): {args.result}")
@@ -274,6 +280,66 @@ def cmd_list_ids(_args):
     return 0
 
 
+def cmd_audit(args):
+    """FORM P1-T9 earn-your-keep report. REPORT ONLY: nothing is ever demoted automatically.
+
+    A check is a demotion candidate when it costs more than --min-cost seconds AND has not recorded a failure for
+    --days days (measured from its last failure, or from the first run this machine recorded). A `failed` record is
+    not proof of a real defect (an infra flake looks the same), so this lists evidence and the owner decides.
+    Checks that protect security are never suggested for demotion below `standard`.
+    """
+    checks = load_cadence()
+    state = load_state()
+    now = datetime.now(timezone.utc)
+    order = ["core", "standard", "extended", "release", "paperwork"]
+    rows, no_data = [], []
+    for check_id, check in checks.items():
+        cost = check.get("costSeconds", 0)
+        entry = state.get(check_id)
+        if not entry:
+            no_data.append(check_id)
+            continue
+        since_text = entry.get("lastFailedAt") or entry.get("firstRecordedAt") or entry.get("lastRun")
+        try:
+            since = datetime.fromisoformat(since_text)
+        except (TypeError, ValueError):
+            no_data.append(check_id)
+            continue
+        quiet_days = (now - since).days
+        level = check.get("level", "")
+        floor = "standard" if check.get("protects") == "security" else None
+        candidate = cost > args.min_cost and quiet_days >= args.days and level in ("core", "standard")
+        if candidate and floor and level == floor:
+            candidate = False  # a security check is already at its floor
+        suggestion = None
+        if candidate and level in order[:2]:
+            suggestion = order[min(order.index(level) + 1, 2)]  # one level down: core->standard->extended
+            if floor and order.index(suggestion) > order.index(floor):
+                suggestion = None
+        rows.append({
+            "id": check_id, "level": level, "costSeconds": cost, "protects": check.get("protects"),
+            "quietDays": quiet_days, "lastFailedAt": entry.get("lastFailedAt"),
+            "since": "last failure" if entry.get("lastFailedAt") else "first recorded run",
+            "runsKept": len(entry.get("history", [])), "demotionCandidate": bool(suggestion), "suggestedLevel": suggestion,
+        })
+    rows.sort(key=lambda r: (not r["demotionCandidate"], -r["costSeconds"]))
+    if args.json:
+        print(json.dumps({"days": args.days, "minCost": args.min_cost, "rows": rows, "noData": no_data}, indent=2))
+        return 0
+    cands = [r for r in rows if r["demotionCandidate"]]
+    print(f"Earn-your-keep audit (report only): cost > {args.min_cost}s and no failure for {args.days}+ days")
+    print(f"  {len(cands)} demotion candidate(s) of {len(rows)} check(s) with recorded runs; {len(no_data)} with no run recorded here")
+    for r in cands:
+        print(f"  CANDIDATE {r['id']}: {r['level']} -> {r['suggestedLevel']}, {r['costSeconds']}s, quiet {r['quietDays']}d since {r['since']}")
+    for r in rows:
+        if not r["demotionCandidate"]:
+            print(f"  keep      {r['id']}: {r['level']}, {r['costSeconds']}s, quiet {r['quietDays']}d since {r['since']}")
+    if no_data:
+        print("  no data   " + ", ".join(no_data))
+    print("  Only 'core' and 'standard' checks are listed as candidates; the state is per machine, so a short history means a short window.")
+    return 0
+
+
 def main(argv):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command")
@@ -295,6 +361,11 @@ def main(argv):
 
     sub.add_parser("list-ids")
 
+    audit_parser = sub.add_parser("audit", help="FORM P1-T9: report checks that have not earned their cost (report only).")
+    audit_parser.add_argument("--days", type=int, default=120)
+    audit_parser.add_argument("--min-cost", type=int, default=60, dest="min_cost")
+    audit_parser.add_argument("--json", action="store_true")
+
     args = parser.parse_args(argv)
     if args.command == "record":
         return cmd_record(args)
@@ -302,6 +373,8 @@ def main(argv):
         return cmd_report(args)
     if args.command == "list-ids":
         return cmd_list_ids(args)
+    if args.command == "audit":
+        return cmd_audit(args)
     parser.print_help()
     return 2
 

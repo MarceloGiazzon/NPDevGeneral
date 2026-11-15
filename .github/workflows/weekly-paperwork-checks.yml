@@ -1,4 +1,4 @@
-name: Weekly paperwork checks
+name: Paperwork checks (monthly)
 
 # R4 Part C (MASTER-ROADMAP.md Step 9 / ledger QUAL-7). 11 of the 14 "paperwork" checkers (verify
 # documentation/process hygiene, not platform runtime behavior -- see
@@ -13,9 +13,12 @@ name: Weekly paperwork checks
 # Not wired into branch protection (only "AI knowledge substrate gate" is) -- a finding here is a
 # signal to fix on the next convenient commit, not a merge-blocker for whatever PR happens to be open
 # when the weekly run lands.
+# FORM P1-T8 (owner: fewer gates, 2026-11-15): weekly -> monthly. These checks cannot fail because of a code change, so
+# a month is soon enough to hear about a stale link or an un-cited allowlist entry. The file keeps its old name so
+# nothing that points at it breaks; the registry entry `weeklyPaperwork` allows 30 days of staleness to match.
 on:
   schedule:
-    - cron: "0 7 * * 1"
+    - cron: "0 7 1 * *"
   workflow_dispatch:
 
 permissions:

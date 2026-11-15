@@ -18441,6 +18441,9 @@ def build_parser() -> argparse.ArgumentParser:
                               "extra_high, full). Roughly: T0 = core, T1 = core+standard, T2 = extended "
                               "(all gates, whatever changed), T3 = release. 'default' uses the profile's "
                               "checkLevel (scripts/policy/local-test-profile.json).")
+    verify.add_argument("--audit", action="store_true",
+                         help="Report-only earn-your-keep audit (FORM P1-T9): checks that cost more than 60 s and "
+                              "have not failed for 120 days, as demotion candidates. Never demotes anything.")
     verify.add_argument("--dry-run", action="store_true",
                          help="--level only: print which checks would run and their cost; run nothing.")
     verify.add_argument("--panel", action="store_true",
@@ -19285,6 +19288,10 @@ def main(argv: list[str] | None = None) -> int:
             return run_verify_panel(args)
         if args.command == "verify" and getattr(args, "run", None):
             return run_verify_execute(args)
+        if args.command == "verify" and getattr(args, "audit", False):
+            return subprocess.run([sys.executable or "python", str(repo_root() / "scripts" / "quality" / "cadence_state.py"),
+                                   "audit"] + (["--json"] if getattr(args, "json", False) else []),
+                                  cwd=repo_root()).returncode
         if args.command == "verify" and getattr(args, "level", None):
             return run_verify_level(args)
         if args.command == "verify":

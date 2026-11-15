@@ -18,7 +18,14 @@ and fails when any rule's locations have diverged:
     field silently has no live path through one of them (REG-104's/REG-108's shape).
 
 Usage: python scripts/quality/check-twin-pair-consistency.py
+       python scripts/quality/check-twin-pair-consistency.py --changed-from origin/main   # FORM P1-T7
+       python scripts/quality/check-twin-pair-consistency.py --changed a/b.java c/d.json
 Exit 0 = every registered rule's locations agree. Exit 1 = at least one rule diverged.
+
+With no flag EVERY rule runs (the gate, extended level). With --changed-from/--changed only the rules whose pinned
+files were touched run: a rule's triggers are DERIVED from the files it already names (`files`, `listFile`, and the
+`groups` members matched by path suffix), so there is no second list to keep in step. If git cannot say what changed
+(or nothing did), every rule runs -- a filter must never turn "I don't know" into "all clear".
 """
 
 from __future__ import annotations
@@ -162,6 +169,29 @@ def run_self_test() -> bool:
     return True
 
 
+def rule_is_touched(rule: dict, changed: set[str]) -> bool:
+    """True when a changed path is one of the files this rule pins (derived, never a hand-kept trigger list)."""
+    pinned = set(rule.get("files", []))
+    if rule.get("listFile"):
+        pinned.add(rule["listFile"])
+    if pinned & changed:
+        return True
+    members = [member for group in rule.get("groups", []) for member in group]
+    return any(path == member or path.endswith("/" + member) for path in changed for member in members)
+
+
+def changed_set(argv: list[str]) -> set[str] | None:
+    """None = run every rule. Otherwise the repo-relative changed paths ('/' separators)."""
+    if "--changed" in argv:
+        paths = [a.replace("\\", "/") for a in argv[argv.index("--changed") + 1:] if not a.startswith("--")]
+        return set(paths) or None
+    if "--changed-from" in argv:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import select_checks  # same directory; one definition of "what changed"
+        return set(select_checks.changed_paths(argv[argv.index("--changed-from") + 1])) or None
+    return None
+
+
 def main() -> int:
     if not run_self_test():
         return 1
@@ -172,7 +202,14 @@ def main() -> int:
 
     print("Twin-pair consistency (Move 14 Phase E item E1 / U2):")
     all_failures: list[str] = []
+    changed = changed_set(sys.argv[1:])
+    skipped = 0
+    if changed is not None:
+        print(f"  (filtered to the rules touched by {len(changed)} changed path(s); no flag runs all)")
     for rule in registry["rules"]:
+        if changed is not None and not rule_is_touched(rule, changed):
+            skipped += 1
+            continue
         checker = CHECKERS.get(rule["kind"])
         if checker is None:
             all_failures.append(f"{rule['id']}: unknown rule kind '{rule['kind']}'")
@@ -190,7 +227,9 @@ def main() -> int:
         return 1
 
     print()
-    print(f"OK: all {len(registry['rules'])} registered twin-pair rule(s) are consistent.")
+    ran = len(registry["rules"]) - skipped
+    suffix = f" ({skipped} untouched rule(s) skipped)" if skipped else ""
+    print(f"OK: all {ran} checked twin-pair rule(s) are consistent{suffix}.")
     return 0
 
 

@@ -141,7 +141,7 @@
       "tier": "T1",
       "maxStaleness": "1-wave",
       "invokedBy": "scripts/quality/run-ai-knowledge-gate.ps1",
-      "run": ["{python}", "scripts/quality/check-twin-pair-consistency.py"],
+      "run": ["{python}", "scripts/quality/check-twin-pair-consistency.py", "--changed-from", "origin/main"],
       "description": "S6 (drift A3): reads scripts/quality/twin-pair-registry.json's human-curated list of location pairs that must move together (e.g. the four-place chain for a new top-level model array field, both directions of pack-composition) and fails the moment any pair diverges. 2026-08-23 (Wave 6 of the 2026-08-23 defect-remediation session): this check ran (hosted by the knowledge gate, step [20/39]) on every gate pass, but nothing ever called cadence_state.py record for it, so this entry's maxStaleness could never be satisfied and it showed permanently OVERDUE no matter how often it actually ran. Wired the missing record call into run-ai-knowledge-gate.ps1 right where the check already executes.",
       "level": "standard",
       "protects": "correctness",
@@ -330,7 +330,7 @@
     {
       "id": "weeklyPaperwork",
       "tier": "T3",
-      "maxStaleness": "7-days",
+      "maxStaleness": "30-days",
       "invokedBy": "scripts/quality/run-all-gates.ps1 (gate: weeklyPaperwork, opt-in via -IncludePaperwork since GATE-SPLIT 2026-08-25 W4.5) / .github/workflows/weekly-paperwork-checks.yml (schedule)",
       "run": ["pwsh", "-NoProfile", "-File", "scripts/quality/run-weekly-paperwork-checks.ps1"],
       "description": "GATE-SPLIT (2026-08-25 remediation plan W4.5): the gate-level entry for run-weekly-paperwork-checks.ps1's 11 doc/process-hygiene checkers -- distinct from each individual checker's own cadence entry above (check-adr-decision-implementation, etc.), this tracks the AGGREGATE gate run itself so run-all-gates.ps1's own -Only weeklyPaperwork invocation satisfies check-cadence-coverage.py the same way every other gate in its $gates array must. Reuses T3 (not a new tier) since this repo's cadence system has exactly four; deferred for a DIFFERENT reason than betaRelease (slower-moving process hygiene, not release ceremony), hence its own -IncludePaperwork switch rather than sharing -IncludeReleaseGate.",

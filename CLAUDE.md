@@ -199,7 +199,8 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   release + paperwork; `--list-levels` shows the map, `--json` is for scripts. **To RUN the selection instead of just printing it:**
   `python scripts/quality/run_selected.py [--level L] [--dry-run]`, or its two spellings `pwsh -NoProfile -File scripts/quality/run-all-gates.ps1
   -Level L` and `npdev verify --level L` (each registry entry's `run` argv; entries sharing one command run once; `run: null` = manual/CI-only,
-  listed as NOT RUN, never counted green; bare `run-all-gates.ps1` is unchanged). Run the selected checks and the touched module's own tests,
+  listed as NOT RUN, never counted green; bare `run-all-gates.ps1` is unchanged; `npdev verify --audit` lists checks that cost > 60 s and have
+  not failed in 120 days as demotion candidates — report only, the owner decides). Run the selected checks and the touched module's own tests,
   not a bare `run-all-gates.ps1`. Tier (staleness deadline) and level (cost) are separate: keep both on every registry entry.
 - **Quality gates — "all gates green" means ONE command:**
   `pwsh -NoProfile -File scripts/quality/run-all-gates.ps1` (T2). It runs **four** gates by default,
