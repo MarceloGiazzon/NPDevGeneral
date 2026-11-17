@@ -28,7 +28,7 @@ class PackRequiresBindingTest {
     void unboundRequiredRoleRefusesNamingThePackPathAndKey() throws Exception {
         write("packs/billing/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "billing",
                   "version": "1.0.0",
                   "requires": { "roles": ["admin"] },
@@ -40,7 +40,7 @@ class PackRequiresBindingTest {
         Path model = write("model.json", """
                 {
                   "namespace": "requires.unbound.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "$ref": "packs/billing/pack.json" } ]
                 }
@@ -57,7 +57,7 @@ class PackRequiresBindingTest {
     void boundRequiredRoleSucceeds() throws Exception {
         write("packs/billing/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "billing",
                   "version": "1.0.0",
                   "requires": { "roles": ["admin"] },
@@ -69,7 +69,7 @@ class PackRequiresBindingTest {
         Path model = write("model.json", """
                 {
                   "namespace": "requires.bound.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "provides": { "roles": ["admin"] },
                   "packs": [ { "$ref": "packs/billing/pack.json" } ]
@@ -84,7 +84,7 @@ class PackRequiresBindingTest {
     void unboundCapabilityAndNetworkAlsoRefuse() throws Exception {
         write("packs/notifier/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "notifier",
                   "version": "1.0.0",
                   "requires": { "capabilities": ["sendMail"], "network": ["smtp.example.com"] },
@@ -96,7 +96,7 @@ class PackRequiresBindingTest {
         Path model = write("model.json", """
                 {
                   "namespace": "requires.capnet.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "provides": { "capabilities": ["sendMail"] },
                   "packs": [ { "$ref": "packs/notifier/pack.json" } ]
@@ -117,7 +117,7 @@ class PackRequiresBindingTest {
                 """);
         write("packs/withFragment/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "withFragment",
                   "version": "1.0.0",
                   "fragments": [ { "$ref": "fragment.json" } ]
@@ -126,7 +126,7 @@ class PackRequiresBindingTest {
         Path model = write("model.json", """
                 {
                   "namespace": "requires.fragment.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "$ref": "packs/withFragment/pack.json" } ]
                 }

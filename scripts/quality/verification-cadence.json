@@ -46,6 +46,24 @@
       "costSeconds": 3
     },
     {
+      "id": "check-concept-map",
+      "tier": "T0",
+      "maxStaleness": "every-run",
+      "invokedBy": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "run": [
+        "{python}",
+        "scripts/quality/check-concept-map.py"
+      ],
+      "description": "FORM P2-T4 (ADR-0013): every top-level key of model.schema.json has a recorded fate (KEEP, MERGE, REMOVE, MOVE, RENAME) and names one of the twelve nouns in scripts/policy/concept-map.json, and the map names no key the schema lacks. The --after-phase Pn ratchet (by hand, at the end of a phase) proves a phase removed what it said it would.",
+      "level": "core",
+      "protects": "correctness",
+      "triggers": [
+        "**/model.schema.json",
+        "scripts/policy/concept-map.json"
+      ],
+      "costSeconds": 2
+    },
+    {
       "id": "model-validate-touched",
       "tier": "T0",
       "maxStaleness": "every-run",

@@ -40,7 +40,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class GeneratedQueryControllerLookupTest {
 
     private static final String MODEL = """
-            { "namespace": "friction5.lookup", "dslVersion": "1.0.0", "version": "1.0",
+            { "namespace": "friction5.lookup", "dslVersion": "3.0.0", "version": "1.0",
               "concepts": [
                 { "name": "Cell", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

@@ -49,7 +49,6 @@ class GeneratedCrudRuntimeSupportModelReloadTest {
                 null,
                 null,
                 new SystemRuntimeClock(),
-                new InMemoryOrchestrationExecutionRegistry(),
                 noopRuntimeInvariantEngineFactory(),
                 AuditLogStore.noop(),
                 PermissionEvaluator.allowAll(),

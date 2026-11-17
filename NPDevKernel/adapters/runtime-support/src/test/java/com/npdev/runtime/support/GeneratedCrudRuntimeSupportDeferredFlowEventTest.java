@@ -192,6 +192,34 @@ class GeneratedCrudRuntimeSupportDeferredFlowEventTest {
         assertEquals(3, rowCount(), "The duplicate must not have inserted a fourth row");
     }
 
+    /**
+     * FORM P3-T5c stage 4: a {@code dedupeKey} makes the schedule unique across executions -- the
+     * identity an orchestration scheduleEvent action had per source event -- so a retried or repeated
+     * run schedules the reminder once per key, and a different key still gets its own row.
+     */
+    @Test
+    void aDedupeKeyMakesTheScheduleUniqueAcrossExecutions() throws Exception {
+        assertEquals(ExecutionStatus.OK, kernelRunner.execute(
+                "ScheduleReminderOnce", Map.of("appointmentId", "apt-1", "correlationId", "corr-1")).getStatus());
+        assertEquals(ExecutionStatus.OK, kernelRunner.execute(
+                "ScheduleReminderOnce", Map.of("appointmentId", "apt-1", "correlationId", "corr-2")).getStatus());
+        assertEquals(1, rowCount(), "same dedupeKey, two executions and two correlations: one row");
+        kernelRunner.execute("ScheduleReminderOnce", Map.of("appointmentId", "apt-2", "correlationId", "corr-3"));
+        assertEquals(2, rowCount(), "another key is another schedule");
+        // without a dedupeKey the same two runs stay two rows (see twoExecutionsScheduleTwoRows...)
+        kernelRunner.execute("ScheduleReminder", Map.of("appointmentId", "apt-1", "correlationId", "corr-4"));
+        kernelRunner.execute("ScheduleReminder", Map.of("appointmentId", "apt-1", "correlationId", "corr-5"));
+        assertEquals(4, rowCount());
+    }
+
+    @Test
+    void aDedupeKeyThatResolvesToNothingFailsTheStepInsteadOfFallingBackToPerExecution() throws Exception {
+        ExecutionResult result = kernelRunner.execute(
+                "ScheduleReminderOnce", Map.of("somethingElse", "x", "correlationId", "corr-void"));
+        assertEquals(0, rowCount(), "nothing may be scheduled when the key is empty");
+        assertFalse(result.getStatus() == ExecutionStatus.OK, "an unresolvable dedupeKey must not be silently ignored");
+    }
+
     @Test
     void aDeferredScheduleWithoutADataSourceIsHeldInMemoryAndDeliveredOnlyAfterTheDelay() throws Exception {
         // An in-memory app has no npdev_scheduled_event table. It used to refuse every delayed step
@@ -297,7 +325,19 @@ class GeneratedCrudRuntimeSupportDeferredFlowEventTest {
                         FlowStepDefinition.returnValue("return-input", "$input")
                 )
         );
-        return flowName -> "ScheduleReminder".equals(flowName) ? Optional.of(flow) : Optional.empty();
+        // FORM P3-T5c stage 4: the same step with a dedupeKey -- one schedule per appointment, however often the flow runs.
+        FlowDefinition once = new FlowDefinition(
+                "ScheduleReminderOnce",
+                "Appointment",
+                List.of(
+                        FlowStepDefinition.scheduleEvent(
+                                "queue-reminder", REMINDER_EVENT, "$input", Map.of(), DELAY_SECONDS)
+                                .withDedupeKey("$input.appointmentId"),
+                        FlowStepDefinition.returnValue("return-input", "$input")
+                )
+        );
+        return flowName -> "ScheduleReminder".equals(flowName) ? Optional.of(flow)
+                : "ScheduleReminderOnce".equals(flowName) ? Optional.of(once) : Optional.empty();
     }
 
     private String onlyScheduleId() throws Exception {

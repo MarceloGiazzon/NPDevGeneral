@@ -28,7 +28,7 @@ class InteractionMetadataSupportTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "interaction.metadata.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -106,7 +106,7 @@ class InteractionMetadataSupportTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "interaction.metadata.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -177,7 +177,7 @@ class InteractionMetadataSupportTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "acme.picker",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {

@@ -6,6 +6,8 @@ import com.finalexec.config.DefaultTenant;
 import com.finalexec.config.ModelHolder;
 import com.finalexec.webhook.InboundSignatureVerifier;
 import com.finalexec.webhook.InboundWebhookSupport;
+import com.npdev.dsl.v1.compiled.CompiledFlow;
+import com.npdev.dsl.v1.compiled.CompiledFlowTrigger;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledWebhook;
 import com.npdev.kernel.ExecutionContext;
@@ -248,7 +250,10 @@ public class WebhookInboundController {
 
         Map<String, Object> signature = webhook.signature();
         String scheme = signatureText(signature, "scheme", InboundSignatureVerifier.SCHEME_NPDEV);
-        String headerName = signatureText(signature, "header", SIGNATURE_HEADER);
+        // stripe-v1 is Stripe's own scheme, so its header is always Stripe-Signature unless the model says otherwise
+        // (WebhookValidation tells authors they need not declare it; the NPDev default header would never match).
+        String headerName = signatureText(signature, "header",
+                InboundSignatureVerifier.SCHEME_STRIPE.equals(scheme) ? "Stripe-Signature" : SIGNATURE_HEADER);
         String prefix = signatureText(signature, "prefix", null);
         long toleranceSeconds = signature.get("toleranceSeconds") instanceof Number n
                 ? n.longValue() : InboundSignatureVerifier.DEFAULT_TOLERANCE_SECONDS;
@@ -411,6 +416,40 @@ public class WebhookInboundController {
             response.put("flow", webhook.startFlow());
             response.put("executionId", result.getExecutionId());
             response.put("status", status.name());
+        }
+
+        // FORM P3-T5c: flows declaring `trigger: {kind: webhook, webhook: <this source>}` start on every
+        // verified delivery, with the mapped payload, as the system principal of the home tenant -- the same
+        // way startFlow does. A failure answers 500 and skips the idempotency record, so the sender retries.
+        List<String> triggeredFlows = new ArrayList<>();
+        for (CompiledFlow flow : modelHolder.get().getFlows()) {
+            CompiledFlowTrigger trigger = flow.getTrigger();
+            if (trigger == null || !"webhook".equals(trigger.kind()) || !source.equals(trigger.webhook())) {
+                continue;
+            }
+            KernelRunner runner = kernelRunner == null ? null : kernelRunner.getIfAvailable();
+            if (runner == null) {
+                return failure(HttpStatus.INTERNAL_SERVER_ERROR, "WEBHOOK_FLOW_FAILED",
+                        "flow runtime is not available");
+            }
+            ExecutionResult triggered;
+            try {
+                triggered = runner.execute(flow.getName(), new LinkedHashMap<>(payload), ExecutionContext.system(homeTenant));
+            } catch (RuntimeException flowFailure) {
+                LOG.warn("webhook '{}' trigger flow '{}' threw {}", source, flow.getName(), flowFailure.getClass().getSimpleName());
+                return failure(HttpStatus.INTERNAL_SERVER_ERROR, "WEBHOOK_FLOW_FAILED",
+                        "flow '" + flow.getName() + "' failed");
+            }
+            if (triggered.getStatus() != ExecutionStatus.OK && triggered.getStatus() != ExecutionStatus.WAITING_EVENT) {
+                LOG.warn("webhook '{}' trigger flow '{}' finished {}", source, flow.getName(), triggered.getStatus());
+                return failure(HttpStatus.INTERNAL_SERVER_ERROR, "WEBHOOK_FLOW_FAILED",
+                        "flow '" + flow.getName() + "' finished " + triggered.getStatus());
+            }
+            triggeredFlows.add(flow.getName());
+        }
+        if (!triggeredFlows.isEmpty()) {
+            LOG.info("webhook '{}' verified: started trigger flows {}", source, triggeredFlows);
+            response.put("triggeredFlows", triggeredFlows);
         }
 
         if (idempotencyKey != null) {

@@ -35,7 +35,7 @@ class FieldAccessSupportTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "field.access.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -91,7 +91,7 @@ class FieldAccessSupportTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "field.access.invalid.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {

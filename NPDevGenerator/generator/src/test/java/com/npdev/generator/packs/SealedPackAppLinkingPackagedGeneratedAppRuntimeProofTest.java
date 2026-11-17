@@ -316,7 +316,7 @@ final class SealedPackAppLinkingPackagedGeneratedAppRuntimeProofTest {
         Files.writeString(modelSource, """
                 {
                   "namespace": "build2.linkproof",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0.0",
                   "concepts": [
                     {

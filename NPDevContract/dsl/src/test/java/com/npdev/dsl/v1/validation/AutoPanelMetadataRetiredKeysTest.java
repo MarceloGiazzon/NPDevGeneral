@@ -24,7 +24,7 @@ class AutoPanelMetadataRetiredKeysTest {
     private static List<String> errorsFor(String metadataJson) throws Exception {
         String modelJson = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.d2.deprecation", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.d2.deprecation", "version": "1.0",
               "concepts": [
                 { "name": "Movimento", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }

@@ -62,8 +62,7 @@ class NpdevCronSchedulerServiceFiveFieldTest {
                         "FiveField", "Order", "sync",
                         List.of(new CompiledFlowStep("return", "return", null, null, List.of(), null, null, "$input", null)),
                         null, null, null, false,
-                        new CompiledFlowSchedule(cron, List.of("tenant-a")))),
-                List.of());
+                        new CompiledFlowSchedule(cron, List.of("tenant-a")))));
         CapabilityRegistry registry = new CapabilityRegistry();
         KernelRunner runner = new KernelRunner(
                 event -> { },

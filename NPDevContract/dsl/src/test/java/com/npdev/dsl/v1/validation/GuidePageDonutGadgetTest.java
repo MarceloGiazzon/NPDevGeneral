@@ -17,7 +17,7 @@ class GuidePageDonutGadgetTest {
     private static List<String> validate(String gadgetJson, String queryJson) throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.donut", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.donut", "version": "1.0",
               "concepts": [
                 { "name": "ShipmentEvent", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

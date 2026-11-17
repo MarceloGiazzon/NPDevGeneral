@@ -27,7 +27,7 @@ class ImplicitPersistenceTest {
 
     private static String model(String extra) {
         return """
-                {"namespace": "demo.rooms", "dslVersion": "1.0.0", "version": "1.0",
+                {"namespace": "demo.rooms", "dslVersion": "3.0.0", "version": "1.0",
                  "concepts": [{"name": "Room", "fields": [{"name": "id", "type": "uuid", "id": true},
                                                           {"name": "name", "type": "string", "required": true}]}],
                 """ + extra + "}";
@@ -40,23 +40,26 @@ class ImplicitPersistenceTest {
         assertEquals("persistence", persistence.getName());
         assertEquals("PersistenceCapability", persistence.getType());
         assertTrue(persistence.getOperations().stream().anyMatch(op -> !op.getName().isBlank()));
-        assertEquals(List.of("persistence:repository"), bindings(compiled));
+        assertEquals(List.of("eventBus:inproc", "persistence:repository"), bindings(compiled));
     }
 
     @Test
-    void aBindingWithoutTheCapabilityGetsTheCapability() throws Exception {
-        CompiledModel compiled = compile(model(
-                "\"bindings\": [{\"capability\": \"persistence\", \"adapter\": \"repository\"}],\n" + FLOW));
-        assertEquals("persistence", only(compiled.getCapabilities()).getName());
-        assertEquals(List.of("persistence:repository"), bindings(compiled));
+    void theRemovedRootBindingsKeyIsRejectedWithAMigrationHint() throws Exception {
+        Path file = Files.createTempFile("npdev-implicit-persistence-", ".json");
+        Files.writeString(file, model(
+                "\"bindings\": [{\"capability\": \"persistence\", \"adapter\": \"repository\"}],\n" + FLOW),
+                StandardCharsets.UTF_8);
+        com.npdev.dsl.v1.parser.DeprecationException ex = org.junit.jupiter.api.Assertions.assertThrows(
+                com.npdev.dsl.v1.parser.DeprecationException.class, () -> new JsonModelParser().parse(file));
+        assertEquals("LEGACY_BINDINGS_ROOT_KEY", ex.getDiagnostic().getCode());
     }
 
     @Test
-    void anExplicitBindingWins() throws Exception {
+    void aCapabilityAdapterWinsOverTheDefault() throws Exception {
         CompiledModel compiled = compile(model(
-                "\"capabilities\": [{\"name\": \"persistence\", \"type\": \"PersistenceCapability\", \"operations\": [\"save\"]}],\n"
-                        + "\"bindings\": [{\"capability\": \"persistence\", \"adapter\": \"inproc\"}],\n" + FLOW));
-        assertEquals(List.of("persistence:inproc"), bindings(compiled));
+                "\"capabilities\": [{\"name\": \"persistence\", \"type\": \"PersistenceCapability\", \"adapter\": \"inproc\", \"operations\": [\"save\"]}],\n"
+                        + FLOW));
+        assertEquals(List.of("eventBus:inproc", "persistence:inproc"), bindings(compiled));
         assertEquals(List.of("save"), only(compiled.getCapabilities()).getOperations().stream().map(o -> o.getName()).toList());
     }
 
@@ -65,6 +68,42 @@ class ImplicitPersistenceTest {
         CompiledModel compiled = compile(model("\"flows\": []"));
         assertTrue(compiled.getCapabilities().isEmpty());
         assertTrue(compiled.getBindings().isEmpty());
+    }
+
+    @Test
+    void aDeclaredPersistenceCapabilityWithNoPersistingFlowStillGetsTheRepositoryBinding() throws Exception {
+        CompiledModel compiled = compile(model(
+                "\"capabilities\": [{\"name\": \"persistence\", \"type\": \"PersistenceCapability\", \"operations\": [\"save\"]}],\n"
+                        + "\"flows\": []"));
+        assertEquals(List.of("persistence:repository"), bindings(compiled));
+    }
+
+    @Test
+    void aDifferentlyNamedPersistenceCapabilityIsBoundByTypeToTheRepository() throws Exception {
+        // a pack-qualified capability (pos::persistence) is not the bare "persistence" name, so the default binds by type
+        CompiledModel compiled = compile(model(
+                "\"capabilities\": [{\"name\": \"ledger\", \"type\": \"PersistenceCapability\", \"operations\": [\"save\"]}],\n"
+                        + "\"flows\": []"));
+        assertEquals(List.of("ledger:repository"), bindings(compiled));
+    }
+
+    @Test
+    void aCapabilityAdapterIsItsBindingAndNotificationDefaultsAreDerived() throws Exception {
+        CompiledModel compiled = compile(model(
+                "\"capabilities\": [{\"name\": \"notify\", \"type\": \"NotificationCapability\", \"operations\": [\"send\"]},"
+                        + " {\"name\": \"audit\", \"type\": \"AuditLogCapability\", \"adapter\": \"plugin:java-source\", \"operations\": [\"record\"]}],\n"
+                        + FLOW));
+        assertEquals(List.of("audit:plugin:java-source", "eventBus:inproc", "notify:notification-inproc",
+                "persistence:repository"), bindings(compiled));
+    }
+
+    @Test
+    void configAdapterOverridesReplaceADerivedBinding() throws Exception {
+        Path file = Files.createTempFile("npdev-implicit-persistence-", ".json");
+        Files.writeString(file, model(FLOW), StandardCharsets.UTF_8);
+        CompiledModel compiled = new ModelCompiler().compile(new JsonModelParser().parse(file),
+                java.util.Map.of("persistence", "memory"));
+        assertEquals(List.of("eventBus:inproc", "persistence:memory"), bindings(compiled));
     }
 
     private static CompiledCapability only(List<CompiledCapability> capabilities) {

@@ -103,6 +103,8 @@ public final class ConceptQueryFilterSupport {
                             Objects.equals(normalizeForCompare(fieldValue), normalizeForCompare(candidate)));
             case IS_NULL -> fieldValue == null;
             case IS_NOT_NULL -> fieldValue != null;
+            case DISTANCE_KM -> expected instanceof ConceptQuery.Distance distance
+                    && distance.matches(name -> record.data() == null ? null : record.data().get(name));
             case OR_GROUPS -> throw new IllegalArgumentException(
                     "OR_GROUPS may only appear as the sole top-level filter, not nested inside a clause group");
         };
@@ -283,6 +285,9 @@ public final class ConceptQueryFilterSupport {
                     .anyMatch(candidate -> Objects.equals(normalizeForCompare(fieldValue), normalizeForCompare(candidate)));
             case IS_NULL -> fieldValue == null;
             case IS_NOT_NULL -> fieldValue != null;
+            case DISTANCE_KM -> expected instanceof ConceptQuery.Distance distance
+                    && distance.matches(name -> resolveFieldValue(
+                            record, baseConceptName, GroupByJoinGrammar.parse(name), resolver));
         };
     }
 

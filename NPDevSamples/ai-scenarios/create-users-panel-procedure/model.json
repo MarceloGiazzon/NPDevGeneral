@@ -4,12 +4,19 @@
   "concepts": [
     {
       "name": "User",
-      "fields": ["id", "name", "email", "active"]
+      "fields": [
+        "id",
+        "name",
+        "email",
+        "active"
+      ]
     }
   ],
-  "procedures": [
+  "flows": [
     {
-      "name": "create-users"
+      "name": "create-users",
+      "expose": "internal",
+      "steps": []
     }
   ],
   "panels": [

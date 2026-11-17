@@ -40,9 +40,7 @@ import com.npdev.kernel.security.PermissionRequirement;
 import com.npdev.kernel.security.PermissionSubject;
 import com.npdev.runtime.support.crud.bonds.BondRuntimeShape;
 import com.npdev.runtime.support.crud.valuecoercion.DslTypeCoercionSupport;
-import com.npdev.runtime.support.crud.orchestration.EventCreateOrchestration;
-import com.npdev.runtime.support.crud.orchestration.OrchestrationActionExecutionResult;
-import com.npdev.runtime.support.crud.orchestration.ScheduledEventRecord;
+import com.npdev.runtime.support.crud.scheduling.ScheduledEventRecord;
 import com.npdev.runtime.support.crud.scheduling.ScheduledEventSql;
 import com.npdev.runtime.support.crud.uniqueness.CompoundUniqueFieldLookup;
 import com.npdev.runtime.support.crud.uniqueness.CompoundUniqueValueLookup;
@@ -236,16 +234,8 @@ public final class GeneratedCrudRuntimeSupport {
     private final PermissionEvaluator permissionEvaluator;
     private final IdempotencyStore idempotencyStore;
     private final CrudLifecycleSupport lifecycleSupport;
-    private final CrudOrchestrationSupport orchestrationSupport;
     private final CrudSchemaValidationSupport schemaValidationSupport;
     private final CrudReferenceLookupSupport referenceLookupSupport;
-    // REG-241: handles from every currently-registered orchestration subscription, so a reload can
-    // close them before re-registering against the new model. Access is synchronized on itself --
-    // the constructor's initial registration and a later ModelReloadListener-driven reload are the
-    // only two callers, and only one reload can be in flight at a time (ModelHolder.swap serializes
-    // reloads under its own write lock), but nothing stops a reload racing this class's OWN
-    // constructor-adjacent state in a test double, so the lock is taken explicitly rather than relied
-    // on implicitly.
     private ConceptGateway conceptGateway;
 
     // Fallback existence check for cross-concept reference validation when there is no
@@ -258,24 +248,6 @@ public final class GeneratedCrudRuntimeSupport {
 
     public GeneratedCrudRuntimeSupport withFieldDefaults(com.npdev.kernel.concepts.ConceptGatewaySemanticPolicy fieldDefaults) {
         this.fieldDefaults = fieldDefaults;
-        return this;
-    }
-
-    // RUN-2: an orchestration rule that calls a capability used to pass tenantId only when the
-    // triggering event carried a real one, and to call the bare dispatcher. A handler resolving
-    // tenant-scoped settings (connector secrets, AI spend caps, file store) then got no tenant, or the
-    // reserved "default" sentinel an anonymous publish stamps. Optional collaborators, set after
-    // construction (like withFieldDefaults) so every existing call site keeps compiling.
-
-    /** The app's home tenant (npdev.tenant.default-id), used when an event carries no real tenant. */
-    public GeneratedCrudRuntimeSupport withOrchestrationFallbackTenant(String tenantId) {
-        orchestrationSupport.setOrchestrationFallbackTenant(tenantId);
-        return this;
-    }
-
-    /** The dispatcher orchestration capability actions invoke -- e.g. the policy-enforcing wrapper (RUN-1). */
-    public GeneratedCrudRuntimeSupport withOrchestrationCapabilityDispatcher(CapabilityDispatcher dispatcher) {
-        orchestrationSupport.setOrchestrationCapabilityDispatcher(dispatcher);
         return this;
     }
 
@@ -323,7 +295,6 @@ public final class GeneratedCrudRuntimeSupport {
                 capabilityRegistry,
                 dataSource,
                 new SystemRuntimeClock(),
-                new InMemoryOrchestrationExecutionRegistry(),
                 missingRuntimeInvariantEngineFactory()
         );
     }
@@ -335,8 +306,7 @@ public final class GeneratedCrudRuntimeSupport {
             CapabilityDispatcher capabilityDispatcher,
             CapabilityRegistry capabilityRegistry,
             DataSource dataSource,
-            RuntimeClock runtimeClock,
-            OrchestrationExecutionRegistry orchestrationExecutionRegistry
+            RuntimeClock runtimeClock
     ) {
         this(
                 modelSupplier,
@@ -346,7 +316,6 @@ public final class GeneratedCrudRuntimeSupport {
                 capabilityRegistry,
                 dataSource,
                 runtimeClock,
-                orchestrationExecutionRegistry,
                 missingRuntimeInvariantEngineFactory()
         );
     }
@@ -359,11 +328,10 @@ public final class GeneratedCrudRuntimeSupport {
             CapabilityRegistry capabilityRegistry,
             DataSource dataSource,
             RuntimeClock runtimeClock,
-            OrchestrationExecutionRegistry orchestrationExecutionRegistry,
             RuntimeInvariantEngineFactory runtimeInvariantEngineFactory
     ) {
         this(modelSupplier, kernelRunner, entityManager, capabilityDispatcher, capabilityRegistry,
-                dataSource, runtimeClock, orchestrationExecutionRegistry, runtimeInvariantEngineFactory,
+                dataSource, runtimeClock, runtimeInvariantEngineFactory,
                 null, null, null);
     }
 
@@ -375,7 +343,6 @@ public final class GeneratedCrudRuntimeSupport {
             CapabilityRegistry capabilityRegistry,
             DataSource dataSource,
             RuntimeClock runtimeClock,
-            OrchestrationExecutionRegistry orchestrationExecutionRegistry,
             RuntimeInvariantEngineFactory runtimeInvariantEngineFactory,
             AuditLogStore auditLogStore,
             PermissionEvaluator permissionEvaluator,
@@ -401,18 +368,10 @@ public final class GeneratedCrudRuntimeSupport {
         this.lifecycleSupport = new CrudLifecycleSupport(this, this.entityManager);
         this.schemaValidationSupport = new CrudSchemaValidationSupport(this);
         this.referenceLookupSupport = new CrudReferenceLookupSupport(this, this.entityManager);
-        this.orchestrationSupport = new CrudOrchestrationSupport(
-                this, this.modelSupplier, this.kernelRunner, this.entityManager, capabilityDispatcher,
-                capabilityRegistry, this.dataSource, this.runtimeClock,
-                orchestrationExecutionRegistry == null
-                        ? new InMemoryOrchestrationExecutionRegistry()
-                        : orchestrationExecutionRegistry);
-        orchestrationSupport.initializeOrchestrationSubscribers();
         // R2.4: the kernel's scheduleEvent flow step needs the durable table this class owns, and
         // :kernel cannot depend on this adapter. Registered here rather than in a Spring @Bean for
-        // the same reason initializeOrchestrationSubscribers() is: this constructor is already the
-        // one place that holds both the KernelRunner and the DataSource, and every generated app
-        // builds this object exactly once.
+        // this constructor is the one place that holds both the KernelRunner and the DataSource, and
+        // every generated app builds this object exactly once.
         kernelRunner.withDeferredEventScheduler(this::scheduleDeferredFlowEvent);
     }
 
@@ -1428,25 +1387,6 @@ public final class GeneratedCrudRuntimeSupport {
         );
     }
 
-    /** CARVE-3: delegates to {@link CrudOrchestrationSupport} (the REG-241 reload hook is part of the public surface). */
-    public void reloadOrchestrationSubscribers(CompiledModel model) {
-        orchestrationSupport.reloadOrchestrationSubscribers(model);
-    }
-
-    // Kept on this class (private, same signature) because tests reach them reflectively.
-    private OrchestrationActionExecutionResult executeCreateOrchestrationAction(
-            EventCreateOrchestration action,
-            EventEnvelope envelope,
-            Map<String, Object> eventPayload
-    ) {
-        return orchestrationSupport.executeCreateOrchestrationAction(action, envelope, eventPayload);
-    }
-
-    private boolean evaluateOrchestrationCondition(String rawCondition, Map<String, Object> eventPayload) {
-        return orchestrationSupport.evaluateOrchestrationCondition(rawCondition, eventPayload);
-    }
-
-
     /**
      * Is this failure a unique violation? <b>Ask the dialect first; the message is the last resort.</b>
      *
@@ -1690,42 +1630,6 @@ public final class GeneratedCrudRuntimeSupport {
         return isForeignKeyViolation(exception.getCause());
     }
 
-    /**
-     * REG-232: a NOT NULL constraint failure is a business-level "required field missing"
-     * condition, not an infrastructure fault -- callers should classify it distinctly rather than
-     * letting the raw JDBC exception surface as a generic failure. 23502 is Postgres/H2's dedicated
-     * not-null code; MySQL and SQL Server report the generic integrity class 23000, so the vendor
-     * error number is the discriminator there -- the same per-engine asymmetry
-     * {@link #isForeignKeyViolation} already documents (STOR-11). Checked AFTER
-     * {@link #isUniqueViolation} by every caller, so a duplicate is never misreported as a missing
-     * field (23505 and 23502 never overlap in practice, but the ordering mirrors the FK check's own
-     * belt-and-suspenders convention).
-     */
-    static boolean isNotNullViolation(Throwable exception) {
-        if (exception == null) {
-            return false;
-        }
-        if (exception instanceof SQLException sqlException) {
-            if ("23502".equals(sqlException.getSQLState())
-                    || sqlException.getErrorCode() == 1048  // MySQL ER_BAD_NULL_ERROR
-                    || sqlException.getErrorCode() == 515) { // SQL Server "Cannot insert NULL"
-                return true;
-            }
-        }
-        String message = exception.getMessage();
-        if (message != null) {
-            String normalized = message.toLowerCase(Locale.ROOT);
-            if (normalized.contains("not null") || normalized.contains("cannot be null")
-                    // H2's actual wording is reversed ("NULL not allowed for column ..."), which
-                    // "not null" alone does not match -- caught this via a failing regression test
-                    // that used H2's real message text, not a paraphrase.
-                    || normalized.contains("null not allowed")) {
-                return true;
-            }
-        }
-        return isNotNullViolation(exception.getCause());
-    }
-
     /** Due rows, or null when the query itself failed -- never an empty list for a failure. */
     private List<ScheduledEventRecord> selectDueScheduledEvents(boolean forceDue, int limit, String tenantFilter) {
         if (dataSource == null) {
@@ -1936,6 +1840,18 @@ public final class GeneratedCrudRuntimeSupport {
     }
 
     private static String buildFlowScheduleKey(EventEnvelope envelope) {
+        // FORM P3-T5c stage 4: a scheduleEvent step with a dedupeKey is unique per (flow, step, event,
+        // tenant, key) ACROSS executions -- the identity the orchestration action had per source event.
+        // ("dedupeKey" is ScheduleEventStep.DEDUPE_KEY_META, which is package-private in :kernel.)
+        if (envelope.payload() != null && envelope.payload().get("_meta") instanceof Map<?, ?> meta
+                && meta.get("dedupeKey") != null) {
+            String keyed = nullToEmpty(envelope.flowName())
+                    + "|" + envelope.stepIndex()
+                    + "|" + nullToEmpty(envelope.eventName())
+                    + "|" + nullToEmpty(envelope.tenantId())
+                    + "|dedupe:" + meta.get("dedupeKey");
+            return "flow:" + UUID.nameUUIDFromBytes(keyed.getBytes(StandardCharsets.UTF_8));
+        }
         String composite = nullToEmpty(envelope.flowName())
                 + "|" + envelope.stepIndex()
                 + "|" + nullToEmpty(envelope.causationId())

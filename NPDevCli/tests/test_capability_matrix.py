@@ -57,14 +57,14 @@ class BuildMatrixShapeTest(unittest.TestCase):
     def _corpus(self) -> tuple[Path, Path]:
         # One appgen app using panels+queries, one sample app using only autoPanels.
         _write_model(self.appgen, "warehouse/model.json", {
-            "dslVersion": "1.0.0", "version": "1.0", "namespace": "wh",
+            "dslVersion": "3.0.0", "version": "1.0", "namespace": "wh",
             "concepts": [{"name": "Item", "fields": [{"name": "id", "type": "uuid", "id": True,
                                                        "required": True}]}],
             "panels": [{"name": "ItemList", "route": "/items"}],
             "queries": [{"name": "All", "concept": "Item"}],
         })
         _write_model(self.samples, "store/model.json", {
-            "dslVersion": "1.0.0", "version": "1.0", "namespace": "st",
+            "dslVersion": "3.0.0", "version": "1.0", "namespace": "st",
             "concepts": [{"name": "Product", "fields": [{"name": "id", "type": "uuid", "id": True,
                                                           "required": True}]}],
             "autoPanels": [{"name": "Products", "concept": "Product"}],

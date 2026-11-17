@@ -49,7 +49,7 @@ public class BusinessUiEmitterPanelManifestTest {
         CompiledModel model = compile("""
                 {
                   "namespace": "panel.manifest.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -99,7 +99,7 @@ public class BusinessUiEmitterPanelManifestTest {
         CompiledModel model = compile("""
                 {
                   "namespace": "panel.manifest.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -149,7 +149,7 @@ public class BusinessUiEmitterPanelManifestTest {
         CompiledModel model = compile("""
                 {
                   "namespace": "panel.manifest.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {

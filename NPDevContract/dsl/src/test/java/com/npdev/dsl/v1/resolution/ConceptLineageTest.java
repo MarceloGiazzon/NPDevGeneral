@@ -26,7 +26,7 @@ class ConceptLineageTest {
     void nonSpecializingConceptHasNoLineageEntry() throws Exception {
         ModelAst raw = parseJson("""
                 {
-                  "namespace": "lineage.none", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "lineage.none", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [ { "name": "Widget", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true } ] } ]
                 }
@@ -40,7 +40,7 @@ class ConceptLineageTest {
     void reportsAddedAndInheritedFields() throws Exception {
         ModelAst raw = parseJson("""
                 {
-                  "namespace": "lineage.basic", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "lineage.basic", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [
                     { "name": "Invoice", "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -66,7 +66,7 @@ class ConceptLineageTest {
     void inheritedFieldsAccumulateAcrossAChainOfSpecializations() throws Exception {
         ModelAst raw = parseJson("""
                 {
-                  "namespace": "lineage.chain", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "lineage.chain", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [
                     { "name": "A", "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -91,7 +91,7 @@ class ConceptLineageTest {
     void reportsWhichOverrideAllowedAttributesTheSpecializationDeclaredItsOwn() throws Exception {
         ModelAst raw = parseJson("""
                 {
-                  "namespace": "lineage.changes", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "lineage.changes", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [
                     { "name": "Order", "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -115,7 +115,7 @@ class ConceptLineageTest {
     void parentVersionAndDigestComeFromTheResolvedBasesPackOrigin(@TempDir Path temp) throws Exception {
         write(temp, "packs/base/pack.json", """
                 {
-                  "dslVersion": "1.0.0", "pack": "base", "version": "1.0.0",
+                  "dslVersion": "3.0.0", "pack": "base", "version": "1.0.0",
                   "namespace": "com.npdev.base",
                   "description": "P3.3 conformance fixture: parent version/digest via pack origin.",
                   "concepts": [
@@ -126,7 +126,7 @@ class ConceptLineageTest {
                 """);
         Path model = write(temp, "model.json", """
                 {
-                  "namespace": "lineage.origin", "dslVersion": "1.0.0", "version": "1.0",
+                  "namespace": "lineage.origin", "dslVersion": "3.0.0", "version": "1.0",
                   "packs": [ { "$ref": "packs/base/pack.json" } ],
                   "concepts": [
                     { "name": "CustomWidget", "specializes": "base::Widget",

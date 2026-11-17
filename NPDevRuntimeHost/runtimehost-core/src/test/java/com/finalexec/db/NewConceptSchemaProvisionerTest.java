@@ -110,7 +110,7 @@ class NewConceptSchemaProvisionerTest {
     // The canonical model schema requires at least one concept, so "no concepts relevant to this
     // test" is expressed as one unrelated placeholder rather than an empty array.
     private static final String EMPTY_MODEL = """
-            { "namespace": "reg244.phase4b", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
+            { "namespace": "reg244.phase4b", "dslVersion": "3.0.0", "version": "1.0", "concepts": [
               { "name": "Placeholder", "fields": [
                 { "name": "id", "type": "uuid", "id": true, "required": true }
               ] }
@@ -137,7 +137,7 @@ class NewConceptSchemaProvisionerTest {
     void newBondFreeConceptGetsTableCreatedWithExpectedColumns() throws Exception {
         CompiledModel oldModel = compile(EMPTY_MODEL);
         CompiledModel newModel = compile("""
-                { "namespace": "reg244.phase4b", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
+                { "namespace": "reg244.phase4b", "dslVersion": "3.0.0", "version": "1.0", "concepts": [
                   { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "label", "type": "string", "required": true },
@@ -160,7 +160,7 @@ class NewConceptSchemaProvisionerTest {
     void provisioningIsIdempotentOnSecondCall() throws Exception {
         CompiledModel oldModel = compile(EMPTY_MODEL);
         CompiledModel newModel = compile("""
-                { "namespace": "reg244.phase4b", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
+                { "namespace": "reg244.phase4b", "dslVersion": "3.0.0", "version": "1.0", "concepts": [
                   { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "label", "type": "string" }
@@ -186,7 +186,7 @@ class NewConceptSchemaProvisionerTest {
         // notion of a dependency-sorted batch to order "Widget" before "Order" safely.
         CompiledModel oldModel = compile(EMPTY_MODEL);
         CompiledModel newModel = compile("""
-                { "namespace": "reg244.phase4b", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
+                { "namespace": "reg244.phase4b", "dslVersion": "3.0.0", "version": "1.0", "concepts": [
                   { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true }
                   ] },
@@ -214,7 +214,7 @@ class NewConceptSchemaProvisionerTest {
         DataSource dataSource = dataSource();
         CompiledModel empty = compile(EMPTY_MODEL);
         CompiledModel withWidget = compile("""
-                { "namespace": "reg244.phase4b", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
+                { "namespace": "reg244.phase4b", "dslVersion": "3.0.0", "version": "1.0", "concepts": [
                   { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true }
                   ] }
@@ -224,7 +224,7 @@ class NewConceptSchemaProvisionerTest {
         assertEquals(java.util.List.of("Widget"), widgetResult.provisioned());
 
         CompiledModel withOrder = compile("""
-                { "namespace": "reg244.phase4b", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
+                { "namespace": "reg244.phase4b", "dslVersion": "3.0.0", "version": "1.0", "concepts": [
                   { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true }
                   ] },
@@ -297,7 +297,7 @@ class NewConceptSchemaProvisionerTest {
     void satelliteAndTemporalConceptsAreRefusedWithDistinctReasons() throws Exception {
         CompiledModel oldModel = compile(EMPTY_MODEL);
         CompiledModel newModel = compile("""
-                { "namespace": "reg244.phase4b", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
+                { "namespace": "reg244.phase4b", "dslVersion": "3.0.0", "version": "1.0", "concepts": [
                   { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true }
                   ] },
@@ -320,14 +320,14 @@ class NewConceptSchemaProvisionerTest {
     @Test
     void existingConceptStructuralChangeIsNotPartOfTheNewConceptDiff() throws Exception {
         CompiledModel oldModel = compile("""
-                { "namespace": "reg244.phase4b", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
+                { "namespace": "reg244.phase4b", "dslVersion": "3.0.0", "version": "1.0", "concepts": [
                   { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true }
                   ] }
                 ] }
                 """);
         CompiledModel newModel = compile("""
-                { "namespace": "reg244.phase4b", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
+                { "namespace": "reg244.phase4b", "dslVersion": "3.0.0", "version": "1.0", "concepts": [
                   { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "label", "type": "string" }

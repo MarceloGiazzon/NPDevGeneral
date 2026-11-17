@@ -2,7 +2,6 @@ package com.npdev.dsl.v1.validation;
 
 import com.npdev.dsl.v1.ast.CapabilityAst;
 import com.npdev.dsl.v1.ast.ConceptAccessAst;
-import com.npdev.dsl.v1.ast.CapabilityBindingAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
 import com.npdev.dsl.v1.ast.DomainTypeAst;
 import com.npdev.dsl.v1.ast.CapabilityPolicyAst;
@@ -17,9 +16,6 @@ import com.npdev.dsl.v1.ast.FlowScheduleAst;
 import com.npdev.dsl.v1.ast.InvariantAst;
 import com.npdev.dsl.v1.ast.LifecycleAst;
 import com.npdev.dsl.v1.ast.ModelAst;
-import com.npdev.dsl.v1.ast.OrchestrationActionAst;
-import com.npdev.dsl.v1.ast.OrchestrationAst;
-import com.npdev.dsl.v1.ast.OrchestrationTriggerAst;
 import com.npdev.dsl.v1.ast.AggregateAst;
 import com.npdev.dsl.v1.ast.AggregateBalanceAst;
 import com.npdev.dsl.v1.ast.AggregateCollectionAst;
@@ -44,7 +40,6 @@ import com.npdev.dsl.v1.ast.ProcedureParameterAst;
 import com.npdev.dsl.v1.ast.ProcedureStepAst;
 import com.npdev.dsl.v1.ast.QueryAst;
 import com.npdev.dsl.v1.ast.ReferenceSemanticsAst;
-import com.npdev.dsl.v1.ast.RuleProfileAst;
 import com.npdev.dsl.v1.ast.TruthLevel;
 import com.npdev.dsl.v1.ast.SchemaAst;
 import com.npdev.dsl.v1.ast.StateMachineStateAst;
@@ -91,6 +86,11 @@ final class AggregateValidation {
         for (ProcedureAst procedure : modelAst.getProcedures()) {
             proceduresByLower.put(normalize(procedure.name()), procedure);
         }
+        // FORM P3-T5c: a hook names a procedure OR the flow that replaced it
+        Set<String> flowNamesByLower = new HashSet<>();
+        for (com.npdev.dsl.v1.ast.FlowAst flow : modelAst.getFlows()) {
+            flowNamesByLower.add(normalize(flow.getName()));
+        }
         Map<String, QueryAst> queriesByLower = new HashMap<>();
         for (QueryAst query : modelAst.getQueries()) {
             queriesByLower.put(normalize(query.name()), query);
@@ -117,14 +117,14 @@ final class AggregateValidation {
             // one actually takes effect (a direct aggregate.onValidate/onCommit always wins), and
             // separately validate the three hook positions with no aggregate-level equivalent.
             TransactionHooksAst hooks = transactionHooksFor(aggregate.name(), modelAst.getAutoPanels());
-            validateOnCommit(aggregate, hooks, proceduresByLower, errors);
-            validateOnValidate(aggregate, hooks, proceduresByLower, errors);
+            validateOnCommit(aggregate, hooks, proceduresByLower, flowNamesByLower, errors);
+            validateOnValidate(aggregate, hooks, proceduresByLower, flowNamesByLower, errors);
             validateHookProcedure(aggregate.name(), "onLoad",
-                    hooks == null ? null : hooks.onLoad(), proceduresByLower, errors);
+                    hooks == null ? null : hooks.onLoad(), proceduresByLower, flowNamesByLower, errors);
             validateHookProcedure(aggregate.name(), "onFieldChange",
-                    hooks == null ? null : hooks.onFieldChange(), proceduresByLower, errors);
+                    hooks == null ? null : hooks.onFieldChange(), proceduresByLower, flowNamesByLower, errors);
             validateHookProcedure(aggregate.name(), "beforeAction",
-                    hooks == null ? null : hooks.beforeAction(), proceduresByLower, errors);
+                    hooks == null ? null : hooks.beforeAction(), proceduresByLower, flowNamesByLower, errors);
             validateAggregateInvariants(aggregate, errors);
             validateAggregateBalances(aggregate, errors);
         }
@@ -254,11 +254,12 @@ final class AggregateValidation {
 
     private static void validateHookProcedure(
             String aggregateName, String position, String procedureName,
-            Map<String, ProcedureAst> proceduresByLower, List<String> errors) {
+            Map<String, ProcedureAst> proceduresByLower, Set<String> flowNamesByLower, List<String> errors) {
         if (!hasText(procedureName)) {
             return;
         }
-        if (!proceduresByLower.containsKey(normalize(procedureName))) {
+        if (!proceduresByLower.containsKey(normalize(procedureName))
+                && !flowNamesByLower.contains(normalize(procedureName))) {
             errors.add("Aggregate " + aggregateName + ": transaction.hooks." + position
                     + " names a procedure not found: " + procedureName);
         }
@@ -269,17 +270,12 @@ final class AggregateValidation {
      * procedure (run inside {@code AggregateRuntime.commitInternal}'s own transaction, after the
      * tree is written -- see the runtime for why a failure there rolls back the whole commit).
      *
-     * <p>Direct self-recursion (the onCommit procedure calling itself via {@code callProcedure}, at
-     * any nesting depth in its own step tree) is rejected here as an author-time linting check.
-     * Procedures have no step that invokes {@code AggregateRuntime.commit} at all, so "the procedure
-     * re-commits the same aggregate" cannot literally happen -- this instead catches the narrower,
-     * real case: a procedure named as {@code onCommit} that calls itself. Deeper indirect cycles
-     * (P calls Q calls P) are intentionally left to the kernel's existing
-     * {@code maxRecursionDepth} runtime guard (DefaultProcedureExecutor) rather than solved here.
+     * <p>Recursion is no longer linted here: a procedure has no call step, and a flow's own callFlow
+     * nesting limit guards recursion at run time.
      */
     private static void validateOnCommit(
             AggregateAst aggregate, TransactionHooksAst hooks, Map<String, ProcedureAst> proceduresByLower,
-            List<String> errors) {
+            Set<String> flowNamesByLower, List<String> errors) {
         String onCommit = hasText(aggregate.onCommit())
                 ? aggregate.onCommit() : (hooks == null ? null : hooks.onCommit());
         if (!hasText(onCommit)) {
@@ -287,13 +283,12 @@ final class AggregateValidation {
         }
         String normalized = normalize(onCommit);
         ProcedureAst procedure = proceduresByLower.get(normalized);
+        if (procedure == null && flowNamesByLower.contains(normalized)) {
+            return; // a flow: its own callFlow nesting limit guards recursion at run time
+        }
         if (procedure == null) {
             errors.add("Aggregate " + aggregate.name() + ": onCommit names a procedure not found: " + onCommit);
             return;
-        }
-        if (callsProcedure(procedure.steps(), normalized)) {
-            errors.add("Aggregate " + aggregate.name() + ": onCommit procedure " + onCommit
-                    + " directly calls itself (recursive onCommit is not allowed)");
         }
     }
 
@@ -306,7 +301,7 @@ final class AggregateValidation {
      */
     private static void validateOnValidate(
             AggregateAst aggregate, TransactionHooksAst hooks, Map<String, ProcedureAst> proceduresByLower,
-            List<String> errors) {
+            Set<String> flowNamesByLower, List<String> errors) {
         String onValidate = hasText(aggregate.onValidate())
                 ? aggregate.onValidate() : (hooks == null ? null : hooks.onValidate());
         if (!hasText(onValidate)) {
@@ -314,30 +309,13 @@ final class AggregateValidation {
         }
         String normalized = normalize(onValidate);
         ProcedureAst procedure = proceduresByLower.get(normalized);
+        if (procedure == null && flowNamesByLower.contains(normalized)) {
+            return; // a flow: its own callFlow nesting limit guards recursion at run time
+        }
         if (procedure == null) {
             errors.add("Aggregate " + aggregate.name() + ": onValidate names a procedure not found: " + onValidate);
             return;
         }
-        if (callsProcedure(procedure.steps(), normalized)) {
-            errors.add("Aggregate " + aggregate.name() + ": onValidate procedure " + onValidate
-                    + " directly calls itself (recursive onValidate is not allowed)");
-        }
-    }
-
-    private static boolean callsProcedure(List<ProcedureStepAst> steps, String targetNameNormalized) {
-        for (ProcedureStepAst step : steps) {
-            String type = normalize(step.type());
-            if (("callprocedure".equals(type) || "procedurecall".equals(type))
-                    && normalize(step.procedure()).equals(targetNameNormalized)) {
-                return true;
-            }
-            if (callsProcedure(step.thenSteps(), targetNameNormalized)
-                    || callsProcedure(step.elseSteps(), targetNameNormalized)
-                    || callsProcedure(step.steps(), targetNameNormalized)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static void validateAggregateCollections(

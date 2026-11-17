@@ -35,20 +35,12 @@ class ProcedureRunnerOperationPolicyTest {
     private static String model(String policy) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "wms", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms", "version": "1.0",
               "concepts": [ { "name": "Noop", "fields": [
                 { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
               "capabilities": [
-                { "name": "notification", "type": "NotificationCapability",
+                { "name": "notification", "type": "NotificationCapability", "adapter": "test-adapter",
                   "operations": [ { "name": "send", "sideEffects": "external", "policy": %s } ] }
-              ],
-              "bindings": [ { "capability": "notification", "adapter": "test-adapter" } ],
-              "procedures": [
-                { "name": "Notify", "steps": [
-                  { "name": "send-step", "type": "capabilityCall", "capability": "notification",
-                    "operation": "send", "args": { "input": "$input" }, "target": "sent" },
-                  { "name": "return-sent", "type": "return", "value": "$sent" }
-                ] }
               ]
             }
             """.formatted(policy);
@@ -71,6 +63,13 @@ class ProcedureRunnerOperationPolicyTest {
         public void delete(ConceptReadRequest r, ExecutionContext c) { throw new UnsupportedOperationException(); }
     }
 
+    /** The one capability call the policy applies to, as the one-step definition a flow's step is carried as. */
+    private static com.npdev.kernel.procedures.ProcedureDefinition notifyStep() {
+        return new com.npdev.kernel.procedures.ProcedureDefinition("flow:Notify:send-step", List.of(
+                com.npdev.kernel.procedures.ProcedureStep.callCapability(
+                        "send-step", "notification", "", "test-adapter", "send", List.of("input"), "sent")));
+    }
+
     @Test
     void aSlowCapabilityTimesOutAtTheOperationsDeclaredDeadline() throws Exception {
         ProcedureRunner runner = runner("{ \"timeoutMs\": 200 }", (call, state) -> {
@@ -83,7 +82,7 @@ class ProcedureRunnerOperationPolicyTest {
         });
 
         long started = System.currentTimeMillis();
-        var result = runner.execute("Notify", Map.of("input", "x"), ExecutionContext.anonymous());
+        var result = runner.execute(notifyStep(), Map.of("input", "x"), ExecutionContext.anonymous());
 
         assertFalse(result.ok());
         assertEquals("CAPABILITY_TIMEOUT", result.failureCode());
@@ -98,9 +97,25 @@ class ProcedureRunnerOperationPolicyTest {
                         ? CapabilityResult.failure("BLIP", "blip", CapabilityErrorKind.TRANSIENT, Map.of())
                         : CapabilityResult.success(Map.of("sent", true)));
 
-        var result = runner.execute("Notify", Map.of("input", "x"), ExecutionContext.anonymous());
+        var result = runner.execute(notifyStep(), Map.of("input", "x"), ExecutionContext.anonymous());
 
         assertTrue(result.ok(), result.failureCode() + " " + result.failureMessage());
         assertEquals(3, calls.get());
+    }
+
+    /** FORM P3-T5b: a flow's concept step is a one-step definition the model does not declare; the host runs it as supplied. */
+    @Test
+    void aSuppliedOneStepDefinitionRunsEvenThoughTheModelDoesNotDeclareIt() throws Exception {
+        ProcedureRunner runner = runner("{ \"timeoutMs\": 200 }", (call, state) -> CapabilityResult.success(null));
+        com.npdev.kernel.procedures.ProcedureDefinition oneStep = new com.npdev.kernel.procedures.ProcedureDefinition(
+                "flow:Anything:list", List.of(com.npdev.kernel.procedures.ProcedureStep.listConcepts("list", "Noop", "all")));
+
+        com.npdev.kernel.procedures.ProcedureExecutionResult result = runner.execute(oneStep, Map.of(), ExecutionContext.anonymous());
+
+        assertTrue(result.ok(), result.failureMessage());
+        assertEquals(List.of(), result.state().get("all"));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> runner.execute("flow:Anything:list", Map.of(), ExecutionContext.anonymous()),
+                "by name, an undeclared procedure is still refused");
     }
 }

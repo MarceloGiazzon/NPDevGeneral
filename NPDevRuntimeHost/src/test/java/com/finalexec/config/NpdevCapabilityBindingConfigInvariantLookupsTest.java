@@ -14,7 +14,6 @@ import com.npdev.runtime.support.CelInvariantEngine;
 import com.npdev.runtime.support.GeneratedCrudRuntimeSupport;
 import com.npdev.runtime.support.ReloadableInvariantEngine;
 import com.npdev.runtime.support.SystemRuntimeClock;
-import com.npdev.runtime.support.InMemoryOrchestrationExecutionRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
@@ -46,7 +45,6 @@ class NpdevCapabilityBindingConfigInvariantLookupsTest {
                 }),
                 null, null, null, null,
                 new SystemRuntimeClock(),
-                new InMemoryOrchestrationExecutionRegistry(),
                 new NpdevCapabilityBindingConfig().runtimeInvariantEngineFactory(new ModelHolder(model)),
                 null, null, null
         );

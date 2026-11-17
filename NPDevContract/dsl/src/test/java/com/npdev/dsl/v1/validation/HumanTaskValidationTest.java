@@ -34,7 +34,7 @@ class HumanTaskValidationTest {
     private static String model(String awaitStepExtra, String emitStepExtra) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "demo.humantask", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "demo.humantask", "version": "1.0",
               "concepts": [
                 { "name": "Order", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

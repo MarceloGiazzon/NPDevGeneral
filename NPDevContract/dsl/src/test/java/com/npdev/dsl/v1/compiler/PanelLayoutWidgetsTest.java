@@ -32,7 +32,7 @@ class PanelLayoutWidgetsTest {
     private static String model(String layoutType, String widgetsJson) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "f6.widgets", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "f6.widgets", "version": "1.0",
               "concepts": [
                 { "name": "Ticket", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

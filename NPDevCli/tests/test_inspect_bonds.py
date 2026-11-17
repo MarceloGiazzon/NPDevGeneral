@@ -34,7 +34,7 @@ def _write(path: Path, content: str) -> None:
 
 def _sample_model() -> dict:
     return {
-        "dslVersion": "1.0.0",
+        "dslVersion": "3.0.0",
         "namespace": "sample",
         "version": "1.0.0",
         "concepts": [
@@ -54,7 +54,7 @@ def _sample_model() -> dict:
         # way it rejected WmsOffice's `aggregates` key.
         "conversions": [], "documents": [], "guidePages": [], "aggregates": [],
         "autoPanels": [], "selectors": [], "roles": [], "propertyScopes": [], "properties": [],
-        "contexts": [],
+        "modules": [],
         "provides": {}, "externalAi": {}, "settings": {},
         # A pack reference with the `as` alias -- must not trip the generic $ref-shape validator.
         "packs": [{"$ref": "packs/identity/pack.json", "as": "identity"}],
@@ -70,7 +70,7 @@ def _write_sample_model(tmp_dir: Path) -> Path:
     elsewhere. These fixtures declared the pack without writing it.
     """
     _write(tmp_dir / "packs" / "identity" / "pack.json", json.dumps({
-        "dslVersion": "1.0.0", "pack": "identity", "version": "1.0.0", "concepts": [],
+        "dslVersion": "3.0.0", "pack": "identity", "version": "1.0.0", "concepts": [],
     }))
     model_path = tmp_dir / "model.json"
     _write(model_path, json.dumps(_sample_model()))
@@ -82,7 +82,7 @@ class InspectBondsWhitelistTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
             _write(tmp_dir / "packs" / "identity" / "pack.json", json.dumps({
-                "dslVersion": "1.0.0", "pack": "identity", "version": "1.0.0", "concepts": [],
+                "dslVersion": "3.0.0", "pack": "identity", "version": "1.0.0", "concepts": [],
             }))
             model_path = tmp_dir / "model.json"
             _write(model_path, json.dumps(_sample_model()))

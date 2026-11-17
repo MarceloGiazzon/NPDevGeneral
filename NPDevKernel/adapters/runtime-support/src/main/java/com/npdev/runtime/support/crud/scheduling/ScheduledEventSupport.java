@@ -2,7 +2,6 @@ package com.npdev.runtime.support.crud.scheduling;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.npdev.kernel.events.EventEnvelope;
-import com.npdev.runtime.support.crud.orchestration.ScheduledEventRecord;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -15,8 +14,8 @@ import static com.npdev.runtime.support.GeneratedCrudRuntimeSupport.OBJECT_MAPPE
 import static com.npdev.runtime.support.GeneratedCrudRuntimeSupport.mapWithStringKeys;
 import static com.npdev.runtime.support.GeneratedCrudRuntimeSupport.normalize;
 import static com.npdev.runtime.support.crud.executioncontext.PayloadClaimsSupport.asNonBlankString;
-import static com.npdev.runtime.support.crud.orchestration.OrchestrationSupport.resolveOrchestrationSubjectId;
-import static com.npdev.runtime.support.crud.orchestration.OrchestrationSupport.serializePayloadForIdempotency;
+import static com.npdev.runtime.support.crud.scheduling.EventSubjectSupport.resolveSubjectId;
+import static com.npdev.runtime.support.crud.scheduling.EventSubjectSupport.serializePayloadForIdempotency;
 import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.toInteger;
 import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.toOffsetDateTime;
 import static com.npdev.runtime.support.crud.valuecoercion.ValueCoercionSupport.toUuid;
@@ -84,7 +83,7 @@ public final class ScheduledEventSupport {
         String sourceEvent = envelope == null ? "" : normalize(envelope.eventName());
         String sourceEventId = envelope == null ? "" : nullToEmpty(envelope.eventId());
         String correlationId = envelope == null ? "" : nullToEmpty(envelope.correlationId());
-        String subject = resolveOrchestrationSubjectId(eventPayload);
+        String subject = resolveSubjectId(eventPayload);
         if (subject == null || subject.isBlank()) {
             subject = serializePayloadForIdempotency(eventPayload);
         }

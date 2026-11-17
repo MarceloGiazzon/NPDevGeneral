@@ -31,7 +31,7 @@ class ComputedCollectionColumnsTest {
     private static String model(String computedJson, String derivedJson) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "f6.computedcol", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "f6.computedcol", "version": "1.0",
               "concepts": [
                 { "name": "Ord", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -151,7 +151,7 @@ class ComputedCollectionColumnsTest {
     void collectionNeedsAnAggregateBoundTransaction() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "f6.computedcol2", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "f6.computedcol2", "version": "1.0",
               "concepts": [ { "name": "Thing", "fields": [
                 { "name": "id", "type": "uuid", "id": true, "required": true }, { "name": "a", "type": "integer" } ] } ],
               "autoPanels": [ { "concept": "Thing", "selection": { "computed": [ { "col": "t", "expr": "a", "collection": "x" } ] } } ]

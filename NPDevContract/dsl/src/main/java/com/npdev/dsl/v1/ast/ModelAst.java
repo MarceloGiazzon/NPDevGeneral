@@ -7,7 +7,7 @@ import java.util.Map;
 
 @SuppressWarnings("deprecation")
 public final class ModelAst {
-    public static final String DEFAULT_DSL_VERSION = "1.0.0";
+    public static final String DEFAULT_DSL_VERSION = "3.0.0";
 
     private final String namespace;
     private final String dslVersion;
@@ -15,12 +15,9 @@ public final class ModelAst {
     private final List<ConceptAst> concepts;
     private final List<DomainTypeAst> domainTypes;
     private final List<CapabilityAst> capabilities;
-    private final List<CapabilityBindingAst> bindings;
     private final List<EventAst> events;
     private final List<FlowAst> flows;
-    private final List<OrchestrationAst> orchestrationRules;
     private final List<QueryAst> queries;
-    private final List<RuleProfileAst> ruleProfiles;
     private final List<ProcedureAst> procedures;
     private final List<PanelAst> panels;
     private final List<GuidePageAst> guidePages;
@@ -37,18 +34,17 @@ public final class ModelAst {
     private final List<ContextAst> contexts;
     private final List<ConversionAst> conversions;
     private final Map<String, String> physicalQualifierByConceptName;
-    private final List<WebhookAst> webhooks;
     private final List<SequenceAst> sequences;
     private final List<SeedAst> seeds;
     private final AppShellAst appShell;
     private final AgentAccessAst agentAccess;
 
     public ModelAst(String namespace, String version, List<? extends EntityAst> entities) {
-        this(namespace, DEFAULT_DSL_VERSION, version, entities, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+        this(namespace, DEFAULT_DSL_VERSION, version, entities, List.of(), List.of(), List.of(), List.of(), List.of());
     }
 
     public ModelAst(String namespace, String dslVersion, String version, List<? extends EntityAst> entities) {
-        this(namespace, dslVersion, version, entities, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+        this(namespace, dslVersion, version, entities, List.of(), List.of(), List.of(), List.of(), List.of());
     }
 
     public ModelAst(
@@ -57,11 +53,10 @@ public final class ModelAst {
             String version,
             List<? extends EntityAst> entities,
             List<CapabilityAst> capabilities,
-            List<CapabilityBindingAst> bindings,
             List<EventAst> events,
             List<FlowAst> flows
     ) {
-        this(namespace, dslVersion, version, entities, List.of(), capabilities, bindings, events, flows, List.of(), List.of());
+        this(namespace, dslVersion, version, entities, List.of(), capabilities, events, flows, List.of());
     }
 
     public ModelAst(
@@ -69,12 +64,11 @@ public final class ModelAst {
             String version,
             List<? extends EntityAst> entities,
             List<CapabilityAst> capabilities,
-            List<CapabilityBindingAst> bindings,
             List<EventAst> events,
             List<FlowAst> flows,
             List<String> parserWarnings
     ) {
-        this(namespace, DEFAULT_DSL_VERSION, version, entities, List.of(), capabilities, bindings, events, flows, List.of(), parserWarnings);
+        this(namespace, DEFAULT_DSL_VERSION, version, entities, List.of(), capabilities, events, flows, parserWarnings);
     }
 
     public ModelAst(
@@ -83,29 +77,27 @@ public final class ModelAst {
             String version,
             List<? extends EntityAst> entities,
             List<CapabilityAst> capabilities,
-            List<CapabilityBindingAst> bindings,
             List<EventAst> events,
             List<FlowAst> flows,
-            List<OrchestrationAst> orchestrationRules,
             List<String> parserWarnings
     ) {
-        this(namespace, dslVersion, version, entities, List.of(), capabilities, bindings, events, flows, orchestrationRules,
+        this(namespace, dslVersion, version, entities, List.of(), capabilities, events, flows,
                 List.of(), List.of(), List.of(), List.of(), parserWarnings);
     }
 
+
     public ModelAst(
             String namespace,
+            String dslVersion,
             String version,
             List<? extends EntityAst> entities,
+            List<DomainTypeAst> domainTypes,
             List<CapabilityAst> capabilities,
-            List<CapabilityBindingAst> bindings,
             List<EventAst> events,
             List<FlowAst> flows,
-            List<OrchestrationAst> orchestrationRules,
             List<String> parserWarnings
     ) {
-        this(namespace, DEFAULT_DSL_VERSION, version, entities, List.of(), capabilities, bindings, events, flows,
-                orchestrationRules, List.of(), List.of(), List.of(), List.of(), parserWarnings);
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, List.of(), List.of(), List.of(), List.of(), parserWarnings);
     }
 
     public ModelAst(
@@ -115,35 +107,14 @@ public final class ModelAst {
             List<? extends EntityAst> entities,
             List<DomainTypeAst> domainTypes,
             List<CapabilityAst> capabilities,
-            List<CapabilityBindingAst> bindings,
             List<EventAst> events,
             List<FlowAst> flows,
-            List<OrchestrationAst> orchestrationRules,
-            List<String> parserWarnings
-    ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
-                orchestrationRules, List.of(), List.of(), List.of(), List.of(), parserWarnings);
-    }
-
-    public ModelAst(
-            String namespace,
-            String dslVersion,
-            String version,
-            List<? extends EntityAst> entities,
-            List<DomainTypeAst> domainTypes,
-            List<CapabilityAst> capabilities,
-            List<CapabilityBindingAst> bindings,
-            List<EventAst> events,
-            List<FlowAst> flows,
-            List<OrchestrationAst> orchestrationRules,
             List<QueryAst> queries,
-            List<RuleProfileAst> ruleProfiles,
             List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<String> parserWarnings
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
-                orchestrationRules, queries, ruleProfiles, procedures, panels, List.of(), List.of(), parserWarnings);
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, List.of(), List.of(), parserWarnings);
     }
 
     public ModelAst(
@@ -153,19 +124,15 @@ public final class ModelAst {
             List<? extends EntityAst> entities,
             List<DomainTypeAst> domainTypes,
             List<CapabilityAst> capabilities,
-            List<CapabilityBindingAst> bindings,
             List<EventAst> events,
             List<FlowAst> flows,
-            List<OrchestrationAst> orchestrationRules,
             List<QueryAst> queries,
-            List<RuleProfileAst> ruleProfiles,
             List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
             List<String> parserWarnings
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
-                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, List.of(), parserWarnings);
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, List.of(), parserWarnings);
     }
 
     public ModelAst(
@@ -175,20 +142,16 @@ public final class ModelAst {
             List<? extends EntityAst> entities,
             List<DomainTypeAst> domainTypes,
             List<CapabilityAst> capabilities,
-            List<CapabilityBindingAst> bindings,
             List<EventAst> events,
             List<FlowAst> flows,
-            List<OrchestrationAst> orchestrationRules,
             List<QueryAst> queries,
-            List<RuleProfileAst> ruleProfiles,
             List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
             List<String> parserWarnings
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
-                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates,
                 List.of(), parserWarnings);
     }
 
@@ -199,12 +162,9 @@ public final class ModelAst {
             List<? extends EntityAst> entities,
             List<DomainTypeAst> domainTypes,
             List<CapabilityAst> capabilities,
-            List<CapabilityBindingAst> bindings,
             List<EventAst> events,
             List<FlowAst> flows,
-            List<OrchestrationAst> orchestrationRules,
             List<QueryAst> queries,
-            List<RuleProfileAst> ruleProfiles,
             List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
@@ -212,8 +172,7 @@ public final class ModelAst {
             List<AutoPanelAst> autoPanels,
             List<String> parserWarnings
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
-                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates,
                 autoPanels, List.of(), parserWarnings);
     }
 
@@ -224,12 +183,9 @@ public final class ModelAst {
             List<? extends EntityAst> entities,
             List<DomainTypeAst> domainTypes,
             List<CapabilityAst> capabilities,
-            List<CapabilityBindingAst> bindings,
             List<EventAst> events,
             List<FlowAst> flows,
-            List<OrchestrationAst> orchestrationRules,
             List<QueryAst> queries,
-            List<RuleProfileAst> ruleProfiles,
             List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
@@ -238,8 +194,7 @@ public final class ModelAst {
             List<SelectorAst> selectors,
             List<String> parserWarnings
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
-                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates,
                 autoPanels, selectors, List.of(), parserWarnings);
     }
 
@@ -251,12 +206,9 @@ public final class ModelAst {
             List<? extends EntityAst> entities,
             List<DomainTypeAst> domainTypes,
             List<CapabilityAst> capabilities,
-            List<CapabilityBindingAst> bindings,
             List<EventAst> events,
             List<FlowAst> flows,
-            List<OrchestrationAst> orchestrationRules,
             List<QueryAst> queries,
-            List<RuleProfileAst> ruleProfiles,
             List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
@@ -266,8 +218,7 @@ public final class ModelAst {
             List<DocumentAst> documents,
             List<String> parserWarnings
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
-                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
                 selectors, documents, parserWarnings, null);
     }
 
@@ -279,12 +230,9 @@ public final class ModelAst {
             List<? extends EntityAst> entities,
             List<DomainTypeAst> domainTypes,
             List<CapabilityAst> capabilities,
-            List<CapabilityBindingAst> bindings,
             List<EventAst> events,
             List<FlowAst> flows,
-            List<OrchestrationAst> orchestrationRules,
             List<QueryAst> queries,
-            List<RuleProfileAst> ruleProfiles,
             List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
@@ -295,8 +243,7 @@ public final class ModelAst {
             List<String> parserWarnings,
             ExternalAiAst externalAi
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
-                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
                 selectors, documents, parserWarnings, externalAi, null);
     }
 
@@ -308,12 +255,9 @@ public final class ModelAst {
             List<? extends EntityAst> entities,
             List<DomainTypeAst> domainTypes,
             List<CapabilityAst> capabilities,
-            List<CapabilityBindingAst> bindings,
             List<EventAst> events,
             List<FlowAst> flows,
-            List<OrchestrationAst> orchestrationRules,
             List<QueryAst> queries,
-            List<RuleProfileAst> ruleProfiles,
             List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
@@ -325,8 +269,7 @@ public final class ModelAst {
             ExternalAiAst externalAi,
             SettingsAst settings
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
-                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
                 selectors, documents, parserWarnings, externalAi, settings, List.of());
     }
 
@@ -338,12 +281,9 @@ public final class ModelAst {
             List<? extends EntityAst> entities,
             List<DomainTypeAst> domainTypes,
             List<CapabilityAst> capabilities,
-            List<CapabilityBindingAst> bindings,
             List<EventAst> events,
             List<FlowAst> flows,
-            List<OrchestrationAst> orchestrationRules,
             List<QueryAst> queries,
-            List<RuleProfileAst> ruleProfiles,
             List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
@@ -356,8 +296,7 @@ public final class ModelAst {
             SettingsAst settings,
             List<RoleAst> roles
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
-                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
                 selectors, documents, parserWarnings, externalAi, settings, roles, List.of(), List.of());
     }
 
@@ -370,12 +309,9 @@ public final class ModelAst {
             List<? extends EntityAst> entities,
             List<DomainTypeAst> domainTypes,
             List<CapabilityAst> capabilities,
-            List<CapabilityBindingAst> bindings,
             List<EventAst> events,
             List<FlowAst> flows,
-            List<OrchestrationAst> orchestrationRules,
             List<QueryAst> queries,
-            List<RuleProfileAst> ruleProfiles,
             List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
@@ -390,8 +326,7 @@ public final class ModelAst {
             List<PropertyScopeAst> propertyScopes,
             List<PropertyAst> properties
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
-                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
                 selectors, documents, parserWarnings, externalAi, settings, roles, propertyScopes, properties,
                 List.of());
     }
@@ -404,12 +339,9 @@ public final class ModelAst {
             List<? extends EntityAst> entities,
             List<DomainTypeAst> domainTypes,
             List<CapabilityAst> capabilities,
-            List<CapabilityBindingAst> bindings,
             List<EventAst> events,
             List<FlowAst> flows,
-            List<OrchestrationAst> orchestrationRules,
             List<QueryAst> queries,
-            List<RuleProfileAst> ruleProfiles,
             List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
@@ -425,8 +357,7 @@ public final class ModelAst {
             List<PropertyAst> properties,
             List<ContextAst> contexts
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
-                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
                 selectors, documents, parserWarnings, externalAi, settings, roles, propertyScopes, properties,
                 contexts, List.of());
     }
@@ -440,12 +371,9 @@ public final class ModelAst {
             List<? extends EntityAst> entities,
             List<DomainTypeAst> domainTypes,
             List<CapabilityAst> capabilities,
-            List<CapabilityBindingAst> bindings,
             List<EventAst> events,
             List<FlowAst> flows,
-            List<OrchestrationAst> orchestrationRules,
             List<QueryAst> queries,
-            List<RuleProfileAst> ruleProfiles,
             List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
@@ -462,8 +390,7 @@ public final class ModelAst {
             List<ContextAst> contexts,
             List<ConversionAst> conversions
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
-                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
                 selectors, documents, parserWarnings, externalAi, settings, roles, propertyScopes, properties,
                 contexts, conversions, Map.of());
     }
@@ -481,12 +408,9 @@ public final class ModelAst {
             List<? extends EntityAst> entities,
             List<DomainTypeAst> domainTypes,
             List<CapabilityAst> capabilities,
-            List<CapabilityBindingAst> bindings,
             List<EventAst> events,
             List<FlowAst> flows,
-            List<OrchestrationAst> orchestrationRules,
             List<QueryAst> queries,
-            List<RuleProfileAst> ruleProfiles,
             List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
@@ -504,49 +428,9 @@ public final class ModelAst {
             List<ConversionAst> conversions,
             Map<String, String> physicalQualifierByConceptName
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
-                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
                 selectors, documents, parserWarnings, externalAi, settings, roles, propertyScopes, properties,
                 contexts, conversions, physicalQualifierByConceptName, List.of());
-    }
-
-    /** R6.2: canonical constructor, adds {@code webhooks} (model-declared inbound webhook doors --
-     *  see {@link WebhookAst}). */
-    public ModelAst(
-            String namespace,
-            String dslVersion,
-            String version,
-            List<? extends EntityAst> entities,
-            List<DomainTypeAst> domainTypes,
-            List<CapabilityAst> capabilities,
-            List<CapabilityBindingAst> bindings,
-            List<EventAst> events,
-            List<FlowAst> flows,
-            List<OrchestrationAst> orchestrationRules,
-            List<QueryAst> queries,
-            List<RuleProfileAst> ruleProfiles,
-            List<ProcedureAst> procedures,
-            List<PanelAst> panels,
-            List<GuidePageAst> guidePages,
-            List<AggregateAst> aggregates,
-            List<AutoPanelAst> autoPanels,
-            List<SelectorAst> selectors,
-            List<DocumentAst> documents,
-            List<String> parserWarnings,
-            ExternalAiAst externalAi,
-            SettingsAst settings,
-            List<RoleAst> roles,
-            List<PropertyScopeAst> propertyScopes,
-            List<PropertyAst> properties,
-            List<ContextAst> contexts,
-            List<ConversionAst> conversions,
-            Map<String, String> physicalQualifierByConceptName,
-            List<WebhookAst> webhooks
-    ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
-                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
-                selectors, documents, parserWarnings, externalAi, settings, roles, propertyScopes, properties,
-                contexts, conversions, physicalQualifierByConceptName, webhooks, List.of());
     }
 
     /** R5.3: adds {@code sequences} (model-declared document-numbering counters -- see
@@ -558,12 +442,9 @@ public final class ModelAst {
             List<? extends EntityAst> entities,
             List<DomainTypeAst> domainTypes,
             List<CapabilityAst> capabilities,
-            List<CapabilityBindingAst> bindings,
             List<EventAst> events,
             List<FlowAst> flows,
-            List<OrchestrationAst> orchestrationRules,
             List<QueryAst> queries,
-            List<RuleProfileAst> ruleProfiles,
             List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
@@ -580,13 +461,11 @@ public final class ModelAst {
             List<ContextAst> contexts,
             List<ConversionAst> conversions,
             Map<String, String> physicalQualifierByConceptName,
-            List<WebhookAst> webhooks,
             List<SequenceAst> sequences
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
-                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
                 selectors, documents, parserWarnings, externalAi, settings, roles, propertyScopes, properties,
-                contexts, conversions, physicalQualifierByConceptName, webhooks, sequences, List.of());
+                contexts, conversions, physicalQualifierByConceptName, sequences, List.of());
     }
 
     /** R8.8: adds {@code seeds} (model/pack-declared first-boot seed rows -- see {@link SeedAst}). */
@@ -597,12 +476,9 @@ public final class ModelAst {
             List<? extends EntityAst> entities,
             List<DomainTypeAst> domainTypes,
             List<CapabilityAst> capabilities,
-            List<CapabilityBindingAst> bindings,
             List<EventAst> events,
             List<FlowAst> flows,
-            List<OrchestrationAst> orchestrationRules,
             List<QueryAst> queries,
-            List<RuleProfileAst> ruleProfiles,
             List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
@@ -619,14 +495,12 @@ public final class ModelAst {
             List<ContextAst> contexts,
             List<ConversionAst> conversions,
             Map<String, String> physicalQualifierByConceptName,
-            List<WebhookAst> webhooks,
             List<SequenceAst> sequences,
             List<SeedAst> seeds
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
-                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
                 selectors, documents, parserWarnings, externalAi, settings, roles, propertyScopes, properties,
-                contexts, conversions, physicalQualifierByConceptName, webhooks, sequences, seeds, null);
+                contexts, conversions, physicalQualifierByConceptName, sequences, seeds, null);
     }
 
     /** Path A P6.3: canonical constructor, adds {@code appShell} (declared navigation structure and
@@ -638,12 +512,9 @@ public final class ModelAst {
             List<? extends EntityAst> entities,
             List<DomainTypeAst> domainTypes,
             List<CapabilityAst> capabilities,
-            List<CapabilityBindingAst> bindings,
             List<EventAst> events,
             List<FlowAst> flows,
-            List<OrchestrationAst> orchestrationRules,
             List<QueryAst> queries,
-            List<RuleProfileAst> ruleProfiles,
             List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
@@ -660,15 +531,13 @@ public final class ModelAst {
             List<ContextAst> contexts,
             List<ConversionAst> conversions,
             Map<String, String> physicalQualifierByConceptName,
-            List<WebhookAst> webhooks,
             List<SequenceAst> sequences,
             List<SeedAst> seeds,
             AppShellAst appShell
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
-                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
                 selectors, documents, parserWarnings, externalAi, settings, roles, propertyScopes, properties,
-                contexts, conversions, physicalQualifierByConceptName, webhooks, sequences, seeds, appShell, null);
+                contexts, conversions, physicalQualifierByConceptName, sequences, seeds, appShell, null);
     }
 
     /** AGENT-1: canonical constructor, adds {@code agentAccess} (what an AI agent may see and do, and
@@ -680,12 +549,9 @@ public final class ModelAst {
             List<? extends EntityAst> entities,
             List<DomainTypeAst> domainTypes,
             List<CapabilityAst> capabilities,
-            List<CapabilityBindingAst> bindings,
             List<EventAst> events,
             List<FlowAst> flows,
-            List<OrchestrationAst> orchestrationRules,
             List<QueryAst> queries,
-            List<RuleProfileAst> ruleProfiles,
             List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
@@ -702,7 +568,6 @@ public final class ModelAst {
             List<ContextAst> contexts,
             List<ConversionAst> conversions,
             Map<String, String> physicalQualifierByConceptName,
-            List<WebhookAst> webhooks,
             List<SequenceAst> sequences,
             List<SeedAst> seeds,
             AppShellAst appShell,
@@ -714,12 +579,9 @@ public final class ModelAst {
         this.concepts = toConcepts(entities);
         this.domainTypes = new ArrayList<>(domainTypes);
         this.capabilities = new ArrayList<>(capabilities);
-        this.bindings = new ArrayList<>(bindings);
         this.events = new ArrayList<>(events);
         this.flows = new ArrayList<>(flows);
-        this.orchestrationRules = new ArrayList<>(orchestrationRules);
         this.queries = new ArrayList<>(queries);
-        this.ruleProfiles = new ArrayList<>(ruleProfiles);
         this.procedures = new ArrayList<>(procedures);
         this.panels = new ArrayList<>(panels);
         this.guidePages = new ArrayList<>(guidePages);
@@ -737,7 +599,6 @@ public final class ModelAst {
         this.conversions = conversions == null ? new ArrayList<>() : new ArrayList<>(conversions);
         this.physicalQualifierByConceptName = physicalQualifierByConceptName == null
                 ? Map.of() : Map.copyOf(physicalQualifierByConceptName);
-        this.webhooks = webhooks == null ? new ArrayList<>() : new ArrayList<>(webhooks);
         this.sequences = sequences == null ? new ArrayList<>() : new ArrayList<>(sequences);
         this.seeds = seeds == null ? new ArrayList<>() : new ArrayList<>(seeds);
         this.appShell = appShell;
@@ -768,10 +629,6 @@ public final class ModelAst {
         return Collections.unmodifiableList(capabilities);
     }
 
-    public List<CapabilityBindingAst> getBindings() {
-        return Collections.unmodifiableList(bindings);
-    }
-
     public List<EventAst> getEvents() {
         return Collections.unmodifiableList(events);
     }
@@ -780,17 +637,10 @@ public final class ModelAst {
         return Collections.unmodifiableList(flows);
     }
 
-    public List<OrchestrationAst> getOrchestrationRules() {
-        return Collections.unmodifiableList(orchestrationRules);
-    }
-
     public List<QueryAst> getQueries() {
         return Collections.unmodifiableList(queries);
     }
 
-    public List<RuleProfileAst> getRuleProfiles() {
-        return Collections.unmodifiableList(ruleProfiles);
-    }
 
     public List<ProcedureAst> getProcedures() {
         return Collections.unmodifiableList(procedures);
@@ -866,12 +716,6 @@ public final class ModelAst {
      *  ({@code aliasOrPackId::Name}); empty when the model declares no packs. */
     public Map<String, String> getPhysicalQualifierByConceptName() {
         return physicalQualifierByConceptName;
-    }
-
-    /** R6.2: model-declared inbound webhook doors, empty when the model declares none (a model
-     *  with no webhooks behaves exactly as it did before this feature existed). */
-    public List<WebhookAst> getWebhooks() {
-        return Collections.unmodifiableList(webhooks);
     }
 
     /** R5.3: model-declared document-numbering counters, empty when the model declares none (a

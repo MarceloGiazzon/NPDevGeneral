@@ -29,7 +29,7 @@ class ConceptExplicitIndexParsingTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "explicit.index.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -73,7 +73,7 @@ class ConceptExplicitIndexParsingTest {
             Files.writeString(modelPath, """
                     {
                       "namespace": "explicit.index.invalid",
-                      "dslVersion": "1.0.0",
+                      "dslVersion": "3.0.0",
                       "version": "1.0",
                       "concepts": [
                         {
@@ -101,7 +101,7 @@ class ConceptExplicitIndexParsingTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "explicit.index.no.inherit",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -134,7 +134,7 @@ class ConceptExplicitIndexParsingTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "explicit.index.inherit",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -176,7 +176,7 @@ class ConceptExplicitIndexParsingTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "no.index.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {

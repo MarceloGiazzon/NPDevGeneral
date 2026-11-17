@@ -64,7 +64,7 @@ class CanonicalDemoGenerationSmokeTest {
         JsonNode metadataRoot = MAPPER.readTree(Files.readString(compiledMetadataPath));
         assertEquals("canonical.clinicdemo", metadataRoot.path("namespace").asText());
         assertEquals(4, metadataRoot.path("catalogs").path("concepts").size());
-        assertEquals(9, metadataRoot.path("catalogs").path("actions").size());
+        assertEquals(12, metadataRoot.path("catalogs").path("actions").size()); // FORM P3-T5c: the 3 declared procedures became flows, and a flow is an action
 
         JsonNode metadataIndex = MAPPER.readTree(Files.readString(metadataIndexPath));
         assertEquals(13, metadataIndex.path("catalogs").size());

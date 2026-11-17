@@ -26,7 +26,7 @@ class ProcedureRunQueryUndeclaredNameValidationTest {
     private static String modelJson(String queryName) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.runquery", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.runquery", "version": "1.0",
               "concepts": [
                 { "name": "Order", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

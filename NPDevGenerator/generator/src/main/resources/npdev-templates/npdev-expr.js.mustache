@@ -11,8 +11,8 @@
  * Language: number / string ('..' or "..", no escapes) / true / false / null literals, field references
  * (dotted paths, an optional leading $ such as $root.discount), arithmetic + - * / %, comparison
  * == != < <= > >=, logical && || !, unary -, parentheses, and function calls name(args) /
- * receiver.name(args) (a function must be supplied by the caller; none are built in, exactly like the
- * server's computed columns), with param => body lambdas as call arguments.
+ * receiver.name(args) (a function must be supplied by the caller -- npdev.expr.stdlib.functions is the platform's
+ * standard set -- exactly like the server's computed columns), with param => body lambdas as call arguments.
  *
  * Known, deliberate divergences from the JVM: a number prints with JavaScript's Number formatting
  * (1e21 is "1e+21", not "1.0E21"), and a string is "numeric" by a JavaScript re-implementation of
@@ -70,14 +70,14 @@
         continue;
       }
       var two = i + 1 < n ? s.substring(i, i + 2) : "";
-      if (two === "==" || two === "!=" || two === "<=" || two === ">=" || two === "&&" || two === "||" || two === "=>") {
+      if (two === "==" || two === "!=" || two === "<=" || two === ">=" || two === "&&" || two === "||" || two === "=>" || two === "??") {
         tokens.push({ type: "OP", text: two });
         i += 2;
         continue;
       }
       if (c === ",") { tokens.push({ type: "COMMA", text: "," }); i++; continue; }
-      if ("+-*/%<>!()".indexOf(c) >= 0) {
-        tokens.push({ type: c === "(" ? "LP" : c === ")" ? "RP" : "OP", text: c });
+      if ("+-*/%<>!()?:[]".indexOf(c) >= 0) {
+        tokens.push({ type: c === "(" ? "LP" : c === ")" ? "RP" : c === "[" ? "LB" : c === "]" ? "RB" : "OP", text: c });
         i++;
         continue;
       }
@@ -118,6 +118,23 @@
 
   function norm(v) { return v === undefined ? null : v; }
 
+  // FORM P3-T2: the server computes in BigDecimal; JavaScript has only doubles, so every arithmetic
+  // result is rounded to 15 significant digits, which makes 0.1 + 0.2 exactly 0.3 here too. Known,
+  // deliberate divergence: a result needing more than 15 significant digits is rounded here, exact there.
+  function fix(x) { return typeof x === "number" && isFinite(x) ? Number(x.toPrecision(15)) : x; }
+
+  // FORM P3-T2: strict evaluation (options.strict) -- a null or non-numeric operand of - * / % and unary
+  // minus, a null side of +, and division/remainder by zero throw, naming the sub-expression.
+  function strictFailure(node, what) { return new ExpressionError(what + " in `" + node.render() + "`"); }
+  function requireNumeric(ctx, node, operandNode, value) {
+    if (!ctx || !ctx.strict) { return; }
+    value = norm(value);
+    if (value === null) { throw strictFailure(node, "null operand `" + operandNode.render() + "`"); }
+    if (typeof value === "boolean" || !isNumericLike(value)) {
+      throw strictFailure(node, "operand `" + operandNode.render() + "` is not a number (" + value + ")");
+    }
+  }
+
   function truthy(v) {
     v = norm(v);
     if (typeof v === "boolean") { return v; }
@@ -141,6 +158,7 @@
   Literal.prototype.eval = function () { return this.value; };
   Literal.prototype.looksBoolean = function () { return typeof this.value === "boolean"; };
   Literal.prototype.collectFields = function () {};
+  Literal.prototype.render = function () { return typeof this.value === "string" ? "'" + this.value + "'" : String(this.value); };
 
   function Var(name) { this.name = name; }
   Var.prototype.eval = function (vars) {
@@ -157,34 +175,81 @@
   };
   Var.prototype.looksBoolean = function () { return false; };
   Var.prototype.collectFields = function (out) { out.push(this.name); };
+  Var.prototype.render = function () { return this.name; };
 
   function Unary(op, operand) { this.op = op; this.operand = operand; }
   Unary.prototype.eval = function (vars, ctx) {
     var v = this.operand.eval(vars, ctx);
-    return this.op === "!" ? !truthy(v) : -toNumber(v);
+    if (this.op === "!") { return !truthy(v); }
+    requireNumeric(ctx, this, this.operand, v);
+    return fix(-toNumber(v));
   };
+  Unary.prototype.render = function () { return this.op + this.operand.render(); };
   Unary.prototype.looksBoolean = function () { return this.op === "!"; };
   Unary.prototype.collectFields = function (out) { this.operand.collectFields(out); };
 
-  var BOOLEAN_OPS = { "&&": 1, "||": 1, "==": 1, "!=": 1, "<": 1, "<=": 1, ">": 1, ">=": 1 };
+  var BOOLEAN_OPS = { "&&": 1, "||": 1, "==": 1, "!=": 1, "<": 1, "<=": 1, ">": 1, ">=": 1, "in": 1, "not in": 1 };
+
+  // FORM P3-T2: list literal, ternary and membership; mirror ComputedExpression.ListLiteral / Ternary / contains.
+  function ListLiteral(items) { this.items = items; }
+  ListLiteral.prototype.eval = function (vars, ctx) {
+    return this.items.map(function (item) { return item.eval(vars, ctx); });
+  };
+  ListLiteral.prototype.looksBoolean = function () { return false; };
+  ListLiteral.prototype.render = function () { return "[" + this.items.map(function (i) { return i.render(); }).join(", ") + "]"; };
+  ListLiteral.prototype.collectFields = function (out) { this.items.forEach(function (i) { i.collectFields(out); }); };
+
+  function Ternary(cond, whenTrue, whenFalse) { this.cond = cond; this.whenTrue = whenTrue; this.whenFalse = whenFalse; }
+  Ternary.prototype.eval = function (vars, ctx) {
+    return truthy(this.cond.eval(vars, ctx)) ? this.whenTrue.eval(vars, ctx) : this.whenFalse.eval(vars, ctx);
+  };
+  Ternary.prototype.render = function () { return this.cond.render() + " ? " + this.whenTrue.render() + " : " + this.whenFalse.render(); };
+  Ternary.prototype.looksBoolean = function () { return this.whenTrue.looksBoolean() && this.whenFalse.looksBoolean(); };
+  Ternary.prototype.collectFields = function (out) {
+    this.cond.collectFields(out); this.whenTrue.collectFields(out); this.whenFalse.collectFields(out);
+  };
+
+  function contains(collection, item) {
+    if (!Array.isArray(collection)) { return false; }
+    for (var k = 0; k < collection.length; k++) { if (equalsLoose(item, collection[k])) { return true; } }
+    return false;
+  }
 
   function Binary(op, left, right) { this.op = op; this.left = left; this.right = right; }
   Binary.prototype.looksBoolean = function () { return Object.prototype.hasOwnProperty.call(BOOLEAN_OPS, this.op); };
+  function wrapChild(n) { return n instanceof Binary || n instanceof Ternary ? "(" + n.render() + ")" : n.render(); }
+  Binary.prototype.render = function () { return wrapChild(this.left) + " " + this.op + " " + wrapChild(this.right); };
   Binary.prototype.collectFields = function (out) { this.left.collectFields(out); this.right.collectFields(out); };
   Binary.prototype.eval = function (vars, ctx) {
     if (this.op === "&&") { return truthy(this.left.eval(vars, ctx)) && truthy(this.right.eval(vars, ctx)); }
     if (this.op === "||") { return truthy(this.left.eval(vars, ctx)) || truthy(this.right.eval(vars, ctx)); }
+    if (this.op === "??") {
+      var first = norm(this.left.eval(vars, ctx));
+      return first !== null ? first : this.right.eval(vars, ctx);
+    }
     var l = this.left.eval(vars, ctx);
     var r = this.right.eval(vars, ctx);
     var d;
     switch (this.op) {
       case "+":
-        if (isNumericLike(l) && isNumericLike(r)) { return toNumber(l) + toNumber(r); }
+        if (ctx && ctx.strict && (norm(l) === null || norm(r) === null)) {
+          throw strictFailure(this, "null operand `" + (norm(l) === null ? this.left : this.right).render() + "`");
+        }
+        if (isNumericLike(l) && isNumericLike(r)) { return fix(toNumber(l) + toNumber(r)); }
         return stringify(l) + stringify(r);
-      case "-": return toNumber(l) - toNumber(r);
-      case "*": return toNumber(l) * toNumber(r);
-      case "/": d = toNumber(r); return d === 0 ? 0 : toNumber(l) / d;
-      case "%": d = toNumber(r); return d === 0 ? 0 : toNumber(l) % d;
+      case "-": requireNumeric(ctx, this, this.left, l); requireNumeric(ctx, this, this.right, r); return fix(toNumber(l) - toNumber(r));
+      case "*": requireNumeric(ctx, this, this.left, l); requireNumeric(ctx, this, this.right, r); return fix(toNumber(l) * toNumber(r));
+      case "/":
+      case "%":
+        requireNumeric(ctx, this, this.left, l); requireNumeric(ctx, this, this.right, r);
+        d = toNumber(r);
+        if (d === 0) {
+          if (ctx && ctx.strict) { throw strictFailure(this, "division by zero"); }
+          return 0;
+        }
+        return fix(this.op === "/" ? toNumber(l) / d : toNumber(l) % d);
+      case "in": return contains(r, l);
+      case "not in": return !contains(r, l);
       case "==": return equalsLoose(l, r);
       case "!=": return !equalsLoose(l, r);
       case "<": return toNumber(l) < toNumber(r);
@@ -198,6 +263,7 @@
   // name(args...) -- the function must be supplied by the caller (ctx.functions[name]); it receives the
   // raw argument nodes, a variable scope and a context, like the server's ExprFunction.
   function Call(name, args) { this.name = name; this.args = args; }
+  Call.prototype.render = function () { return this.name + "(" + this.args.map(function (a) { return a.render(); }).join(", ") + ")"; };
   Call.prototype.looksBoolean = function () { return true; };
   Call.prototype.collectFields = function (out) {
     var skipFrom = this.name === "uniqueBy" ? 1 : this.args.length;
@@ -213,6 +279,7 @@
 
   // param => body: valid only as a call argument; a consuming function calls invokeLambda per item.
   function Lambda(param, body) { this.param = param; this.body = body; }
+  Lambda.prototype.render = function () { return this.param + " => " + this.body.render(); };
   Lambda.prototype.looksBoolean = function () { return false; };
   Lambda.prototype.collectFields = function () {};
   Lambda.prototype.eval = function () {
@@ -258,7 +325,21 @@
     if (this.peek().type !== type) { throw new ExpressionError("expected " + type + " but found '" + this.peek().text + "'"); }
     this.pos++;
   };
-  Parser.prototype.parseAll = function () { var node = this.parseOr(); this.expect("EOF"); return node; };
+  Parser.prototype.parseAll = function () { var node = this.parseTernary(); this.expect("EOF"); return node; };
+  Parser.prototype.parseTernary = function () {
+    var cond = this.parseCoalesce();
+    if (this.matchOp("?")) {
+      var whenTrue = this.parseTernary();
+      if (!this.matchOp(":")) { throw new ExpressionError("expected ':' in a ?: expression but found '" + this.peek().text + "'"); }
+      return new Ternary(cond, whenTrue, this.parseTernary());
+    }
+    return cond;
+  };
+  Parser.prototype.parseCoalesce = function () {
+    var left = this.parseOr();
+    while (this.matchOp("??")) { left = new Binary("??", left, this.parseOr()); }
+    return left;
+  };
   Parser.prototype.parseOr = function () {
     var left = this.parseAnd();
     while (this.matchOp("||")) { left = new Binary("||", left, this.parseAnd()); }
@@ -282,7 +363,20 @@
     }
   };
   Parser.prototype.parseEquality = function () { return this.parseBinaryLevel(["==", "!="], this.parseRelational); };
-  Parser.prototype.parseRelational = function () { return this.parseBinaryLevel(["<", "<=", ">", ">="], this.parseAdditive); };
+  Parser.prototype.parseRelational = function () {
+    var left = this.parseBinaryLevel(["<", "<=", ">", ">="], this.parseAdditive);
+    var t = this.peek();
+    var t2 = this.tokens[this.pos + 1];
+    if (t.type === "IDENT" && t.text === "in") {
+      this.next();
+      return new Binary("in", left, this.parseAdditive());
+    }
+    if (t.type === "IDENT" && t.text === "not" && t2 && t2.type === "IDENT" && t2.text === "in") {
+      this.pos += 2;
+      return new Binary("not in", left, this.parseAdditive());
+    }
+    return left;
+  };
   Parser.prototype.parseAdditive = function () { return this.parseBinaryLevel(["+", "-"], this.parseMultiplicative); };
   Parser.prototype.parseMultiplicative = function () { return this.parseBinaryLevel(["*", "/", "%"], this.parseUnary); };
   Parser.prototype.parseUnary = function () {
@@ -312,9 +406,18 @@
         return new Var(t.text);
       case "LP":
         this.next();
-        var inner = this.parseOr();
+        var inner = this.parseTernary();
         this.expect("RP");
         return inner;
+      case "LB":
+        this.next();
+        var items = [];
+        if (this.peek().type !== "RB") {
+          items.push(this.parseTernary());
+          while (this.peek().type === "COMMA") { this.next(); items.push(this.parseTernary()); }
+        }
+        this.expect("RB");
+        return new ListLiteral(items);
       default:
         throw new ExpressionError("unexpected token '" + t.text + "' in expression");
     }
@@ -342,10 +445,159 @@
     if (a.type === "IDENT" && b && b.type === "OP" && b.text === "=>") {
       var param = this.next().text;
       this.next(); // =>
-      return new Lambda(param, this.parseOr());
+      return new Lambda(param, this.parseTernary());
     }
-    return this.parseOr();
+    return this.parseTernary();
   };
+
+  // ---- stdlib (FORM P3-T2) ------------------------------------------------------------------------
+  // The function table below is GENERATED from NPDevContract/dsl/src/main/resources/expr/functions-stdlib.json
+  // (BusinessUiEmitter replaces the marker; scripts/quality/check-client-expr-parity.py does the same before
+  // it loads this file), so the Java and JavaScript function lists are never maintained twice. Every entry
+  // with impl "stdlib" and js true needs an implementation in STDLIB_IMPLS; a missing one is listed in
+  // api.stdlib.missing and fails the parity check. The functions are OPT-IN: pass
+  // {functions: npdev.expr.stdlib.functions} to evaluate(); callers with their own table (the workbench
+  // derived-value functions) are unaffected, exactly like the server's FunctionRegistry.
+  var STDLIB_TABLE = /*@stdlib-table*/[]/*@end*/;
+
+  function sNum(v) { v = norm(v); return v === null || typeof v === "boolean" || !isNumericLike(v) ? null : toNumber(v); }
+  function sWhole(v) { var n = sNum(v); return n !== null && Math.floor(n) === n ? n : null; }
+  function sText(v) { v = norm(v); return v === null ? null : String(v); }
+
+  // A temporal string as {ms (instant; a bare date or offset-less time is read as UTC), offset (minutes or null),
+  // dateOnly, wall (wall-clock ms read as UTC), frac (digits after the seconds, no trailing zeros)}; null otherwise.
+  var TEMPORAL = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(Z|[+-]\d{2}:\d{2})?)?$/;
+  function parseTemporal(v) {
+    v = norm(v);
+    if (v instanceof Date) { return isNaN(v.getTime()) ? null : { ms: v.getTime(), offset: 0, dateOnly: false, wall: v.getTime(), frac: "" }; }
+    if (typeof v !== "string") { return null; }
+    var m = TEMPORAL.exec(v.trim());
+    if (!m) { return null; }
+    var wall = Date.UTC(+m[1], +m[2] - 1, +m[3], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0, m[6] ? +m[6] : 0);
+    if (isNaN(wall) || new Date(wall).getUTCDate() !== +m[3]) { return null; }
+    var frac = m[7] ? m[7].replace(/0+$/, "") : "";
+    var offset = null;
+    if (m[8]) { offset = m[8] === "Z" ? 0 : (m[8].charAt(0) === "-" ? -1 : 1) * (+m[8].substr(1, 2) * 60 + +m[8].substr(4, 2)); }
+    var ms = wall + (frac ? Math.floor(+("0." + frac) * 1000) : 0) - (offset || 0) * 60000;
+    return { ms: ms, offset: offset, dateOnly: m[4] === undefined, wall: wall, frac: frac };
+  }
+  function utcDay(ms) { return Math.floor(ms / 86400000); }
+  function instantText(ms) { return new Date(ms).toISOString().replace(/\.000Z$/, "Z"); }
+  function pad2(n) { return (n < 10 ? "0" : "") + n; }
+  function offsetText(min) {
+    if (min === 0) { return "Z"; }
+    var a = Math.abs(min);
+    return (min < 0 ? "-" : "+") + pad2(Math.floor(a / 60)) + ":" + pad2(a % 60);
+  }
+  function addDaysTo(v, days) {
+    var t = parseTemporal(v);
+    if (t === null || days === null) { return null; }
+    var wall = t.wall + days * 86400000;
+    if (t.dateOnly) { return new Date(wall).toISOString().slice(0, 10); }
+    var text = new Date(wall).toISOString().slice(0, 19) + (t.frac ? "." + t.frac : "");
+    return t.offset === null ? text : text + offsetText(t.offset);
+  }
+  function addTimeTo(v, amount, unitMs) {
+    var t = parseTemporal(v);
+    return t === null || amount === null ? null : instantText(t.ms + amount * unitMs);
+  }
+  function roundHalfUp(x, places) {
+    var a = Math.abs(x), r;
+    if (places >= 0) { var f = Math.pow(10, places); r = Math.round(fix(a * f)) / f; }
+    else { var g = Math.pow(10, -places); r = Math.round(fix(a / g)) * g; }
+    return fix(x < 0 ? -r : r);
+  }
+  function distanceKm(lat1, lon1, lat2, lon2) {
+    function rad(d) { return d * Math.PI / 180; }
+    var p1 = rad(lat1), p2 = rad(lat2), dp = p2 - p1, dl = rad(lon2 - lon1);
+    var h = Math.sin(dp / 2) * Math.sin(dp / 2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2);
+    return Math.round(2 * 6371.0 * Math.asin(Math.min(1.0, Math.sqrt(h))) * 1000) / 1000;
+  }
+  function allNum(a) { for (var i = 0; i < a.length; i++) { if (sNum(a[i]) === null) { return false; } } return true; }
+
+  // Value functions take the evaluated arguments; null in the result is the "total" answer for a bad argument.
+  var STDLIB_IMPLS = {
+    concat: function (a) { if (!a.length || a.some(function (x) { return x === null; })) { return null; } return a.map(String).join(""); },
+    coalesce: function (a) {
+      for (var i = 0; i < a.length; i++) { if (!(a[i] === null || (typeof a[i] === "string" && a[i].trim() === ""))) { return a[i]; } }
+      return null;
+    },
+    trim: function (a) { return a.length === 1 && a[0] !== null ? String(a[0]).trim() : null; },
+    upper: function (a) { return a.length === 1 && a[0] !== null ? String(a[0]).toUpperCase() : null; },
+    lower: function (a) { return a.length === 1 && a[0] !== null ? String(a[0]).toLowerCase() : null; },
+    length: function (a) { return a.length === 1 && a[0] !== null ? String(a[0]).length : null; },
+    contains: function (a) { return a.length !== 2 ? null : sText(a[0]) !== null && sText(a[1]) !== null && sText(a[0]).indexOf(sText(a[1])) >= 0; },
+    startsWith: function (a) { return a.length !== 2 ? null : sText(a[0]) !== null && sText(a[1]) !== null && sText(a[0]).indexOf(sText(a[1])) === 0; },
+    round: function (a) {
+      var x = a.length === 2 ? sNum(a[0]) : null, n = a.length === 2 ? sWhole(a[1]) : null;
+      return x === null || n === null || Math.abs(n) > 100 ? null : roundHalfUp(x, n);
+    },
+    floor: function (a) { var x = a.length === 1 ? sNum(a[0]) : null; return x === null ? null : fix(Math.floor(x)); },
+    ceil: function (a) { var x = a.length === 1 ? sNum(a[0]) : null; return x === null ? null : fix(Math.ceil(x)); },
+    abs: function (a) { var x = a.length === 1 ? sNum(a[0]) : null; return x === null ? null : Math.abs(x); },
+    min: function (a) { return a.length === 2 && allNum(a) ? Math.min(sNum(a[0]), sNum(a[1])) : null; },
+    max: function (a) { return a.length === 2 && allNum(a) ? Math.max(sNum(a[0]), sNum(a[1])) : null; },
+    clamp: function (a) {
+      if (a.length !== 3 || !allNum(a) || sNum(a[1]) > sNum(a[2])) { return null; }
+      return Math.min(Math.max(sNum(a[0]), sNum(a[1])), sNum(a[2]));
+    },
+    now: function (a) { return a.length ? null : instantText(Date.now()); },
+    today: function (a) { return a.length ? null : new Date().toISOString().slice(0, 10); },
+    addDays: function (a) { return a.length === 2 ? addDaysTo(a[0], sWhole(a[1])) : null; },
+    addHours: function (a) { return a.length === 2 ? addTimeTo(a[0], sWhole(a[1]), 3600000) : null; },
+    addMinutes: function (a) { return a.length === 2 ? addTimeTo(a[0], sWhole(a[1]), 60000) : null; },
+    addSeconds: function (a) { return a.length === 2 ? addTimeTo(a[0], sWhole(a[1]), 1000) : null; },
+    daysBetween: function (a) {
+      var f = a.length === 2 ? parseTemporal(a[0]) : null, t = a.length === 2 ? parseTemporal(a[1]) : null;
+      return f === null || t === null ? null : utcDay(t.ms) - utcDay(f.ms);
+    },
+    minutesBetween: function (a) {
+      var f = a.length === 2 ? parseTemporal(a[0]) : null, t = a.length === 2 ? parseTemporal(a[1]) : null;
+      return f === null || t === null ? null : Math.trunc((t.ms - f.ms) / 60000);
+    },
+    isToday: function (a) {
+      if (a.length !== 1) { return null; }
+      var t = parseTemporal(a[0]);
+      return t !== null && utcDay(t.ms) === utcDay(Date.now());
+    },
+    uuid: function (a) {
+      if (a.length) { return null; }
+      var c = typeof globalThis !== "undefined" ? globalThis.crypto : null;
+      if (c && typeof c.randomUUID === "function") { return c.randomUUID(); }
+      return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (ch) {
+        var r = Math.random() * 16 | 0; return (ch === "x" ? r : (r & 3 | 8)).toString(16);
+      });
+    },
+    distanceKm: function (a) { return a.length === 4 && allNum(a) ? distanceKm(sNum(a[0]), sNum(a[1]), sNum(a[2]), sNum(a[3])) : null; },
+    withinKm: function (a) {
+      if (a.length !== 5 || !allNum(a)) { return null; }
+      return distanceKm(sNum(a[0]), sNum(a[1]), sNum(a[2]), sNum(a[3])) <= sNum(a[4]);
+    }
+  };
+  // List functions take the raw argument nodes (they call a lambda per item).
+  var STDLIB_LIST_IMPLS = {
+    filter: function (args, vars, ctx) {
+      var list = args.length === 2 ? norm(args[0].eval(vars, ctx)) : null;
+      return Array.isArray(list) ? list.filter(function (item) { return truthy(args[1].invokeLambda(item, vars, ctx)); }) : [];
+    },
+    map: function (args, vars, ctx) {
+      var list = args.length === 2 ? norm(args[0].eval(vars, ctx)) : null;
+      return Array.isArray(list) ? list.map(function (item) { return norm(args[1].invokeLambda(item, vars, ctx)); }) : [];
+    }
+  };
+
+  var STDLIB_FUNCTIONS = {};
+  var STDLIB_MISSING = [];
+  STDLIB_TABLE.forEach(function (entry) {
+    if (entry.impl !== "stdlib" || !entry.js) { return; }
+    var names = [entry.name].concat(entry.aliases || []);
+    var impl = entry.kind === "list" ? STDLIB_LIST_IMPLS[entry.name] : STDLIB_IMPLS[entry.name];
+    if (!impl) { STDLIB_MISSING.push(entry.name); return; }
+    var fn = entry.kind === "list" ? impl : function (args, vars, ctx) {
+      return norm(impl(args.map(function (a) { return norm(a.eval(vars, ctx)); })));
+    };
+    names.forEach(function (name) { STDLIB_FUNCTIONS[name] = fn; });
+  });
 
   // ---- public api ---------------------------------------------------------------------------------
   var cache = Object.create(null);
@@ -358,7 +610,7 @@
     return node;
   }
 
-  /** Parse and evaluate. options.functions maps a function name to fn(argNodes, vars, ctx). */
+  /** Parse and evaluate. options.functions maps a function name to fn(argNodes, vars, ctx); options.strict makes null arithmetic and division by zero throw. */
   function evaluate(source, vars, options) {
     return norm(parse(source).eval(vars, options || {}));
   }
@@ -384,7 +636,8 @@
     evaluate: evaluate,
     tryEvaluate: tryEvaluate,
     referencedFields: referencedFields,
-    isBooleanShaped: isBooleanShaped
+    isBooleanShaped: isBooleanShaped,
+    stdlib: { table: STDLIB_TABLE, functions: STDLIB_FUNCTIONS, missing: STDLIB_MISSING }
   };
 
   if (typeof module !== "undefined" && module.exports) { module.exports = api; }

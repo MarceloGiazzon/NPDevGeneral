@@ -119,9 +119,7 @@ public final class BuiltinPackComposer {
                 app.getBindings(),
                 app.getEvents(),
                 app.getFlows(),
-                app.getOrchestrationRules(),
                 app.getQueries(),
-                app.getRuleProfiles(),
                 app.getProcedures(),
                 app.getPanels(),
                 app.getGuidePages(),
@@ -141,7 +139,7 @@ public final class BuiltinPackComposer {
     private static String stagingModelJson(String alias) {
         return "{\n"
                 + "  \"namespace\": \"npdev.builtin." + alias + "\",\n"
-                + "  \"dslVersion\": \"1.0.0\",\n"
+                + "  \"dslVersion\": \"3.0.0\",\n"
                 + "  \"version\": \"1.0\",\n"
                 + "  \"packs\": [ { \"$ref\": \"packs/" + alias + "/pack.json\", \"as\": \"" + alias + "\" } ],\n"
                 + "  \"concepts\": [ { \"name\": \"BuiltinComposeRoot\", \"fields\": ["

@@ -4,12 +4,19 @@
   "concepts": [
     {
       "name": "Learner",
-      "fields": ["id", "name", "score", "status"]
+      "fields": [
+        "id",
+        "name",
+        "score",
+        "status"
+      ]
     }
   ],
-  "procedures": [
+  "flows": [
     {
-      "name": "CalculateReadiness"
+      "name": "CalculateReadiness",
+      "expose": "internal",
+      "steps": []
     }
   ],
   "panels": [

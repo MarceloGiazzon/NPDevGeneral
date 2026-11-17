@@ -4,9 +4,11 @@ title: >-
   after a hot reload an added orchestration[] rule never fires and a REMOVED one keeps firing
 type: BUG
 severity: HIGH
-status: DONE
+status: OBSOLETE
 opened: 2026-09-22
 closed: 2026-09-23
+decision: >-
+  Orchestration rules (orchestration[]) were removed end to end in FORM P3-T5c stage 6b; event-triggered flows replace them, so the reload bug's surface no longer exists and its guard test was deleted with it.
 source: >-
   Exhaustive B28 residual sweep (see also REG-240, REG-242 and `ledger/boundaries/B28.yml`'s
   2026-09-22 entry). `GeneratedCrudRuntimeSupport.initializeOrchestrationSubscribers()`
@@ -63,18 +65,3 @@ detail: |
 
   Also fixed alongside in the same session (REG-240, MEDIUM, this class's `identityTables` field):
   see that item.
-guard:
-  kind: test
-  ref: >-
-    NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportOrchestrationReloadTest.java#aRuleRemovedByAReloadStopsFiring
-  asserts: >-
-    subscribes a "Notify" rule via the constructor, fires it once to confirm it works, then calls
-    reloadOrchestrationSubscribers with a model that has NO orchestration rules, and confirms a
-    second matching event does NOT increment the dispatcher's invocation count -- the worst of the
-    three failure modes because it needs no unusual model change and is actively wrong (keeps
-    executing deleted business logic) rather than merely stale. Siblings cover: a rule ADDED by a
-    reload firing on the next matching event without reconstructing the adapter
-    (aRuleAddedByAReloadFires), an EDITED condition using the new threshold immediately rather than
-    the pre-reload one (anEditedConditionUsesTheNewThreshold), and a reload not leaving stale
-    subscribers that double-fire the SAME event (reloadDoesNotDoubleFire).
-  provenRed: true

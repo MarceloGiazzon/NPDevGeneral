@@ -845,6 +845,40 @@ class DialectConformanceTierATest {
         }
     }
 
+    // ------------------------------------------------------------------ FORM P3-T4: great-circle distance
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dialects")
+    @DisplayName("P3-T4: greatCircleKm is a haversine whose value operands bind once per occurrence")
+    void greatCircleKmShapeAndBindOrder(SqlDialect dialect) {
+        SqlDialect.GreatCircleSql great = dialect.greatCircleKm("t.\"lat\"", "t.\"lng\"", "?", "?");
+        String upper = great.sql().toUpperCase(java.util.Locale.ROOT);
+        for (String function : new String[] {"ASIN(", "SQRT(", "RADIANS(", "SIN(", "COS(", "POWER(", "ROUND("}) {
+            assertTrue(upper.contains(function), dialect.name() + " missing " + function + ": " + great.sql());
+        }
+        // six coordinate uses in the haversine, repeated once per use of the clamp
+        assertEquals(6 * dialect.leastOneUses(), great.operandOrder().size(), dialect.name());
+        long markers = great.sql().chars().filter(c -> c == '?').count();
+        long valueUses = great.operandOrder().stream().filter(index -> index >= 2).count();
+        assertEquals(valueUses, markers, dialect.name() + ": one ? per value-operand use in " + great.sql());
+        assertFalse(great.sql().contains("'"), dialect.name() + ": nothing is spliced as a literal");
+    }
+
+    @Test
+    @DisplayName("P3-T4: each engine spells its own double type, clamp and rounding")
+    void greatCircleKmEngineSpellings() {
+        String h2 = H2Dialect.INSTANCE.greatCircleKm("a", "b", "c", "d").sql();
+        assertTrue(h2.contains("DOUBLE PRECISION") && h2.contains("LEAST(1,"), h2);
+        String postgres = PostgresDialect.INSTANCE.greatCircleKm("a", "b", "c", "d").sql();
+        assertTrue(postgres.contains("DOUBLE PRECISION") && postgres.contains("AS NUMERIC"),
+                "Postgres has no ROUND(double precision, int): " + postgres);
+        String mysql = MySqlDialect.INSTANCE.greatCircleKm("a", "b", "c", "d").sql();
+        assertTrue(mysql.contains("AS DOUBLE)") && !mysql.contains("DOUBLE PRECISION"), mysql);
+        String sqlServer = SqlServerDialect.INSTANCE.greatCircleKm("a", "b", "c", "d").sql();
+        assertTrue(sqlServer.contains("AS FLOAT)") && sqlServer.contains("CASE WHEN") && !sqlServer.contains("LEAST("),
+                "T-SQL has no LEAST before 2022: " + sqlServer);
+    }
+
     // ------------------------------------------------------------------ R4.3: predicate grammar v2's
     // escaping/binding primitives (contains/startsWith LIKE patterns, IN placeholder lists)
 

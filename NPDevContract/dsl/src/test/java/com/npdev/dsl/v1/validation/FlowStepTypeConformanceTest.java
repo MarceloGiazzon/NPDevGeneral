@@ -49,7 +49,13 @@ class FlowStepTypeConformanceTest {
           { "name": "s-map",          "type": "map",             "input": "input", "output": "mapped" },
           { "name": "s-foreach",      "type": "forEach",         "collection": "input.lines", "itemKey": "line",
             "steps": [ { "name": "s-foreach-body", "type": "return", "value": "line" } ] },
-          { "name": "s-callprocedure","type": "callProcedure",  "procedure": "ConformanceProcedure", "output": "called" },
+          { "name": "s-set",         "type": "set",            "value": "input.total * 2", "output": "doubled" },
+          { "name": "s-read",        "type": "readConcept",    "scope": "Order", "id": "input.id", "output": "found" },
+          { "name": "s-delete",      "type": "deleteConcept",  "scope": "Order", "id": "input.id" },
+          { "name": "s-list",        "type": "listConcepts",   "scope": "Order", "output": "all" },
+          { "name": "s-runquery",    "type": "runQuery",       "query": "OrdersByTotal", "params": { "total": "input.total" }, "output": "rows" },
+          { "name": "s-callflow",    "type": "callFlow",       "flow": "ConformanceFlow", "output": "again" },
+          { "name": "s-notify",      "type": "notify",         "to": "input.id", "message": "hello" },
           { "name": "s-return",       "type": "return",          "value": "input" }
         ]
         """;
@@ -87,7 +93,7 @@ class FlowStepTypeConformanceTest {
 
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.conformance", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.conformance", "version": "1.0",
               "concepts": [
                 { "name": "Order", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

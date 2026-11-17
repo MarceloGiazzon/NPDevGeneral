@@ -49,8 +49,8 @@ class FileSystemModelRepositoryTest {
     private static String minimalModelJson() {
         return """
                 {
-                  "model": "RepoTestDomain",
-                  "dslVersion": "1.0.0",
+                  "namespace": "RepoTestDomain",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {

@@ -46,34 +46,63 @@ class RuntimeApiEmitterAppDeclaredRoleFlowExecuteTest {
     private static final String MODEL_JSON = """
             {
               "namespace": "reg119",
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "version": "v1",
               "concepts": [
                 {
                   "name": "Widget",
                   "fields": [
-                    { "name": "id", "type": "uuid", "id": true, "required": true },
-                    { "name": "label", "type": "string", "required": true }
+                    {
+                      "name": "id",
+                      "type": "uuid",
+                      "id": true,
+                      "required": true
+                    },
+                    {
+                      "name": "label",
+                      "type": "string",
+                      "required": true
+                    }
                   ]
                 }
               ],
               "capabilities": [
-                { "name": "persistence", "type": "PersistenceCapability", "operations": ["save", "findById"] }
-              ],
-              "bindings": [
-                { "capability": "persistence", "adapter": "repository" },
-                { "capability": "eventBus", "adapter": "inproc" }
+                {
+                  "name": "persistence",
+                  "type": "PersistenceCapability",
+                  "operations": [
+                    "save",
+                    "findById"
+                  ]
+                }
               ],
               "roles": [
-                { "name": "WarehouseManager", "grants": ["EXECUTE_FLOW", "READ_EXECUTIONS"] },
-                { "name": "ReadOnlyViewer", "grants": ["READ_EXECUTIONS"] }
+                {
+                  "name": "WarehouseManager",
+                  "grants": [
+                    "EXECUTE_FLOW",
+                    "READ_EXECUTIONS"
+                  ]
+                },
+                {
+                  "name": "ReadOnlyViewer",
+                  "grants": [
+                    "READ_EXECUTIONS"
+                  ]
+                }
               ],
               "flows": [
                 {
                   "name": "RecalculateWidgetSummary",
-                  "input": { "concept": "Widget" },
+                  "input": {
+                    "concept": "Widget"
+                  },
                   "steps": [
-                    { "name": "return-ok", "type": "return", "value": "true" }
+                    {
+                      "name": "return-ok",
+                      "type": "return",
+                      "value": "true"
+                    }
                   ]
                 }
               ]

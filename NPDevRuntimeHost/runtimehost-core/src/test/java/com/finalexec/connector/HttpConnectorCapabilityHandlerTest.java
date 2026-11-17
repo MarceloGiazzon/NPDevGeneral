@@ -101,12 +101,12 @@ class HttpConnectorCapabilityHandlerTest {
     private static CompiledModel model(String capabilityHttpBlock) throws Exception {
         String json = """
                 {
-                  "dslVersion": "1.0.0", "namespace": "demo.conn", "version": "1.0",
+                  "dslVersion": "3.0.0", "namespace": "demo.conn", "version": "1.0",
                   "concepts": [ { "name": "Thing", "fields": [ { "name": "id", "type": "uuid", "id": true } ] } ],
                   "propertyScopes": [ { "name": "tenant" } ],
                   "properties": [ { "name": "shopBase", "type": "string", "default": "http://127.0.0.1:1", "settableAt": ["tenant"] } ],
                   "capabilities": [ {
-                    "name": "shop", "type": "HttpConnector",
+                    "name": "shop", "type": "HttpConnector", "adapter": "http-connector",
                     "http": %s,
                     "operations": [
                       { "name": "getCustomer", "sideEffects": "reads",
@@ -122,8 +122,7 @@ class HttpConnectorCapabilityHandlerTest {
                       { "name": "listAll", "sideEffects": "reads", "http": { "method": "GET", "path": "/list" } },
                       { "name": "failPost", "sideEffects": "external", "http": { "method": "POST", "path": "/fail", "body": {} } },
                       { "name": "slow", "sideEffects": "reads", "http": { "method": "GET", "path": "/slow" } }
-                    ] } ],
-                  "bindings": [ { "capability": "shop", "adapter": "http-connector" } ]
+                    ] } ]
                 }
                 """.formatted(capabilityHttpBlock);
         JsonNode node = MAPPER.readTree(json);

@@ -22,7 +22,7 @@ class ConceptFieldDeclaredOrderTest {
     private static final String MODEL = """
             {
               "namespace":"demo",
-              "dslVersion":"1.0.0",
+              "dslVersion":"3.0.0",
               "version":"v1",
               "concepts":[
                 {"name":"Challenge","fields":[

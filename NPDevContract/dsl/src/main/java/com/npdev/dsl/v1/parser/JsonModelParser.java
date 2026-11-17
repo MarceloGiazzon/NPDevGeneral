@@ -120,6 +120,102 @@ public final class JsonModelParser {
                     "legacy-schema-target"
             ));
         }
+        if (root.has("model")) {
+            throw new DeprecationException(new ValidationDiagnostic(
+                    ValidationLayer.STRUCTURAL,
+                    ValidationSeverity.ERROR,
+                    "LEGACY_MODEL_ROOT_KEY",
+                    "Root 'model' (a legacy alias of the model name) is no longer supported. Use root 'namespace'.",
+                    "NPDevContract",
+                    "$.model",
+                    null,
+                    null,
+                    "namespace",
+                    null,
+                    "Rename root 'model' to 'namespace' (same value).",
+                    "legacy-model-root-key"
+            ));
+        }
+        if (root.has("contexts")) {
+            throw new DeprecationException(new ValidationDiagnostic(
+                    ValidationLayer.STRUCTURAL,
+                    ValidationSeverity.ERROR,
+                    "LEGACY_CONTEXTS_ROOT_KEY",
+                    "Root 'contexts' was renamed to 'modules'.",
+                    "NPDevContract",
+                    "$.contexts",
+                    null,
+                    null,
+                    "modules",
+                    null,
+                    "Rename root 'contexts' to 'modules' (same entries: {name, $ref, physicallyIsolate}).",
+                    "legacy-contexts-root-key"
+            ));
+        }
+        if (root.has("fragments")) {
+            throw new DeprecationException(new ValidationDiagnostic(
+                    ValidationLayer.STRUCTURAL,
+                    ValidationSeverity.ERROR,
+                    "LEGACY_FRAGMENTS_ROOT_KEY",
+                    "Root 'fragments' was removed: a file split is a plain $ref include of an array entry.",
+                    "NPDevContract",
+                    "$.fragments",
+                    null,
+                    null,
+                    "$ref",
+                    null,
+                    "Replace root 'fragments' with {\"$ref\": \"file.json\"} entries in the arrays themselves (capabilities, bindings, flows, ...); a referenced file's same-named array is spliced in.",
+                    "legacy-fragments-root-key"
+            ));
+        }
+        if (root.has("ruleProfiles")) {
+            throw new DeprecationException(new ValidationDiagnostic(
+                    ValidationLayer.STRUCTURAL,
+                    ValidationSeverity.ERROR,
+                    "LEGACY_RULE_PROFILES_ROOT_KEY",
+                    "Root 'ruleProfiles' was removed: it was parsed and name-checked but never read by the runtime.",
+                    "NPDevContract",
+                    "$.ruleProfiles",
+                    null,
+                    null,
+                    null,
+                    null,
+                    "Delete root 'ruleProfiles'. The invariant phases (always, interactive, headless, query, beforeCommit, afterCommit) are fixed by the platform and need no declaration.",
+                    "legacy-rule-profiles-root-key"
+            ));
+        }
+        if (root.has("bindings")) {
+            throw new DeprecationException(new ValidationDiagnostic(
+                    ValidationLayer.STRUCTURAL,
+                    ValidationSeverity.ERROR,
+                    "LEGACY_BINDINGS_ROOT_KEY",
+                    "Root 'bindings' was removed: an adapter that is not a deployment default is declared on the capability itself.",
+                    "NPDevContract",
+                    "$.bindings",
+                    null,
+                    null,
+                    "capabilities[].adapter",
+                    null,
+                    "Delete root 'bindings'. Move each non-default entry onto its capability as capabilities[].adapter (add {\"name\": ..., \"adapter\": ...} when the capability is not declared, e.g. plugin:*). persistence -> repository, eventBus -> inproc and a NotificationCapability -> notification-inproc are generated; override one per deployment with config.json adapters {capability: adapter}.",
+                    "legacy-bindings-root-key"
+            ));
+        }
+        if (root.has("webhooks")) {
+            throw new DeprecationException(new ValidationDiagnostic(
+                    ValidationLayer.STRUCTURAL,
+                    ValidationSeverity.ERROR,
+                    "LEGACY_WEBHOOKS_ROOT_KEY",
+                    "Root 'webhooks' was removed: an inbound door is declared on the capability it serves.",
+                    "NPDevContract",
+                    "$.webhooks",
+                    null,
+                    null,
+                    "inbound",
+                    null,
+                    "Move each webhooks[] entry onto a capability as capabilities[].inbound ({path (was source), hmacSecretEnvVar, eventName, fieldMapping, idempotencyKey, signature}); a former startFlow becomes {\"trigger\": {\"webhook\": \"<capability name>\"}} on that flow.",
+                    "legacy-webhooks-root-key"
+            ));
+        }
         if (root.has("entities")) {
             throw new DeprecationException(new ValidationDiagnostic(
                     ValidationLayer.STRUCTURAL,
@@ -153,9 +249,9 @@ public final class JsonModelParser {
             throw new IOException("model.json root must be an object");
         }
         checkDeprecatedAuthoringShape(root);
-        String namespace = firstNonBlank(readText(root, "namespace"), readText(root, "model"));
+        String namespace = readText(root, "namespace");
         if (namespace == null || namespace.isBlank()) {
-            throw new IOException("Missing/blank required field: namespace (or alias: model)");
+            throw new IOException("Missing/blank required field: namespace");
         }
         String dslVersion = readText(root, "dslVersion");
         if (dslVersion == null) {
@@ -181,12 +277,9 @@ public final class JsonModelParser {
         List<ConceptAst> concepts = new ArrayList<>();
         List<DomainTypeAst> domainTypes = new ArrayList<>();
         List<CapabilityAst> capabilities = new ArrayList<>();
-        List<CapabilityBindingAst> bindings = new ArrayList<>();
         List<EventAst> events = new ArrayList<>();
         List<FlowAst> flows = new ArrayList<>();
-        List<OrchestrationAst> orchestrationRules = new ArrayList<>();
         List<QueryAst> queries = new ArrayList<>();
-        List<RuleProfileAst> ruleProfiles = new ArrayList<>();
         List<ProcedureAst> procedures = new ArrayList<>();
         List<PanelAst> panels = new ArrayList<>();
         List<GuidePageAst> guidePages = new ArrayList<>();
@@ -198,7 +291,6 @@ public final class JsonModelParser {
         List<com.npdev.dsl.v1.ast.PropertyScopeAst> propertyScopes = new ArrayList<>();
         List<com.npdev.dsl.v1.ast.PropertyAst> properties = new ArrayList<>();
         List<com.npdev.dsl.v1.ast.ContextAst> contexts = new ArrayList<>();
-        List<com.npdev.dsl.v1.ast.WebhookAst> webhooks = new ArrayList<>();
         List<String> parserWarnings = new ArrayList<>(sourceWarnings == null ? List.of() : sourceWarnings);
         collectEnumOptionAliasWarnings(root, "$", parserWarnings);
         Map<String, ConceptAst> conceptsByLowerName = new LinkedHashMap<>();
@@ -459,18 +551,6 @@ public final class JsonModelParser {
             }
         }
 
-        JsonNode bindingsNode = root.get("bindings");
-        if (bindingsNode != null) {
-            if (!bindingsNode.isArray()) {
-                throw new IOException("bindings must be an array");
-            }
-            for (JsonNode binding : bindingsNode) {
-                String capability = requiredText(binding, "capability");
-                String adapter = requiredText(binding, "adapter");
-                bindings.add(new CapabilityBindingAst(capability, adapter));
-            }
-        }
-
         JsonNode flowsNode = root.get("flows");
 
         if (flowsNode != null) {
@@ -487,10 +567,8 @@ public final class JsonModelParser {
                     concept = firstNonBlank(concept, readText(inputNode, "concept"));
                     mode = readText(inputNode, "mode");
                 }
-                if ((concept == null || concept.isBlank())
-                        && (specializes == null || specializes.isBlank())) {
-                    throw new IOException("Flow " + flowName + " concept is required (flow.concept or flow.input.concept)");
-                }
+                // FORM P3-T5c: a flow's concept is optional -- a flow that only orchestrates (a former procedure or
+                // orchestration rule) names the concept on each step's `scope` instead.
                 JsonNode stepsNode = flowNode.get("steps");
                 List<StepAst> steps = List.of();
                 if (stepsNode != null) {
@@ -508,6 +586,96 @@ public final class JsonModelParser {
                 ActionMetadataAst action = parseActionMetadata(flowNode.get("action"), "flows[" + flowName + "].action");
                 Boolean startEndpoint = readOptionalBoolean(flowNode, "startEndpoint");
                 FlowScheduleAst schedule = parseFlowSchedule(flowNode.get("schedule"), flowName);
+                // FORM P3-T5a: trigger / expose / runAs. A trigger.schedule lands in the flow's own schedule
+                // (declaring both is refused), so the cron scheduler keeps reading one place.
+                FlowTriggerAst trigger = null;
+                JsonNode triggerNode = flowNode.get("trigger");
+                if (triggerNode != null && !triggerNode.isNull()) {
+                    if (triggerNode.isTextual()) {
+                        if (!"api".equals(triggerNode.asText().trim())) {
+                            throw new IOException("Flow " + flowName + " trigger must be \"api\" or an object with exactly one of "
+                                    + "event, schedule, webhook");
+                        }
+                    } else if (triggerNode.isObject()) {
+                        List<String> kinds = new ArrayList<>();
+                        for (String key : List.of("event", "schedule", "webhook")) {
+                            if (triggerNode.has(key)) {
+                                kinds.add(key);
+                            }
+                        }
+                        Iterator<String> triggerKeys = triggerNode.fieldNames();
+                        while (triggerKeys.hasNext()) {
+                            String key = triggerKeys.next();
+                            if (!kinds.contains(key) && !"condition".equals(key)) {
+                                throw new IOException("Flow " + flowName + " trigger has unknown key '" + key
+                                        + "' (allowed: event, condition, schedule, webhook)");
+                            }
+                        }
+                        if (kinds.size() != 1) {
+                            throw new IOException("Flow " + flowName + " trigger must have exactly one of event, schedule, webhook");
+                        }
+                        if (triggerNode.has("condition") && !"event".equals(kinds.get(0))) {
+                            throw new IOException("Flow " + flowName + " trigger.condition is only valid with trigger.event");
+                        }
+                        switch (kinds.get(0)) {
+                            case "event": {
+                                String triggerEvent = readText(triggerNode, "event");
+                                if (triggerEvent == null || triggerEvent.isBlank()) {
+                                    throw new IOException("Flow " + flowName + " trigger.event must name an event");
+                                }
+                                String triggerCondition = readText(triggerNode, "condition");
+                                trigger = new FlowTriggerAst("event", triggerEvent.trim(),
+                                        triggerCondition == null || triggerCondition.isBlank() ? null : triggerCondition.trim(), null);
+                                break;
+                            }
+                            case "schedule": {
+                                if (schedule != null) {
+                                    throw new IOException("Flow " + flowName + " declares both schedule and trigger.schedule");
+                                }
+                                schedule = parseFlowSchedule(triggerNode.get("schedule"), flowName);
+                                if (schedule == null) {
+                                    throw new IOException("Flow " + flowName + " trigger.schedule must be an object with a cron");
+                                }
+                                trigger = new FlowTriggerAst("schedule", null, null, null);
+                                break;
+                            }
+                            default: {
+                                String triggerWebhook = readText(triggerNode, "webhook");
+                                if (triggerWebhook == null || triggerWebhook.isBlank()) {
+                                    throw new IOException("Flow " + flowName + " trigger.webhook must name a webhook");
+                                }
+                                trigger = new FlowTriggerAst("webhook", null, null, triggerWebhook.trim());
+                                break;
+                            }
+                        }
+                    } else {
+                        throw new IOException("Flow " + flowName + " trigger must be \"api\" or an object");
+                    }
+                }
+                String expose = readText(flowNode, "expose");
+                if (expose != null && !expose.isBlank()) {
+                    expose = expose.trim();
+                    if (!List.of("api", "ui", "internal").contains(expose)) {
+                        throw new IOException("Flow " + flowName + " expose must be api, ui or internal, got '" + expose + "'");
+                    }
+                    if ("api".equals(expose)) {
+                        expose = null;
+                    }
+                } else {
+                    expose = null;
+                }
+                String flowRunAs = readText(flowNode, "runAs");
+                if (flowRunAs != null && !flowRunAs.isBlank()) {
+                    flowRunAs = flowRunAs.trim();
+                    if (!List.of("caller", "system").contains(flowRunAs)) {
+                        throw new IOException("Flow " + flowName + " runAs must be caller or system, got '" + flowRunAs + "'");
+                    }
+                    if ("caller".equals(flowRunAs)) {
+                        flowRunAs = null;
+                    }
+                } else {
+                    flowRunAs = null;
+                }
                 flows.add(new FlowAst(
                         flowName,
                         concept,
@@ -520,83 +688,27 @@ public final class JsonModelParser {
                         action,
                         Boolean.TRUE.equals(startEndpoint),
                         schedule,
-                        originFor(originByQualifiedMemberName, "flows", flowName)
+                        originFor(originByQualifiedMemberName, "flows", flowName),
+                        trigger,
+                        expose,
+                        flowRunAs,
+                        readText(flowNode, "description"),
+                        readText(flowNode, "crossAggregateReason")
                 ));
             }
         }
 
-        JsonNode orchestrationRulesNode = root.get("orchestrations");
-        JsonNode legacyOrchestrationRulesNode = root.get("orchestrationRules");
-        String orchestrationFieldName = "orchestrations";
-        if (orchestrationRulesNode != null && legacyOrchestrationRulesNode != null) {
-            throw new IOException("Model must not declare both orchestrations and legacy orchestrationRules");
-        }
-        if (orchestrationRulesNode == null) {
-            orchestrationRulesNode = legacyOrchestrationRulesNode;
-            orchestrationFieldName = "orchestrationRules";
-        }
-        if (orchestrationRulesNode != null) {
-            if (!orchestrationRulesNode.isArray()) {
-                throw new IOException(orchestrationFieldName + " must be an array");
-            }
-            int index = 0;
-            for (JsonNode ruleNode : orchestrationRulesNode) {
-                index++;
-                if (ruleNode == null || !ruleNode.isObject()) {
-                    throw new IOException(orchestrationFieldName + "[" + index + "] must be an object");
-                }
-                String name = requiredText(ruleNode, "name");
-                String condition = readText(ruleNode, "condition");
-                JsonNode triggerNode = ruleNode.get("trigger");
-                if (triggerNode == null || !triggerNode.isObject()) {
-                    throw new IOException(orchestrationFieldName + "[" + name + "].trigger must be an object");
-                }
-                String triggerType = requiredText(triggerNode, "type");
-                String triggerEvent = requiredText(triggerNode, "event");
-
-                JsonNode actionNode = ruleNode.get("action");
-                JsonNode actionsNode = ruleNode.get("actions");
-                if (actionNode == null && actionsNode == null) {
-                    throw new IOException(orchestrationFieldName + "[" + name + "] must define 'action' or 'actions'");
-                }
-                List<OrchestrationActionAst> actions = new ArrayList<>();
-                if (actionNode != null) {
-                    if (!actionNode.isObject()) {
-                        throw new IOException(orchestrationFieldName + "[" + name + "].action must be an object");
-                    }
-                    actions.add(parseOrchestrationAction(actionNode, orchestrationFieldName + "[" + name + "].action"));
-                }
-                if (actionsNode != null) {
-                    if (!actionsNode.isArray()) {
-                        throw new IOException(orchestrationFieldName + "[" + name + "].actions must be an array");
-                    }
-                    int actionIndex = 0;
-                    for (JsonNode listedActionNode : actionsNode) {
-                        actionIndex++;
-                        if (listedActionNode == null || !listedActionNode.isObject()) {
-                            throw new IOException(orchestrationFieldName + "[" + name + "].actions[" + actionIndex
-                                    + "] must be an object");
-                        }
-                        actions.add(parseOrchestrationAction(
-                                listedActionNode,
-                                orchestrationFieldName + "[" + name + "].actions[" + actionIndex + "]"
-                        ));
-                    }
-                }
-                OrchestrationActionAst primaryAction = actions.isEmpty() ? null : actions.get(0);
-
-                orchestrationRules.add(new OrchestrationAst(
-                        name,
-                        condition,
-                        new OrchestrationTriggerAst(triggerType, triggerEvent),
-                        primaryAction,
-                        actions
-                ));
+        // FORM P3-T5c (DSL 3.0): orchestration rules were folded into flows. Refuse the old keys with the
+        // exact replacement, never ignore them -- a silently dropped rule is a rule that never fires.
+        for (String removedKey : List.of("orchestrations", "orchestrationRules")) {
+            if (root.has(removedKey)) {
+                throw new IOException("'" + removedKey + "' was removed in DSL 3.0: declare a flow with "
+                        + "trigger {\"event\": \"<EventName>\"} instead "
+                        + "(its steps replace the rule's actions)");
             }
         }
 
         queries.addAll(parseQueries(root.get("queries"), originByQualifiedMemberName.getOrDefault("queries", Map.of())));
-        ruleProfiles.addAll(parseRuleProfiles(root.get("ruleProfiles")));
         procedures.addAll(parseProcedures(root.get("procedures")));
         panels.addAll(parsePanels(root.get("panels"), originByQualifiedMemberName.getOrDefault("panels", Map.of())));
         guidePages.addAll(parseGuidePages(root.get("guidePages")));
@@ -609,9 +721,8 @@ public final class JsonModelParser {
         roles.addAll(parseRoles(root.get("roles"), originByQualifiedMemberName.getOrDefault("roles", Map.of())));
         propertyScopes.addAll(parsePropertyScopes(root.get("propertyScopes")));
         properties.addAll(parseProperties(root.get("properties")));
-        contexts.addAll(parseContexts(root.get("contexts")));
+        contexts.addAll(parseContexts(root.get("modules")));
         List<com.npdev.dsl.v1.ast.ConversionAst> conversions = parseConversions(root.get("conversions"));
-        webhooks.addAll(parseWebhooks(root.get("webhooks")));
         List<com.npdev.dsl.v1.ast.SequenceAst> sequences = parseSequences(root.get("sequences"));
         List<com.npdev.dsl.v1.ast.SeedAst> seeds = parseSeeds(root.get("seeds"));
         AppShellAst appShell = parseAppShell(root.get("appShell"));
@@ -624,12 +735,9 @@ public final class JsonModelParser {
                 concepts,
                 domainTypes,
                 capabilities,
-                bindings,
                 events,
                 flows,
-                orchestrationRules,
                 queries,
-                ruleProfiles,
                 procedures,
                 panels,
                 guidePages,
@@ -646,7 +754,6 @@ public final class JsonModelParser {
                 contexts,
                 conversions,
                 physicalQualifierByConceptName,
-                webhooks,
                 sequences,
                 seeds,
                 appShell,
@@ -654,7 +761,7 @@ public final class JsonModelParser {
         );
     }
 
-    /** B20 (S2): parses the optional top-level {@code contexts} array -- {@code name} + {@code $ref}.
+    /** B20 (S2): parses the optional top-level {@code modules} array -- {@code name} + {@code $ref}.
      *  By the time this runs, {@code root} is the fully RESOLVED JSON ({@link ModelSourceResolver}
      *  has already composed each context fragment's content into {@code concepts}/{@code queries}/
      *  {@code panels}/{@code flows} with {@code contextName::Member} qualification, exactly parallel
@@ -666,7 +773,7 @@ public final class JsonModelParser {
             return out;
         }
         if (!node.isArray()) {
-            throw new IOException("contexts must be an array");
+            throw new IOException("modules must be an array");
         }
         for (JsonNode contextNode : node) {
             out.add(new com.npdev.dsl.v1.ast.ContextAst(
@@ -846,35 +953,8 @@ public final class JsonModelParser {
         return out;
     }
 
-    /** R6.2: parses the optional top-level {@code webhooks} array -- {@code source} +
-     *  {@code hmacSecretEnvVar} + {@code eventName} + optional {@code fieldMapping}. No pack-origin
-     *  lookup (unlike {@code roles}/{@code events}/...): a webhook's identity ({@code source}) is a
-     *  wire path segment, deliberately never namespace-qualified by pack composition -- see
-     *  {@link com.npdev.dsl.v1.ast.WebhookAst}'s own javadoc. */
-    private static List<com.npdev.dsl.v1.ast.WebhookAst> parseWebhooks(JsonNode node) throws IOException {
-        List<com.npdev.dsl.v1.ast.WebhookAst> out = new ArrayList<>();
-        if (node == null || node.isNull()) {
-            return out;
-        }
-        if (!node.isArray()) {
-            throw new IOException("webhooks must be an array");
-        }
-        for (JsonNode webhookNode : node) {
-            out.add(new com.npdev.dsl.v1.ast.WebhookAst(
-                    requiredText(webhookNode, "source"),
-                    requiredText(webhookNode, "hmacSecretEnvVar"),
-                    readText(webhookNode, "eventName"),
-                    parseStringMap(webhookNode.get("fieldMapping")),
-                    readText(webhookNode, "startFlow"),
-                    readText(webhookNode, "idempotencyKey"),
-                    parseObjectMap(webhookNode.get("signature"))
-            ));
-        }
-        return out;
-    }
-
     /** R5.3: parses the optional top-level {@code sequences} array -- {@code name} + {@code format}
-     *  + optional {@code scope}. No pack-origin lookup (same reasoning as webhooks above): a
+     *  + optional {@code scope}. No pack-origin lookup (a sequence is referenced by an opaque literal): a
      *  sequence's identity ({@code name}) is referenced as an opaque literal argument to {@code
      *  nextNumber('name')} inside another field's defaultExpression TEXT, deliberately never
      *  namespace-qualified by pack composition -- see {@link com.npdev.dsl.v1.ast.SequenceAst}'s
@@ -1328,28 +1408,6 @@ public final class JsonModelParser {
         for (JsonNode entry : node) {
             out.add(new com.npdev.dsl.v1.ast.QueryComputedColumnAst(
                     requiredText(entry, "name"), requiredText(entry, "expression")));
-        }
-        return out;
-    }
-
-    private static List<RuleProfileAst> parseRuleProfiles(JsonNode node) throws IOException {
-        List<RuleProfileAst> out = new ArrayList<>();
-        if (node == null || node.isNull()) {
-            return out;
-        }
-        if (!node.isArray()) {
-            throw new IOException("ruleProfiles must be an array");
-        }
-        for (JsonNode profileNode : node) {
-            String name = requiredText(profileNode, "name");
-            Boolean enabled = readOptionalBoolean(profileNode, "enabled");
-            out.add(new RuleProfileAst(
-                    name,
-                    readText(profileNode, "description"),
-                    parseTextArray(profileNode.get("appliesTo")),
-                    enabled == null || enabled,
-                    parseObjectMap(profileNode.get("metadata"))
-            ));
         }
         return out;
     }
@@ -2706,9 +2764,58 @@ public final class JsonModelParser {
         int index = 0;
         for (JsonNode stepNode : stepsNode) {
             index++;
+            if ("notify".equalsIgnoreCase(readText(stepNode, "type"))) {
+                steps.addAll(lowerNotifyStep(flowName, stepNode, index));
+                continue;
+            }
             steps.add(parseStep(flowName, stepNode, index));
         }
         return steps;
+    }
+
+    /** FORM P3-T8 (D11 = step): {@code {"type":"notify","to":..,"message":..}} is sugar for the two steps an author
+     *  used to write -- a {@code map} that builds the {@code {to,message}} payload, then a
+     *  {@code notification.send} capabilityCall on it. Lowering here keeps AST, compiled model, canonical JSON and
+     *  kernel unchanged: the notification capability and its default adapter are implied by the compiler
+     *  ({@code ModelCompiler.addImplicitNotification}). Optional on the notify step: {@code name}, {@code output},
+     *  {@code errorTarget} (a failed send is stored there and the flow goes on), {@code capability} (a declared
+     *  NotificationCapability other than the implied {@code notification}). */
+    private static List<StepAst> lowerNotifyStep(String flowName, JsonNode stepNode, int index) throws IOException {
+        String name = readText(stepNode, "name");
+        if (name == null || name.isBlank()) {
+            name = flowName + "-step-" + index;
+        }
+        if (!stepNode.hasNonNull("to") || !stepNode.hasNonNull("message")) {
+            throw new IOException("Flow " + flowName + " step " + name + ": a notify step needs both `to` and `message` -- "
+                    + "e.g. {\"type\":\"notify\",\"to\":\"$input.email\",\"message\":\"Welcome\"}");
+        }
+        var factory = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance;
+        String payloadVar = "$" + name.replaceAll("[^A-Za-z0-9_]", "_") + "_notice";
+        var build = factory.objectNode();
+        build.put("name", name + "-payload");
+        build.put("type", "map");
+        var select = build.putObject("select");
+        select.set("to", stepNode.get("to"));
+        select.set("message", stepNode.get("message"));
+        build.put("output", payloadVar);
+        var send = factory.objectNode();
+        send.put("name", name);
+        send.put("type", "capabilityCall");
+        String capability = readText(stepNode, "capability");
+        send.put("capability", capability == null || capability.isBlank() ? "notification" : capability);
+        send.put("operation", "send");
+        send.putArray("args").add(payloadVar);
+        String output = firstNonBlank(readText(stepNode, "output"), readText(stepNode, "out"));
+        if (output != null && !output.isBlank()) {
+            send.put("output", output);
+        }
+        if (stepNode.hasNonNull("errorTarget")) {
+            send.set("errorTarget", stepNode.get("errorTarget"));
+        }
+        if (stepNode.has("policy")) {
+            send.set("policy", stepNode.get("policy"));
+        }
+        return List.of(parseStep(flowName, build, index), parseStep(flowName, send, index));
     }
 
     private static List<FlowHookAst> parseFlowHooks(String flowName, JsonNode hooksNode) throws IOException {
@@ -2787,6 +2894,17 @@ public final class JsonModelParser {
         // procedure synchronously from a flow, using the same input/output convention every other
         // flow step already uses -- no new ref-shaped properties needed beyond the procedure name.
         String procedure = readText(stepNode, "procedure");
+        // FORM P3-T5a: the keys of the merged step vocabulary's concept steps.
+        String stepRecordId = readText(stepNode, "id");
+        String stepQuery = readText(stepNode, "query");
+        Map<String, String> stepParams = parseStringMap(stepNode.get("params"));
+        String stepFlow = readText(stepNode, "flow");
+        // FORM P3-T5c: `select` (map step) / `set` (updateConcept step) are one field map; plus createIfMissing / errorTarget / ifExists.
+        Map<String, Object> stepFieldValues = parseObjectMap(stepNode.has("select") ? stepNode.get("select") : stepNode.get("set"));
+        Boolean stepCreateIfMissing = readOptionalBoolean(stepNode, "createIfMissing");
+        String stepErrorTarget = readText(stepNode, "errorTarget");
+        String stepIfExists = readText(stepNode, "ifExists");
+        String stepDedupeKey = readText(stepNode, "dedupeKey");
 
         List<StepAst> thenSteps = List.of();
         List<StepAst> elseSteps = List.of();
@@ -2896,7 +3014,16 @@ public final class JsonModelParser {
                 parallelAwait,
                 timeoutSeconds,
                 onTimeoutSteps,
-                task
+                task,
+                stepRecordId,
+                stepQuery,
+                stepParams,
+                stepFlow,
+                stepFieldValues,
+                stepCreateIfMissing,
+                stepErrorTarget,
+                stepIfExists,
+                stepDedupeKey
         );
     }
 
@@ -2996,7 +3123,9 @@ public final class JsonModelParser {
             }
             target.add(new CapabilityAst(name, type, specializes, operations,
                     originFor(originByQualifiedMemberName, sourceLabel, name), capabilityUid,
-                    parseObjectMap(cap.get("http"))));
+                    parseObjectMap(cap.get("http")),
+                    cap.has("inbound") ? parseObjectMap(cap.get("inbound")) : null,
+                    readText(cap, "adapter")));
         }
         return target;
     }
@@ -3190,58 +3319,6 @@ public final class JsonModelParser {
             }
         }
         return out;
-    }
-
-    private static OrchestrationActionAst parseOrchestrationAction(JsonNode actionNode, String fieldPath)
-            throws IOException {
-        if (actionNode == null || !actionNode.isObject()) {
-            throw new IOException(fieldPath + " must be an object");
-        }
-        String actionType = requiredText(actionNode, "type");
-        String actionConcept = firstNonBlank(
-                readText(actionNode, "concept"),
-                readText(actionNode, "targetConcept")
-        );
-        String actionCapability = firstNonBlank(
-                readText(actionNode, "capability"),
-                readText(actionNode, "capabilityName")
-        );
-        String actionOperation = firstNonBlank(
-                readText(actionNode, "operation"),
-                readText(actionNode, "op")
-        );
-        String actionEvent = firstNonBlank(
-                readText(actionNode, "event"),
-                readText(actionNode, "eventName")
-        );
-        Long delaySeconds = readOptionalLong(actionNode, "delaySeconds");
-        if (delaySeconds == null) {
-            Long delayMinutes = readOptionalLong(actionNode, "delayMinutes");
-            if (delayMinutes != null) {
-                delaySeconds = delayMinutes * 60L;
-            }
-        }
-        if (delaySeconds == null) {
-            Long delayMs = readOptionalLong(actionNode, "delayMs");
-            if (delayMs != null) {
-                delaySeconds = Math.max(0L, (delayMs + 999L) / 1000L);
-            }
-        }
-        JsonNode mapNode = actionNode.get("map") != null
-                ? actionNode.get("map")
-                : actionNode.get("fieldMap");
-        Map<String, String> fieldMap = parseStringMap(mapNode);
-        ActionMetadataAst action = parseActionMetadata(actionNode.get("action"), fieldPath + ".action");
-        return new OrchestrationActionAst(
-                actionType,
-                actionConcept,
-                actionCapability,
-                actionOperation,
-                actionEvent,
-                delaySeconds,
-                fieldMap,
-                action
-        );
     }
 
     private static ActionMetadataAst parseActionMetadata(JsonNode node, String fieldPath) throws IOException {
@@ -3575,7 +3652,12 @@ public final class JsonModelParser {
             case "awaitevent" -> "await";
             case "return" -> "return";
             case "foreach" -> "forEach";
-            case "callprocedure" -> "callProcedure";
+            case "set" -> "set";
+            case "deleteconcept" -> "deleteConcept";
+            case "readconcept" -> "readConcept";
+            case "listconcepts" -> "listConcepts";
+            case "runquery" -> "runQuery";
+            case "callflow" -> "callFlow";
             default -> type;
         };
     }

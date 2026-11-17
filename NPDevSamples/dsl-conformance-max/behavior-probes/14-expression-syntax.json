@@ -1,0 +1,44 @@
+{
+  "probes": [
+    {
+      "id": "cf-field-derived-list-membership-ternary-and-coalesce",
+      "keywords": ["field.derivedExpression"],
+      "description": "FORM P3-T2: ShelfLayout.sizeClass (derivedExpression `rows * cols in [1, 2, 4] ? 'tiny' : (rows * cols > 100 ? 'huge' : 'normal')`) exercises the list literal, `in` and nested ternary of the one expression grammar, and ShelfLayout.windowLengthOrNone (`daysBetween(windowStart, windowEnd) ?? -1`) exercises `??` over a function that returns null. Both are computed by the server from the stored row, override a client-supplied value, and are recomputed on update.",
+      "steps": [
+        {
+          "name": "a 1x2 shelf is tiny and a layout with no window falls back to -1",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": { "name": "sx-${rand}", "rows": 1, "cols": 2 },
+          "expect": {
+            "status": 201,
+            "json": { "$.sizeClass": "tiny", "$.windowLengthOrNone": -1 },
+            "notText": ["in [", "??"]
+          },
+          "save": { "lid": "$.id" }
+        },
+        {
+          "name": "a 3x3 shelf is normal and a 14-day window is reported as 14",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": { "name": "sy-${rand}", "rows": 3, "cols": 3, "windowStart": "2026-10-01", "windowEnd": "2026-10-15" },
+          "expect": { "status": 201, "json": { "$.sizeClass": "normal", "$.windowLengthOrNone": 14 } }
+        },
+        {
+          "name": "a 20x20 shelf is huge and a lying client value is overridden",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": { "name": "sz-${rand}", "rows": 20, "cols": 20, "sizeClass": "tiny", "windowLengthOrNone": 999 },
+          "expect": { "status": 201, "json": { "$.sizeClass": "huge", "$.windowLengthOrNone": -1 } }
+        },
+        {
+          "name": "growing the first shelf to 2x2 keeps it tiny, to 2x3 makes it normal",
+          "method": "PUT",
+          "path": "/api/shelf_layouts/${lid}",
+          "body": { "rows": 2, "cols": 3 },
+          "expect": { "status": 200, "json": { "$.sizeClass": "normal" } }
+        }
+      ]
+    }
+  ]
+}

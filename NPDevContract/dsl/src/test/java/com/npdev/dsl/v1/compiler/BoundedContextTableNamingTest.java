@@ -43,8 +43,8 @@ class BoundedContextTableNamingTest {
     void contextQualifiedConceptGetsBareTableName() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms", "version": "1.0",
-              "contexts": [ { "name": "wms", "$ref": "contexts/wms.model.json" } ],
+              "dslVersion": "3.0.0", "namespace": "wms", "version": "1.0",
+              "modules": [ { "name": "wms", "$ref": "contexts/wms.model.json" } ],
               "concepts": [
                 { "name": "wms::Sale", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }
@@ -65,8 +65,8 @@ class BoundedContextTableNamingTest {
         // SAME "::" -> "_" replacement pack-qualified names already get.
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms", "version": "1.0",
-              "contexts": [ { "name": "wms", "$ref": "contexts/wms.model.json", "physicallyIsolate": true } ],
+              "dslVersion": "3.0.0", "namespace": "wms", "version": "1.0",
+              "modules": [ { "name": "wms", "$ref": "contexts/wms.model.json", "physicallyIsolate": true } ],
               "concepts": [
                 { "name": "wms::Sale", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }
@@ -84,8 +84,8 @@ class BoundedContextTableNamingTest {
     void physicallyIsolateExplicitFalseBehavesExactlyLikeAbsent() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms", "version": "1.0",
-              "contexts": [ { "name": "wms", "$ref": "contexts/wms.model.json", "physicallyIsolate": false } ],
+              "dslVersion": "3.0.0", "namespace": "wms", "version": "1.0",
+              "modules": [ { "name": "wms", "$ref": "contexts/wms.model.json", "physicallyIsolate": false } ],
               "concepts": [
                 { "name": "wms::Sale", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }
@@ -104,7 +104,7 @@ class BoundedContextTableNamingTest {
         // prefixing its table exactly as it always has -- this fix must not touch that behavior.
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "app", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "app", "version": "1.0",
               "concepts": [
                 { "name": "billing::Invoice", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }

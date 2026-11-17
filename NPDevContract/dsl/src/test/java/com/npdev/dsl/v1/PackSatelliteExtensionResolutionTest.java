@@ -51,7 +51,7 @@ class PackSatelliteExtensionResolutionTest {
         write("packs/identity/pack.json", identityPackJson);
         write("packs/clinical/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "clinical",
                   "version": "1.0.0",
                   "namespace": "com.npdev.clinical",
@@ -76,7 +76,7 @@ class PackSatelliteExtensionResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "pack.satellite.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [
                     { "$ref": "packs/clinical/pack.json" }
@@ -119,7 +119,7 @@ class PackSatelliteExtensionResolutionTest {
         write("packs/identity/pack.json", Files.readString(realIdentityPack));
         write("packs/clinical/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "clinical",
                   "version": "1.0.0",
                   "packs": [
@@ -140,7 +140,7 @@ class PackSatelliteExtensionResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "pack.satellite.norefused",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [
                     { "$ref": "packs/clinical/pack.json" }
@@ -163,7 +163,7 @@ class PackSatelliteExtensionResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "pack.satellite.unqualified",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Base", "fields": [

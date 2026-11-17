@@ -96,7 +96,7 @@ public final class GeneratorMain {
             System.exit(2);
         }
 
-        CompiledModel compiled = new ModelCompiler().compile(ast);
+        CompiledModel compiled = new ModelCompiler().compile(ast, readAdapterOverrides(config));
 
         // Compose the built-in NPDev internal tables (identity + workspace packs) when enabled.
         // basePackJsonByAlias accumulates every base pack's own raw pack.json, keyed by the alias it
@@ -471,6 +471,19 @@ public final class GeneratorMain {
         PackLockFile.of(merged).write(rootDirectory);
         System.out.println("Updated " + PackLockFile.FILE_NAME + " migratedVersion for: "
                 + resolvedModelSource.migrationTrackedPacks().keySet());
+    }
+
+    /** Reads config.json's optional {@code adapters} object (capability -> adapter; FORM P3-T9 / D15). */
+    static Map<String, String> readAdapterOverrides(JsonNode config) {
+        Map<String, String> overrides = new LinkedHashMap<>();
+        if (config != null && config.path("adapters").isObject()) {
+            config.path("adapters").fields().forEachRemaining(e -> {
+                if (e.getValue().isTextual() && !e.getValue().asText().isBlank()) {
+                    overrides.put(e.getKey(), e.getValue().asText().trim());
+                }
+            });
+        }
+        return overrides;
     }
 
     /** Reads config.json's optional {@code packs.included} string array (defaults to none). */

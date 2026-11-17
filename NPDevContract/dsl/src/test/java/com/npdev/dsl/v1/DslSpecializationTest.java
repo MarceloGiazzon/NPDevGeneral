@@ -24,7 +24,7 @@ class DslSpecializationTest {
         String json = """
                 {
                   "namespace": "billing",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
@@ -71,7 +71,7 @@ class DslSpecializationTest {
         String unknownParentJson = """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
@@ -93,7 +93,7 @@ class DslSpecializationTest {
         String cycleJson = """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
@@ -132,7 +132,7 @@ class DslSpecializationTest {
         String cycleJson = """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
@@ -164,7 +164,7 @@ class DslSpecializationTest {
         String json = """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {

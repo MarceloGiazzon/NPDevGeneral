@@ -1,0 +1,145 @@
+{
+  "$comment": "The fate of EVERY top-level key of model.schema.json. Machine-readable twin of CONCEPT_MAP.md. tools/concept_map_check.py fails when a schema key is missing here or a key here is missing from the schema. 'noun' is one of the 12 nouns of the final vocabulary; every other key must name the noun it belongs to. Phase = the TASKS.md phase that executes the fate.",
+  "schemaVersion": "npdev-concept-map.draft.1",
+  "nouns": [
+    {"noun": "Concept", "layer": "data", "oneLine": "A kind of record the app stores: fields, lifecycle, invariants, who may read/write it."},
+    {"noun": "Query", "layer": "data", "oneLine": "A named, parameterised, permission-aware read over one concept (filters, joins, groupBy)."},
+    {"noun": "Flow", "layer": "behaviour", "oneLine": "Something the app DOES: a list of steps started by a trigger (api, ui, event, schedule, webhook, internal call)."},
+    {"noun": "Event", "layer": "behaviour", "oneLine": "A named fact that happened, with a payload; flows emit it and flows can be triggered by it or await it."},
+    {"noun": "Function", "layer": "behaviour", "oneLine": "NEW. A named, pure, typed computation callable from any expression (stdlib, pack-provided, or code extension)."},
+    {"noun": "Capability", "layer": "integration", "oneLine": "A door to the outside world: outbound operations (HTTP API, payments, code extension) or inbound webhooks."},
+    {"noun": "Role", "layer": "identity", "oneLine": "A kind of user, and what that kind may do on which concepts and flows."},
+    {"noun": "Experience", "layer": "presentation", "oneLine": "NEW. What one or more roles see: home, navigation, screens, device (web/mobile)."},
+    {"noun": "Screen", "layer": "presentation", "oneLine": "One page of an experience, of a closed archetype (list, detail, form, board, map, inbox, dashboard, workbench, document, picker, custom)."},
+    {"noun": "Pack", "layer": "composition", "oneLine": "A versioned library of the nouns above, installed from somewhere else."},
+    {"noun": "Module", "layer": "composition", "oneLine": "A boundary INSIDE one project (today: contexts[]); imports are explicit and acyclic."},
+    {"noun": "Property", "layer": "configuration", "oneLine": "A runtime setting resolved through scopes (app, tenant, user ...), changeable without regenerating."}
+  ],
+  "keys": [
+    {"key": "$schema", "fate": "KEEP", "noun": "(header)", "phase": "-"},
+    {"key": "schemaVersion", "fate": "KEEP", "noun": "(header)", "phase": "-"},
+    {"key": "dslVersion", "fate": "KEEP", "noun": "(header)", "phase": "P3", "note": "bump to 3.0.0 when the unified vocabulary lands"},
+    {"key": "namespace", "fate": "KEEP", "noun": "(header)", "phase": "-"},
+    {"key": "version", "fate": "KEEP", "noun": "(header)", "phase": "-"},
+    {
+      "key": "model",
+      "fate": "REMOVE",
+      "noun": "(header)",
+      "target": "namespace (the existing canonical key)",
+      "phase": "P3",
+      "decision": "REMOVE: `model` is only a legacy alias of `namespace` (the parser falls back to it when `namespace` is blank) and exactly one corpus model still uses it; migrate AppGen/apps/pack-sample to `namespace` and drop the alias plus the schema oneOf.",
+      "evidence": [
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java:156-159 - namespace = firstNonBlank(readText(root,\"namespace\"), readText(root,\"model\")); error text 'namespace (or alias: model)'. This is the only reader of the top-level `model` key in the DSL and it is not kept as its own field in ModelAst/CompiledModel",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java:121-128 - `model` is only listed in ROOT_SCALAR_KEYS so pack/fragment composition passes it through",
+        "NPDevContract/schemas/model.schema.json:12-23,48-51 - allOf/oneOf requires namespace OR model; property `model` is a bare string (edit all 4 schema mirrors)",
+        "Other `model` hits in src/main are unrelated: CLI --model path arg (NPDevGenerator/tools/npdev-cli/src/main/java/com/npdev/cli/NPDevCliMain.java:120), external-ai prompt.model, ReferenceIndexJson.java:38 output field",
+        "Corpus: only AppGen/apps/pack-sample/definition/model.json:4 (\"model\": \"StoreManagement\", no `namespace`); other JSON files that match are reports/fixtures, not models"
+      ],
+      "risks": [
+        "Pre-users policy: migrate pack-sample in the same commit and add a one-line BREAKING.md entry; pack-sample is in layer 2 (AppGen/apps, not a git repo) and listed in scripts/quality/corpus-roles.json.",
+        "No src/test resource found that writes a model with `model` instead of `namespace`; re-grep before deleting the alias."
+      ]
+    },
+    {"key": "metadata", "fate": "KEEP", "noun": "(header)", "phase": "-", "note": "free-form; never carries behaviour (validator rule in P2)"},
+    {"key": "concepts", "fate": "KEEP", "noun": "Concept", "phase": "-"},
+    {"key": "domainTypes", "fate": "KEEP_AS_PART", "noun": "Concept", "phase": "-", "note": "reusable field types; documented as part of Concept, not a noun"},
+    {"key": "sequences", "fate": "KEEP_AS_PART", "noun": "Concept", "phase": "-", "note": "numbering counters used by defaultExpression nextNumber()"},
+    {"key": "seeds", "fate": "KEEP_AS_PART", "noun": "Concept", "phase": "-", "note": "initial rows"},
+    {
+      "key": "aggregates",
+      "fate": "MERGE",
+      "noun": "Concept",
+      "target": "concepts[].composition (collections[], invariants[], balances[], onValidate, onCommit) on the ROOT concept + screens[] kind=workbench (replaces autoPanels[].aggregate)",
+      "phase": "P5",
+      "decision": "MERGE: an aggregate has no identity apart from its root concept (one mandatory root; every corpus aggregate is named == root or <Root>Aggregate), so it becomes a composition part of that Concept and its UI half becomes Screen kind=workbench; nothing at runtime is lost provided the three by-name references (autoPanels[].aggregate, documents[].aggregate, agentAccess exposures[].aggregate) and the runtime URL /api/v1/runtime/aggregate/{name} are re-pointed to the root concept name and the validator enforces one composition per concept.",
+      "evidence": [
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/AggregateAst.java:13-25 - an aggregate is exactly {name, root (one concept), collections[], onCommit, onValidate, invariants[], balances[], metadata}: no state of its own, everything hangs off one root concept",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/AggregateCollectionAst.java:17-27 - owned collection = {name, concept, childField, ownership, orderBy, nested collections, lookupFields}: maps 1:1 to a concept-level owned-collections list",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java:654-664 - the only compile-time consumer that turns an aggregate into UI is an aggregate-bound autoPanel -> AutoPanelExpander.expandAggregateWorkbench (NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/AutoPanelExpander.java:104-132): this is the Screen kind=workbench half",
+        "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/AggregateRuntime.java:174,219,323,368,724 - load/commit/invoke/checkBalances/assertAggregateInvariants are keyed by aggregate NAME and run on the root + collections draft tree; the semantics survive if the key becomes the root concept name",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/AggregateValidation.java:366-377 - `ownership` (owned|referenced) is validated and used only for the owned-cycle guard; grep of .ownership() in src/main finds no runtime reader (only ModelCompiler.java:1405 and CompiledModelCanonicalJson.java:964 copy it) -> effectively documentation, can be dropped",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java:1166,1553 and NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/AutoPanelAst.java:18 - three other constructs reference an aggregate by name (agentAccess exposure, documents[], autoPanels[]): the re-pointing work list",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/AggregateInvariantAst.java:3-15 - aggregate invariants are CROSS-collection (evaluated against the whole draft tree), unlike ConceptAst invariants which are single-record",
+        "docs/adr/ADR-0004-aggregate-workbench.md:44-52 (L1) - the ADR itself defines the aggregate as a root concept plus owned child collections; its implementation note (lines 7-14) says some sketched names never shipped, the decision stands",
+        "Corpus (8 models, 20 aggregates): NPDevSamples/dsl-conformance-max/Input/model.json:1406 (3), NPDevSamples/f6-showcase/Input/model.json (1), NPDevSamples/pigmentampas/Input/model.json (2), AppGen/apps/_official/WmsOffice/definition/model.json (6), AppGen/apps/_experiments/WmsOfficePackTest/definition/model.json (6), docwire-r57-proof, payment-webhook-rehearsal, simple-product-h2local (1 each); plus pack.json of dom-sales/purchasing/inventory/leave/helpdesk and labeling. No concept is the root of two aggregates in any of them."
+      ],
+      "risks": [
+        "Aggregate invariants/balances/onValidate/onCommit are cross-collection while concepts[].invariants are single-record: keep them separate (composition.invariants) or tag invariants[].scope=aggregate; do not fold them silently into concepts[].invariants.",
+        "Two aggregates over the same root with different trees become impossible; none exist in the corpus, owner can accept that.",
+        "pack.schema.json provides.aggregates (both copies) must move with it; the four-place thread (MODEL_ARRAY_KEYS, pack.schema, ModelResolver, canonical writer/reader) is needed in reverse."
+      ]
+    },
+    {"key": "queries", "fate": "KEEP", "noun": "Query", "phase": "P3", "note": "runQuery must pass parameters (K2 of the ride-hailing plan)"},
+    {"key": "selectors", "fate": "MERGE", "noun": "Screen", "target": "screens[] kind=picker", "phase": "P5"},
+    {"key": "flows", "fate": "KEEP", "noun": "Flow", "phase": "P3", "note": "absorbs procedures and orchestrationRules; gains trigger + expose"},
+    {"key": "procedures", "fate": "MERGE", "noun": "Flow", "target": "flows[] with expose=internal|ui", "phase": "P3"},
+    {"key": "orchestrationRules", "fate": "MERGE", "noun": "Flow", "target": "flows[] with trigger.event (+ optional trigger.condition)", "phase": "P3"},
+    {"key": "orchestrations", "fate": "REMOVE", "noun": "Flow", "phase": "P3", "note": "identical schema to orchestrationRules; 0 corpus uses"},
+    {
+      "key": "ruleProfiles",
+      "fate": "REMOVE",
+      "noun": "Concept",
+      "phase": "P3",
+      "decision": "OWNER 2026-11-15 confirmed: not a wanted future feature. REMOVE: model-level ruleProfiles[] is parsed, name-validated, compiled and serialised but never read by the kernel or RuntimeHost, and the six names (always/interactive/headless/query/beforeCommit/afterCommit) are hard-wired enum labels in DefaultConceptGateway that do not select which invariants run; do NOT replace it with invariants[].when (that would invent behaviour that does not exist today) - delete the key, keep the enum as trace labels, add `when` later only as a new feature if a real need appears. No runtime behaviour is lost.",
+      "evidence": [
+        "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptRuleProfile.java:6-12 - the six profile names are a fixed Java enum, not model data",
+        "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/DefaultConceptGateway.java:956-988 - the GATEWAY sets them per call: reads = [always, interactive|headless, query]; writes before commit = [always, interactive|headless, beforeCommit]; after commit = [afterCommit, interactive|headless]; interactive vs headless comes only from ExecutionContext tag executionMode (:979-987)",
+        "NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/PanelRuntime.java:1273 - the only production setter of executionMode=interactive (panel calls); NPDevGenerator/tools/npdev-cli/src/main/java/com/npdev/cli/NPDevCliMain.java:373 sets headless; everything else defaults to headless",
+        "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConfiguredConceptGatewaySemanticPolicy.java:384-433 - evaluateRuleProfiles() does NOT use the profile list to select anything: it loops over ALL concept.invariants() (:405-432) and only attaches the list to the decision via withRuleProfiles for the trace; the only switch is the operation: READ/LIST report 'notAppliedToQueryOperation' (:392-397), writes evaluate every invariant",
+        "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptGatewayTraceRecord.java:64 and ConceptSemanticDecision.java:43-65 - the profile names end up in the trace record only",
+        "No reader of the MODEL's ruleProfiles in src/main: only pass-through copies (NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java:74, NPDevGenerator/generator/src/main/java/com/npdev/generator/packs/PackExtensionComposer.java:281,399, BuiltinPackComposer.java:124, NPDevGenerator/generator/src/main/java/com/npdev/generator/api/GeneratorFacade.java:534), compile (ModelCompiler.java:547-555), canonical JSON (CompiledModelCanonicalJson.java:58,1430; CompiledModelCanonicalJsonReader.java:73) and validation of the NAME (NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PackValidation.java:97-98,711-724). RuleProfileAst.java:6-12 fields name/description/appliesTo/enabled/metadata are all inert",
+        "NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/PanelRuntime.java:329,434 - response.put(\"ruleProfile\",\"interactive\") is a constant echoed to the client, not read from the model",
+        "Corpus (11 models; names used: always x9, interactive x6; the only metadata key is metadata.invariants, a list of invariant NAMES that duplicates concepts[].invariants): NPDevSamples/dsl-conformance-max/Input/model.json:1254, NPDevSamples/durable-workflow-demo/Input/model.json, NPDevSamples/medium-expense-approval/Input/model.json, NPDevContract/dsl/resources/Models/official-samples/medium-expense-approval/model.json, NPDevGenerator/resources/Models/official-samples/medium-expense-approval/model.json, AppGen/apps/{await-resume-rehearsal,payment-webhook-rehearsal,_official/AuxScreen,_official/Claude,_official/Pigmentampa,_official/WordLab}/definition/model.json"
+      ],
+      "risks": [
+        "Tooling that lists the key must change in the same commit: NPDevCli/npdev_cli.py:430, NPDevCli/relay-ingest-policy.json:52, NPDevCli/npdev_relay_authoring.py:89, npdev_relay_preview_pt.py:43, npdev_static_pages.py:366, dsl_v2_migration_bounded_contexts.py:55, ModelSourceResolver.java:58,1393 (MODEL_ARRAY_KEYS), PackDiffEngine.java:408, both pack.schema.json copies, the four model.schema.json mirrors, canonical writer/reader, twin-pair rules.",
+        "Owner question: is 'invariant only when interactive/headless' a wanted FUTURE feature? Today it does not exist (the profile list never filters), so removal loses nothing; if wanted, add invariants[].when as new behaviour with a probe, not as a migration."
+      ]
+    },
+    {"key": "events", "fate": "KEEP", "noun": "Event", "phase": "-"},
+    {"key": "capabilities", "fate": "KEEP", "noun": "Capability", "phase": "P3", "note": "built-in persistence/eventBus/notification become implicit: a model declares ONLY external capabilities"},
+    {"key": "customCapabilities", "fate": "MERGE", "noun": "Capability", "target": "capabilities[] implementation=code (Rung 4, quarantine T4.4)", "phase": "P4"},
+    {"key": "bindings", "fate": "MOVE", "noun": "Capability", "target": "config.json adapters (deployment choice, not domain)", "phase": "P3", "note": "defaults generated (persistence, eventBus, notification); any other adapter is capabilities[].adapter; config.json adapters overrides per deployment; no pin"},
+    {"key": "webhooks", "fate": "MERGE", "noun": "Capability", "target": "capabilities[].inbound (+ flows[].trigger.webhook)", "phase": "P3"},
+    {"key": "conversions", "fate": "KEEP_AS_PART", "noun": "Module", "phase": "-", "note": "schema evolution tool (data migration), documented under SCHEMA_EVOLUTION, not a domain noun"},
+    {"key": "panels", "fate": "MERGE", "noun": "Screen", "target": "screens[] (layout table/grid -> list, console -> console, dashboard -> dashboard)", "phase": "P5"},
+    {"key": "autoPanels", "fate": "MERGE", "noun": "Screen", "target": "screens[] kind=list|detail|workbench (surfaces become screen parts)", "phase": "P5"},
+    {"key": "guidePages", "fate": "MERGE", "noun": "Screen", "target": "screens[] kind=dashboard (gadgets -> widgets) or Experience.home", "phase": "P5"},
+    {"key": "documents", "fate": "MERGE", "noun": "Screen", "target": "screens[] kind=document (printable)", "phase": "P5"},
+    {"key": "appShell", "fate": "MERGE", "noun": "Experience", "target": "experiences[] (navigation, home)", "phase": "P5"},
+    {"key": "fragments", "fate": "REMOVE", "noun": "Module", "target": "a plain $ref include of any array entry (it is a file split, not a boundary)", "phase": "P3"},
+    {"key": "contexts", "fate": "RENAME", "noun": "Module", "target": "modules[]", "phase": "P3"},
+    {"key": "packs", "fate": "KEEP", "noun": "Pack", "phase": "-"},
+    {"key": "provides", "fate": "KEEP_AS_PART", "noun": "Pack", "phase": "-"},
+    {"key": "roles", "fate": "KEEP", "noun": "Role", "phase": "P0", "note": "becomes the default-deny anchor (SECURITY_DEFAULTS.md)"},
+    {"key": "propertyScopes", "fate": "KEEP_AS_PART", "noun": "Property", "phase": "-"},
+    {"key": "properties", "fate": "KEEP", "noun": "Property", "phase": "-"},
+    {
+      "key": "settings",
+      "fate": "MERGE",
+      "noun": "Experience",
+      "phase": "P5",
+      "decision": "OWNER 2026-11-15: fold into experiences[].locale and experiences[].strings (P5) - the top-level key goes away. Reasoning kept from P2-T1: (per-app locale + string catalogue): settings IS read - locale and strings drive the generated UI catalogue and platform labels. Do NOT move to properties[]/config.json (generation-time, baked into the bundle; a Property is runtime-resolved). Drop only the DEAD sub-keys settings.ui.pageRows and settings.ui.dateFormat, which are parsed and serialised but read by nothing.",
+      "evidence": [
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java:608,1056-1062 - parseSettings reads root.get(\"settings\")",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java:210,828-834 - compiled into CompiledSettings(locale, strings, pageRows, dateFormat)",
+        "NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java:254,493-494,1104-1106,1139-1142 - strings are emitted into the UI bundle; locale selects the pt/en catalogue and the supported-locale list",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/AutoPanelExpander.java:736,925-926 - settings.resolveString(\"action.select\"/\"action.save\"/\"action.delete\") label generated panel actions",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledSettings.java:39-40 and CompiledModelCanonicalJson.java:511-515 - pageRows/dateFormat have getters and a canonical-JSON writer, but a search of src/main (java/mustache/js) finds no consumer besides SettingsAst, CompiledSettings, the parser and the canonical reader/writer: dead",
+        "Corpus (4 models): NPDevSamples/dsl-conformance-max/Input/model.json:85 (locale+strings+ui), NPDevSamples/pigmentampas/Input/model.json (locale+ui), AppGen/apps/_official/WmsOffice/definition/model.json and AppGen/apps/_experiments/WmsOfficePackTest/definition/model.json (pt-BR locale + strings)"
+      ],
+      "risks": [
+        "Owner decision: keep the name `settings` (confusable with Property/config.json) or rename to experiences[].locale + experiences[].strings in P5. The earlier note 'belongs in config.json or properties[]' is wrong for strings/locale because they are consumed at generation time.",
+        "Removing ui.pageRows/dateFormat touches $defs/settings in the four model.schema.json mirrors, SettingsAst, CompiledSettings, canonical writer/reader; dsl-conformance-max/Input/model.json:85 and pigmentampas must drop the `ui` object in the same commit."
+      ]
+    },
+    {"key": "externalAi", "fate": "KEEP_AS_PART", "noun": "Property", "phase": "-", "note": "delegation to an outside AI (ADR-0009); configuration, not domain"},
+    {"key": "agentAccess", "fate": "KEEP_AS_PART", "noun": "Role", "phase": "-", "note": "what AI agents may do = an access rule set; documented next to roles"}
+  ],
+  "newKeys": [
+    {"key": "experiences", "noun": "Experience", "phase": "P5"},
+    {"key": "screens", "noun": "Screen", "phase": "P5"},
+    {"key": "functions", "noun": "Function", "phase": "P4"},
+    {"key": "modules", "noun": "Module", "phase": "P3"}
+  ]
+}

@@ -27,6 +27,18 @@
     },
     "satelliteOf": {
       "why": "PACK-10 (PACK-ROADMAP card PK-6). Live satelliteOf concepts exist only in NPDevSamples/probes/p6-satellite-extension, which find_models() excludes from DSL coverage by design (probes are fixtures, not evidence). Adding a satelliteOf concept with its anchor bond to dsl-conformance-max would ripple into schema/canonical-JSON validation; recorded as deliberately allowlisted so the detector is registered without co-opting a probe. Roadmap close-out 2026-08-21."
+    },
+    "procedure.computeValue": {
+      "why": "FORM P3-T5c stage 6 (2026-11-16). procedures[] is being retired: every procedure in the corpus became a flow, whose merged step vocabulary (flowStep) covers this operation and IS witnessed by dsl-conformance-max. Only the two untrusted-extension procedures (WmsOffice, WmsOfficePackTest) remain, until P4-T5 removes procedures[] entirely, and they do not use this procedure-step feature. Delete this entry together with the procedure schema family at P4-T5."
+    },
+    "procedure.createIfMissing": {
+      "why": "FORM P3-T5c stage 6 (2026-11-16). procedures[] is being retired: every procedure in the corpus became a flow, whose merged step vocabulary (flowStep) covers this operation and IS witnessed by dsl-conformance-max. Only the two untrusted-extension procedures (WmsOffice, WmsOfficePackTest) remain, until P4-T5 removes procedures[] entirely, and they do not use this procedure-step feature. Delete this entry together with the procedure schema family at P4-T5."
+    },
+    "procedure.mapList": {
+      "why": "FORM P3-T5c stage 6 (2026-11-16). procedures[] is being retired: every procedure in the corpus became a flow, whose merged step vocabulary (flowStep) covers this operation and IS witnessed by dsl-conformance-max. Only the two untrusted-extension procedures (WmsOffice, WmsOfficePackTest) remain, until P4-T5 removes procedures[] entirely, and they do not use this procedure-step feature. Delete this entry together with the procedure schema family at P4-T5."
+    },
+    "procedure.patchConcept": {
+      "why": "FORM P3-T5c stage 6 (2026-11-16). procedures[] is being retired: every procedure in the corpus became a flow, whose merged step vocabulary (flowStep) covers this operation and IS witnessed by dsl-conformance-max. Only the two untrusted-extension procedures (WmsOffice, WmsOfficePackTest) remain, until P4-T5 removes procedures[] entirely, and they do not use this procedure-step feature. Delete this entry together with the procedure schema family at P4-T5."
     }
   }
 }

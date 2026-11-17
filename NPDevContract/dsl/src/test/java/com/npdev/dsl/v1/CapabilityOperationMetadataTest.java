@@ -30,42 +30,72 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class CapabilityOperationMetadataTest {
 
-    private static final String MODEL_WITH_OPERATION_METADATA = """
+    /** The fixture is pretty-printed for reading; the replace-based negative tests below match compact JSON. */
+    private static String compact(String json) {
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(json));
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static final String MODEL_WITH_OPERATION_METADATA = compact("""
             {
-              "namespace":"demo",
-              "dslVersion":"1.0.0",
-              "version":"v1",
-              "concepts":[
+              "namespace": "demo",
+              "dslVersion": "3.0.0",
+              "version": "v1",
+              "concepts": [
                 {
-                  "name":"WidgetOrder",
-                  "fields":[
-                    {"name":"id","type":"uuid","id":true},
-                    {"name":"sku","type":"string","required":true}
-                  ]
-                }
-              ],
-              "capabilities":[
-                {
-                  "name":"persistence",
-                  "type":"PersistenceCapability",
-                  "operations":[
+                  "name": "WidgetOrder",
+                  "fields": [
                     {
-                      "name":"save",
-                      "sideEffects":"writes",
-                      "errors":[
-                        {"name":"DuplicateSku","classification":"CONTRACT","description":"sku already exists"},
-                        {"name":"StoreUnavailable","classification":"transient"}
-                      ],
-                      "auth":{"roles":["order-writer"],"scopes":["orders:write"]}
+                      "name": "id",
+                      "type": "uuid",
+                      "id": true
+                    },
+                    {
+                      "name": "sku",
+                      "type": "string",
+                      "required": true
                     }
                   ]
                 }
               ],
-              "bindings":[
-                {"capability":"persistence","adapter":"inmemory"}
+              "capabilities": [
+                {
+                  "name": "persistence",
+                  "type": "PersistenceCapability",
+                  "operations": [
+                    {
+                      "name": "save",
+                      "sideEffects": "writes",
+                      "errors": [
+                        {
+                          "name": "DuplicateSku",
+                          "classification": "CONTRACT",
+                          "description": "sku already exists"
+                        },
+                        {
+                          "name": "StoreUnavailable",
+                          "classification": "transient"
+                        }
+                      ],
+                      "auth": {
+                        "roles": [
+                          "order-writer"
+                        ],
+                        "scopes": [
+                          "orders:write"
+                        ]
+                      }
+                    }
+                  ],
+                  "adapter": "inmemory"
+                }
               ]
             }
-            """;
+            """);
 
     @Test
     void compilesAndRoundTripsOperationErrorsSideEffectsAndAuth() throws Exception {
@@ -101,17 +131,30 @@ class CapabilityOperationMetadataTest {
     void operationWithNoMetadataCompilesWithEmptyDefaults() throws Exception {
         ModelAst ast = parse("""
                 {
-                  "namespace":"demo",
-                  "dslVersion":"1.0.0",
-                  "version":"v1",
-                  "concepts":[
-                    {"name":"Widget","fields":[{"name":"id","type":"uuid","id":true}]}
+                  "namespace": "demo",
+                  "dslVersion": "3.0.0",
+                  "version": "v1",
+                  "concepts": [
+                    {
+                      "name": "Widget",
+                      "fields": [
+                        {
+                          "name": "id",
+                          "type": "uuid",
+                          "id": true
+                        }
+                      ]
+                    }
                   ],
-                  "capabilities":[
-                    {"name":"persistence","type":"PersistenceCapability","operations":["save"]}
-                  ],
-                  "bindings":[
-                    {"capability":"persistence","adapter":"inmemory"}
+                  "capabilities": [
+                    {
+                      "name": "persistence",
+                      "type": "PersistenceCapability",
+                      "operations": [
+                        "save"
+                      ],
+                      "adapter": "inmemory"
+                    }
                   ]
                 }
                 """);

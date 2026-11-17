@@ -21,7 +21,7 @@ class DateFunctionsValidationTest {
     private static String modelJson(String windowStartExpr, String dueDateDefault, String invariantExpr) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "trial.visits", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "trial.visits", "version": "1.0",
               "concepts": [
                 { "name": "Visit",
                   "fields": [

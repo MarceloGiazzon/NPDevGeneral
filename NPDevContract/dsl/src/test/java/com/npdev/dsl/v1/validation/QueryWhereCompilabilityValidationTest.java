@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@link JsonModelParser} + {@link SemanticValidator} front door, per the REG-89 lesson.
  *
  * <p>Reproduces REG-101's own corpus witness, {@code pack-sample}'s {@code SalesByStore}
- * ({@code where: "storeId == :storeId"}, {@code parameters: [{name: storeId}]}) as the positive
+ * ({@code where: "storeId == $params.storeId"}, {@code parameters: [{name: storeId}]}) as the positive
  * case, and its two negative siblings: a placeholder naming an undeclared parameter, and a
  * predicate the grammar cannot parse at all.
  */
@@ -28,7 +28,7 @@ class QueryWhereCompilabilityValidationTest {
     private static String modelJson(String whereClause, String parametersJson) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.qwhere", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.qwhere", "version": "1.0",
               "concepts": [
                 { "name": "Sale", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -52,21 +52,21 @@ class QueryWhereCompilabilityValidationTest {
 
     @Test
     void aBindPlaceholderMatchingADeclaredParameterCompilesClean() throws Exception {
-        List<String> errors = validate(modelJson("storeId == :storeId", STORE_ID_PARAMETER));
+        List<String> errors = validate(modelJson("storeId == $params.storeId", STORE_ID_PARAMETER));
         assertTrue(errors.stream().noneMatch(e -> e.contains("where")), "unexpected: " + errors);
     }
 
     @Test
     void aBindPlaceholderWithNoDeclaredParameterIsRejected() throws Exception {
-        List<String> errors = validate(modelJson("storeId == :storeId", ""));
+        List<String> errors = validate(modelJson("storeId == $params.storeId", ""));
         assertTrue(errors.stream().anyMatch(e ->
-                        e.contains("bind placeholder :storeId") && e.contains("not declared in this query's parameters[]")),
+                        e.contains("bind placeholder $params.storeId") && e.contains("not declared in this query's parameters[]")),
                 "a placeholder naming an undeclared parameter must be refused at authoring time, not left "
-                        + "to silently compare every row against the literal \":storeId\" (REG-101): " + errors);
+                        + "to silently compare every row against the literal \"$params.storeId\" (REG-101): " + errors);
     }
 
     /**
-     * R4.3 lockstep fix: {@code "storeId in ('a','b')"} used to be this test's "genuinely
+     * R4.3 lockstep fix: {@code "storeId in ['a','b']"} used to be this test's "genuinely
      * uncompilable" example -- true only while {@code validateQueryWhereCompiles} was still on the
      * v1-only grammar (no {@code in} operator). Now that it accepts the v2 grammar (see that
      * method's own javadoc), {@code in} compiles cleanly -- {@link #anInClauseNowCompilesCleanUnderV2}
@@ -85,7 +85,7 @@ class QueryWhereCompilabilityValidationTest {
      *  step can now actually execute (compileToConceptQueryFilters). */
     @Test
     void anInClauseNowCompilesCleanUnderV2() throws Exception {
-        List<String> errors = validate(modelJson("storeId in ('a','b')", ""));
+        List<String> errors = validate(modelJson("storeId in ['a','b']", ""));
         assertTrue(errors.stream().noneMatch(e -> e.contains("where")), "unexpected: " + errors);
     }
 
@@ -96,7 +96,7 @@ class QueryWhereCompilabilityValidationTest {
     void anOrGroupWithAReferencePathJoinAndADateComparisonCompilesClean() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.qwhere.v2", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.qwhere.v2", "version": "1.0",
               "concepts": [
                 { "name": "Store", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -125,7 +125,7 @@ class QueryWhereCompilabilityValidationTest {
     void aPredicateJoinIntoAnAccessReadRestrictedConceptIsRejected() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.qwhere.v2secure", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.qwhere.v2secure", "version": "1.0",
               "concepts": [
                 { "name": "Store", "access": { "read": "true" }, "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

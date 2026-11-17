@@ -26,7 +26,7 @@ import npdev_cli  # noqa: E402
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 MODEL_JSON = {
-    "dslVersion": "1.0.0",
+    "dslVersion": "3.0.0",
     "version": "1.0",
     "namespace": "demo",
     "concepts": [

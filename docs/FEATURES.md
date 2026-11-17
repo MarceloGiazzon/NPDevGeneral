@@ -24,7 +24,7 @@ processes, screens, permissions, and how it all changes over time.
 | **Screens** | panels, workbenches, documents, guides |
 | **Access** | roles, grants, row-level rules, sensitive fields |
 | **Change** | renames, conversions, destructive-change policy |
-| **Scale** | packs, fragments, bounded contexts, scoped properties |
+| **Scale** | packs, `$ref` file splits, modules, scoped properties |
 
 ---
 
@@ -82,7 +82,7 @@ processes, screens, permissions, and how it all changes over time.
 
 | Feature | What it does for you |
 |---|---|
-| **`flows` — 13 step types** | `invariantCheck`, `capabilityCall`, `generatedAction`, `emitEvent`, `scheduleEvent`, `return`, `branch`, `awaitEvent`, `createConcept`, `updateConcept`, `map`, `forEach`, `callProcedure` |
+| **`flows` — 19 step types** | `invariantCheck`, `capabilityCall`, `generatedAction`, `emitEvent`, `scheduleEvent`, `return`, `branch`, `awaitEvent`, `createConcept`, `updateConcept`, `map`, `forEach`, `set`, `readConcept`, `listConcepts`, `runQuery`, `deleteConcept`, `callFlow`; flow keys `expose` (`api`/`ui`/`internal`) and `runAs` (`caller`/`system`) |
 | **Durable execution** | a flow **survives a process restart** and resumes where it stopped. Long-running approvals do not evaporate on a deploy |
 | **`awaitEvent`** | pause a process until something happens — an approval, a delivery, a webhook — for as long as it takes |
 | **Human tasks (`awaitEvent.task`)** | the wait becomes a task in the assignee's inbox (`GET /api/tasks`), with a title, a form and named `outcomes`; completing it resumes the flow with the values and who completed it |
@@ -90,11 +90,11 @@ processes, screens, permissions, and how it all changes over time.
 | **`forEach`, including parallel** | iterate a collection; parallel iterations stay **isolated from each other** and each resumes correctly after a crash |
 | **`scheduleEvent` + `schedule`** | delayed and recurring work without a separate scheduler |
 | **`procedures`** | reusable server-side logic with parameters, locals, and a return value |
-| **`orchestrationRules`** | react to events: when *this* happens, run *that* |
+| **`trigger: {event}` on a flow** | react to events: when *this* happens, run *that* |
 | **`capabilities` / `bindings`** | name an operation, bind it to an implementation — swap adapters without touching the model |
 | **Operation `policy`** | per capability operation: `retryCount`/`retryDelayMs`, `timeoutMs`, a circuit breaker (`circuitOpenAfterFailures`), a bulkhead (`bulkheadMaxConcurrent`) and idempotency keys |
 | **HTTP connectors** | a capability bound to `http-connector` calls an outside REST API with no client code; `baseUrl` can come from a tenant-overridable property, and credentials are named environment variables, never values in the model |
-| **`webhooks`** | inbound doors at `POST /api/hooks/{source}`: the HMAC-SHA256 signature is checked against a named environment variable, then the event wakes a flow waiting on it, or `startFlow` starts one |
+| **`capabilities[].inbound`** | an inbound door at `POST /api/hooks/{path}`: the HMAC-SHA256 signature is checked against an environment variable (by default `NPDEV_WEBHOOK_<PATH>_SECRET`), then the event wakes a flow waiting on it, or the flow whose `trigger` is `{webhook: <the capability>}` starts |
 | **`customCapabilities`** | your own Java, called from a flow, when the declarative vocabulary runs out — sandboxed (no files, network or DB), so a flow hands it what it needs: query results, and uploaded images through the built-in **`fileStore.readImage`** capability (a `file` field → tenant-checked `data:` URI). Pigmentampas' *Paint from photo* is the worked example |
 
 ## 5. Screens
@@ -140,9 +140,9 @@ processes, screens, permissions, and how it all changes over time.
 
 | Feature | What it does for you |
 |---|---|
-| **`fragments`** | split a large model across files; compose by `$ref` |
+| **`$ref` entries** | split a large model across files: an entry of any array may be `{"$ref": "file.json"}` |
 | **`packs`** | reusable model modules shared across applications, resolved locally or from a git coordinate and locked in `npdev.lock`. Built in: `identity`, `workspace`, `approvals`, `contacts`, `helpdesk`, `inventory`, `leave`, `notification`, `purchasing`, `sales`, `tracing`. A pack's `requires` must be met by the app's `provides` |
-| **`contexts`** (bounded contexts) | partition a big model into named contexts with **explicit `imports`** — so one team's `Order` is not another's |
+| **`modules`** (bounded contexts) | partition a big model into named contexts with **explicit `imports`** — so one team's `Order` is not another's |
 | **`physicallyIsolate`** | opt in to context-qualified table names when two contexts genuinely need separate tables |
 | **`propertyScopes` / `properties`** | configuration that **cascades** — each property has a model `default`, overridden per tenant and per user (there is no runtime "global" scope); resolution order is declared |
 | **Multi-tenancy** | tenant isolation is built in, not bolted on |

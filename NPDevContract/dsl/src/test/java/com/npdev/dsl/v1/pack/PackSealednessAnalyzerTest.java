@@ -50,7 +50,7 @@ class PackSealednessAnalyzerTest {
     void packWithOnlySelfContainedReferences_isSealed() {
         JsonNode sealedPack = pack("""
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "widgetcatalog",
               "version": "1.0.0",
               "concepts": [
@@ -80,7 +80,7 @@ class PackSealednessAnalyzerTest {
     void packWithSelfContainedReferences_usingBareRefAndBareStringReferenceSpellings_isSealed() {
         JsonNode sealedPack = pack("""
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "widgetcatalog",
               "version": "1.0.0",
               "concepts": [
@@ -109,7 +109,7 @@ class PackSealednessAnalyzerTest {
     void outboundReferenceToNonPackConcept_isRefused_namingTheConceptAndTarget() {
         JsonNode unsealedPack = pack("""
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "orders",
               "version": "1.0.0",
               "concepts": [
@@ -139,7 +139,7 @@ class PackSealednessAnalyzerTest {
     void outboundReferenceViaBareRefShorthand_isRefused_namingTheConceptAndTarget() {
         JsonNode unsealedPack = pack("""
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "orders",
               "version": "1.0.0",
               "concepts": [
@@ -169,7 +169,7 @@ class PackSealednessAnalyzerTest {
     void outboundReferenceViaBareStringReferenceField_isRefused_namingTheConceptAndTarget() {
         JsonNode unsealedPack = pack("""
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "orders",
               "version": "1.0.0",
               "concepts": [
@@ -194,7 +194,7 @@ class PackSealednessAnalyzerTest {
     void unboundRequiredCapability_isRefused_namingIt() {
         JsonNode unsealedPack = pack("""
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "notifier",
               "version": "1.0.0",
               "requires": { "capabilities": ["emailSender"] },
@@ -217,7 +217,7 @@ class PackSealednessAnalyzerTest {
     void ownTransitiveDependency_isRefused_composedSealingNotYetSupported() {
         JsonNode unsealedPack = pack("""
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "hospital",
               "version": "1.0.0",
               "packs": [ { "pack": "identity", "version": "^1.0" } ],
@@ -240,7 +240,7 @@ class PackSealednessAnalyzerTest {
     void fragmentDeclaredConcept_isRefused_asUnverifiable() {
         JsonNode unsealedPack = pack("""
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "fragmented",
               "version": "1.0.0",
               "concepts": [
@@ -260,7 +260,7 @@ class PackSealednessAnalyzerTest {
     void emptyRequiresObjectWithNoCapabilities_staysSealed() {
         JsonNode sealedPack = pack("""
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "trivial",
               "version": "1.0.0",
               "requires": { "roles": ["admin"] },
@@ -289,7 +289,7 @@ class PackSealednessAnalyzerTest {
     void composedPackWithAllSealedDependencies_isSealed() {
         JsonNode base = pack("""
             {
-              "dslVersion": "1.0.0", "pack": "identity", "version": "1.0.0",
+              "dslVersion": "3.0.0", "pack": "identity", "version": "1.0.0",
               "concepts": [
                 { "name": "User", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }
@@ -298,7 +298,7 @@ class PackSealednessAnalyzerTest {
             """);
         JsonNode hospital = pack("""
             {
-              "dslVersion": "1.0.0", "pack": "hospital", "version": "1.0.0",
+              "dslVersion": "3.0.0", "pack": "hospital", "version": "1.0.0",
               "packs": [ { "pack": "identity", "version": "1.0.0" } ],
               "concepts": [
                 { "name": "Patient", "fields": [
@@ -322,7 +322,7 @@ class PackSealednessAnalyzerTest {
     void composedPackWithUnsealedDependency_isRefused_namingTheDependencyAndItsViolation() {
         JsonNode identity = pack("""
             {
-              "dslVersion": "1.0.0", "pack": "identity", "version": "1.0.0",
+              "dslVersion": "3.0.0", "pack": "identity", "version": "1.0.0",
               "requires": { "capabilities": ["emailSender"] },
               "concepts": [
                 { "name": "User", "fields": [
@@ -332,7 +332,7 @@ class PackSealednessAnalyzerTest {
             """);
         JsonNode hospital = pack("""
             {
-              "dslVersion": "1.0.0", "pack": "hospital", "version": "1.0.0",
+              "dslVersion": "3.0.0", "pack": "hospital", "version": "1.0.0",
               "packs": [ { "pack": "identity", "version": "1.0.0" } ],
               "concepts": [
                 { "name": "Patient", "fields": [
@@ -357,7 +357,7 @@ class PackSealednessAnalyzerTest {
     void composedPackTransitiveUnsealedDependency_isRefused() {
         JsonNode identity = pack("""
             {
-              "dslVersion": "1.0.0", "pack": "identity", "version": "1.0.0",
+              "dslVersion": "3.0.0", "pack": "identity", "version": "1.0.0",
               "concepts": [
                 { "name": "User", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }
@@ -367,7 +367,7 @@ class PackSealednessAnalyzerTest {
         // billing is sealed on its own BUT depends transitively on unsealed "audit".
         JsonNode billing = pack("""
             {
-              "dslVersion": "1.0.0", "pack": "billing", "version": "1.0.0",
+              "dslVersion": "3.0.0", "pack": "billing", "version": "1.0.0",
               "packs": [ { "pack": "audit", "version": "1.0.0" } ],
               "concepts": [
                 { "name": "Account", "fields": [
@@ -377,14 +377,14 @@ class PackSealednessAnalyzerTest {
             """);
         JsonNode audit = pack("""
             {
-              "dslVersion": "1.0.0", "pack": "audit", "version": "1.0.0",
+              "dslVersion": "3.0.0", "pack": "audit", "version": "1.0.0",
               "requires": { "capabilities": ["tracer"] },
               "concepts": [ ]
             }
             """);
         JsonNode hospital = pack("""
             {
-              "dslVersion": "1.0.0", "pack": "hospital", "version": "1.0.0",
+              "dslVersion": "3.0.0", "pack": "hospital", "version": "1.0.0",
               "packs": [
                 { "pack": "identity", "version": "1.0.0" },
                 { "pack": "billing", "version": "1.0.0" }
@@ -414,7 +414,7 @@ class PackSealednessAnalyzerTest {
     void composedPackWithUnresolvableDependency_isRefused() {
         JsonNode hospital = pack("""
             {
-              "dslVersion": "1.0.0", "pack": "hospital", "version": "1.0.0",
+              "dslVersion": "3.0.0", "pack": "hospital", "version": "1.0.0",
               "packs": [ { "from": "git+https://example.invalid/packs/identity.git@v1" } ],
               "concepts": [
                 { "name": "Patient", "fields": [
@@ -435,7 +435,7 @@ class PackSealednessAnalyzerTest {
     void leafPackWithoutPacks_analyzedWithResolver_stillSeals() {
         JsonNode base = pack("""
             {
-              "dslVersion": "1.0.0", "pack": "identity", "version": "1.0.0",
+              "dslVersion": "3.0.0", "pack": "identity", "version": "1.0.0",
               "concepts": [
                 { "name": "User", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }
@@ -456,7 +456,7 @@ class PackSealednessAnalyzerTest {
     void queryDataSourceOutboundConceptReference_isRefused() {
         JsonNode packJson = pack("""
             {
-              "dslVersion": "1.0.0", "pack": "crm", "version": "1.0.0",
+              "dslVersion": "3.0.0", "pack": "crm", "version": "1.0.0",
               "concepts": [
                 { "name": "Contact", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }
@@ -481,7 +481,7 @@ class PackSealednessAnalyzerTest {
     void panelDataSourceOutboundConceptReference_isRefused() {
         JsonNode packJson = pack("""
             {
-              "dslVersion": "1.0.0", "pack": "crm", "version": "1.0.0",
+              "dslVersion": "3.0.0", "pack": "crm", "version": "1.0.0",
               "concepts": [
                 { "name": "Contact", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }
@@ -505,7 +505,7 @@ class PackSealednessAnalyzerTest {
     void queryDataSourceSelfContainedConceptReference_staysSealed() {
         JsonNode packJson = pack("""
             {
-              "dslVersion": "1.0.0", "pack": "crm", "version": "1.0.0",
+              "dslVersion": "3.0.0", "pack": "crm", "version": "1.0.0",
               "concepts": [
                 { "name": "Contact", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }

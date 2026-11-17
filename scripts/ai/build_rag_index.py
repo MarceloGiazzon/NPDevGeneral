@@ -40,18 +40,18 @@ CONTENT_FILES = [
     "docs/content/authoring-for-ai.json",
 ]
 
-SAMPLE_OBJECT_KEYS = ["concepts", "flows", "panels", "procedures", "orchestrations", "events"]
+SAMPLE_OBJECT_KEYS = ["concepts", "flows", "panels", "procedures", "events"]
 
 
 _FENCE = re.compile(r"^[ \t]*```[ \t]*(json|jsonc)[ \t]*\r?\n(.*?)^[ \t]*```[ \t]*$",
                     re.DOTALL | re.MULTILINE | re.IGNORECASE)
 _JSON_COMMENTS = re.compile(r'"(?:\\.|[^"\\])*"|//[^\n]*|/\*.*?\*/', re.DOTALL)
 # Keys that make a bare `{"type": ...}` object a flow STEP rather than some other typed object
-# (a trigger, a field, an orchestration action all carry `type` too and must not be rewritten).
+# (a trigger, a field, a panel action all carry `type` too and must not be rewritten).
 _STEP_MARKER_KEYS = {"name", "scope", "invariants", "cap", "op", "out", "capability", "operation",
                      "args", "input", "output", "awaitEvent", "condition", "then", "else", "from",
                      "value", "awaitRef", "match"}
-_MODEL_KEYS = ("concepts", "flows", "orchestrations", "orchestrationRules", "panels")
+_MODEL_KEYS = ("concepts", "flows", "panels")
 
 _migration_module: Any = None
 
@@ -94,8 +94,6 @@ def _stale_changes(value: Any) -> list[str]:
     result = migration.MigrationResult()
     if any(key in copy_ for key in _MODEL_KEYS):
         result = migration.migrate_document(copy_)
-    elif "trigger" in copy_:  # one orchestration rule
-        result = migration.migrate_document({"orchestrationRules": [copy_]})
     elif isinstance(copy_.get("steps"), list) and "name" in copy_:  # one flow
         result = migration.migrate_document({"flows": [copy_]})
     elif isinstance(copy_.get("type"), str) and _STEP_MARKER_KEYS & copy_.keys():  # one flow step

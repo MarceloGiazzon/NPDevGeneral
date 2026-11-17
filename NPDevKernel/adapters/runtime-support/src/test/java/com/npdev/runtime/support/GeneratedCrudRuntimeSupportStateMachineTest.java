@@ -206,7 +206,6 @@ class GeneratedCrudRuntimeSupportStateMachineTest {
                 null,
                 null,
                 new SystemRuntimeClock(),
-                new InMemoryOrchestrationExecutionRegistry(),
                 new RuntimeInvariantEngineFactory() {
                     @Override
                     public InvariantEngine create(

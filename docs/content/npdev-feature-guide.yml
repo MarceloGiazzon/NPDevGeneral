@@ -118,18 +118,19 @@ sections:
     **Real app:** `dsl-conformance-max` — 21 procedures using 8 of the 15 step types the executor dispatches (`readConcept`, `listConcepts`, `mapList`, `mapValue`, `patchConcept`, `computeValue`, `if`, `return`). Across the whole corpus (NPDevSamples plus AppGen apps), 12 are exercised; `saveConcept`, `runQuery`, `capabilityCall` and `forEach` are the other four.
 
 - level: 2
-  title: 4. Flows, events and orchestrations — behaviour that reacts on its own
+  title: 4. Flows, events and event-triggered flows — behaviour that reacts on its own
   body: |2
 
     **What it is.** Three escalating levels of "something happens without a user clicking it".
 
     - A **flow** is an operation with a public endpoint — multi-step, transactional, callable.
     - An **event** is an announcement your app broadcasts when something happened.
-    - An **orchestration rule** is automation with no explicit caller: when this event arrives and
-      this condition holds, do that.
+    - An **event-triggered flow** is automation with no explicit caller: a flow whose `trigger` names
+      an event (and optionally a `condition`), so it runs by itself when this event arrives and
+      this condition holds.
 
     **When to reach for it.** A flow when the caller waits for the answer. An event when something
-    else might care but the caller should not wait. An orchestration rule when the reaction belongs
+    else might care but the caller should not wait. An event-triggered flow when the reaction belongs
     to the system rather than to any one caller.
 
     Flows also `awaitEvent` — a flow can pause, durably, until something arrives, and resume days
@@ -169,7 +170,7 @@ sections:
     **What it is.** Three mechanisms that take content out of one `model.json`. They are not
     interchangeable.
 
-    | | `packs[]` | `contexts[]` | `fragments[]` |
+    | | `packs[]` | `modules[]` | a `$ref` entry |
     |---|---|---|---|
     | What it is | a distributable **Library** | an in-project **Module** | a file split |
     | Namespaced | yes (`pack::X`, or an `as` alias) | yes (`context::X`) | no — flat merge |
@@ -178,11 +179,11 @@ sections:
     | Boundary enforcement | `requires` / `provides` | `imports[]`, acyclic, **compile error** | none |
     | Physical DB isolation | no | `physicallyIsolate` | no |
 
-    **When to reach for each.** Organising ONE project: `contexts[]` — it is the module mechanism,
+    **When to reach for each.** Organising ONE project: `modules[]` — it is the module mechanism,
     and the reason is the boundary column. A context may only reference another it has declared,
     the graph must be acyclic, and a violation is a compile error rather than a convention.
     Shipping something for OTHER projects: `packs[]`. Splitting a file that got long:
-    `fragments[]`, which is not a boundary at all.
+    a `$ref` entry in the array that got long, which is not a boundary at all.
 
     A pack or context contributes its members under a qualifier, and references *inside* the
     contribution are rewritten to match — a pack-contributed panel naming `Label` gets

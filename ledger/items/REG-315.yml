@@ -27,14 +27,13 @@ files:
 verification: UNIT_TESTED
 guard:
   kind: test
-  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/query/QueryPredicateGrammarTest.java#parenthesesAreRefusedAsAWhereProblemNotAGroupByOne
+  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/query/QueryPredicateGrammarTest.java#parenthesesDistributeIntoOrGroups
   asserts: >-
-    (status == 'A' || status == 'B') && region == 'EU', and the two other placements of a parenthesis, are refused
-    with "cannot compile query predicate ... parentheses are not supported in a query where" plus the rewrite
-    "a && c || b && c", and the message never contains "groupBy"; a sibling test pins that a bad reference path is
-    reported as a "predicate path", not "cannot parse groupBy field"; a third pins that an in (...) list and a
-    quoted literal containing parentheses still parse. Proven red 2026-10-30 against the old code (2 of the 3 new
-    tests failed with the groupBy wording); restored, the class and the full dsl suite green.
+    Re-pointed 2026-11-15 (FORM P3-T4 moved the where clause onto the shared expression grammar, so parentheses are
+    now supported and the "parentheses are not supported" refusal this item first added is gone). What this item
+    guards -- a parenthesised where never surfaces the unrelated "cannot parse groupBy field" message -- holds because
+    parenthesesDistributeIntoOrGroups compiles (status == 'A' || status == 'B') && region == 'EU' into OR groups,
+    and parenthesesInsideAnInListAndQuotedLiteralsStillParse pins the in-list and quoted-literal cases.
   provenRed: true
 note: >-
   2026-10-30: the where grammar DID already accept || (parseGroups, OR-of-AND groups); what it lacks is

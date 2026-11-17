@@ -10,17 +10,14 @@ that sends over the wire.
 ```json
 {
   "capabilities": [
-    { "name": "mail", "type": "EmailCapability", "operations": ["send"] }
-  ],
-  "bindings": [
-    { "capability": "mail", "adapter": "mail-smtp" }
+    { "name": "mail", "type": "EmailCapability", "adapter": "mail-smtp", "operations": ["send"] }
   ]
 }
 ```
 
 Use `adapter: "mail-inproc"` for dev/test (records deliveries in memory, no network) or
 `adapter: "mail-smtp"` for a real send via Jakarta Mail. **Which adapter an app uses is a
-generation-time model choice** (the `bindings` entry), the same as persistence's
+generation-time model choice** (the capability's `adapter`), the same as persistence's
 `repository`/`postgres`/`memory` choice — there is no runtime env-var toggle between them, since
 capability adapters resolve through the model's own compiled bindings, not through
 `@ConditionalOnProperty`-style config (that pattern is reserved for ports like `FileStoreContract`
@@ -124,8 +121,7 @@ explicit, separate `mail.send` step: nothing falls back from one to the other.
 
 ```json
 {
-  "capabilities": [ { "name": "notify", "type": "NotifyCapability", "operations": ["send"] } ],
-  "bindings":     [ { "capability": "notify", "adapter": "notify" } ]
+  "capabilities": [ { "name": "notify", "type": "NotifyCapability", "adapter": "notify", "operations": ["send"] } ]
 }
 ```
 

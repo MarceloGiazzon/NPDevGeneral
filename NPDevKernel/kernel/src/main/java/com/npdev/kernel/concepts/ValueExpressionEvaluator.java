@@ -156,7 +156,8 @@ public final class ValueExpressionEvaluator {
             return Long.parseLong(text);
         } catch (NumberFormatException ignored) {
             // REG-313: today() is as volatile as now(), so the same rule -- the epoch date, never the wall clock.
-            return com.npdev.dsl.v1.expr.DateFunctions.withToday(java.time.LocalDate.EPOCH,
+            // FORM P3-T2: now() and uuid() are registered functions too, so they are pinned with today().
+            return com.npdev.dsl.v1.expr.StdlibFunctions.withDeterministicVolatiles(
                     () -> ComputedExpression.evaluate(text, data, functions));
         }
     }

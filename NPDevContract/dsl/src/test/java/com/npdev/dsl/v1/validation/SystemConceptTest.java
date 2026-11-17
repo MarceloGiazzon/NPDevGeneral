@@ -19,7 +19,7 @@ class SystemConceptTest {
 
     private static ModelAst parse(String conceptsJson) throws Exception {
         String json = """
-            { "dslVersion": "1.0.0", "namespace": "system.concept", "version": "1.0",
+            { "dslVersion": "3.0.0", "namespace": "system.concept", "version": "1.0",
               "concepts": [ %s ] }
             """.formatted(conceptsJson);
         return new JsonModelParser().parse(MAPPER.readTree(json));
@@ -55,7 +55,7 @@ class SystemConceptTest {
 
     private static ModelAst parseWithRoles(String conceptsJson, String rolesJson) throws Exception {
         String json = """
-            { "dslVersion": "1.0.0", "namespace": "default.deny", "version": "1.0",
+            { "dslVersion": "3.0.0", "namespace": "default.deny", "version": "1.0",
               "concepts": [ %s ], "roles": %s }
             """.formatted(conceptsJson, rolesJson);
         return new JsonModelParser().parse(MAPPER.readTree(json));

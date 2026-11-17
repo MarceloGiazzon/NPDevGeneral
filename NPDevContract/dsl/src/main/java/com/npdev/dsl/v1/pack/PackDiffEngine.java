@@ -399,13 +399,9 @@ public final class PackDiffEngine {
             case "domainTypes" -> "domain type";
             case "capabilities" -> "capability";
             case "customCapabilities" -> "custom capability";
-            case "bindings" -> "binding";
             case "events" -> "event";
             case "flows" -> "flow";
-            case "orchestrationRules" -> "orchestration rule";
-            case "orchestrations" -> "orchestration";
             case "queries" -> "query";
-            case "ruleProfiles" -> "rule profile";
             case "procedures" -> "procedure";
             case "conversions" -> "conversion";
             case "panels" -> "panel";

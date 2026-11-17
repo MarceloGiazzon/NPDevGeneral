@@ -65,7 +65,7 @@ def _merge_context_fragments(model: dict, base_dir: Path) -> dict:
     composition, no contextName:: qualification, no pack merging) -- just enough of a shallow
     array-union to make feature DETECTION see contexts[]-declared content, the same gap class this
     gate's own history is full of (checks that only look at the root document)."""
-    contexts = model.get("contexts")
+    contexts = model.get("modules")
     if not isinstance(contexts, list):
         return model
     merged = dict(model)

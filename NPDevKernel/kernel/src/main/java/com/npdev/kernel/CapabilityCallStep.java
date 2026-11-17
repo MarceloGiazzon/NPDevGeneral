@@ -296,6 +296,28 @@ final class CapabilityCallStep {
             // classification here in case an intermediate sandbox/dispatch wrapper widened
             // it to a generic kind (which would otherwise report system_exception).
             capabilityError = KernelRunner.reclassifyIntegrityViolation(capabilityError);
+            // FORM P3-T5c: createConcept ifExists: skip -- an already-existing row is not a failure; the step output is null.
+            if ("skip".equals(step.getIfExists()) && CapabilityInvoker.isUniqueViolation(capabilityError)) {
+                String skippedOutputRef = KernelRunner.normalizeRef(step.getOutputRef());
+                if (!skippedOutputRef.isBlank()) {
+                    state.put(skippedOutputRef, null);
+                }
+                state.put("last", null);
+                return null;
+            }
+            // FORM P3-T5c: capabilityCall errorTarget -- the failure becomes a value the flow can branch on
+            // ({code, message, kind, retryable, httpStatus?, details}) and the step succeeds with no output.
+            if (step.getErrorTarget() != null) {
+                String errorKey = KernelRunner.normalizeRef(step.getErrorTarget());
+                state.put(errorKey, com.npdev.kernel.procedures.DefaultProcedureExecutor.errorDescription(
+                        capabilityError, capabilityError.code(), capabilityError.message()));
+                String failedOutputRef = KernelRunner.normalizeRef(step.getOutputRef());
+                if (!failedOutputRef.isBlank()) {
+                    state.remove(failedOutputRef);
+                }
+                state.put("last", null);
+                return null;
+            }
             runner.traceFailedStep(
                     traceMeta,
                     step,
@@ -366,6 +388,9 @@ final class CapabilityCallStep {
         }
 
 
+        if (step.getErrorTarget() != null) {
+            state.remove(KernelRunner.normalizeRef(step.getErrorTarget()));
+        }
         String outputRef = KernelRunner.normalizeRef(step.getOutputRef());
         if (!outputRef.isBlank()) {
             state.put(outputRef, output);

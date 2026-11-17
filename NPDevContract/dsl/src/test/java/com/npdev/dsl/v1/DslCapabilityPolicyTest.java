@@ -25,49 +25,62 @@ class DslCapabilityPolicyTest {
     void compilesCapabilityPolicyFromFlowStep() throws Exception {
         ModelAst ast = parse("""
                 {
-                  "namespace":"demo",
-                  "dslVersion":"1.0.0",
-                  "version":"v1",
-                  "concepts":[
+                  "namespace": "demo",
+                  "dslVersion": "3.0.0",
+                  "version": "v1",
+                  "concepts": [
                     {
-                      "name":"User",
-                      "fields":[
-                        {"name":"id","type":"uuid","id":true},
-                        {"name":"email","type":"string","required":true}
+                      "name": "User",
+                      "fields": [
+                        {
+                          "name": "id",
+                          "type": "uuid",
+                          "id": true
+                        },
+                        {
+                          "name": "email",
+                          "type": "string",
+                          "required": true
+                        }
                       ]
                     }
                   ],
-                  "capabilities":[
+                  "capabilities": [
                     {
-                      "name":"persistence",
-                      "type":"PersistenceCapability",
-                      "operations":["save"]
+                      "name": "persistence",
+                      "type": "PersistenceCapability",
+                      "operations": [
+                        "save"
+                      ],
+                      "adapter": "inmemory"
                     }
                   ],
-                  "bindings":[
-                    {"capability":"persistence","adapter":"inmemory"}
-                  ],
-                  "flows":[
+                  "flows": [
                     {
-                      "name":"CreateUser",
-                      "concept":"User",
-                      "steps":[
+                      "name": "CreateUser",
+                      "concept": "User",
+                      "steps": [
                         {
-                          "name":"save",
-                          "type":"capabilityCall",
-                          "capability":"persistence",
-                          "operation":"save",
-                          "args":["$input"],
-                          "output":"$saved",
-                          "policy":{
-                            "retryCount":3,
-                            "retryDelayMs":500,
-                            "timeoutMs":3000,
-                            "idempotencyKeyField":"$input.requestId",
-                            "failureClassification":"TRANSIENT"
+                          "name": "save",
+                          "type": "capabilityCall",
+                          "capability": "persistence",
+                          "operation": "save",
+                          "args": [
+                            "$input"
+                          ],
+                          "output": "$saved",
+                          "policy": {
+                            "retryCount": 3,
+                            "retryDelayMs": 500,
+                            "timeoutMs": 3000,
+                            "idempotencyKeyField": "$input.requestId",
+                            "failureClassification": "TRANSIENT"
                           }
                         },
-                        {"type":"return","value":"$saved"}
+                        {
+                          "type": "return",
+                          "value": "$saved"
+                        }
                       ]
                     }
                   ]
@@ -92,40 +105,52 @@ class DslCapabilityPolicyTest {
     void rejectsInvalidCapabilityPolicyValuesAtSchemaLayer() throws Exception {
         IOException error = assertThrows(IOException.class, () -> parse("""
                 {
-                  "namespace":"demo",
-                  "dslVersion":"1.0.0",
-                  "version":"v1",
-                  "concepts":[
+                  "namespace": "demo",
+                  "dslVersion": "3.0.0",
+                  "version": "v1",
+                  "concepts": [
                     {
-                      "name":"User",
-                      "fields":[
-                        {"name":"id","type":"uuid","id":true},
-                        {"name":"email","type":"string","required":true}
+                      "name": "User",
+                      "fields": [
+                        {
+                          "name": "id",
+                          "type": "uuid",
+                          "id": true
+                        },
+                        {
+                          "name": "email",
+                          "type": "string",
+                          "required": true
+                        }
                       ]
                     }
                   ],
-                  "capabilities":[
+                  "capabilities": [
                     {
-                      "name":"persistence",
-                      "type":"PersistenceCapability",
-                      "operations":["save"]
+                      "name": "persistence",
+                      "type": "PersistenceCapability",
+                      "operations": [
+                        "save"
+                      ],
+                      "adapter": "inmemory"
                     }
                   ],
-                  "bindings":[
-                    {"capability":"persistence","adapter":"inmemory"}
-                  ],
-                  "flows":[
+                  "flows": [
                     {
-                      "name":"CreateUser",
-                      "concept":"User",
-                      "steps":[
+                      "name": "CreateUser",
+                      "concept": "User",
+                      "steps": [
                         {
-                          "name":"save",
-                          "type":"capabilityCall",
-                          "capability":"persistence",
-                          "operation":"save",
-                          "args":["$input"],
-                          "policy":{"retryCount":0}
+                          "name": "save",
+                          "type": "capabilityCall",
+                          "capability": "persistence",
+                          "operation": "save",
+                          "args": [
+                            "$input"
+                          ],
+                          "policy": {
+                            "retryCount": 0
+                          }
                         }
                       ]
                     }

@@ -214,7 +214,7 @@ class PackBuildCatalogTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             repo_dir = Path(tmp) / "repo"
             _write(repo_dir / "packs" / "alpha" / "pack.json", {
-                "dslVersion": "1.0.0", "pack": "alpha", "version": "1.2.0",
+                "dslVersion": "3.0.0", "pack": "alpha", "version": "1.2.0",
                 "description": "Alpha pack", "category": "other", "author": "A",
                 "concepts": [{"name": "Thing", "fields": [
                     {"name": "id", "type": "uuid", "id": True, "required": True}]}],
@@ -240,7 +240,7 @@ class PackBuildCatalogTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             repo_dir = Path(tmp) / "repo"
             _write(repo_dir / "packs" / "alpha" / "pack.json", {
-                "dslVersion": "1.0.0", "pack": "alpha", "version": "1.0.0",
+                "dslVersion": "3.0.0", "pack": "alpha", "version": "1.0.0",
             })
             args = argparse.Namespace(repo_dir=str(repo_dir),
                                        repository_url="https://github.com/MarceloGiazzon/NPR.git",
@@ -255,7 +255,7 @@ class PackBuildCatalogTest(unittest.TestCase):
     def test_skips_malformed_pack_json_and_reports_it_by_name(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo_dir = Path(tmp) / "repo"
-            _write(repo_dir / "packs" / "bad" / "pack.json", {"dslVersion": "1.0.0"})  # no pack/version
+            _write(repo_dir / "packs" / "bad" / "pack.json", {"dslVersion": "3.0.0"})  # no pack/version
             args = argparse.Namespace(repo_dir=str(repo_dir),
                                        repository_url="https://github.com/MarceloGiazzon/NPR",
                                        tag_template="v{version}", out="")
@@ -284,7 +284,7 @@ class AddFromCatalogUnitTest(unittest.TestCase):
     def test_unknown_pack_name_lists_available(self):
         with tempfile.TemporaryDirectory() as tmp, _LocalCatalogServer() as url, _isolated_cache(Path(tmp)):
             model_path = Path(tmp) / "model.json"
-            _write(model_path, {"namespace": "t", "dslVersion": "1.0.0", "version": "1.0"})
+            _write(model_path, {"namespace": "t", "dslVersion": "3.0.0", "version": "1.0"})
             args = argparse.Namespace(catalog_url=url, offline=False)
             with self.assertRaises(npdev_cli.CliError) as ctx:
                 npdev_cli._add_pack_from_catalog(model_path, "does-not-exist", args)
@@ -294,7 +294,7 @@ class AddFromCatalogUnitTest(unittest.TestCase):
     def test_writes_from_coordinate_into_model(self):
         with tempfile.TemporaryDirectory() as tmp, _LocalCatalogServer() as url, _isolated_cache(Path(tmp)):
             model_path = Path(tmp) / "model.json"
-            _write(model_path, {"namespace": "t", "dslVersion": "1.0.0", "version": "1.0"})
+            _write(model_path, {"namespace": "t", "dslVersion": "3.0.0", "version": "1.0"})
             args = argparse.Namespace(catalog_url=url, offline=False)
             with redirect_stdout(io.StringIO()):
                 npdev_cli._add_pack_from_catalog(model_path, "user", args)
@@ -307,7 +307,7 @@ class AddFromCatalogUnitTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, _LocalCatalogServer() as url, _isolated_cache(Path(tmp)):
             model_path = Path(tmp) / "model.json"
             coordinate = "git+https://github.com/MarceloGiazzon/NPR.git//packs/user@v1.0.0"
-            _write(model_path, {"namespace": "t", "dslVersion": "1.0.0", "version": "1.0",
+            _write(model_path, {"namespace": "t", "dslVersion": "3.0.0", "version": "1.0",
                                  "packs": [{"from": coordinate}]})
             args = argparse.Namespace(catalog_url=url, offline=False)
             with redirect_stdout(io.StringIO()):
@@ -318,7 +318,7 @@ class AddFromCatalogUnitTest(unittest.TestCase):
     def test_alias_conflict_is_refused_not_silently_duplicated(self):
         with tempfile.TemporaryDirectory() as tmp, _LocalCatalogServer() as url, _isolated_cache(Path(tmp)):
             model_path = Path(tmp) / "model.json"
-            _write(model_path, {"namespace": "t", "dslVersion": "1.0.0", "version": "1.0",
+            _write(model_path, {"namespace": "t", "dslVersion": "3.0.0", "version": "1.0",
                                  "packs": [{"from": "git+https://example.com/other.git//p@v9", "as": "user"}]})
             args = argparse.Namespace(catalog_url=url, offline=False)
             with self.assertRaises(npdev_cli.CliError) as ctx:
@@ -338,7 +338,7 @@ class AddFromCatalogUnitTest(unittest.TestCase):
         must not raise an AttributeError for them."""
         with tempfile.TemporaryDirectory() as tmp:
             model_path = Path(tmp) / "model.json"
-            _write(model_path, {"namespace": "t", "dslVersion": "1.0.0", "version": "1.0"})
+            _write(model_path, {"namespace": "t", "dslVersion": "3.0.0", "version": "1.0"})
             args = argparse.Namespace(model=str(model_path))
             # No pack cache/network involved for a model with no packs[] at all -- this just proves
             # the getattr(..., None) guard, not the Gradle round trip (covered elsewhere).
@@ -381,7 +381,7 @@ class PackAddFromCatalogRoundTripTest(unittest.TestCase):
             repo_dir = tmp_dir / "npr-fixture.git"
             _init_git_repo(repo_dir)
             _write(repo_dir / "packs" / "rtpack" / "pack.json", {
-                "dslVersion": "1.0.0", "pack": "rtpack", "version": "1.0.0",
+                "dslVersion": "3.0.0", "pack": "rtpack", "version": "1.0.0",
                 "description": "Round trip test pack (R8.4)", "category": "other", "author": "Test",
                 "concepts": [{"name": "Thing", "fields": [
                     {"name": "id", "type": "uuid", "id": True, "required": True},
@@ -432,7 +432,7 @@ class PackAddFromCatalogRoundTripTest(unittest.TestCase):
                     app_dir = tmp_dir / "app"
                     model_path = app_dir / "model.json"
                     _write(model_path, {
-                        "namespace": "npdev.throwaway.pack.fromcatalog", "dslVersion": "1.0.0",
+                        "namespace": "npdev.throwaway.pack.fromcatalog", "dslVersion": "3.0.0",
                         "version": "1.0",
                     })
 

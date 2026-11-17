@@ -37,7 +37,7 @@
     {
       "id": "pack-composition-four-place",
       "citedBy": "REG-108",
-      "description": "A top-level model array field contributed by a pack/fragment (not just the app's own root) must be threaded through ModelSourceResolver.MODEL_ARRAY_KEYS, BOTH copies of pack.schema.json, ModelResolver.resolve(), and the CompiledModelCanonicalJson/Reader pair -- CLAUDE.md's own documented four-place rule. PACK-11 (2026-08-17) extended this to aggregates/autoPanels/documents/guidePages (`selectors` has its own rule -- it is expanded, not serialized), found by machine-diffing the composer's key set against the real top-level schema keys: four were missing from BOTH the composer and pack.schema.json, and guidePages was the asymmetric case -- merged by the composer, rejected by the schema. R6.2 (2026-08-19) added `webhooks` (inbound webhook doors) the same way, PLUS its own rewriteKnownMemberReferenceFields entry for `eventName` (see the next note). R5.3 (2026-08-19) added `sequences` (document-numbering counters) the same way too, WITHOUT a rewriteKnownMemberReferenceFields entry -- unlike webhooks' eventName, a sequence's `name` is referenced as an opaque literal argument to nextNumber('name') embedded inside another field's defaultExpression TEXT, which that mechanism cannot reach (it rewrites discrete JSON fields, not substrings inside an expression string); see SequenceAst's javadoc and mergeQualifiedNonConceptArrays' own `sequences` exclusion for the reasoning. Note the FIFTH place this rule does not cover: a member kind that carries references of its own also needs entries in ModelSourceResolver.rewriteKnownMemberReferenceFields, or it composes and then fails validation because its own `concept`/`query` stayed unqualified. That one fails loudly, which is why it is not tracked here.",
+      "description": "A top-level model array field contributed by a pack/fragment (not just the app's own root) must be threaded through ModelSourceResolver.MODEL_ARRAY_KEYS, BOTH copies of pack.schema.json, ModelResolver.resolve(), and the CompiledModelCanonicalJson/Reader pair -- CLAUDE.md's own documented four-place rule. PACK-11 (2026-08-17) extended this to aggregates/autoPanels/documents/guidePages (`selectors` has its own rule -- it is expanded, not serialized), found by machine-diffing the composer's key set against the real top-level schema keys: four were missing from BOTH the composer and pack.schema.json, and guidePages was the asymmetric case -- merged by the composer, rejected by the schema. R6.2 (2026-08-19) added `webhooks` (inbound webhook doors) the same way; FORM P3-T10 (2026-11-16) removed that root key again -- a door is now `capabilities[].inbound` (rule capability-inbound-live-path). R5.3 (2026-08-19) added `sequences` (document-numbering counters) the same way too, WITHOUT a rewriteKnownMemberReferenceFields entry -- unlike a reference-carrying field such as an event name, a sequence's `name` is referenced as an opaque literal argument to nextNumber('name') embedded inside another field's defaultExpression TEXT, which that mechanism cannot reach (it rewrites discrete JSON fields, not substrings inside an expression string); see SequenceAst's javadoc and mergeQualifiedNonConceptArrays' own `sequences` exclusion for the reasoning. Note the FIFTH place this rule does not cover: a member kind that carries references of its own also needs entries in ModelSourceResolver.rewriteKnownMemberReferenceFields, or it composes and then fails validation because its own `concept`/`query` stayed unqualified. That one fails loudly, which is why it is not tracked here.",
       "kind": "field-in-all-files",
       "trackedFields": [
         "roles",
@@ -48,7 +48,6 @@
         "autoPanels",
         "documents",
         "guidePages",
-        "webhooks",
         "sequences"
       ],
       "caseSensitive": false,
@@ -428,20 +427,19 @@
       ]
     },
     {
-      "id": "webhook-ast-compiled-four-place",
-      "citedBy": "R6.2 (Roadmap Collection 2026-08-18)",
-      "description": "webhooks[] needs the same live path the ast-compiled-four-place rule requires for roles[] -- parser, compiler, ModelResolver, and the canonical writer+reader pair -- or a declared inbound webhook door survives parsing but silently never reaches WebhookInboundController, which reads CompiledModel.getWebhooks() at request time (REG-104's exact shape: parses/compiles clean, never reaches the runtime on the skipped side).",
+      "id": "capability-inbound-live-path",
+      "citedBy": "FORM P3-T10 (2026-11-16)",
+      "description": "capabilities[].inbound (an inbound webhook door) needs a live path through the parser (JsonModelParser reads it), the AST-level resolver (ModelResolver must carry it through sanitize/merge or a specialized capability silently loses its door), the pack-composition reference rewrite (ModelSourceResolver rewrites inbound.eventName for a pack-qualified event) and the compiler (ModelCompiler derives CompiledModel.getWebhooks() from it, which WebhookInboundController reads at request time) -- or a declared door parses clean and silently never reaches the runtime (REG-104's exact shape).",
       "kind": "field-in-all-files",
       "trackedFields": [
-        "webhooks"
+        "inbound"
       ],
       "caseSensitive": false,
       "files": [
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
-        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java",
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java",
-        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
-        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java"
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java"
       ]
     },
     {
@@ -717,7 +715,7 @@
         "NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/FlowAnalytics.java"
       ]
     },
-  {
+    {
       "id": "live-extra-fields-contract",
       "citedBy": "LIVE-1 (add a field to a running app, 2026-10-20)",
       "description": "A field a live /model-reload adds to an existing concept lives in the generated entity's extras bag. The two public method names (putExtraField / extraFields) are a duck-typed contract between entity.mustache (also compiled into sealed pack jars with no runtime-support, so it cannot implement an interface) and runtime-support's ExtraFieldAccess; renaming one side silently drops every live-added field on write.",
@@ -731,194 +729,234 @@
         "NPDevGenerator/generator/src/main/resources/npdev-templates/entity.mustache",
         "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/reflection/ExtraFieldAccess.java"
       ]
-  },
-  {
-    "id": "rest-collection-name-one-derivation",
-    "citedBy": "REG-270 (a concept ending in y was served at /ticket_categorys)",
-    "description": "A concept's REST collection name (the path segment after /api/ and /api/concepts/) has ONE derivation, SqlIdentifierSupport.restCollectionName, whose plural comes from EnglishPlurals. Every place that publishes or resolves a route must call it: the per-entity controller, the generic CRUD binding map, the UI manifest route, the live-concept CRUD matcher, the agent tool catalog and photo intake, the info page, the invocation catalog and the OpenAPI document (REG-312: it once advertised /api/concepts/<ModelName>, which 400s). A site that goes back to aliasPreservingTableName/toSnakePlural/getTableName for a ROUTE serves the old wrong plural again (the physical table name keeps its own, deliberately unchanged, derivation).",
-    "kind": "field-in-all-files",
-    "trackedFields": [
-      "restCollectionName"
-    ],
-    "caseSensitive": true,
-    "files": [
-      "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/SqlIdentifierSupport.java",
-      "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledMetadataCanonicalJson.java",
-      "NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/ControllerEmitter.java",
-      "NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java",
-      "NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/InfoPageEmitter.java",
-      "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/LiveConceptUiManifestSupport.java",
-      "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/LiveConceptCrudSupport.java",
-      "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/agent/AgentToolCatalog.java",
-      "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/agent/AgentPhotoIntake.java",
-      "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/api/OpenApiDocumentBuilder.java"
-    ]
-  },
-  {
-    "id": "ai-protocols-three-place",
-    "citedBy": "AIP-1 step 1.5 (one AI catalogue; the developer client and generated apps speak the same protocols)",
-    "description": "The AI catalogue's closed protocol list (NPDevCli/ai-providers.json `protocols`) is implemented twice: by the developer client (npdev_ai_client.py) and by the generated-app adapter (ExternalAiCatalogue.PROTOCOLS in external-ai-http). A protocol id present in some of the three and missing from another is a provider `npdev ai complete` can call and an app cannot, or the reverse. A brand-new protocol id this rule does not yet track is caught elsewhere: ExternalAiCatalogue refuses at load an app vendor whose protocol it does not implement, and ExternalAiCatalogueTest loads the bundled catalogue -- add the new id here in the same commit.",
-    "kind": "field-in-all-files",
-    "trackedFields": [
-      "openai-chat",
-      "anthropic-messages",
-      "gemini-native"
-    ],
-    "caseSensitive": true,
-    "files": [
-      "NPDevCli/ai-providers.json",
-      "NPDevCli/npdev_ai_client.py",
-      "NPDevKernel/adapters/external-ai-http/src/main/java/com/npdev/adapters/externalai/http/ExternalAiCatalogue.java"
-    ]
-  },
-  {
-    "id": "runtimehost-libs-default-three-place",
-    "citedBy": "REG-292 (follow-up to REG-128)",
-    "description": "The no-override default for the staged RuntimeHost jar directory is resolved three times: scripts/npdev-common.ps1's Get-NPDevRuntimeHostLibsDir (which sync-runtimehost-libs.ps1 writes to), NPDevRuntimeHost/build.gradle's resolveNpdevRuntimeLibsDir (bare-checkout build), and NPDevRuntimeHost/build.gradle.template's copy of it (materialized into every generated app). All three must answer <BuildRoot>/runtimehost-libs, where BuildRoot is NPDEV_BUILD_ROOT or the parent of the outermost directory holding NPDevContract + NPDevGenerator + NPDevKernel, plus '/Build'. REG-128 fixed only the template; build.gradle kept the pre-LC-C4 <repo>__OutsideRepo/runtimehost-libs default and an in-repo last-resort fallback for ~2.5 months, so a bare-checkout build read jars the sync never wrote. Neither Gradle copy may fall back to a path inside the repo: with nothing configured and no checkout found they throw a GradleException. Each carries the 'npdev-runtimehost-libs-default' token; FinalAppAssembler.resolveRuntimeHostLibsDir bakes the same answer into a generated app's gradle.properties.",
-    "kind": "field-in-all-files",
-    "trackedFields": [
-      "npdev-runtimehost-libs-default"
-    ],
-    "caseSensitive": true,
-    "files": [
-      "scripts/npdev-common.ps1",
-      "NPDevRuntimeHost/build.gradle",
-      "NPDevRuntimeHost/build.gradle.template"
-    ]
-  },
-  {
-    "id": "ui-selection-tools-all-seams",
-    "citedBy": "ui.selectionTools (list-grid open/copy/download of ticked rows)",
-    "description": "A concept-level ui flag must be threaded through every seam or it is silently dropped with no error anywhere: parse (JsonModelParser), AST + resolver merge/copy, compile, the canonical JSON writer AND reader, the generator manifest AND the live runtime-host manifest, the four schema copies, and the shipped bulk-actions.js that reads it. Forgetting one is exactly the REG-104/REG-108 shape.",
-    "kind": "field-in-all-files",
-    "trackedFields": [
-      "selectionTools"
-    ],
-    "caseSensitive": false,
-    "files": [
-      "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
-      "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/PresentationMetadataAst.java",
-      "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java",
-      "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java",
-      "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledPresentationMetadata.java",
-      "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
-      "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java",
-      "NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java",
-      "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/LiveConceptUiManifestSupport.java",
-      "NPDevContract/schemas/model.schema.json",
-      "NPDevContract/schemas/authoring/model.schema.json",
-      "NPDevContract/dsl/src/main/resources/schema/model.schema.json",
-      "NPDevContract/dsl/resources/Schemas/model.schema.json",
-      "NPDevGenerator/generator/src/main/resources/npdev-templates/static-assets/business-ui/views/bulk-actions.js"
-    ]
-  },
-  {
-    "id": "redaction-rules-one-definition",
-    "citedBy": "SUP-1/SUP-4",
-    "description": "What counts as a secret is ONE JSON file (NPDevCli/redaction-rules.json), read by the Python redactor (npdev_redact.py, which the Monitor's redact() uses) and embedded by the Manager's Rust redactor (redact.rs). A reader that names its own copy of the rules is a second definition, which is how a key leaks through one surface and not another.",
-    "kind": "field-in-all-files",
-    "trackedFields": [
-      "redaction-rules.json"
-    ],
-    "caseSensitive": true,
-    "files": [
-      "NPDevCli/npdev_redact.py",
-      "NPDevManager/src/redact.rs"
-    ]
-  },
-  {
-    "id": "redaction-vectors-one-file",
-    "citedBy": "SUP-1/SUP-4",
-    "description": "The Rust and Python redaction tests must both read NPDevCli/redaction-test-vectors.json itself, never a copy: two engines, one set of vectors, byte-identical output.",
-    "kind": "field-in-all-files",
-    "trackedFields": [
-      "redaction-test-vectors.json"
-    ],
-    "caseSensitive": true,
-    "files": [
-      "NPDevCli/tests/test_redaction_rules.py",
-      "NPDevManager/src/redact.rs",
-      "NPDevCli/npdev_redact.py"
-    ]
-  },
-  {
-    "id": "theme-engine-twin",
-    "citedBy": "THM-1",
-    "description": "The theme engine is ONE file that two hosts load from their own folder: the Manager (NPDevManager/ui/theme-engine.js) and, from THM-6, every generated app (emitted from a Mustache-free copy). A copy that drifts is a silent fork: a theme would validate in one host and be refused or rendered differently in the other.",
-    "kind": "byte-identical-files",
-    "files": [
-      "NPDevContract/themes/theme-engine.js",
-      "NPDevManager/ui/theme-engine.js"
-    ]
-  },
-  {
-    "id": "a11y-css-twin",
-    "citedBy": "THM-1",
-    "description": "The accessibility stylesheet is driven only by the data-np-* attributes the engine's applyA11y() sets, and is loaded last by the Manager (NPDevManager/ui/a11y.css) and, from ACC-5, by every generated app. The two copies must stay byte-identical so a preference means the same thing in both.",
-    "kind": "byte-identical-files",
-    "files": [
-      "NPDevContract/themes/a11y.css",
-      "NPDevManager/ui/a11y.css"
-    ]
-  },
-  {
-    "id": "theme-allowed-keys-four-place",
-    "citedBy": "THM-1",
-    "description": "A theme's top-level keys are declared in FOUR places that each refuse what the others do not know: NPDevContract/themes/theme.schema.json, the generator's ThemeCatalog.ALLOWED_KEYS (Java), the Manager importer's ALLOWED_KEYS (Rust, themes.rs) and NPDevCli/npdev_theme_validate.py's ALLOWED_KEYS (scripts/quality/check-themes.py imports it; the relay's theme check reads it too, REG-323 T4.3). Manager 0.13.3 (commit 73c5bc0c) added `descriptions` to three of them and not to the Java one: every generation of every app then failed with \"built-in theme npdev-dark: unknown key: descriptions\", and four GitHub checks (generator unit tests, segmented CI, AI knowledge gate, identity journeys) stayed red until it was caught. Quoted so the key must appear as a string literal, not merely as a substring of prose. Adding a theme key means adding it to this list AND to all four files.",
-    "kind": "field-in-all-files",
-    "trackedFields": [
-      "\"$schema\"",
-      "\"schema\"",
-      "\"id\"",
-      "\"name\"",
-      "\"names\"",
-      "\"version\"",
-      "\"author\"",
-      "\"description\"",
-      "\"descriptions\"",
-      "\"license\"",
-      "\"colorScheme\"",
-      "\"basedOn\"",
-      "\"colors\"",
-      "\"darkColors\"",
-      "\"typography\"",
-      "\"shape\""
-    ],
-    "caseSensitive": true,
-    "files": [
-      "NPDevContract/themes/theme.schema.json",
-      "NPDevGenerator/generator/src/main/java/com/npdev/generator/themes/ThemeCatalog.java",
-      "NPDevManager/src/themes.rs",
-      "NPDevCli/npdev_theme_validate.py"
-    ]
-  },
-  {
-    "id": "web-asset-reserved-names-two-place",
-    "citedBy": "REG-323",
-    "description": "The names a web/ file may NOT have are declared in TWO places: the generator's FinalAppAssembler (RESERVED_WEB_ASSET_FILES / RESERVED_WEB_ASSET_DIRECTORIES), which FAILS GENERATION of the whole app on a collision, and the browser-AI relay's relay-ingest-policy.json (`pages.reservedFiles` / `reservedDirectories`), which tells the AI so before a page is accepted. A name added to the Java list and not to the policy turns a chat answer into an app that no longer builds. Quoted so each name must appear as a string literal.",
-    "kind": "field-in-all-files",
-    "trackedFields": [
-      "\"shell.js\"",
-      "\"shell.css\"",
-      "\"npdev-review.js\"",
-      "\"npdev-xlsx.js\"",
-      "\"npdev-expr.js\"",
-      "\"info.html\"",
-      "\"info.json\"",
-      "\"model-surface.html\"",
-      "\"model-authoring.html\"",
-      "\"npdev-theme.js\"",
-      "\"npdev-a11y.css\"",
-      "\"npdev-display.js\"",
-      "\"npdev-business-ui\"",
-      "\"npdev-workbench\"",
-      "\"themes\""
-    ],
-    "caseSensitive": true,
-    "files": [
-      "NPDevGenerator/generator/src/main/java/com/npdev/generator/assembly/FinalAppAssembler.java",
-      "NPDevCli/relay-ingest-policy.json"
-    ]
-  }
-]
+    },
+    {
+      "id": "rest-collection-name-one-derivation",
+      "citedBy": "REG-270 (a concept ending in y was served at /ticket_categorys)",
+      "description": "A concept's REST collection name (the path segment after /api/ and /api/concepts/) has ONE derivation, SqlIdentifierSupport.restCollectionName, whose plural comes from EnglishPlurals. Every place that publishes or resolves a route must call it: the per-entity controller, the generic CRUD binding map, the UI manifest route, the live-concept CRUD matcher, the agent tool catalog and photo intake, the info page, the invocation catalog and the OpenAPI document (REG-312: it once advertised /api/concepts/<ModelName>, which 400s). A site that goes back to aliasPreservingTableName/toSnakePlural/getTableName for a ROUTE serves the old wrong plural again (the physical table name keeps its own, deliberately unchanged, derivation).",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "restCollectionName"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/SqlIdentifierSupport.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledMetadataCanonicalJson.java",
+        "NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/ControllerEmitter.java",
+        "NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java",
+        "NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/InfoPageEmitter.java",
+        "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/LiveConceptUiManifestSupport.java",
+        "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/LiveConceptCrudSupport.java",
+        "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/agent/AgentToolCatalog.java",
+        "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/agent/AgentPhotoIntake.java",
+        "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/api/OpenApiDocumentBuilder.java"
+      ]
+    },
+    {
+      "id": "ai-protocols-three-place",
+      "citedBy": "AIP-1 step 1.5 (one AI catalogue; the developer client and generated apps speak the same protocols)",
+      "description": "The AI catalogue's closed protocol list (NPDevCli/ai-providers.json `protocols`) is implemented twice: by the developer client (npdev_ai_client.py) and by the generated-app adapter (ExternalAiCatalogue.PROTOCOLS in external-ai-http). A protocol id present in some of the three and missing from another is a provider `npdev ai complete` can call and an app cannot, or the reverse. A brand-new protocol id this rule does not yet track is caught elsewhere: ExternalAiCatalogue refuses at load an app vendor whose protocol it does not implement, and ExternalAiCatalogueTest loads the bundled catalogue -- add the new id here in the same commit.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "openai-chat",
+        "anthropic-messages",
+        "gemini-native"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevCli/ai-providers.json",
+        "NPDevCli/npdev_ai_client.py",
+        "NPDevKernel/adapters/external-ai-http/src/main/java/com/npdev/adapters/externalai/http/ExternalAiCatalogue.java"
+      ]
+    },
+    {
+      "id": "runtimehost-libs-default-three-place",
+      "citedBy": "REG-292 (follow-up to REG-128)",
+      "description": "The no-override default for the staged RuntimeHost jar directory is resolved three times: scripts/npdev-common.ps1's Get-NPDevRuntimeHostLibsDir (which sync-runtimehost-libs.ps1 writes to), NPDevRuntimeHost/build.gradle's resolveNpdevRuntimeLibsDir (bare-checkout build), and NPDevRuntimeHost/build.gradle.template's copy of it (materialized into every generated app). All three must answer <BuildRoot>/runtimehost-libs, where BuildRoot is NPDEV_BUILD_ROOT or the parent of the outermost directory holding NPDevContract + NPDevGenerator + NPDevKernel, plus '/Build'. REG-128 fixed only the template; build.gradle kept the pre-LC-C4 <repo>__OutsideRepo/runtimehost-libs default and an in-repo last-resort fallback for ~2.5 months, so a bare-checkout build read jars the sync never wrote. Neither Gradle copy may fall back to a path inside the repo: with nothing configured and no checkout found they throw a GradleException. Each carries the 'npdev-runtimehost-libs-default' token; FinalAppAssembler.resolveRuntimeHostLibsDir bakes the same answer into a generated app's gradle.properties.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "npdev-runtimehost-libs-default"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "scripts/npdev-common.ps1",
+        "NPDevRuntimeHost/build.gradle",
+        "NPDevRuntimeHost/build.gradle.template"
+      ]
+    },
+    {
+      "id": "ui-selection-tools-all-seams",
+      "citedBy": "ui.selectionTools (list-grid open/copy/download of ticked rows)",
+      "description": "A concept-level ui flag must be threaded through every seam or it is silently dropped with no error anywhere: parse (JsonModelParser), AST + resolver merge/copy, compile, the canonical JSON writer AND reader, the generator manifest AND the live runtime-host manifest, the four schema copies, and the shipped bulk-actions.js that reads it. Forgetting one is exactly the REG-104/REG-108 shape.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "selectionTools"
+      ],
+      "caseSensitive": false,
+      "files": [
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/PresentationMetadataAst.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledPresentationMetadata.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java",
+        "NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java",
+        "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/LiveConceptUiManifestSupport.java",
+        "NPDevContract/schemas/model.schema.json",
+        "NPDevContract/schemas/authoring/model.schema.json",
+        "NPDevContract/dsl/src/main/resources/schema/model.schema.json",
+        "NPDevContract/dsl/resources/Schemas/model.schema.json",
+        "NPDevGenerator/generator/src/main/resources/npdev-templates/static-assets/business-ui/views/bulk-actions.js"
+      ]
+    },
+    {
+      "id": "redaction-rules-one-definition",
+      "citedBy": "SUP-1/SUP-4",
+      "description": "What counts as a secret is ONE JSON file (NPDevCli/redaction-rules.json), read by the Python redactor (npdev_redact.py, which the Monitor's redact() uses) and embedded by the Manager's Rust redactor (redact.rs). A reader that names its own copy of the rules is a second definition, which is how a key leaks through one surface and not another.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "redaction-rules.json"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevCli/npdev_redact.py",
+        "NPDevManager/src/redact.rs"
+      ]
+    },
+    {
+      "id": "redaction-vectors-one-file",
+      "citedBy": "SUP-1/SUP-4",
+      "description": "The Rust and Python redaction tests must both read NPDevCli/redaction-test-vectors.json itself, never a copy: two engines, one set of vectors, byte-identical output.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "redaction-test-vectors.json"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevCli/tests/test_redaction_rules.py",
+        "NPDevManager/src/redact.rs",
+        "NPDevCli/npdev_redact.py"
+      ]
+    },
+    {
+      "id": "theme-engine-twin",
+      "citedBy": "THM-1",
+      "description": "The theme engine is ONE file that two hosts load from their own folder: the Manager (NPDevManager/ui/theme-engine.js) and, from THM-6, every generated app (emitted from a Mustache-free copy). A copy that drifts is a silent fork: a theme would validate in one host and be refused or rendered differently in the other.",
+      "kind": "byte-identical-files",
+      "files": [
+        "NPDevContract/themes/theme-engine.js",
+        "NPDevManager/ui/theme-engine.js"
+      ]
+    },
+    {
+      "id": "a11y-css-twin",
+      "citedBy": "THM-1",
+      "description": "The accessibility stylesheet is driven only by the data-np-* attributes the engine's applyA11y() sets, and is loaded last by the Manager (NPDevManager/ui/a11y.css) and, from ACC-5, by every generated app. The two copies must stay byte-identical so a preference means the same thing in both.",
+      "kind": "byte-identical-files",
+      "files": [
+        "NPDevContract/themes/a11y.css",
+        "NPDevManager/ui/a11y.css"
+      ]
+    },
+    {
+      "id": "theme-allowed-keys-four-place",
+      "citedBy": "THM-1",
+      "description": "A theme's top-level keys are declared in FOUR places that each refuse what the others do not know: NPDevContract/themes/theme.schema.json, the generator's ThemeCatalog.ALLOWED_KEYS (Java), the Manager importer's ALLOWED_KEYS (Rust, themes.rs) and NPDevCli/npdev_theme_validate.py's ALLOWED_KEYS (scripts/quality/check-themes.py imports it; the relay's theme check reads it too, REG-323 T4.3). Manager 0.13.3 (commit 73c5bc0c) added `descriptions` to three of them and not to the Java one: every generation of every app then failed with \"built-in theme npdev-dark: unknown key: descriptions\", and four GitHub checks (generator unit tests, segmented CI, AI knowledge gate, identity journeys) stayed red until it was caught. Quoted so the key must appear as a string literal, not merely as a substring of prose. Adding a theme key means adding it to this list AND to all four files.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "\"$schema\"",
+        "\"schema\"",
+        "\"id\"",
+        "\"name\"",
+        "\"names\"",
+        "\"version\"",
+        "\"author\"",
+        "\"description\"",
+        "\"descriptions\"",
+        "\"license\"",
+        "\"colorScheme\"",
+        "\"basedOn\"",
+        "\"colors\"",
+        "\"darkColors\"",
+        "\"typography\"",
+        "\"shape\""
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevContract/themes/theme.schema.json",
+        "NPDevGenerator/generator/src/main/java/com/npdev/generator/themes/ThemeCatalog.java",
+        "NPDevManager/src/themes.rs",
+        "NPDevCli/npdev_theme_validate.py"
+      ]
+    },
+    {
+      "id": "web-asset-reserved-names-two-place",
+      "citedBy": "REG-323",
+      "description": "The names a web/ file may NOT have are declared in TWO places: the generator's FinalAppAssembler (RESERVED_WEB_ASSET_FILES / RESERVED_WEB_ASSET_DIRECTORIES), which FAILS GENERATION of the whole app on a collision, and the browser-AI relay's relay-ingest-policy.json (`pages.reservedFiles` / `reservedDirectories`), which tells the AI so before a page is accepted. A name added to the Java list and not to the policy turns a chat answer into an app that no longer builds. Quoted so each name must appear as a string literal.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "\"shell.js\"",
+        "\"shell.css\"",
+        "\"npdev-review.js\"",
+        "\"npdev-xlsx.js\"",
+        "\"npdev-expr.js\"",
+        "\"info.html\"",
+        "\"info.json\"",
+        "\"model-surface.html\"",
+        "\"model-authoring.html\"",
+        "\"npdev-theme.js\"",
+        "\"npdev-a11y.css\"",
+        "\"npdev-display.js\"",
+        "\"npdev-business-ui\"",
+        "\"npdev-workbench\"",
+        "\"themes\""
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevGenerator/generator/src/main/java/com/npdev/generator/assembly/FinalAppAssembler.java",
+        "NPDevCli/relay-ingest-policy.json"
+      ]
+    },
+    {
+      "id": "flow-trigger-expose-runas-five-place",
+      "citedBy": "FORM P3-T5a",
+      "description": "A new flows[] field (trigger, expose, runAs) must be threaded through the parser, the compiler, ModelResolver (sanitizeFlow/mergeFlow) and the CompiledModelCanonicalJson writer/reader pair, or a model that declares it compiles and then silently loses it before the generator or kernel ever sees it (REG-104 and REG-108 are the same shape). The four schema mirrors are covered by check-schema-mirror-consistency.py.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "trigger",
+        "expose",
+        "runAs"
+      ],
+      "caseSensitive": false,
+      "files": [
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java"
+      ]
+    },
+    {
+      "id": "flow-step-vocabulary-keys-five-place",
+      "citedBy": "FORM P3-T5c",
+      "description": "A new flowStep key (select/set -> fieldValues, createIfMissing, errorTarget, ifExists, dedupeKey) must be threaded through the parser, the compiler, ModelResolver (cloneStep) and the CompiledModelCanonicalJson writer/reader pair, or a step that declares it compiles and then silently loses it before the kernel sees it (REG-104/REG-108 shape). StepAst and CompiledFlowStep carry them; the four schema mirrors are covered by check-schema-mirror-consistency.py.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "fieldValues",
+        "createIfMissing",
+        "errorTarget",
+        "ifExists",
+        "dedupeKey"
+      ],
+      "caseSensitive": false,
+      "files": [
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java"
+      ]
+    }
+  ]
 }

@@ -1,5 +1,7 @@
 package com.npdev.kernel.storage.sql;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -896,6 +898,63 @@ public interface SqlDialect {
      */
     default String likeEscapeClause() {
         return "ESCAPE '\\'";
+    }
+
+    /**
+     * FORM P3-T4: SQL for the great-circle distance in kilometres, rounded to metres, between
+     * ({@code lat1}, {@code lng1}) and ({@code lat2}, {@code lng2}) -- the same haversine on a 6371 km mean
+     * Earth radius that {@code StdlibFunctions.distanceKmBetween} computes in the expression language, so the
+     * SQL a store renders and the in-memory evaluation answer alike. Each argument is an already-safe SQL
+     * fragment (a column reference, or a single {@code ?} bind marker -- never caller text).
+     *
+     * <p>A coordinate appears several times in the expression, so a {@code ?} argument is bound once per
+     * occurrence: {@link GreatCircleSql#operandOrder()} lists, in textual order, the index (0 = lat1, 1 = lng1,
+     * 2 = lat2, 3 = lng2) each bind marker stands for. A NULL coordinate makes the whole expression NULL, and
+     * a comparison with NULL is false -- the in-memory side answers false for a missing coordinate too.</p>
+     */
+    default GreatCircleSql greatCircleKm(String lat1, String lng1, String lat2, String lng2) {
+        String type = doublePrecisionType();
+        String[] coordinate = {lat1, lng1, lat2, lng2};
+        // textual order of the coordinates inside the haversine term below
+        int[] order = {2, 0, 0, 2, 3, 1};
+        String haversine = "POWER(SIN(RADIANS(CAST(" + coordinate[order[0]] + " AS " + type + ") - CAST(" + coordinate[order[1]]
+                + " AS " + type + ")) / 2), 2) + COS(RADIANS(CAST(" + coordinate[order[2]] + " AS " + type
+                + "))) * COS(RADIANS(CAST(" + coordinate[order[3]] + " AS " + type + "))) * POWER(SIN(RADIANS(CAST("
+                + coordinate[order[4]] + " AS " + type + ") - CAST(" + coordinate[order[5]] + " AS " + type + ")) / 2), 2)";
+        List<Integer> operands = new ArrayList<>();
+        int uses = leastOneUses();
+        for (int use = 0; use < uses; use++) {
+            for (int index : order) {
+                operands.add(index);
+            }
+        }
+        // clampToOne repeats its argument leastOneUses() times, so the textual coordinate order repeats too
+        String sql = roundToMetres("2 * 6371 * ASIN(" + clampToOne("SQRT(" + haversine + ")") + ")");
+        return new GreatCircleSql(sql, List.copyOf(operands));
+    }
+
+    /** A great-circle distance expression and the coordinate each of its {@code ?} markers stands for, in textual order. */
+    record GreatCircleSql(String sql, List<Integer> operandOrder) {
+    }
+
+    /** The engine's double-precision floating type, as a CAST target. */
+    default String doublePrecisionType() {
+        return "DOUBLE PRECISION";
+    }
+
+    /** {@code MIN(1, expression)}: a haversine term can exceed 1 by float error for antipodal points, and ASIN of that is an error. */
+    default String clampToOne(String expression) {
+        return "LEAST(1, " + expression + ")";
+    }
+
+    /** How many times {@link #clampToOne} repeats its argument in the SQL it returns. */
+    default int leastOneUses() {
+        return 1;
+    }
+
+    /** {@code ROUND(kilometres, 3)}: metres, the precision the in-memory side rounds to. */
+    default String roundToMetres(String kilometres) {
+        return "ROUND(" + kilometres + ", 3)";
     }
 
     /**

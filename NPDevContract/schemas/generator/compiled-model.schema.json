@@ -32,7 +32,7 @@
                                     },
                        "flows":  {
                                      "type":  "array",
-                                     "description":  "Resolved flows and orchestration metadata.",
+                                     "description":  "Resolved flows metadata.",
                                      "items":  {
                                                    "type":  "object",
                                                    "additionalProperties":  true
@@ -46,14 +46,6 @@
                                                     "additionalProperties":  true
                                                 }
                                   },
-                       "ruleProfiles":  {
-                                            "type":  "array",
-                                            "description":  "Resolved governed rule profile definitions.",
-                                            "items":  {
-                                                          "type":  "object",
-                                                          "additionalProperties":  true
-                                                      }
-                                        },
                        "procedures":  {
                                          "type":  "array",
                                          "description":  "Resolved headless procedure definitions.",

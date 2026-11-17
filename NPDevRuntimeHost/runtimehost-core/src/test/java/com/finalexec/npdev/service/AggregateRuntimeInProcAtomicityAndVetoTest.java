@@ -1,5 +1,6 @@
 package com.finalexec.npdev.service;
 
+import com.finalexec.acceptance.InProcessAcceptanceRunner;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.compiled.CompiledModel;
@@ -41,41 +42,146 @@ class AggregateRuntimeInProcAtomicityAndVetoTest {
 
     private static final String MODEL = """
         {
-          "dslVersion": "1.0.0", "namespace": "t", "version": "1.0",
+          "dslVersion": "3.0.0",
+          "namespace": "t",
+          "version": "1.0",
           "concepts": [
-            { "name": "Ord", "fields": [
-                { "name": "id", "type": "uuid", "id": true, "required": true },
-                { "name": "status", "type": "string" },
-                { "name": "totalQty", "type": "int" },
-                { "name": "ledgerRef", "type": "uuid" } ],
+            {
+              "name": "Ord",
+              "fields": [
+                {
+                  "name": "id",
+                  "type": "uuid",
+                  "id": true,
+                  "required": true
+                },
+                {
+                  "name": "status",
+                  "type": "string"
+                },
+                {
+                  "name": "totalQty",
+                  "type": "int"
+                },
+                {
+                  "name": "ledgerRef",
+                  "type": "uuid"
+                }
+              ],
               "lifecycle": {
                 "statusField": "status",
                 "states": [
-                  { "value": "Draft", "label": "Draft", "initial": true },
-                  { "value": "Committed", "label": "Committed", "terminal": true } ],
-                "transitions": [ { "from": "Draft", "to": "Committed" } ] } },
-            { "name": "OrdLine", "fields": [
-                { "name": "id", "type": "uuid", "id": true, "required": true },
-                { "name": "ordId", "type": "uuid" },
-                { "name": "sku", "type": "string" },
-                { "name": "qty", "type": "int" } ],
-              "indexes": [ { "name": "ux_ord_line_sku", "fields": ["ordId", "sku"], "unique": true } ] },
-            { "name": "Ledger", "fields": [
-                { "name": "id", "type": "uuid", "id": true, "required": true },
-                { "name": "synced", "type": "string" } ] }
+                  {
+                    "value": "Draft",
+                    "label": "Draft",
+                    "initial": true
+                  },
+                  {
+                    "value": "Committed",
+                    "label": "Committed",
+                    "terminal": true
+                  }
+                ],
+                "transitions": [
+                  {
+                    "from": "Draft",
+                    "to": "Committed"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "OrdLine",
+              "fields": [
+                {
+                  "name": "id",
+                  "type": "uuid",
+                  "id": true,
+                  "required": true
+                },
+                {
+                  "name": "ordId",
+                  "type": "uuid"
+                },
+                {
+                  "name": "sku",
+                  "type": "string"
+                },
+                {
+                  "name": "qty",
+                  "type": "int"
+                }
+              ],
+              "indexes": [
+                {
+                  "name": "ux_ord_line_sku",
+                  "fields": [
+                    "ordId",
+                    "sku"
+                  ],
+                  "unique": true
+                }
+              ]
+            },
+            {
+              "name": "Ledger",
+              "fields": [
+                {
+                  "name": "id",
+                  "type": "uuid",
+                  "id": true,
+                  "required": true
+                },
+                {
+                  "name": "synced",
+                  "type": "string"
+                }
+              ]
+            }
           ],
           "aggregates": [
-            { "name": "OrdAggregate", "root": "Ord", "onCommit": "SyncLedgerProcedure",
-              "collections": [ { "name": "lines", "concept": "OrdLine", "childField": "ordId", "ownership": "owned" } ],
+            {
+              "name": "OrdAggregate",
+              "root": "Ord",
+              "onCommit": "SyncLedgerProcedure",
+              "collections": [
+                {
+                  "name": "lines",
+                  "concept": "OrdLine",
+                  "childField": "ordId",
+                  "ownership": "owned"
+                }
+              ],
               "invariants": [
-                { "name": "lines-within-total", "expression": "lines.sum(qty) <= totalQty" } ] }
+                {
+                  "name": "lines-within-total",
+                  "expression": "lines.sum(qty) <= totalQty"
+                }
+              ]
+            }
           ],
-          "procedures": [
-            { "name": "SyncLedgerProcedure", "steps": [
-              { "name": "sync-ledger", "type": "patchConcept", "concept": "Ledger", "id": "$input.ledgerRef",
-                "set": { "synced": "true" }, "target": "patched" },
-              { "name": "return-patched", "type": "return", "value": "$patched" }
-            ] }
+          "flows": [
+            {
+              "name": "SyncLedgerProcedure",
+              "expose": "ui",
+              "steps": [
+                {
+                  "name": "sync-ledger",
+                  "type": "updateConcept",
+                  "scope": "Ledger",
+                  "id": "$input.ledgerRef",
+                  "set": {
+                    "synced": "true"
+                  },
+                  "output": "patched"
+                },
+                {
+                  "name": "return-patched",
+                  "type": "return",
+                  "value": "$patched"
+                }
+              ]
+            }
           ]
         }
         """;
@@ -90,6 +196,7 @@ class AggregateRuntimeInProcAtomicityAndVetoTest {
         CompiledModel model = new ModelCompiler().compile(ast);
         gateway = DefaultConceptGateway.governedBy(new InMemoryConceptStore(model), model);
         ProcedureRunner procedureRunner = new ProcedureRunner(model, gateway, null, null);
+        InProcessAcceptanceRunner.attachKernel(procedureRunner, model, null, gateway, null);
         runtime = new AggregateRuntime(model, gateway, procedureRunner, null, new CelInvariantEngine());
     }
 

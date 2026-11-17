@@ -35,7 +35,7 @@ class ModelReloadPreflightTest {
             }
             concepts.append(concept(name));
         }
-        return "{\"dslVersion\":\"1.0.0\",\"namespace\":\"reload.test\",\"version\":\"1.0\","
+        return "{\"dslVersion\":\"3.0.0\",\"namespace\":\"reload.test\",\"version\":\"1.0\","
                 + "\"concepts\":[" + concepts + "]}";
     }
 
@@ -61,7 +61,7 @@ class ModelReloadPreflightTest {
     @Test
     void aSemanticallyInvalidModelIsRefused() throws Exception {
         CompiledModel live = compiled(model("Alpha"));
-        String invalid = "{\"dslVersion\":\"1.0.0\",\"namespace\":\"reload.test\",\"version\":\"1.0\","
+        String invalid = "{\"dslVersion\":\"3.0.0\",\"namespace\":\"reload.test\",\"version\":\"1.0\","
                 + "\"concepts\":[" + concept("Alpha") + "],"
                 + "\"flows\":[{\"name\":\"Broken\",\"concept\":\"Nope\",\"steps\":["
                 + "{\"name\":\"s\",\"type\":\"return\",\"value\":\"input\"}]}]}";
@@ -100,7 +100,7 @@ class ModelReloadPreflightTest {
     // ---- LIVE-1: field-level diff ---------------------------------------------------------------
 
     private static String modelWithFields(String... extraFieldJson) {
-        return "{\"dslVersion\":\"1.0.0\",\"namespace\":\"reload.test\",\"version\":\"1.0\",\"concepts\":["
+        return "{\"dslVersion\":\"3.0.0\",\"namespace\":\"reload.test\",\"version\":\"1.0\",\"concepts\":["
                 + "{\"name\":\"Alpha\",\"fields\":[{\"name\":\"id\",\"type\":\"uuid\",\"id\":true,\"required\":true}"
                 + (extraFieldJson.length == 0 ? "" : "," + String.join(",", extraFieldJson)) + "]}]}";
     }

@@ -32,7 +32,7 @@ class SpecializationParentVersionDriftTest {
 
     private static final String INVOICE_PACK_V2 = """
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "identity",
               "version": "2.0.0",
               "concepts": [
@@ -47,7 +47,7 @@ class SpecializationParentVersionDriftTest {
 
     private static final String INVOICE_PACK_V2_SAME_SHAPE_NO_NEW_FIELD = """
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "identity",
               "version": "2.0.0",
               "concepts": [
@@ -62,7 +62,7 @@ class SpecializationParentVersionDriftTest {
     private static final String MODEL_PINNED = """
             {
               "namespace": "drift.test",
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "version": "1.0",
               "packs": [ { "$ref": "packs/identity/pack.json" } ],
               "concepts": [
@@ -76,7 +76,7 @@ class SpecializationParentVersionDriftTest {
     private static final String MODEL_FLOATING = """
             {
               "namespace": "drift.test",
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "version": "1.0",
               "packs": [ { "$ref": "packs/identity/pack.json" } ],
               "concepts": [
@@ -144,7 +144,7 @@ class SpecializationParentVersionDriftTest {
         Path model = write("model.json", """
                 {
                   "namespace": "drift.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "$ref": "packs/identity/pack.json" } ],
                   "concepts": [

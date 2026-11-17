@@ -26,7 +26,7 @@ class AggregateWorkbenchExpansionTest {
     void selectionLayoutReachesTheGeneratedSelectionPanel() throws Exception {
         String template = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms", "version": "1.0",
               "concepts": [ { "name": "Pedido", "fields": [
                 { "name": "id", "type": "uuid", "id": true, "required": true },
                 { "name": "cliente", "type": "string" } ] } ],
@@ -52,7 +52,7 @@ class AggregateWorkbenchExpansionTest {
     void aggregateAutoPanelExpandsToWorkbenchDescriptor() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms", "version": "1.0",
               "concepts": [
                 { "name": "Expedicao",
                   "fields": [
@@ -195,7 +195,7 @@ class AggregateWorkbenchExpansionTest {
     void workbenchActionApplyToSurvivesWhenValidAndIsDroppedWhenMalformed() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.applyto", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.applyto", "version": "1.0",
               "concepts": [
                 { "name": "Movimento", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] },
@@ -254,7 +254,7 @@ class AggregateWorkbenchExpansionTest {
     void typedHooksSurfaceOntoTheWorkbenchDescriptor() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.hooks2", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.hooks2", "version": "1.0",
               "concepts": [
                 { "name": "Movimento", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] },
@@ -304,7 +304,7 @@ class AggregateWorkbenchExpansionTest {
     void typedDerivedFieldsCarryTierAndServerProcedure() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.derived2", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.derived2", "version": "1.0",
               "concepts": [
                 { "name": "Movimento", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] },
@@ -362,7 +362,7 @@ class AggregateWorkbenchExpansionTest {
     void perActionAfterActionSurvivesAlongsideApplyTo() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.afteraction", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.afteraction", "version": "1.0",
               "concepts": [
                 { "name": "Movimento", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] },
@@ -416,7 +416,7 @@ class AggregateWorkbenchExpansionTest {
     void workbenchVisibleWhenSurvivesOnSectionBandAndActionAndBlankIsDropped() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.visiblewhen", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.visiblewhen", "version": "1.0",
               "concepts": [
                 { "name": "Expedicao", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -490,7 +490,7 @@ class AggregateWorkbenchExpansionTest {
     void regionsCarryDerivedAddressesAndDeclaredComponentMounts() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.regions", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.regions", "version": "1.0",
               "concepts": [
                 { "name": "Movimento", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] },
@@ -550,7 +550,7 @@ class AggregateWorkbenchExpansionTest {
     void typedActionsVisibleWhenAndBandPickersSurviveOntoTheWorkbenchDescriptor() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.typed7", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.typed7", "version": "1.0",
               "concepts": [
                 { "name": "Expedicao", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -632,7 +632,7 @@ class AggregateWorkbenchExpansionTest {
     void noPanelBandPickerFilterAndComposesClausesAndResolvesARootReference() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.typed7b", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.typed7b", "version": "1.0",
               "concepts": [
                 { "name": "Expedicao", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -693,7 +693,7 @@ class AggregateWorkbenchExpansionTest {
     void thirdLevelCollectionsBecomeSubBandsOfTheBand() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "f6.depth3", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "f6.depth3", "version": "1.0",
               "concepts": [
                 { "name": "Project", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
                 { "name": "Phase", "fields": [

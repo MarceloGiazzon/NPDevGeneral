@@ -2,7 +2,6 @@ package com.npdev.dsl.v1.validation;
 
 import com.npdev.dsl.v1.ast.CapabilityAst;
 import com.npdev.dsl.v1.ast.ConceptAccessAst;
-import com.npdev.dsl.v1.ast.CapabilityBindingAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
 import com.npdev.dsl.v1.ast.DomainTypeAst;
 import com.npdev.dsl.v1.ast.CapabilityPolicyAst;
@@ -17,9 +16,6 @@ import com.npdev.dsl.v1.ast.FlowScheduleAst;
 import com.npdev.dsl.v1.ast.InvariantAst;
 import com.npdev.dsl.v1.ast.LifecycleAst;
 import com.npdev.dsl.v1.ast.ModelAst;
-import com.npdev.dsl.v1.ast.OrchestrationActionAst;
-import com.npdev.dsl.v1.ast.OrchestrationAst;
-import com.npdev.dsl.v1.ast.OrchestrationTriggerAst;
 import com.npdev.dsl.v1.ast.AggregateAst;
 import com.npdev.dsl.v1.ast.AggregateCollectionAst;
 import com.npdev.dsl.v1.ast.AutoPanelAst;
@@ -41,7 +37,6 @@ import com.npdev.dsl.v1.ast.ProcedureParameterAst;
 import com.npdev.dsl.v1.ast.ProcedureStepAst;
 import com.npdev.dsl.v1.ast.QueryAst;
 import com.npdev.dsl.v1.ast.ReferenceSemanticsAst;
-import com.npdev.dsl.v1.ast.RuleProfileAst;
 import com.npdev.dsl.v1.ast.TruthLevel;
 import com.npdev.dsl.v1.ast.SchemaAst;
 import com.npdev.dsl.v1.ast.StateMachineStateAst;
@@ -349,7 +344,7 @@ final class FieldValueValidation {
         if (unavailable != null && !(!isDefault && "nextNumber".equals(unavailable))) {
             errors.add("Entity " + entityName + " field " + fieldName + ": " + kind + " calls " + unavailable
                     + "(), which the runtime does not provide here (available: " + ValueBehaviorFunctions.NAMES_SORTED
-                    + (isDefault ? ", or the whole expression now(), uuid() or nextNumber('name')" : "")
+                    + (isDefault ? ", or the whole expression nextNumber('name')" : "")
                     + ") -- suggestedFix: use one of those"
                     + (isDefault ? "" : "; now()/uuid() belong in a defaultExpression"));
         }

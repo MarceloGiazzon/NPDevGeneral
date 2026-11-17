@@ -33,7 +33,7 @@ final class GeneratedActionDescriptorContractTest {
         CompiledModel compiled = compile("""
                 {
                   "namespace": "contract.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0.0",
                   "concepts": [{ "name": "Account", "fields": [{ "name": "id", "type": "string", "id": true }] }],
                   "procedures": [
@@ -83,7 +83,7 @@ final class GeneratedActionDescriptorContractTest {
         CompiledModel compiled = compile("""
                 {
                   "namespace": "contract.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0.0",
                   "concepts": [{ "name": "Account", "fields": [{ "name": "id", "type": "string", "id": true }] }],
                   "procedures": [
@@ -112,7 +112,7 @@ final class GeneratedActionDescriptorContractTest {
         CompiledModel compiled = compile("""
                 {
                   "namespace": "contract.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0.0",
                   "concepts": [{ "name": "Account", "fields": [{ "name": "id", "type": "string", "id": true }] }],
                   "procedures": [
@@ -140,7 +140,7 @@ final class GeneratedActionDescriptorContractTest {
         assertThrows(Exception.class, () -> compile("""
                 {
                   "namespace": "contract.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0.0",
                   "concepts": [{ "name": "Account", "fields": [{ "name": "id", "type": "string", "id": true }] }],
                   "procedures": [
@@ -159,7 +159,7 @@ final class GeneratedActionDescriptorContractTest {
         CompiledModel compiled = compile("""
                 {
                   "namespace": "contract.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0.0",
                   "concepts": [{ "name": "Account", "fields": [{ "name": "id", "type": "string", "id": true }] }],
                   "procedures": [

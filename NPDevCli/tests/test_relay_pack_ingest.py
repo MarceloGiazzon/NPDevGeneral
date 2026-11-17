@@ -106,7 +106,7 @@ class IngestPackTests(EngineCase):
         self.assertEqual(self.ingest(GOOD)["outcome"], "PARSED")
 
     def test_the_ais_example_model_is_validated_too(self):
-        example = {"namespace": "x", "dslVersion": "1.0.0", "version": "1.0",
+        example = {"namespace": "x", "dslVersion": "3.0.0", "version": "1.0",
                    "packs": [{"$ref": "packs/ratings/pack.json", "as": "r"}]}
         self.assertEqual(self.ingest(GOOD, example=example)["outcome"], "READY")
         self.assertEqual(self.validator.call_count, 2)

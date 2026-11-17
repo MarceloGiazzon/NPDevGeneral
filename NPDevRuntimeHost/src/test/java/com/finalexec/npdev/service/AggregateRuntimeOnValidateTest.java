@@ -1,5 +1,6 @@
 package com.finalexec.npdev.service;
 
+import com.finalexec.acceptance.InProcessAcceptanceRunner;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.compiled.CompiledModel;
@@ -38,25 +39,75 @@ class AggregateRuntimeOnValidateTest {
 
     private static final String MODEL = """
         {
-          "dslVersion": "1.0.0", "namespace": "wms", "version": "1.0",
+          "dslVersion": "3.0.0",
+          "namespace": "wms",
+          "version": "1.0",
           "concepts": [
-            { "name": "Movimento", "fields": [
-              { "name": "id", "type": "uuid", "id": true, "required": true },
-              { "name": "situacao", "type": "string" },
-              { "name": "guardRef", "type": "uuid" } ] },
-            { "name": "GuardCheck", "fields": [
-              { "name": "id", "type": "uuid", "id": true, "required": true },
-              { "name": "checked", "type": "string" } ] }
+            {
+              "name": "Movimento",
+              "fields": [
+                {
+                  "name": "id",
+                  "type": "uuid",
+                  "id": true,
+                  "required": true
+                },
+                {
+                  "name": "situacao",
+                  "type": "string"
+                },
+                {
+                  "name": "guardRef",
+                  "type": "uuid"
+                }
+              ]
+            },
+            {
+              "name": "GuardCheck",
+              "fields": [
+                {
+                  "name": "id",
+                  "type": "uuid",
+                  "id": true,
+                  "required": true
+                },
+                {
+                  "name": "checked",
+                  "type": "string"
+                }
+              ]
+            }
           ],
           "aggregates": [
-            { "name": "Movimento", "root": "Movimento", "onValidate": "ValidateMovimentoProcedure", "collections": [] }
+            {
+              "name": "Movimento",
+              "root": "Movimento",
+              "onValidate": "ValidateMovimentoProcedure",
+              "collections": []
+            }
           ],
-          "procedures": [
-            { "name": "ValidateMovimentoProcedure", "steps": [
-              { "name": "check-guard", "type": "patchConcept", "concept": "GuardCheck", "id": "$guardRef",
-                "set": { "checked": "true" }, "target": "checked" },
-              { "name": "return-checked", "type": "return", "value": "$checked" }
-            ] }
+          "flows": [
+            {
+              "name": "ValidateMovimentoProcedure",
+              "expose": "ui",
+              "steps": [
+                {
+                  "name": "check-guard",
+                  "type": "updateConcept",
+                  "scope": "GuardCheck",
+                  "id": "$input.guardRef",
+                  "set": {
+                    "checked": "true"
+                  },
+                  "output": "checked"
+                },
+                {
+                  "name": "return-checked",
+                  "type": "return",
+                  "value": "$checked"
+                }
+              ]
+            }
           ]
         }
         """;
@@ -78,6 +129,7 @@ class AggregateRuntimeOnValidateTest {
         gateway.save(new ConceptWriteRequest("GuardCheck", "G1", "trial",
                 Map.of("id", "G1", "checked", "false")), ctx);
         ProcedureRunner procedureRunner = new ProcedureRunner(model, gateway, null, null);
+        InProcessAcceptanceRunner.attachKernel(procedureRunner, model, null, gateway, null);
         AggregateRuntime runtime = new AggregateRuntime(model, gateway, procedureRunner);
 
         Map<String, Object> draft = new LinkedHashMap<>(Map.of("id", "M1", "situacao", "Novo", "guardRef", "G1"));
@@ -99,6 +151,7 @@ class AggregateRuntimeOnValidateTest {
     @Test
     void onValidateFailureMeansTheRootIsNeverWrittenAtAll() {
         ProcedureRunner procedureRunner = new ProcedureRunner(model, gateway, null, null);
+        InProcessAcceptanceRunner.attachKernel(procedureRunner, model, null, gateway, null);
         AggregateRuntime runtime = new AggregateRuntime(model, gateway, procedureRunner);
 
         Map<String, Object> draft = new LinkedHashMap<>(Map.of("id", "M1", "situacao", "Novo", "guardRef", "does-not-exist"));
@@ -118,6 +171,7 @@ class AggregateRuntimeOnValidateTest {
         gateway.save(new ConceptWriteRequest("GuardCheck", "G2", "trial",
                 Map.of("id", "G2", "checked", "false")), ctx);
         ProcedureRunner procedureRunner = new ProcedureRunner(model, gateway, null, null);
+        InProcessAcceptanceRunner.attachKernel(procedureRunner, model, null, gateway, null);
         AggregateRuntime runtime = new AggregateRuntime(model, gateway, procedureRunner);
 
         Map<String, Object> draft = new LinkedHashMap<>(Map.of("situacao", "Novo", "guardRef", "G2"));

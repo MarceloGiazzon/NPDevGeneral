@@ -22,7 +22,7 @@ class AgentAssistantProfileValidationTest {
     private static ModelAst parse(String assistant) throws Exception {
         return new JsonModelParser().parse(MAPPER.readTree("""
             {
-              "dslVersion": "1.0.0", "namespace": "demo.assistant", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "demo.assistant", "version": "1.0",
               "concepts": [ { "name": "Cap", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
               "agentAccess": {

@@ -30,7 +30,7 @@ class BusinessUiEmitterOfflineWriteTest {
         Path modelPath = Files.createTempFile("npdev-offline-write-", ".json");
         Files.writeString(modelPath, """
                 {
-                  "namespace": "offlinewrite.demo", "dslVersion": "1.0.0", "version": "1.0",
+                  "namespace": "offlinewrite.demo", "dslVersion": "3.0.0", "version": "1.0",
                   "concepts": [
                     { "name": "Visit", "ui": { "offlineWrite": true }, "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true },

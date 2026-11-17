@@ -53,7 +53,7 @@ class NpdevExternalAiConfigTest {
     @Test
     void aModelsOwnProviderIsServedAndPricedFromTheCompiledModel() throws Exception {
         String json = """
-            { "dslVersion": "1.0.0", "namespace": "own.ai", "version": "1.0",
+            { "dslVersion": "3.0.0", "namespace": "own.ai", "version": "1.0",
               "concepts": [ { "name": "Cap", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
               "externalAi": { "egress": "apiEnabled", "vendors": ["acme-gw"], "providers": [
                 { "id": "acme-gw", "protocol": "anthropic-messages", "baseUrl": "https://ai.acme.example/v1",

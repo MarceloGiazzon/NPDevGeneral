@@ -26,7 +26,7 @@ public class ShellMobileRightbarTest {
         Path modelPath = Files.createTempFile("npdev-mobile-rail-", ".json");
         Files.writeString(modelPath, """
                 {
-                  "namespace": "mobile.rail.demo", "dslVersion": "1.0.0", "version": "1.0",
+                  "namespace": "mobile.rail.demo", "dslVersion": "3.0.0", "version": "1.0",
                   "concepts": [
                     { "name": "Widget",
                       "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true },

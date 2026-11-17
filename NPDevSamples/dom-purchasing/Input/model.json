@@ -1,7 +1,7 @@
 {
   "$schema": "..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
   "namespace": "sample.dompurchasing",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "version": "1.0",
   "metadata": {
     "purpose": "DOM-3: a consumer of the built-in purchasing pack. Binds its three logical roles to BUYER, PURCH_MGR and PAYABLES and grants them the pack's concepts; probe/purchasing_probe.py drives the pack's rules against the booted app (role enforcement, invariants, order and bill lifecycles, derived totals and amount owed)."

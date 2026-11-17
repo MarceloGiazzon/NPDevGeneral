@@ -9,15 +9,15 @@ package com.npdev.dsl.v1.ast;
  * rather than falling through to the generic pure evaluator -- see that class's javadoc).
  *
  * @param name   identifier referenced by {@code nextNumber('name')}. Deliberately NOT
- *               namespace-qualified by pack composition -- same reasoning as {@link
- *               WebhookAst#source()}: the reference is an opaque literal embedded inside another
+ *               namespace-qualified by pack composition -- same reasoning as an inbound
+ *               door's path ({@link InboundDoorAst#path()}): the reference is an opaque literal embedded inside another
  *               field's {@code defaultExpression} TEXT, which the pack-composition
  *               reference-rewriting machinery ({@code ModelSourceResolver.rewriteKnownMemberReferenceFields})
  *               rewrites discrete JSON fields, not substrings inside an expression string -- so
  *               qualifying the declaration but never the call site would silently break every
  *               pack-declared sequence. {@code SequenceValidation} instead requires global
  *               uniqueness across the fully-resolved model, the same closed loop {@code
- *               WebhookValidation} runs for {@code source}.
+ *               WebhookValidation} runs for an inbound path.
  * @param format render template: {@code {seq}}/{@code {seq:N}} (the running counter, zero-padded
  *               to N digits -- exactly one required), plus optional {@code {year}}/{@code {yy}}/
  *               {@code {month}}/{@code {day}} date tokens resolved at allocation time. Any date

@@ -26,7 +26,7 @@ class AggregateQueryValidationTest {
     private static String modelWithConceptAndQuery(String accessJson, String queryJson) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.aggregate", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.aggregate", "version": "1.0",
               "concepts": [
                 { "name": "ShipmentEvent", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -152,7 +152,7 @@ class AggregateQueryValidationTest {
     private static String modelWithJoinAndQuery(String warehouseAccessJson, String queryJson) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.aggregate.join", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.aggregate.join", "version": "1.0",
               "concepts": [
                 { "name": "Warehouse", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -293,7 +293,7 @@ class AggregateQueryValidationTest {
     private static String modelWithTwoHopJoinAndQuery(String countryAccessJson, String queryJson) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.aggregate.join.twohop", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.aggregate.join.twohop", "version": "1.0",
               "concepts": [
                 { "name": "Country", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

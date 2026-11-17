@@ -39,7 +39,7 @@ class AutoPanelExpanderTest {
 
     private static final String BAND_PICKER_MODEL = """
         {
-          "dslVersion": "1.0.0", "namespace": "wms.bandpicker", "version": "1.0",
+          "dslVersion": "3.0.0", "namespace": "wms.bandpicker", "version": "1.0",
           "concepts": [
             { "name": "Note", "fields": [
                 { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -99,7 +99,7 @@ class AutoPanelExpanderTest {
     void slimConceptAutoPanelExpandsToThreeSurfaces() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.ap", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.ap", "version": "1.0",
               "concepts": [
                 { "name": "Cliente", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -150,7 +150,7 @@ class AutoPanelExpanderTest {
         // PanelRuntime already executes for hand-authored panels, now reachable from AutoPanel too.
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.ap.d3", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.ap.d3", "version": "1.0",
               "concepts": [
                 { "name": "Cliente", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -177,7 +177,7 @@ class AutoPanelExpanderTest {
     void selectionWithNoDataSourceDeclaredStaysConceptBoundUnchanged() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.ap.d3", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.ap.d3", "version": "1.0",
               "concepts": [
                 { "name": "Cliente", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }
@@ -196,7 +196,7 @@ class AutoPanelExpanderTest {
     void promptSurfaceIsEmittedAsAPicker() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.ap", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.ap", "version": "1.0",
               "concepts": [
                 { "name": "Cliente", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -225,7 +225,7 @@ class AutoPanelExpanderTest {
     void promptLabelFieldAndColumnsAreOverridable() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.ap", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.ap", "version": "1.0",
               "concepts": [
                 { "name": "Cliente", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -252,7 +252,7 @@ class AutoPanelExpanderTest {
     void formForeignKeyFieldsAutoWireToTargetPrompt() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.ap", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.ap", "version": "1.0",
               "concepts": [
                 { "name": "Provider", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -284,7 +284,7 @@ class AutoPanelExpanderTest {
     void noFkWiringWhenTargetHasNoPrompt() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.ap", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.ap", "version": "1.0",
               "concepts": [
                 { "name": "Provider", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -310,7 +310,7 @@ class AutoPanelExpanderTest {
     void computedColumnsBecomeLayoutColumnsAndMetadata() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.ap", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.ap", "version": "1.0",
               "concepts": [
                 { "name": "Item", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -347,7 +347,7 @@ class AutoPanelExpanderTest {
     void surfacesAndOverridesAreHonored() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.ap", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.ap", "version": "1.0",
               "concepts": [
                 { "name": "Cliente", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

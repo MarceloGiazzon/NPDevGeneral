@@ -19,13 +19,18 @@ class CompiledPluginRequirementGraphBuilderTest {
         ModelAst ast = parse("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
                       "name": "TriggerEntity",
                       "fields": [
-                        { "name": "id", "type": "uuid", "id": true, "required": true }
+                        {
+                          "name": "id",
+                          "type": "uuid",
+                          "id": true,
+                          "required": true
+                        }
                       ]
                     }
                   ],
@@ -33,7 +38,9 @@ class CompiledPluginRequirementGraphBuilderTest {
                     {
                       "name": "persistence",
                       "type": "PersistenceCapability",
-                      "operations": ["save"]
+                      "operations": [
+                        "save"
+                      ]
                     },
                     {
                       "name": "customExtension",
@@ -41,13 +48,13 @@ class CompiledPluginRequirementGraphBuilderTest {
                       "operations": [
                         {
                           "name": "run",
-                          "input": { "conceptRef": "TriggerEntity" }
+                          "input": {
+                            "conceptRef": "TriggerEntity"
+                          }
                         }
-                      ]
+                      ],
+                      "adapter": "plugin:custom-procedure"
                     }
-                  ],
-                  "bindings": [
-                    { "capability": "customExtension", "adapter": "plugin:custom-procedure" }
                   ],
                   "flows": [
                     {
@@ -111,13 +118,18 @@ class CompiledPluginRequirementGraphBuilderTest {
         ModelAst ast = parse("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
                       "name": "TriggerEntity",
                       "fields": [
-                        { "name": "id", "type": "uuid", "id": true, "required": true }
+                        {
+                          "name": "id",
+                          "type": "uuid",
+                          "id": true,
+                          "required": true
+                        }
                       ]
                     }
                   ],
@@ -125,11 +137,11 @@ class CompiledPluginRequirementGraphBuilderTest {
                     {
                       "name": "procedureOnlyExtension",
                       "type": "ProcedureOnlyCapability",
-                      "operations": ["run"]
+                      "operations": [
+                        "run"
+                      ],
+                      "adapter": "plugin:java-source"
                     }
-                  ],
-                  "bindings": [
-                    { "capability": "procedureOnlyExtension", "adapter": "plugin:java-source" }
                   ],
                   "procedures": [
                     {
@@ -140,10 +152,16 @@ class CompiledPluginRequirementGraphBuilderTest {
                           "type": "capabilityCall",
                           "capability": "procedureOnlyExtension",
                           "operation": "run",
-                          "args": { "input": "$input" },
+                          "args": {
+                            "input": "$input"
+                          },
                           "target": "result"
                         },
-                        { "name": "return-result", "type": "return", "value": "$result" }
+                        {
+                          "name": "return-result",
+                          "type": "return",
+                          "value": "$result"
+                        }
                       ]
                     }
                   ]
@@ -176,24 +194,27 @@ class CompiledPluginRequirementGraphBuilderTest {
         ModelAst ast = parse("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
                       "name": "TriggerEntity",
                       "fields": [
-                        { "name": "id", "type": "uuid", "id": true, "required": true }
+                        {
+                          "name": "id",
+                          "type": "uuid",
+                          "id": true,
+                          "required": true
+                        }
                       ]
                     }
                   ],
                   "customCapabilities": [
                     {
                       "name": "adminTools",
-                      "type": "AdminToolsController"
+                      "type": "AdminToolsController",
+                      "adapter": "plugin:java-controller"
                     }
-                  ],
-                  "bindings": [
-                    { "capability": "adminTools", "adapter": "plugin:java-controller" }
                   ]
                 }
                 """);
@@ -221,13 +242,18 @@ class CompiledPluginRequirementGraphBuilderTest {
         ModelAst ast = parse("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
                       "name": "TriggerEntity",
                       "fields": [
-                        { "name": "id", "type": "uuid", "id": true, "required": true }
+                        {
+                          "name": "id",
+                          "type": "uuid",
+                          "id": true,
+                          "required": true
+                        }
                       ]
                     }
                   ],
@@ -235,11 +261,11 @@ class CompiledPluginRequirementGraphBuilderTest {
                     {
                       "name": "adminTools",
                       "type": "AdminToolsController",
-                      "operations": ["ping"]
+                      "adapter": "plugin:java-controller",
+                      "operations": [
+                        "ping"
+                      ]
                     }
-                  ],
-                  "bindings": [
-                    { "capability": "adminTools", "adapter": "plugin:java-controller" }
                   ],
                   "flows": [
                     {

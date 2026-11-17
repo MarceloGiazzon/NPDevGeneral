@@ -1,0 +1,153 @@
+{
+  "probes": [
+    {
+      "id": "fv-flow-vocabulary-set-map-updateconcept",
+      "keywords": [
+        "flow.description",
+        "flowStep.set",
+        "flowStep.select",
+        "flowStep.createIfMissing"
+      ],
+      "description": "FORM P3-T5c: a flow that names no concept runs set (an expression: 3 x 4), map (one object and a list built from select) and updateConcept{id,set,createIfMissing} (a new ShelfLayout, its id minted because createIfMissing found no row), and returns an object built with map.",
+      "steps": [
+        {
+          "name": "run the vocabulary flow",
+          "method": "POST",
+          "path": "/api/flows/OneFlowVocabulary/execute",
+          "body": {
+            "price": 3,
+            "qty": 4,
+            "name": "fv-${rand}",
+            "cols": 2,
+            "lines": [
+              {
+                "sku": "A-1",
+                "qty": 1
+              },
+              {
+                "sku": "B-2",
+                "qty": 2
+              }
+            ]
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK",
+              "$.output.total": 12,
+              "$.output.summary.source": "vocabulary",
+              "$.output.summary.total": 12,
+              "$.output.skus": {
+                "len": 2
+              },
+              "$.output.skus[1].sku": "B-2",
+              "$.output.skus[1].quantity": 2
+            }
+          }
+        },
+        {
+          "name": "the layout updateConcept created is there",
+          "method": "GET",
+          "path": "/api/shelf_layouts?where=cols:eq:2",
+          "expect": {
+            "status": 200
+          }
+        }
+      ]
+    },
+    {
+      "id": "fv-flow-capability-error-target",
+      "keywords": [
+        "flowStep.errorTarget"
+      ],
+      "description": "FORM P3-T5c: a capabilityCall step with errorTarget never fails the flow: whether or not the notification send works, the flow carries on and returns 'done'.",
+      "steps": [
+        {
+          "name": "soft notify",
+          "method": "POST",
+          "path": "/api/flows/OneFlowSoftNotify/execute",
+          "body": {
+            "to": "nobody@example.com",
+            "title": "t",
+            "body": "b"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK",
+              "$.output": "done"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fv-flow-notify-step",
+      "keywords": [
+        "flowStep.to",
+        "flowStep.message"
+      ],
+      "description": "FORM P3-T8: a notify step (to + message expressions) runs as map + notification.send and the flow returns the delivery receipt, which echoes the recipient.",
+      "steps": [
+        {
+          "name": "notify then return the receipt",
+          "method": "POST",
+          "path": "/api/flows/OneFlowNotifyStep/execute",
+          "body": {
+            "to": "nobody-${rand}@example.com",
+            "body": "hello"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK",
+              "$.output.message": "hello"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fv-flow-create-concept-if-exists-skip",
+      "keywords": [
+        "flowStep.ifExists"
+      ],
+      "description": "FORM P3-T5c: a createConcept step with ifExists: skip is accepted, compiled and run: two runs for the same supplierCode both finish OK. (The skip itself -- a unique-constraint conflict becomes a skipped step, any other failure still fails -- is proven in KernelRunnerCapabilityErrorTargetTest: this sample's in-memory flow persistence has no unique index to conflict with.)",
+      "steps": [
+        {
+          "name": "first run creates the supplier",
+          "method": "POST",
+          "path": "/api/flows/OneFlowCreateSupplierOnce/execute",
+          "body": {
+            "supplierCode": "FV-${rand}",
+            "displayName": "once"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK"
+            }
+          },
+          "save": {
+            "code": "$.output"
+          }
+        },
+        {
+          "name": "second run is skipped, not a failure",
+          "method": "POST",
+          "path": "/api/flows/OneFlowCreateSupplierOnce/execute",
+          "body": {
+            "supplierCode": "${code}",
+            "displayName": "twice"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -25,8 +25,8 @@ class DslFlowModelTest {
     void parsesValidatesAndCompilesFlows() throws Exception {
         String json = """
                 {
-                  "model": "IdentityDomain",
-                  "dslVersion": "1.0.0",
+                  "namespace": "IdentityDomain",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -111,7 +111,7 @@ class DslFlowModelTest {
         String json = """
                 {
                   "namespace": "x",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -165,7 +165,7 @@ class DslFlowModelTest {
         String json = """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -203,7 +203,7 @@ class DslFlowModelTest {
         String json = """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {

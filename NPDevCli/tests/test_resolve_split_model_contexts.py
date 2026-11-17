@@ -62,7 +62,7 @@ class ResolveSplitModelContextsTest(unittest.TestCase):
 
     def _model(self, **extra) -> Path:
         model = {
-            "dslVersion": "1.0.0",
+            "dslVersion": "3.0.0",
             "namespace": "reg186.sample",
             "version": "1.0.0",
             "concepts": [_concept("HomeGrown")],
@@ -77,7 +77,7 @@ class ResolveSplitModelContextsTest(unittest.TestCase):
     def test_context_entry_with_name_and_physically_isolate_is_accepted(self) -> None:
         """The RED: `{name, $ref, physicallyIsolate}` was rejected as a malformed `$ref` object."""
         _write(self.root / "contexts" / "billing.json", {"concepts": [_concept("Invoice")]})
-        model = self._model(contexts=[
+        model = self._model(modules=[
             {"name": "billing", "$ref": "contexts/billing.json", "physicallyIsolate": True},
         ])
 
@@ -91,7 +91,7 @@ class ResolveSplitModelContextsTest(unittest.TestCase):
         byte-identically to before bounded contexts existed."""
         _write(self.root / "contexts" / "a.json", {"concepts": [_concept("Alpha")]})
         _write(self.root / "contexts" / "b.json", {"concepts": [_concept("Beta")]})
-        model = self._model(contexts=[
+        model = self._model(modules=[
             {"name": "plain", "$ref": "contexts/a.json"},
             {"name": "isolated", "$ref": "contexts/b.json", "physicallyIsolate": True},
         ])
@@ -103,14 +103,14 @@ class ResolveSplitModelContextsTest(unittest.TestCase):
                 {"name": "plain", "$ref": "contexts/a.json"},
                 {"name": "isolated", "$ref": "contexts/b.json", "physicallyIsolate": True},
             ],
-            resolved["contexts"],
+            resolved["modules"],
         )
 
     def test_unknown_sibling_key_on_a_context_entry_is_still_an_error(self) -> None:
         """The shape table is a per-key allowance, not a blanket relaxation -- a typo'd sibling key
         must still be caught, or the fix would trade a false error for a silent one."""
         _write(self.root / "contexts" / "a.json", {"concepts": [_concept("Alpha")]})
-        model = self._model(contexts=[
+        model = self._model(modules=[
             {"name": "a", "$ref": "contexts/a.json", "physicalyIsolate": True},  # typo, one 'l'
         ])
 
@@ -185,14 +185,14 @@ class ResolveSplitModelContextsTest(unittest.TestCase):
     def test_duplicate_qualifier_is_refused(self) -> None:
         _write(self.root / "contexts" / "a.json", {"concepts": [_concept("Alpha")]})
         _write(self.root / "contexts" / "b.json", {"concepts": [_concept("Beta")]})
-        model = self._model(contexts=[
+        model = self._model(modules=[
             {"name": "same", "$ref": "contexts/a.json"},
             {"name": "same", "$ref": "contexts/b.json"},
         ])
 
         with self.assertRaises(npdev_cli.CliError) as caught:
             npdev_cli.resolve_split_model(model)
-        self.assertIn("duplicate context qualifier", str(caught.exception))
+        self.assertIn("duplicate module qualifier", str(caught.exception))
 
 
 class ResolveMemberReferenceTest(unittest.TestCase):

@@ -87,7 +87,7 @@ class DefaultProcedureExecutorK123Test {
 
     private static ProcedureExecutionResult runWithParams(Map<String, Object> params, Map<String, Object> input) {
         Map<String, CompiledQuery> queries = Map.of("ByClient",
-                new CompiledQuery("ByClient", "Order", "cliente == :who", List.of("codigo asc"), null,
+                new CompiledQuery("ByClient", "Order", "cliente == $params.who", List.of("codigo asc"), null,
                         List.of(new CompiledProcedureParameter("who", "string", true, null, null)),
                         List.of(), Map.of(), List.of(), List.of(), null));
         DefaultProcedureExecutor executor = new DefaultProcedureExecutor(

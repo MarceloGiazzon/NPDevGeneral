@@ -27,7 +27,7 @@ class GeneratorEventValidationTest {
         CompiledModel model = compile("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
@@ -69,7 +69,7 @@ class GeneratorEventValidationTest {
         CompiledModel model = compile("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
@@ -108,7 +108,7 @@ class GeneratorEventValidationTest {
         String serviceContent = generateService("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
@@ -135,7 +135,7 @@ class GeneratorEventValidationTest {
         String serviceContent = generateService("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
@@ -162,7 +162,7 @@ class GeneratorEventValidationTest {
         String serviceContent = generateService("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
@@ -208,19 +208,31 @@ class GeneratorEventValidationTest {
         CompiledModel model = compile("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
                       "name": "User",
                       "fields": [
-                        { "name": "id", "type": "uuid", "id": true, "required": true },
-                        { "name": "name", "type": "string", "required": true }
+                        {
+                          "name": "id",
+                          "type": "uuid",
+                          "id": true,
+                          "required": true
+                        },
+                        {
+                          "name": "name",
+                          "type": "string",
+                          "required": true
+                        }
                       ]
                     }
                   ],
-                  "bindings": [
-                    { "capability": "eventBus", "adapter": "kafka" }
+                  "capabilities": [
+                    {
+                      "name": "eventBus",
+                      "adapter": "kafka"
+                    }
                   ]
                 }
                 """);

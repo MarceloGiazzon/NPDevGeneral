@@ -365,17 +365,6 @@ class CanonicalJsonRoundTripCompletenessTest {
         }
 
         private Object buildDomainInstance(Class<?> c, int domainDepth) {
-            // CompiledOrchestration's widest constructor takes BOTH a single `action` and a
-            // separate `actions` list; the real writer treats `actions` as authoritative and
-            // derives the serialized "action" key from actions.get(0) (see toOrchestrationRules),
-            // so an independently-generated standalone `action` would never be expected to survive
-            // the round trip -- not a bug, just a legacy-alias field. Keep them consistent here,
-            // the same way every real compiler-produced CompiledOrchestration does (via the
-            // actions-only constructor delegating action = firstOrNull(actions)).
-            if (c == CompiledOrchestration.class) {
-                return buildCompiledOrchestration(domainDepth);
-            }
-
             Constructor<?> ctor = widestPublicConstructor(c);
             Type[] paramTypes = ctor.getGenericParameterTypes();
             Object[] args = new Object[paramTypes.length];
@@ -388,16 +377,6 @@ class CanonicalJsonRoundTripCompletenessTest {
                 throw new IllegalStateException(
                         "ReflectiveValueFactory: failed constructing " + c.getName() + " via " + ctor, e);
             }
-        }
-
-        private Object buildCompiledOrchestration(int domainDepth) {
-            String name = (String) generateValue(String.class, domainDepth);
-            String condition = (String) generateValue(String.class, domainDepth);
-            CompiledOrchestrationTrigger trigger =
-                    (CompiledOrchestrationTrigger) generateValue(CompiledOrchestrationTrigger.class, domainDepth);
-            CompiledOrchestrationAction sharedAction =
-                    (CompiledOrchestrationAction) generateValue(CompiledOrchestrationAction.class, domainDepth);
-            return new CompiledOrchestration(name, condition, trigger, sharedAction, List.of(sharedAction));
         }
 
         private Object generateValue(Type rawType, int domainDepth) {

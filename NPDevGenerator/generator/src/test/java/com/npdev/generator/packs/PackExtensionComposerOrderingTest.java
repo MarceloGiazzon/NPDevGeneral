@@ -51,7 +51,7 @@ class PackExtensionComposerOrderingTest {
 
     private static final String CLINICBASE_PACK_JSON = """
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "clinicbase",
               "version": "1.0.0",
               "concepts": [
@@ -65,7 +65,7 @@ class PackExtensionComposerOrderingTest {
 
     private static final String CLINICEXT_PACK_JSON = """
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "clinicext",
               "version": "1.0.0",
               "metadata": { "extends": { "pack": "clinicbase", "concept": "Patient" } },
@@ -80,7 +80,7 @@ class PackExtensionComposerOrderingTest {
 
     private static final String CLINICEXT2_PACK_JSON = """
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "clinicext2",
               "version": "1.0.0",
               "metadata": { "extends": { "pack": "clinicbase", "concept": "Patient" } },

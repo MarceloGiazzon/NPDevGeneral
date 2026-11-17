@@ -25,7 +25,7 @@ public final class CompiledModelCanonicalJsonReader {
     public static CompiledModel fromJson(String json) throws IOException {
         JsonNode root = MAPPER.readTree(json);
         String namespace = text(root, "namespace");
-        String dslVersion = defaulted(text(root, "dslVersion"), "1.0.0");
+        String dslVersion = defaulted(text(root, "dslVersion"), com.npdev.dsl.v1.ast.ModelAst.DEFAULT_DSL_VERSION);
         String version = text(root, "version");
 
         List<CompiledDomainType> domainTypes = new ArrayList<>();
@@ -59,19 +59,10 @@ public final class CompiledModelCanonicalJsonReader {
             flows.add(toFlow(node));
         }
 
-        List<CompiledOrchestration> orchestrationRules = new ArrayList<>();
-        for (JsonNode node : array(root, "orchestrationRules")) {
-            orchestrationRules.add(toOrchestration(node));
-        }
 
         List<CompiledQuery> queries = new ArrayList<>();
         for (JsonNode node : array(root, "queries")) {
             queries.add(toQuery(node));
-        }
-
-        List<CompiledRuleProfile> ruleProfiles = new ArrayList<>();
-        for (JsonNode node : array(root, "ruleProfiles")) {
-            ruleProfiles.add(toRuleProfile(node));
         }
 
         List<CompiledProcedure> procedures = new ArrayList<>();
@@ -160,9 +151,7 @@ public final class CompiledModelCanonicalJsonReader {
                 bindings,
                 events,
                 flows,
-                orchestrationRules,
                 queries,
-                ruleProfiles,
                 procedures,
                 panels,
                 guidePages,
@@ -1212,7 +1201,9 @@ public final class CompiledModelCanonicalJsonReader {
         }
         return new CompiledFlow(
                 text(node, "name"),
-                text(node, "concept"),
+                // A flow's concept is optional (a flow with no concept writes ""): read it back as null, as the
+                // compiler produced it, so a canonical round trip is the identity.
+                optionalText(node, "concept"),
                 optionalText(node, "mode"),
                 steps,
                 toSchema(node.get("inputSchema")),
@@ -1220,8 +1211,20 @@ public final class CompiledModelCanonicalJsonReader {
                 toActionMetadata(node.get("action")),
                 booleanValue(node, "startEndpoint"),
                 toFlowSchedule(node.get("schedule")),
-                toOrigin(node.get("origin"))
+                toOrigin(node.get("origin")),
+                toFlowTrigger(node.get("trigger")),
+                optionalText(node, "expose"),
+                optionalText(node, "runAs"),
+                optionalText(node, "description")
         );
+    }
+
+    private static CompiledFlowTrigger toFlowTrigger(JsonNode node) {
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return null;
+        }
+        return new CompiledFlowTrigger(text(node, "kind"), optionalText(node, "event"),
+                optionalText(node, "condition"), optionalText(node, "webhook"));
     }
 
     private static CompiledFlowSchedule toFlowSchedule(JsonNode node) {
@@ -1291,7 +1294,16 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalBoolean(node.get("parallelAwait")),
                 optionalLongObject(node.get("timeoutSeconds")),
                 onTimeoutSteps,
-                toHumanTask(node.get("task"))
+                toHumanTask(node.get("task")),
+                optionalText(node, "recordIdRef"),
+                optionalText(node, "queryName"),
+                toStringMap(node.get("queryParams")),
+                optionalText(node, "flowName"),
+                toObjectMap(node.get("fieldValues")),
+                optionalBoolean(node.get("createIfMissing")),
+                optionalText(node, "errorTarget"),
+                optionalText(node, "ifExists"),
+                optionalText(node, "dedupeKey")
         );
     }
 
@@ -1376,65 +1388,6 @@ public final class CompiledModelCanonicalJsonReader {
         return new CompiledCapabilityAuth(toStringList(node.get("roles")), toStringList(node.get("scopes")));
     }
 
-    private static CompiledOrchestration toOrchestration(JsonNode node) {
-        CompiledOrchestrationTrigger trigger = null;
-        JsonNode triggerNode = node.get("trigger");
-        if (triggerNode != null && !triggerNode.isNull() && !triggerNode.isMissingNode()) {
-            String triggerType = optionalText(triggerNode, "type");
-            String triggerEvent = optionalText(triggerNode, "event");
-            if (triggerType != null || triggerEvent != null) {
-                trigger = new CompiledOrchestrationTrigger(triggerType, triggerEvent);
-            }
-        }
-
-        List<CompiledOrchestrationAction> actions = new ArrayList<>();
-        for (JsonNode actionNode : array(node, "actions")) {
-            CompiledOrchestrationAction action = toOrchestrationAction(actionNode);
-            if (action != null) {
-                actions.add(action);
-            }
-        }
-        if (actions.isEmpty()) {
-            CompiledOrchestrationAction primary = toOrchestrationAction(node.get("action"));
-            if (primary != null) {
-                actions.add(primary);
-            }
-        }
-
-        return new CompiledOrchestration(
-                text(node, "name"),
-                optionalText(node, "condition"),
-                trigger,
-                actions
-        );
-    }
-
-    private static CompiledOrchestrationAction toOrchestrationAction(JsonNode node) {
-        if (node == null || node.isNull() || node.isMissingNode()) {
-            return null;
-        }
-        String type = optionalText(node, "type");
-        String concept = optionalText(node, "concept");
-        String capability = optionalText(node, "capability");
-        String operation = optionalText(node, "operation");
-        String event = optionalText(node, "event");
-        Long delaySeconds = optionalLongObject(node.get("delaySeconds"));
-        Map<String, String> map = toStringMap(node.get("map"));
-        if (type == null && concept == null && capability == null && operation == null && event == null && delaySeconds == null && map.isEmpty()) {
-            return null;
-        }
-        return new CompiledOrchestrationAction(
-                type,
-                concept,
-                capability,
-                operation,
-                event,
-                delaySeconds,
-                map,
-                toActionMetadata(node.get("action"))
-        );
-    }
-
     private static CompiledQuery toQuery(JsonNode node) {
         return new CompiledQuery(
                 text(node, "name"),
@@ -1491,17 +1444,6 @@ public final class CompiledModelCanonicalJsonReader {
                     text(entry, "name"), text(entry, "fn"), optionalText(entry, "field")));
         }
         return out;
-    }
-
-    private static CompiledRuleProfile toRuleProfile(JsonNode node) {
-        Boolean enabled = optionalBooleanObject(node.get("enabled"));
-        return new CompiledRuleProfile(
-                text(node, "name"),
-                optionalText(node, "description"),
-                toStringList(node.get("appliesTo")),
-                enabled == null || enabled,
-                toObjectMap(node.get("metadata"))
-        );
     }
 
     private static CompiledProcedure toProcedure(JsonNode node) {

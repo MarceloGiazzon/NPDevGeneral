@@ -570,7 +570,6 @@
                   "listConcepts",
                   "runQuery",
                   "saveConcept",
-                  "callProcedure",
                   "return"
                 ]
               },

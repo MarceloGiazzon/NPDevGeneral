@@ -34,7 +34,7 @@ class RecordCommentServiceTest {
 
     private static final String MODEL = """
         {
-          "dslVersion": "1.0.0", "namespace": "demo.collab", "version": "1.0",
+          "dslVersion": "3.0.0", "namespace": "demo.collab", "version": "1.0",
           "concepts": [
             { "name": "Mosaic", "ui": { "label": "Mosaic" },
               "collaboration": { "comments": true },

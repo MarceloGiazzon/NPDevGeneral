@@ -1,7 +1,7 @@
 {
   "$schema": "..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
   "namespace": "sample.domapprovals",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "version": "1.0",
   "metadata": {
     "purpose": "A consumer of the built-in approvals pack. Binds its two logical roles to REQUESTER and APPROVER and grants them the pack's concepts; probe/approvals_probe.py files requests through the RequestApproval flow, decides them from My tasks and checks who is recorded as the requester (REG-337), the decision rows and the lifecycle."
@@ -54,16 +54,6 @@
         "save",
         "findById"
       ]
-    }
-  ],
-  "bindings": [
-    {
-      "capability": "persistence",
-      "adapter": "repository"
-    },
-    {
-      "capability": "eventBus",
-      "adapter": "inproc"
     }
   ]
 }

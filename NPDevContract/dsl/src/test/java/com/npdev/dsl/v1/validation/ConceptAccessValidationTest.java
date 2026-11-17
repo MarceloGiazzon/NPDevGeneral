@@ -22,7 +22,7 @@ class ConceptAccessValidationTest {
     private static String modelWithAccess(String accessJson) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.access", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.access", "version": "1.0",
               "concepts": [
                 { "name": "Order", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -83,7 +83,7 @@ class ConceptAccessValidationTest {
     private static String modelWithAccessAndProperty(String accessJson) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.access", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.access", "version": "1.0",
               "propertyScopes": [ { "name": "tenant" } ],
               "properties": [
                 { "name": "pageRows", "type": "int", "default": 25, "settableAt": ["tenant"] }
@@ -122,7 +122,7 @@ class ConceptAccessValidationTest {
     void modelWithNoAccessBlockHasNoAccessErrors() throws Exception {
         List<String> errors = validate("""
             {
-              "dslVersion": "1.0.0", "namespace": "wms.access", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.access", "version": "1.0",
               "concepts": [
                 { "name": "Order", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }

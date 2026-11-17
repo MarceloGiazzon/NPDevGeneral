@@ -3,7 +3,7 @@ I wrote a reusable "ratings" pack: a Rating record with 1-5 stars, a comment and
 NPDEV-FILE pack.json
 ```json
 {
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "pack": "ratings",
   "version": "1.0.0",
   "namespace": "com.example.ratings",
@@ -29,7 +29,7 @@ NPDEV-FILE pack.json
     }
   ],
   "queries": [
-    { "name": "RatingsOfSubject", "concept": "Rating", "where": "subjectAccount == :subject",
+    { "name": "RatingsOfSubject", "concept": "Rating", "where": "subjectAccount == $params.subject",
       "parameters": [ { "name": "subject", "type": "string", "required": true } ] }
   ]
 }

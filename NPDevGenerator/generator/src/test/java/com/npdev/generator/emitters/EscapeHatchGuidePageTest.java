@@ -29,7 +29,7 @@ public class EscapeHatchGuidePageTest {
         CompiledModel model = new ModelCompiler().compile(new JsonModelParser().parse(writeModel("""
                 {
                   "namespace": "escape.hatch.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Book", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },

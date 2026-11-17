@@ -1,6 +1,6 @@
 {
   "namespace": "npdev.specialization",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "version": "v2",
   "concepts": [
     {
@@ -63,6 +63,7 @@
     {
       "name": "persistence",
       "type": "PersistenceCapability",
+      "adapter": "inproc",
       "operations": [
         {
           "name": "save",
@@ -96,6 +97,7 @@
     {
       "name": "medicalPersistence",
       "specializes": "persistence",
+      "adapter": "inproc",
       "operations": [
         {
           "name": "saveMedical",
@@ -125,16 +127,6 @@
           }
         }
       ]
-    }
-  ],
-  "bindings": [
-    {
-      "capability": "persistence",
-      "adapter": "inproc"
-    },
-    {
-      "capability": "medicalPersistence",
-      "adapter": "inproc"
     }
   ],
   "events": [

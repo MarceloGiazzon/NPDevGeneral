@@ -5,6 +5,7 @@ import argparse
 import contextlib
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -246,6 +247,46 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 0, written)
         self.assertNotIn("markdown", written)
         self.assertEqual(target.read_bytes().decode("utf-8"), compact["markdown"])
+
+    def _catalog(self, root: Path) -> None:
+        catalog = root / "npr-catalog" / "catalog"
+        catalog.mkdir(parents=True)
+        (catalog / "l0.txt").write_text(
+            "leads|module|sales|draft|Capture prospects|requires:contacts\n"
+            "quotes|module|sales|verified|Offer prices|requires:leads\n"
+            "pix-key|data-type|finance|verified|Validate Pix keys|requires:\n", encoding="utf-8")
+
+    def test_context_with_catalog_appends_only_that_areas_lines(self):
+        build = self.path.parent / "build"
+        self._catalog(build)
+        with mock.patch.dict(os.environ, {"NPDEV_BUILD_ROOT": str(build)}):
+            _, plain = self.ai("context")
+            code, withcat = self.ai("context", "--with-catalog", "Sales")
+        self.assertEqual(code, 0, withcat)
+        self.assertEqual(withcat["catalogArea"], "sales")
+        self.assertTrue(withcat["markdown"].startswith(plain["markdown"]))
+        added = withcat["markdown"][len(plain["markdown"]):]
+        self.assertIn("## Pack catalog (sales)", added)
+        self.assertIn("leads|module|sales|draft", added)
+        self.assertIn("quotes|module|sales|verified", added)
+        self.assertNotIn("pix-key", added)
+        self.assertEqual(len(withcat["markdown"].encode("utf-8")), withcat["bytes"])
+        with mock.patch.dict(os.environ, {"NPDEV_BUILD_ROOT": str(build)}):
+            _, everything = self.ai("context", "--with-catalog", "all")
+        self.assertIn("pix-key", everything["markdown"])
+
+    def test_context_with_catalog_fails_clearly_without_a_catalog_or_for_an_unknown_area(self):
+        build = self.path.parent / "build-empty"
+        build.mkdir()
+        with mock.patch.dict(os.environ, {"NPDEV_BUILD_ROOT": str(build)}):
+            code, missing = self.ai("context", "--with-catalog", "sales")
+        self.assertNotEqual(code, 0)
+        self.assertIn("build-ai-catalog.py", json.dumps(missing))
+        self._catalog(build)
+        with mock.patch.dict(os.environ, {"NPDEV_BUILD_ROOT": str(build)}):
+            code, unknown = self.ai("context", "--with-catalog", "zoology")
+        self.assertNotEqual(code, 0)
+        self.assertIn("areas: finance, sales", json.dumps(unknown))
 
     def test_providers_listing_shows_the_overridden_field(self):
         self.ai("providers", "set", "gemini", "--base-url", "https://proxy.example/v1")

@@ -2,8 +2,6 @@ package com.finalexec.npdev.service;
 
 import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledModel;
-import com.npdev.dsl.v1.compiled.CompiledProcedure;
-import com.npdev.dsl.v1.compiled.CompiledProcedureStep;
 import com.npdev.kernel.CapabilityErrorKind;
 import com.npdev.kernel.CapabilityResult;
 import com.npdev.kernel.ExecutionContext;
@@ -15,8 +13,6 @@ import com.npdev.kernel.ports.EventBus;
 import com.npdev.kernel.procedures.DefaultProcedureExecutor;
 import com.npdev.kernel.procedures.ProcedureDefinition;
 import com.npdev.kernel.procedures.ProcedureExecutionResult;
-import com.npdev.kernel.procedures.ProcedureStep;
-import com.npdev.kernel.procedures.ProcedureStepType;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -25,7 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Shared execution of a compiled model's declared procedures, used by both the panel runtime
+ * Shared execution of a compiled model's flows by name (procedures[] became flows), used by both the panel runtime
  * (panel action bindings, data-source procedures) and the aggregate runtime (procedure-over-aggregate
  * invoke). Extracting this here breaks the {@code AggregateRuntime -> PanelRuntime} injection cycle:
  * both services depend on this leaf runner instead of on each other.
@@ -34,7 +30,7 @@ import java.util.Map;
 public class ProcedureRunner {
 
     // REG-208 (B28 lift): a live ModelHolder, not a directly-injected CompiledModel snapshot -- every
-    // use below is a fresh per-call lookup (buildProcedureDefinitions et al.), never a cached
+    // use below is a fresh per-call lookup (buildQueriesByName et al.), never a cached
     // derivation, so no ModelReloadListener is needed: modelHolder.get() alone observes a reload.
     private final ModelHolder modelHolder;
     private final ConceptGateway conceptGateway;
@@ -42,6 +38,8 @@ public class ProcedureRunner {
     private final EventBus eventBus;
     // RUN-1: the breaker store flows already share; null (tests, bare hosts) = timeout and retry only.
     private CircuitBreakerStateStore circuitBreakerStateStore;
+    // FORM P3-T5c: runs a flow by name; null (tests, bare hosts) = nothing can be run by name.
+    private volatile FlowInvoker flowInvoker;
 
     @Autowired
     public ProcedureRunner(
@@ -86,30 +84,96 @@ public class ProcedureRunner {
         this.circuitBreakerStateStore = circuitBreakerStateStore;
     }
 
-    /** Whether the compiled model declares a procedure with this name. */
-    public boolean hasProcedure(String procedureName) {
-        return procedureName != null && buildProcedureDefinitions().containsKey(procedureName.trim());
+    /**
+     * FORM P3-T5c: lets a name that is no longer a procedure (it became a flow) still be run by the callers that used to
+     * run it, and answers in the procedure result shape ({@code state.return}) they already read.
+     */
+    public void setFlowInvoker(FlowInvoker flowInvoker) {
+        this.flowInvoker = flowInvoker;
     }
 
     /**
-     * Execute the declared procedure {@code procedureName} with {@code input} as its initial state.
+     * Wires both directions between this runner and {@code kernel}: the kernel's concept steps (set, readConcept,
+     * runQuery ...) execute through this runner's step executor, and a name run here executes as the kernel's flow.
+     */
+    public void attach(com.npdev.kernel.KernelRunner kernel) {
+        kernel.withProcedureExecutor((definition, input, context) -> execute(definition, input, context));
+        setFlowInvoker(kernel::execute);
+    }
+
+    /** Whether the compiled model declares a flow with this name. */
+    public boolean hasFlow(String flowName) {
+        if (flowName == null || flowName.isBlank()) {
+            return false;
+        }
+        CompiledModel model = modelHolder.get();
+        return model != null && model.getFlows().stream().anyMatch(flow -> flowName.trim().equals(flow.getName()));
+    }
+
+    /** Whether a flow invoker is wired and the model declares a flow with this name: what {@link #execute(String, Map, ExecutionContext)} can run. */
+    public boolean canRun(String name) {
+        return flowInvoker != null && hasFlow(name);
+    }
+
+    /**
+     * Runs the flow named {@code name} (procedures[] became flows) and answers in the procedure result shape
+     * ({@code state.return}) the callers already read.
      *
-     * @throws IllegalArgumentException if the name is blank or no such procedure is declared
-     * @throws IllegalStateException    if no ConceptGateway is available
+     * @throws IllegalArgumentException if the name is blank or no such flow is declared / no flow invoker is wired
      */
     public ProcedureExecutionResult execute(
-            String procedureName,
+            String name,
             Map<String, Object> input,
             ExecutionContext context
     ) {
-        if (procedureName == null || procedureName.isBlank()) {
+        if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("Procedure execution requires a procedure name.");
         }
-        Map<String, ProcedureDefinition> procedures = buildProcedureDefinitions();
-        ProcedureDefinition definition = procedures.get(procedureName.trim());
-        if (definition == null) {
-            throw new IllegalArgumentException("Procedure not found: " + procedureName);
+        FlowInvoker invoker = flowInvoker;
+        if (invoker != null && hasFlow(name)) {
+            return toProcedureResult(invoker.execute(
+                    name.trim(),
+                    input == null ? Map.of() : input,
+                    context == null ? ExecutionContext.anonymous() : context));
         }
+        throw new IllegalArgumentException("Procedure not found: " + name);
+    }
+
+    /**
+     * FORM P3-T5c: a flow's result as the {@link ProcedureExecutionResult} its callers read: success carries the flow's
+     * output as {@code state.return}; any other status is a failure whose code is the leading {@code CODE:} of the error
+     * text when it has one (the kernel prefixes a failed step's code), else the status name (the kernel's generic {@code system_exception} adds nothing). A flow that parks
+     * (WAITING_EVENT) cannot answer a synchronous caller and is reported as a failure.
+     */
+    static ProcedureExecutionResult toProcedureResult(com.npdev.kernel.ExecutionResult result) {
+        if (result.getStatus() == com.npdev.kernel.ExecutionStatus.OK) {
+            Map<String, Object> state = new java.util.LinkedHashMap<>();
+            state.put("return", result.getOutput());
+            return ProcedureExecutionResult.success(state, java.util.List.of());
+        }
+        String message = result.getError() == null ? "" : result.getError();
+        String code = result.getStatus().name();
+        java.util.regex.Matcher leading = java.util.regex.Pattern.compile("^([A-Z][A-Z0-9_]{2,}):\\s").matcher(message);
+        if (leading.find()) {
+            code = leading.group(1);
+            message = message.substring(leading.end());
+        } else if (result.getStatus() == com.npdev.kernel.ExecutionStatus.WAITING_EVENT) {
+            code = "FLOW_WAITING";
+            message = "The flow parked on an event and cannot answer a synchronous caller.";
+        }
+        return ProcedureExecutionResult.failure(Map.of(), java.util.List.of(), code, message);
+    }
+
+    /**
+     * FORM P3-T5b: runs a definition the caller built -- not necessarily one the model declares. A flow's
+     * {@code readConcept} / {@code runQuery} / {@code set} ... step is carried as a one-step definition so it runs the
+     * very code a procedure step runs; it has no entry in the model's procedure list, so it cannot be found by name.
+     */
+    public ProcedureExecutionResult execute(
+            ProcedureDefinition definition,
+            Map<String, Object> input,
+            ExecutionContext context
+    ) {
         if (conceptGateway == null) {
             throw new IllegalStateException("ConceptGateway is required to execute procedures.");
         }
@@ -122,58 +186,12 @@ public class ProcedureRunner {
                         : new PolicyEnforcingCapabilityDispatcher(
                                 capabilityDispatcher, CapabilityOperationPolicies.forModel(modelHolder), circuitBreakerStateStore),
                 eventBus == null ? event -> { } : eventBus,
-                procedures,
+                Map.of(),
                 com.npdev.kernel.procedures.ProcedureExecutionLimits.defaults(),
                 buildQueriesByName()
         );
         return executor.execute(definition, input == null ? Map.of() : input,
                 context == null ? ExecutionContext.anonymous() : context);
-    }
-
-    /**
-     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): exposed so KernelRunner's
-     * {@code callProcedure} flow step (wired via {@code withProcedureExecutor}, see
-     * NpdevCapabilityBindingConfig's kernelRunner bean) can look procedures up by name the same
-     * way this class's own {@link #execute} already does -- one registry-building method, not two.
-     */
-    public Map<String, ProcedureDefinition> procedureRegistry() {
-        return buildProcedureDefinitions();
-    }
-
-    private Map<String, ProcedureDefinition> buildProcedureDefinitions() {
-        CompiledModel model = modelHolder.get();
-        if (model == null) {
-            return Map.of();
-        }
-        Map<String, String> adapterIdByCapability = buildAdapterIdByCapability(model);
-        Map<String, ProcedureDefinition> definitions = new LinkedHashMap<>();
-        for (CompiledProcedure procedure : model.getProcedures()) {
-            definitions.put(procedure.name(), toProcedureDefinition(procedure, adapterIdByCapability));
-        }
-        return Map.copyOf(definitions);
-    }
-
-    /**
-     * Mirrors {@code CompiledModelFlowDefinitionProvider}'s resolution: a procedure's
-     * {@code callCapability} step only ever declares a capability name, never an adapter, so the
-     * adapter must come from the model's global {@code bindings} list keyed by capability name.
-     * Without this, every procedure-side capability call reached {@code RegistryCapabilityDispatcher}
-     * with a null adapterId and failed CAPABILITY_BINDING_MISSING regardless of a real binding
-     * existing -- the flow path already did this resolution, the procedure path never did.
-     */
-    private Map<String, String> buildAdapterIdByCapability(CompiledModel model) {
-        Map<String, String> byCapability = new LinkedHashMap<>();
-        for (var binding : model.getBindings()) {
-            if (binding == null || binding.getCapability() == null || binding.getAdapter() == null) {
-                continue;
-            }
-            String capability = binding.getCapability().trim().toLowerCase(java.util.Locale.ROOT);
-            String adapter = binding.getAdapter().trim();
-            if (!capability.isEmpty() && !adapter.isEmpty()) {
-                byCapability.put(capability, adapter);
-            }
-        }
-        return byCapability;
     }
 
     /** LIFT-QUERY-P1: lets a {@code runQuery} procedure step resolve its declared query's
@@ -190,71 +208,6 @@ public class ProcedureRunner {
         return Map.copyOf(queries);
     }
 
-    private static ProcedureDefinition toProcedureDefinition(
-            CompiledProcedure procedure, Map<String, String> adapterIdByCapability) {
-        return new ProcedureDefinition(
-                procedure.name(),
-                procedure.steps().stream().map(step -> toProcedureStep(step, adapterIdByCapability)).toList(),
-                "system".equals(procedure.runAs())
-        );
-    }
-
-    private static ProcedureStep toProcedureStep(CompiledProcedureStep step, Map<String, String> adapterIdByCapability) {
-        ProcedureStepType type = ProcedureStep.parseType(step.type());
-        String target = normalized(step.target());
-        String concept = normalized(step.concept());
-        return switch (type) {
-            case READ_CONCEPT -> ProcedureStep.readConcept(stepName(step), concept, refOf(step.id(), "id"), target);
-            case LIST_CONCEPTS -> ProcedureStep.listConcepts(stepName(step), concept, target);
-            case RUN_QUERY -> ProcedureStep.runQuery(stepName(step), normalized(step.query()), concept, target).withQueryParams(step.params());
-            case SAVE_CONCEPT -> ProcedureStep.saveConcept(stepName(step), concept, refOf(step.id(), "id"), dataRef(step), target);
-            case DELETE_CONCEPT -> ProcedureStep.deleteConcept(stepName(step), concept, refOf(step.id(), "id"));
-            case PATCH_CONCEPT -> ProcedureStep.patchConcept(stepName(step), concept, refOf(step.id(), "id"), step.set(), target, step.createIfMissing());
-            case CALL_CAPABILITY -> {
-                String capabilityName = normalized(step.capability());
-                String adapterId = capabilityName == null
-                        ? ""
-                        : adapterIdByCapability.getOrDefault(
-                                capabilityName.toLowerCase(java.util.Locale.ROOT), "");
-                yield ProcedureStep.callCapability(
-                        stepName(step),
-                        capabilityName,
-                        "",
-                        adapterId,
-                        normalized(step.operation()),
-                        step.args().values().stream().map(value -> refOf(value, String.valueOf(value))).toList(),
-                        target
-                ).withErrorTarget(normalized(step.errorTarget()));
-            }
-            case PUBLISH_EVENT -> ProcedureStep.publishEvent(stepName(step), normalized(step.event()), dataRef(step));
-            case CALL_PROCEDURE -> ProcedureStep.callProcedure(stepName(step), normalized(step.procedure()), dataRef(step), target);
-            case IF -> ProcedureStep.ifThenElse(
-                    stepName(step),
-                    refOf(step.condition(), "condition"),
-                    step.thenSteps().stream().map(s -> toProcedureStep(s, adapterIdByCapability)).toList(),
-                    step.elseSteps().stream().map(s -> toProcedureStep(s, adapterIdByCapability)).toList()
-            );
-            case FOR_EACH -> ProcedureStep.forEach(
-                    stepName(step),
-                    refOf(step.items(), "items"),
-                    normalized(step.as()) == null ? "item" : normalized(step.as()),
-                    step.steps().stream().map(s -> toProcedureStep(s, adapterIdByCapability)).toList()
-            );
-            case MAP_LIST -> ProcedureStep.mapList(
-                    stepName(step),
-                    refOf(step.items(), "items"),
-                    normalized(step.as()) == null ? "item" : normalized(step.as()),
-                    step.select(),
-                    target
-            );
-            case MAP_VALUE -> ProcedureStep.mapValue(stepName(step), literalOrRef(step.value(), "$input"), target);
-            case COMPUTE_VALUE -> ProcedureStep.computeValue(
-                    stepName(step), normalized(step.operation()), step.left(), step.right(), target);
-            case RETURN -> ProcedureStep.returnValue(
-                    stepName(step), literalOrRef(step.value(), target == null ? "$input" : "$" + target));
-        };
-    }
-
     private static CapabilityResult capabilityUnavailable(com.npdev.kernel.CapabilityCall call, Map<String, Object> state) {
         return CapabilityResult.failure(
                 "CAPABILITY_UNAVAILABLE",
@@ -262,62 +215,5 @@ public class ProcedureRunner {
                 CapabilityErrorKind.PERMANENT,
                 Map.of()
         );
-    }
-
-    private static String dataRef(CompiledProcedureStep step) {
-        if (step.data() != null && !step.data().isEmpty()) {
-            Object input = step.data().get("input");
-            if (input != null) {
-                return refOf(input, "input");
-            }
-            Object payload = step.data().get("payload");
-            if (payload != null) {
-                return refOf(payload, "input");
-            }
-        }
-        return "input";
-    }
-
-    private static String refOf(Object value, String fallback) {
-        if (value == null) {
-            return fallback;
-        }
-        String text = String.valueOf(value).trim();
-        if (text.isBlank()) {
-            return fallback;
-        }
-        return text.startsWith("$") ? text.substring(1) : text;
-    }
-
-    /**
-     * REG-86: unlike {@link #refOf}, this does NOT stringify/strip -- {@code mapValue}/{@code return}
-     * resolve their {@code value} via {@code DefaultProcedureExecutor#resolveSetValue}'s literal-vs-
-     * {@code $ref} convention (same as {@code patchConcept}'s {@code set}), so a literal array/object
-     * must pass through unchanged, and a {@code $}-prefixed ref must KEEP its {@code $} (resolveSetValue,
-     * not this method, strips it). {@code fallbackRef} is only used when no value was declared at all,
-     * and must itself be a {@code $}-prefixed ref (e.g. {@code "$input"}) so it is resolved, not taken
-     * as a literal.
-     */
-    private static Object literalOrRef(Object value, String fallbackRef) {
-        if (value == null) {
-            return fallbackRef;
-        }
-        if (value instanceof String s && s.isBlank()) {
-            return fallbackRef;
-        }
-        return value;
-    }
-
-    private static String stepName(CompiledProcedureStep step) {
-        String name = normalized(step.name());
-        return name == null ? "panel-procedure-step" : name;
-    }
-
-    private static String normalized(String value) {
-        if (value == null) {
-            return null;
-        }
-        String trimmed = value.trim();
-        return trimmed.isBlank() ? null : trimmed;
     }
 }

@@ -39,7 +39,7 @@ class EnrichPackListReportTest(unittest.TestCase):
             model_path = tmp_dir / "model.json"
             source = tmp_dir / "cache" / "widgets" / "pack.json"
             _write(source, {
-                "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+                "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                 "deprecated": {"since": "1.0.0", "reason": "renamed",
                                "supersededBy": {"pack": "widgets2", "version": "2.0.0"}},
             })
@@ -70,7 +70,7 @@ class EnrichPackListReportTest(unittest.TestCase):
             tmp_dir = Path(tmp)
             model_path = tmp_dir / "model.json"
             source = tmp_dir / "cache" / "widgets" / "pack.json"
-            _write(source, {"dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0"})
+            _write(source, {"dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0"})
             report = {"packs": {"widgets": {"resolvedVersion": "1.0.0", "sourcePath": str(source)}}}
             npdev_cli._enrich_pack_list_report(model_path, report)  # must not raise
             self.assertNotIn("signature", report["packs"]["widgets"])
@@ -100,7 +100,7 @@ class EnrichPackListReportTest(unittest.TestCase):
             tmp_dir = Path(tmp)
             model_path = tmp_dir / "model.json"
             _write(tmp_dir / "packs" / "oldwidgets" / "pack.json", {
-                "dslVersion": "1.0.0", "pack": "oldwidgets", "version": "1.0.0",
+                "dslVersion": "3.0.0", "pack": "oldwidgets", "version": "1.0.0",
                 "deprecated": {"since": "1.0.0", "reason": "retired"},
             })
             report = {"packs": {"oldwidgets": {
@@ -120,7 +120,7 @@ class EnrichPackListReportTest(unittest.TestCase):
             tmp_dir = Path(tmp)
             model_path = tmp_dir / "model.json"
             source = tmp_dir / "cache" / "widgets" / "pack.json"
-            _write(source, {"dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0"})
+            _write(source, {"dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0"})
             report = {"packs": {"widgets": {"resolvedVersion": "1.0.0", "sourcePath": str(source)}}}
             npdev_cli._enrich_pack_list_report(model_path, report)
             self.assertNotIn("deprecated", report["packs"]["widgets"])

@@ -33,7 +33,7 @@ class ExternalAiPromptValidationTest {
     private static ModelAst parse(String externalAiJson, String flowArg0) throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.externalai", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.externalai", "version": "1.0",
               "concepts": [
                 { "name": "Mosaic", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }
@@ -44,8 +44,7 @@ class ExternalAiPromptValidationTest {
                 { "name": "aiBudget", "type": "string", "default": "1.50", "settableAt": ["tenant"] },
                 { "name": "aiFlag", "type": "boolean", "default": false, "settableAt": ["tenant"] }
               ],
-              "capabilities": [ { "name": "externalAi", "type": "ExternalAiCapability", "operations": ["generate"] } ],
-              "bindings": [ { "capability": "externalAi", "adapter": "externalAi" } ],
+              "capabilities": [ { "name": "externalAi", "type": "ExternalAiCapability", "adapter": "externalAi", "operations": ["generate"] } ],
               "flows": [ { "name": "PaintFlow", "input": { "concept": "Mosaic", "mode": "query" }, "steps": [
                 { "name": "ask", "type": "capabilityCall", "capability": "externalAi", "operation": "generate",
                   "args": [ "%s", "$input" ], "output": "$answer" },
@@ -174,11 +173,10 @@ class ExternalAiPromptValidationTest {
     void aProcedureCallNamingAnUndeclaredPromptIsRejected() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.externalai", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.externalai", "version": "1.0",
               "concepts": [ { "name": "Mosaic", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
-              "capabilities": [ { "name": "externalAi", "type": "ExternalAiCapability", "operations": ["generate"] } ],
-              "bindings": [ { "capability": "externalAi", "adapter": "externalAi" } ],
+              "capabilities": [ { "name": "externalAi", "type": "ExternalAiCapability", "adapter": "externalAi", "operations": ["generate"] } ],
               "procedures": [ { "name": "PaintProc", "steps": [
                 { "name": "ask", "type": "capabilityCall", "capability": "externalAi", "operation": "generate",
                   "args": { "prompt": "PaintMosiac", "input": "$input" }, "target": "answer" },

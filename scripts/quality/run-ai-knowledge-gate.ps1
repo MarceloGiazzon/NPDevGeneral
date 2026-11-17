@@ -390,6 +390,15 @@ try {
         $failures += "a high-risk DSL keyword has neither a behaviour witness nor an allowlist entry (or the allowlist grew): see scripts/quality/check-dsl-behavior-witness.py output above and scripts/policy/dsl-behavior-witness.json"
     }
 
+    # FORM P2-T4 (ADR-0013): every top-level key of model.schema.json has a recorded fate and points at one of the
+    # twelve nouns (scripts/policy/concept-map.json). Static and cheap; the `--after-phase Pn` ratchet is run by hand
+    # at the end of a phase, not here, because it fails by design until that phase has removed its keys.
+    Write-Host "Checking every model.schema.json key has a fate in the concept map..."
+    & $py "scripts/quality/check-concept-map.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "the concept map and model.schema.json disagree: see scripts/quality/check-concept-map.py output above -- add or fix the key in scripts/policy/concept-map.json (ADR-0013)"
+    }
+
     # ENGM-1: an engine support claim may only stand on a CI job that exists. The matrix lists engines x capabilities,
     # each cell naming its witness workflow#job; this parses the workflow YAML so a claim cannot outlive its witness.
     Write-Host "Checking every engine support claim names a real CI witness job..."

@@ -60,6 +60,17 @@ class Target:
 
 # --------------------------------------------------------------------------- targets
 
+def _user_profile_account(feature: str | None) -> str | None:
+    """The user profile whose keys pay for a call labelled `feature`: the active profile, else the role's owner,
+    else None (the AI profile's own account, then the provider's main key). Never silent about a broken file."""
+    import npdev_user_profiles as users
+
+    try:
+        return users.resolve_account(feature)[0]
+    except users.UserProfileError as exc:
+        raise AiCallError(str(exc)) from None
+
+
 def targets_for(config, *, profile: str | None = None, feature: str | None = None, provider: str | None = None,
                 model: str | None = None, effort: str | None = None, max_tokens: int | None = None,
                 account: str | None = None, temperature: float | None = None) -> tuple[list[Target], list[str]]:
@@ -72,6 +83,8 @@ def targets_for(config, *, profile: str | None = None, feature: str | None = Non
     if not (profile or provider or feature):
         raise AiCallError("name what to call: --profile, --feature or --provider")
     warnings: list[str] = []
+    profile_account = _user_profile_account(feature)   # whose keys pay for this call (see npdev_user_profiles)
+    account = account or profile_account
     if provider:
         entry = config.provider(provider)
         model_id = model or entry.get("defaultModel")
@@ -259,9 +272,16 @@ def call(target: Target, key: str | None, prompt: str, system: str | None = None
          sleep: Callable = time.sleep, messages: list[dict] | None = None) -> dict:
     """One target, with retry on 429/5xx. Returns {text, inputTokens, outputTokens, warnings}."""
     if target.provider.get("needsKey") and not key:
-        raise AiCallError(f"no key for {target.provider_id}: run `npdev providers add {target.provider_id}`"
+        import npdev_providers
+
+        env_var = target.provider["keyEnvVar"]
+        if target.account:
+            env_var = npdev_providers.account_env_var(env_var, target.account)
+        raise AiCallError(f"no key for {target.provider_id}"
+                          + (f" (account {target.account})" if target.account else "")
+                          + f": run `npdev providers add {target.provider_id}"
                           + (f" --account {target.account}" if target.account else "")
-                          + f" (or set {target.provider['keyEnvVar']})")
+                          + f"` (or set {env_var})")
     url, body, warnings = build_request(target, prompt, system, json_schema, messages)
     headers = auth_headers(target.provider, key)
     for attempt in range(len(backoff) + 1):
@@ -406,7 +426,8 @@ def complete(config, prompt: str, *, system: str | None = None, json_schema: dic
                                     effort=effort, max_tokens=max_tokens, account=account, temperature=temperature)
     attempts = []
     for index, target in enumerate(targets):
-        label = {"profile": target.profile, "provider": target.provider_id, "model": target.model_id}
+        label = {"profile": target.profile, "provider": target.provider_id, "model": target.model_id,
+                 **({"account": target.account} if target.account else {})}   # the account only when one is named
         refusal = spend_problem(config, target, feature, allow_paid, usage)
         if refusal:
             attempts.append({**label, "error": refusal, "refused": True})

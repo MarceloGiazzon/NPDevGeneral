@@ -38,7 +38,7 @@ class PackNonConceptNamespacingTest {
 
     private static final String PACK_A = """
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "packa",
               "version": "1.0.0",
               "domainTypes": [
@@ -49,7 +49,7 @@ class PackNonConceptNamespacingTest {
 
     private static final String PACK_B = """
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "packb",
               "version": "1.0.0",
               "domainTypes": [
@@ -65,7 +65,7 @@ class PackNonConceptNamespacingTest {
         Path model = write("model.json", """
                 {
                   "namespace": "pk1.namespacing.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [
                     { "$ref": "packs/packa/pack.json" },
@@ -102,7 +102,7 @@ class PackNonConceptNamespacingTest {
         Path model = write("model.json", """
                 {
                   "namespace": "pk1.ambiguity.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [
                     { "$ref": "packs/packa/pack.json" },
@@ -137,7 +137,7 @@ class PackNonConceptNamespacingTest {
         Path model = write("model.json", """
                 {
                   "namespace": "pk1.unambiguous.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [
                     { "$ref": "packs/packa/pack.json" }

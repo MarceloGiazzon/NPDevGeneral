@@ -54,8 +54,7 @@ class PropertyResolverCascadeTest {
         return new CompiledModel(
                 "wms.props", "1.0.0", "1.0",
                 Map.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 null, null, List.of(),
                 List.of(USER_SCOPE, ESTAB_SCOPE, TENANT_SCOPE),
                 List.of(PAGE_ROWS, DATE_FORMAT, DOBRAR_CONF, SEM_DEFAULT)

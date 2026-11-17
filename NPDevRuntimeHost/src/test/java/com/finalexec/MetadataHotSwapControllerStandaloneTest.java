@@ -207,7 +207,7 @@ class MetadataHotSwapControllerStandaloneTest {
      *  NOTHING is swapped (this is what keeps generator-composed pack concepts from vanishing). */
     @Test
     void modelReloadRefusesAModelThatDropsALiveConcept() throws Exception {
-        String twoConcepts = "{\"dslVersion\":\"1.0.0\",\"namespace\":\"hotswap.test\",\"version\":\"1.0\","
+        String twoConcepts = "{\"dslVersion\":\"3.0.0\",\"namespace\":\"hotswap.test\",\"version\":\"1.0\","
                 + "\"concepts\":["
                 + "{\"name\":\"Thing\",\"fields\":[{\"name\":\"id\",\"type\":\"uuid\",\"id\":true,\"required\":true}]},"
                 + "{\"name\":\"Other\",\"fields\":[{\"name\":\"id\",\"type\":\"uuid\",\"id\":true,\"required\":true}]}]}";
@@ -241,7 +241,7 @@ class MetadataHotSwapControllerStandaloneTest {
                 + ";DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false";
         Path modelPath = appExternalRoot.resolve("model-with-new-concept.json");
         String modelWithNewConcept = "{"
-                + "\"dslVersion\":\"1.0.0\",\"namespace\":\"hotswap.test\",\"version\":\"1.0\","
+                + "\"dslVersion\":\"3.0.0\",\"namespace\":\"hotswap.test\",\"version\":\"1.0\","
                 + "\"concepts\":[{\"name\":\"Thing\",\"fields\":["
                 + "{\"name\":\"id\",\"type\":\"uuid\",\"id\":true,\"required\":true}]},"
                 + "{\"name\":\"Widget\",\"fields\":["
@@ -302,7 +302,7 @@ class MetadataHotSwapControllerStandaloneTest {
     // ---- LIVE-1: a new field on an EXISTING concept ----------------------------------------------
 
     private static String thingModelWith(String... extraFieldJson) {
-        return "{\"dslVersion\":\"1.0.0\",\"namespace\":\"hotswap.test\",\"version\":\"1.0\","
+        return "{\"dslVersion\":\"3.0.0\",\"namespace\":\"hotswap.test\",\"version\":\"1.0\","
                 + "\"concepts\":[{\"name\":\"Thing\",\"fields\":["
                 + "{\"name\":\"id\",\"type\":\"uuid\",\"id\":true,\"required\":true}"
                 + (extraFieldJson.length == 0 ? "" : "," + String.join(",", extraFieldJson)) + "]}]}";
@@ -480,7 +480,7 @@ class MetadataHotSwapControllerStandaloneTest {
 
     private static String minimalModelJson() {
         return "{"
-                + "\"dslVersion\":\"1.0.0\",\"namespace\":\"hotswap.test\",\"version\":\"1.0\","
+                + "\"dslVersion\":\"3.0.0\",\"namespace\":\"hotswap.test\",\"version\":\"1.0\","
                 + "\"concepts\":[{\"name\":\"Thing\",\"fields\":["
                 + "{\"name\":\"id\",\"type\":\"uuid\",\"id\":true,\"required\":true}]}]"
                 + "}";

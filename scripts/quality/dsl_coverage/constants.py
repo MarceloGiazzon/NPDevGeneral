@@ -48,6 +48,7 @@ ALLOWLIST_PATH = REPO_ROOT / "scripts" / "quality" / "dsl-coverage-allowlist.jso
 FLOW_STEP_TYPES = (
     "invariantCheck", "capabilityCall", "generatedAction", "emitEvent", "scheduleEvent",
     "return", "branch", "awaitEvent", "createConcept", "updateConcept", "map", "forEach",
-    "callProcedure",
+    "set", "readConcept", "listConcepts", "runQuery", "deleteConcept", "callFlow",
+    "notify",
 )
 

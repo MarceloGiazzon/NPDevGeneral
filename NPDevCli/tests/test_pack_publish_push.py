@@ -72,14 +72,14 @@ class PushImmutabilityUnitTest(unittest.TestCase):
             tmp_dir = Path(tmp)
             catalog_repo = self._catalog_repo(tmp_dir)
             _write(catalog_repo / "packs" / "widgets" / "pack.json", {
-                "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+                "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                 "concepts": [{"name": "Widget", "fields": [
                     {"name": "id", "type": "uuid", "id": True, "required": True},
                 ]}],
             })
             new_pack_path = tmp_dir / "new-widgets.json"
             _write(new_pack_path, {
-                "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+                "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                 "concepts": [{"name": "Widget", "fields": [
                     {"name": "id", "type": "uuid", "id": True, "required": True},
                     {"name": "evil", "type": "string", "required": False},
@@ -103,7 +103,7 @@ class PushImmutabilityUnitTest(unittest.TestCase):
             tmp_dir = Path(tmp)
             catalog_repo = self._catalog_repo(tmp_dir)
             pack_body = {
-                "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+                "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                 "concepts": [{"name": "Widget", "fields": [
                     {"name": "id", "type": "uuid", "id": True, "required": True},
                 ]}],
@@ -125,7 +125,7 @@ class PushImmutabilityUnitTest(unittest.TestCase):
     def test_missing_catalog_repo_flag_is_refused(self):
         with tempfile.TemporaryDirectory() as tmp:
             new_pack_path = Path(tmp) / "widgets.json"
-            _write(new_pack_path, {"dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+            _write(new_pack_path, {"dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                                     "concepts": [{"name": "W", "fields": [
                                         {"name": "id", "type": "uuid", "id": True, "required": True}]}]})
             args = argparse.Namespace(catalog_repo=None, push=True)
@@ -178,10 +178,10 @@ class PackPublishPushRoundTripTest(unittest.TestCase):
     def test_push_lands_a_pack_a_fresh_machine_consumes_by_name(self):
         old_pack = self.tmp_dir / "widgets-old.json"
         new_pack = self.tmp_dir / "widgets-new.json"
-        _write(old_pack, {"dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+        _write(old_pack, {"dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                            "concepts": [{"name": "Widget", "fields": [
                                {"name": "id", "type": "uuid", "id": True, "required": True}]}]})
-        _write(new_pack, {"dslVersion": "1.0.0", "pack": "widgets", "version": "1.1.0",
+        _write(new_pack, {"dslVersion": "3.0.0", "pack": "widgets", "version": "1.1.0",
                            "description": "widgets pack", "category": "other", "author": "Test",
                            "concepts": [{"name": "Widget", "fields": [
                                {"name": "id", "type": "uuid", "id": True, "required": True},
@@ -221,7 +221,7 @@ class PackPublishPushRoundTripTest(unittest.TestCase):
             catalog_url = f"http://127.0.0.1:{server.server_address[1]}/catalog-index.json"
             app_dir = self.tmp_dir / "consumer-app"
             model_path = app_dir / "model.json"
-            _write(model_path, {"namespace": "npdev.throwaway.r85push", "dslVersion": "1.0.0", "version": "1.0"})
+            _write(model_path, {"namespace": "npdev.throwaway.r85push", "dslVersion": "3.0.0", "version": "1.0"})
 
             env = {"NPDEV_PACK_CATALOG_CACHE": str(self.tmp_dir / "consumer-catalog-cache.json"),
                    "NPDEV_PACK_CACHE_ROOT": str(self.tmp_dir / "consumer-pack-cache")}
@@ -243,10 +243,10 @@ class PackPublishPushRoundTripTest(unittest.TestCase):
     def test_republish_mutating_a_published_version_is_refused_and_remote_is_untouched(self):
         old_pack = self.tmp_dir / "widgets-old.json"
         published_pack = self.tmp_dir / "widgets-published.json"
-        _write(old_pack, {"dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+        _write(old_pack, {"dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                            "concepts": [{"name": "Widget", "fields": [
                                {"name": "id", "type": "uuid", "id": True, "required": True}]}]})
-        _write(published_pack, {"dslVersion": "1.0.0", "pack": "widgets", "version": "1.1.0",
+        _write(published_pack, {"dslVersion": "3.0.0", "pack": "widgets", "version": "1.1.0",
                                  "concepts": [{"name": "Widget", "fields": [
                                      {"name": "id", "type": "uuid", "id": True, "required": True},
                                      {"name": "sku", "type": "string", "required": False}]}]})
@@ -258,7 +258,7 @@ class PackPublishPushRoundTripTest(unittest.TestCase):
         head_before = _run(self.bare, "git", "rev-parse", "refs/heads/main").stdout.strip()
 
         mutated_pack = self.tmp_dir / "widgets-mutated.json"
-        _write(mutated_pack, {"dslVersion": "1.0.0", "pack": "widgets", "version": "1.1.0",
+        _write(mutated_pack, {"dslVersion": "3.0.0", "pack": "widgets", "version": "1.1.0",
                                "concepts": [{"name": "Widget", "fields": [
                                    {"name": "id", "type": "uuid", "id": True, "required": True},
                                    {"name": "sku", "type": "string", "required": False},
@@ -284,10 +284,10 @@ class PackPublishPushRoundTripTest(unittest.TestCase):
         semver gate having been given honest inputs."""
         old_pack = self.tmp_dir / "widgets-old.json"
         published_pack = self.tmp_dir / "widgets-published.json"
-        _write(old_pack, {"dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+        _write(old_pack, {"dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                            "concepts": [{"name": "Widget", "fields": [
                                {"name": "id", "type": "uuid", "id": True, "required": True}]}]})
-        _write(published_pack, {"dslVersion": "1.0.0", "pack": "widgets", "version": "1.1.0",
+        _write(published_pack, {"dslVersion": "3.0.0", "pack": "widgets", "version": "1.1.0",
                                  "concepts": [{"name": "Widget", "fields": [
                                      {"name": "id", "type": "uuid", "id": True, "required": True},
                                      {"name": "sku", "type": "string", "required": False}]}]})
@@ -299,7 +299,7 @@ class PackPublishPushRoundTripTest(unittest.TestCase):
         # no-op to the semver gate (identical old/new) -- the gate alone would not catch this.
         same_as_published_but_mutated = self.tmp_dir / "widgets-same-version-mutated.json"
         _write(same_as_published_but_mutated, {
-            "dslVersion": "1.0.0", "pack": "widgets", "version": "1.1.0",
+            "dslVersion": "3.0.0", "pack": "widgets", "version": "1.1.0",
             "concepts": [{"name": "Widget", "fields": [
                 {"name": "id", "type": "uuid", "id": True, "required": True},
                 {"name": "sku", "type": "string", "required": False}]}],

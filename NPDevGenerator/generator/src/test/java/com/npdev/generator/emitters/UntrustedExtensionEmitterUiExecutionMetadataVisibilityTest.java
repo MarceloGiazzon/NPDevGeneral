@@ -177,8 +177,6 @@ final class UntrustedExtensionEmitterUiExecutionMetadataVisibilityTest {
                 List.of(),
                 List.of(),
                 List.of(),
-                List.of(),
-                List.of(),
                 List.of(procedure),
                 List.of(panel)
         );

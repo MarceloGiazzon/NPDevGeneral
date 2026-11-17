@@ -51,15 +51,28 @@ class ServiceBaseFlowRowLevelAuthzTest {
     private static final String MODEL_JSON = """
             {
               "namespace": "reg16resid",
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "version": "v1",
               "concepts": [
                 {
                   "name": "Ticket",
                   "fields": [
-                    { "name": "id", "type": "uuid", "id": true, "required": true },
-                    { "name": "ownerId", "type": "string", "required": true },
-                    { "name": "subject", "type": "string", "required": true }
+                    {
+                      "name": "id",
+                      "type": "uuid",
+                      "id": true,
+                      "required": true
+                    },
+                    {
+                      "name": "ownerId",
+                      "type": "string",
+                      "required": true
+                    },
+                    {
+                      "name": "subject",
+                      "type": "string",
+                      "required": true
+                    }
                   ],
                   "access": {
                     "write": "ownerId == $user.id"
@@ -67,20 +80,39 @@ class ServiceBaseFlowRowLevelAuthzTest {
                 }
               ],
               "capabilities": [
-                { "name": "persistence", "type": "PersistenceCapability", "operations": ["save", "unique", "findById"] }
-              ],
-              "bindings": [
-                { "capability": "persistence", "adapter": "repository" },
-                { "capability": "eventBus", "adapter": "inproc" }
+                {
+                  "name": "persistence",
+                  "type": "PersistenceCapability",
+                  "operations": [
+                    "save",
+                    "unique",
+                    "findById"
+                  ]
+                }
               ],
               "flows": [
                 {
                   "name": "CreateTicket",
-                  "input": { "concept": "Ticket", "mode": "create" },
+                  "input": {
+                    "concept": "Ticket",
+                    "mode": "create"
+                  },
                   "steps": [
-                    { "name": "save-ticket", "type": "capabilityCall", "capability": "persistence", "operation": "save",
-                      "args": ["$input"], "output": "$saved" },
-                    { "name": "return-ticket", "type": "return", "value": "$saved" }
+                    {
+                      "name": "save-ticket",
+                      "type": "capabilityCall",
+                      "capability": "persistence",
+                      "operation": "save",
+                      "args": [
+                        "$input"
+                      ],
+                      "output": "$saved"
+                    },
+                    {
+                      "name": "return-ticket",
+                      "type": "return",
+                      "value": "$saved"
+                    }
                   ]
                 }
               ]

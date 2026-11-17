@@ -35,7 +35,7 @@ class PackTransitiveDependencyResolutionTest {
     void diamondDependencyMergesOneUserPackAndCrossPackReferencesResolve() throws Exception {
         write("packs/user/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "user",
                   "version": "2.5.0",
                   "concepts": [
@@ -48,7 +48,7 @@ class PackTransitiveDependencyResolutionTest {
                 """);
         write("packs/crm/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "crm",
                   "version": "1.0.0",
                   "packs": [ { "pack": "user", "version": "^2.0" } ],
@@ -62,7 +62,7 @@ class PackTransitiveDependencyResolutionTest {
                 """);
         write("packs/billing/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "billing",
                   "version": "1.0.0",
                   "packs": [ { "pack": "user", "version": "^2.0" } ],
@@ -77,7 +77,7 @@ class PackTransitiveDependencyResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "diamond.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [
                     { "$ref": "packs/crm/pack.json" },
@@ -130,7 +130,7 @@ class PackTransitiveDependencyResolutionTest {
     void crossMajorConstraintsOnTheSamePackRefuseNamingBothPaths() throws Exception {
         write("packs/user/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "user",
                   "version": "2.5.0",
                   "concepts": [
@@ -142,7 +142,7 @@ class PackTransitiveDependencyResolutionTest {
                 """);
         write("packs/crm/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "crm",
                   "version": "1.0.0",
                   "packs": [ { "pack": "user", "version": "^2.0" } ],
@@ -155,7 +155,7 @@ class PackTransitiveDependencyResolutionTest {
                 """);
         write("packs/billing/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "billing",
                   "version": "1.0.0",
                   "packs": [ { "pack": "user", "version": "^3.0" } ],
@@ -169,7 +169,7 @@ class PackTransitiveDependencyResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "diamond.conflict.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [
                     { "$ref": "packs/crm/pack.json" },
@@ -190,7 +190,7 @@ class PackTransitiveDependencyResolutionTest {
     void packDependencyCycleFailsPrintingThePath() throws Exception {
         write("packs/a/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "a",
                   "version": "1.0.0",
                   "packs": [ { "pack": "b", "version": "^1.0" } ]
@@ -198,7 +198,7 @@ class PackTransitiveDependencyResolutionTest {
                 """);
         write("packs/b/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "b",
                   "version": "1.0.0",
                   "packs": [ { "pack": "a", "version": "^1.0" } ]
@@ -207,7 +207,7 @@ class PackTransitiveDependencyResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "cycle.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "$ref": "packs/a/pack.json" } ]
                 }
@@ -233,7 +233,7 @@ class PackTransitiveDependencyResolutionTest {
                     : "";
             write("packs/" + selfId + "/pack.json", """
                     {
-                      "dslVersion": "1.0.0",
+                      "dslVersion": "3.0.0",
                       "pack": "%s",
                       "version": "1.0.0",
                       %s
@@ -246,7 +246,7 @@ class PackTransitiveDependencyResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "depth.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "$ref": "packs/a0/pack.json" } ]
                 }
@@ -263,7 +263,7 @@ class PackTransitiveDependencyResolutionTest {
         // this repo today) must resolve byte-identically to pre-PK-3 behavior.
         write("packs/simple/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "simple",
                   "version": "1.0.0",
                   "concepts": [
@@ -276,7 +276,7 @@ class PackTransitiveDependencyResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "noop.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "$ref": "packs/simple/pack.json" } ]
                 }
@@ -294,7 +294,7 @@ class PackTransitiveDependencyResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "sbs.refuse.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [
                     { "$ref": "packs/crm/pack.json" },
@@ -314,7 +314,7 @@ class PackTransitiveDependencyResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "sbs.noalias.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [
                     { "$ref": "packs/crm/pack.json" },
@@ -334,7 +334,7 @@ class PackTransitiveDependencyResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "sbs.ok.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [
                     { "$ref": "packs/crm/pack.json" },
@@ -371,7 +371,7 @@ class PackTransitiveDependencyResolutionTest {
         // The default-convention location a transitive dependency on "user" resolves to.
         write("packs/user/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "user",
                   "version": "2.0.0",
                   "concepts": [
@@ -383,7 +383,7 @@ class PackTransitiveDependencyResolutionTest {
                 """);
         write("packs/crm/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "crm",
                   "version": "1.0.0",
                   "packs": [ { "pack": "user", "version": "^2.0" } ],
@@ -398,7 +398,7 @@ class PackTransitiveDependencyResolutionTest {
         // wants to import directly, alongside (not instead of) crm's own transitive dependency.
         write("packs/user-v3/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "user",
                   "version": "3.0.0",
                   "concepts": [
@@ -414,7 +414,7 @@ class PackTransitiveDependencyResolutionTest {
     void transitiveDependencyWithNoLockRefusesNamingTheRemedy() throws Exception {
         write("packs/user/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "user",
                   "version": "2.0.0",
                   "concepts": [ { "name": "Account", "fields": [
@@ -424,7 +424,7 @@ class PackTransitiveDependencyResolutionTest {
                 """);
         write("packs/crm/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "crm",
                   "version": "1.0.0",
                   "packs": [ { "pack": "user", "version": "^2.0" } ],
@@ -436,7 +436,7 @@ class PackTransitiveDependencyResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "no.lock.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "$ref": "packs/crm/pack.json" } ]
                 }
@@ -451,7 +451,7 @@ class PackTransitiveDependencyResolutionTest {
     void staleLockVersionRefusesNamingTheRemedy() throws Exception {
         write("packs/user/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "user",
                   "version": "2.0.0",
                   "concepts": [ { "name": "Account", "fields": [
@@ -461,7 +461,7 @@ class PackTransitiveDependencyResolutionTest {
                 """);
         write("packs/crm/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "crm",
                   "version": "1.0.0",
                   "packs": [ { "pack": "user", "version": "^2.0" } ],
@@ -473,7 +473,7 @@ class PackTransitiveDependencyResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "stale.lock.version.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "$ref": "packs/crm/pack.json" } ]
                 }
@@ -486,7 +486,7 @@ class PackTransitiveDependencyResolutionTest {
         // Now bump user's version on disk without updating the lock -- classic drift.
         Files.writeString(temp.resolve("packs/user/pack.json"), """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "user",
                   "version": "2.1.0",
                   "concepts": [ { "name": "Account", "fields": [
@@ -505,7 +505,7 @@ class PackTransitiveDependencyResolutionTest {
     void staleLockDigestRefusesEvenWhenTheVersionStringWasNotBumped() throws Exception {
         write("packs/user/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "user",
                   "version": "2.0.0",
                   "concepts": [ { "name": "Account", "fields": [
@@ -515,7 +515,7 @@ class PackTransitiveDependencyResolutionTest {
                 """);
         write("packs/crm/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "crm",
                   "version": "1.0.0",
                   "packs": [ { "pack": "user", "version": "^2.0" } ],
@@ -527,7 +527,7 @@ class PackTransitiveDependencyResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "stale.lock.digest.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "$ref": "packs/crm/pack.json" } ]
                 }
@@ -537,7 +537,7 @@ class PackTransitiveDependencyResolutionTest {
         // the digest check must catch this even though resolvedVersion still matches.
         Files.writeString(temp.resolve("packs/user/pack.json"), """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "user",
                   "version": "2.0.0",
                   "concepts": [ { "name": "Account", "fields": [
@@ -556,7 +556,7 @@ class PackTransitiveDependencyResolutionTest {
     void twoResolutionsOfTheSameModelAndLockAreByteIdentical() throws Exception {
         write("packs/user/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "user",
                   "version": "2.0.0",
                   "concepts": [ { "name": "Account", "fields": [
@@ -566,7 +566,7 @@ class PackTransitiveDependencyResolutionTest {
                 """);
         write("packs/crm/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "crm",
                   "version": "1.0.0",
                   "packs": [ { "pack": "user", "version": "^2.0" } ],
@@ -578,7 +578,7 @@ class PackTransitiveDependencyResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "determinism.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "$ref": "packs/crm/pack.json" } ]
                 }

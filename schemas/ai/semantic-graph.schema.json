@@ -44,7 +44,7 @@
       "properties": {
         "kind": {
           "type": "string",
-          "examples": ["concept", "field", "panel", "query", "procedure", "flow", "event", "capability", "aggregate", "guidePage", "dataSource", "domainType", "invariant", "autoPanel", "selector", "document", "conversion", "orchestration"]
+          "examples": ["concept", "field", "panel", "query", "procedure", "flow", "event", "capability", "aggregate", "guidePage", "dataSource", "domainType", "invariant", "autoPanel", "selector", "document", "conversion"]
         },
         "name": {
           "type": "string",

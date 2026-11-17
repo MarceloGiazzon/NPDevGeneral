@@ -1,7 +1,7 @@
 {
   "$schema": "..\\..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
   "namespace": "sample.engineprobe",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "version": "1.0",
   "metadata": {
     "purpose": "Engine probe (storage/FULL_SUPPORT_PLAN.md W2, exit criteria E3/E4/E5): the SAME model is generated, built, booted and exercised against EVERY engine, so any difference in outcome is the dialect and nothing else. Every field forces one engine-specific column type or behaviour through the FULL generated stack -- schema realization, CRUD, query, panel -- which Tier B's raw-JDBC vectors never touch. One model, not one per engine: two models could differ, and then a difference in outcome would prove nothing. ProbeReserved and the Row concept carry SQL-RESERVED identifiers (`order`, `value`, and the table name `rows`) so this same all-engine run also proves STOR-6 conditional quoting at both naming seams -- the generator emits the DDL and the runtime queries it, and quoting only one leaves an app that builds, boots, and cannot find its own table."
@@ -164,16 +164,6 @@
       ]
     }
   ],
-  "bindings": [
-    {
-      "capability": "persistence",
-      "adapter": "repository"
-    },
-    {
-      "capability": "eventBus",
-      "adapter": "inproc"
-    }
-  ],
   "queries": [
     {
       "name": "ActiveProbeRecords",
@@ -181,39 +171,6 @@
       "where": "active == true && quantity >= 1",
       "orderBy": [
         "quantity"
-      ]
-    }
-  ],
-  "procedures": [
-    {
-      "name": "SaveProbeRecordProcedure",
-      "description": "Saves a probe record through the Concept Gateway and returns the governed record.",
-      "parameters": [
-        {
-          "name": "id",
-          "type": "uuid",
-          "required": true
-        }
-      ],
-      "steps": [
-        {
-          "name": "save-probe-record-through-gateway",
-          "type": "saveConcept",
-          "concept": "ProbeRecord",
-          "id": "$id",
-          "data": {
-            "input": "$input"
-          },
-          "target": "savedRecord",
-          "trace": true,
-          "audit": true
-        },
-        {
-          "name": "return-saved-record",
-          "type": "return",
-          "value": "$savedRecord",
-          "trace": true
-        }
       ]
     }
   ],
@@ -305,6 +262,25 @@
           "name": "return-probe-record",
           "type": "return",
           "value": "$saved"
+        }
+      ]
+    },
+    {
+      "name": "SaveProbeRecordProcedure",
+      "description": "Saves a probe record through the Concept Gateway and returns the governed record.",
+      "expose": "ui",
+      "steps": [
+        {
+          "name": "save-probe-record-through-gateway",
+          "type": "createConcept",
+          "scope": "ProbeRecord",
+          "input": "$input",
+          "output": "savedRecord"
+        },
+        {
+          "name": "return-saved-record",
+          "type": "return",
+          "value": "$savedRecord"
         }
       ]
     }

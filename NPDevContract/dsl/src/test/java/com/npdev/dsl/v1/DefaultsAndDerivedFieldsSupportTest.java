@@ -25,7 +25,7 @@ class DefaultsAndDerivedFieldsSupportTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "value.behavior.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -64,7 +64,7 @@ class DefaultsAndDerivedFieldsSupportTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "value.behavior.user",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -98,7 +98,7 @@ class DefaultsAndDerivedFieldsSupportTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "value.behavior.functions",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -122,11 +122,10 @@ class DefaultsAndDerivedFieldsSupportTest {
         assertTrue(errors.stream().anyMatch(error -> error.contains("field shout: derivedExpression calls uppercse()")
                         && error.contains("suggestedFix")),
                 "a typo'd function must be refused: " + errors);
-        assertTrue(errors.stream().anyMatch(error -> error.contains("field code: defaultExpression calls uuid()")),
-                "uuid() is only a whole defaultExpression, not a nested call: " + errors);
+        // FORM P3-T2: now() / uuid() are registered functions, so a defaultExpression may nest them.
         assertTrue(errors.stream().anyMatch(error -> error.contains("field touchedAt: derivedExpression calls now()")),
                 "now() is not available to a derivedExpression: " + errors);
-        assertTrue(errors.stream().noneMatch(error -> error.contains("field label:") || error.contains("field createdAt:")
+        assertTrue(errors.stream().noneMatch(error -> error.contains("field label:") || error.contains("field code:") || error.contains("field createdAt:")
                         || error.contains("field ref:")),
                 "registered functions and whole now()/uuid() defaults stay valid: " + errors);
     }
@@ -137,7 +136,7 @@ class DefaultsAndDerivedFieldsSupportTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "value.behavior.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {

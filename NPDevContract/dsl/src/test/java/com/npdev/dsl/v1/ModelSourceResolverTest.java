@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -37,7 +38,7 @@ class ModelSourceResolverTest {
         Path model = write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "InlineA", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] },
@@ -57,14 +58,18 @@ class ModelSourceResolverTest {
     }
 
     @Test
-    void topLevelFragmentsAppendAfterRootInlineEntriesAndMergeMetadataSafely() throws Exception {
+    void anArrayRefEntryIsSplicedInPlaceAndTheIncludedFilesMetadataStaysOutOfTheModel() throws Exception {
         write("plugin/sendMail.json", """
                 {
                   "capabilities": [
-                    { "name": "sendMail", "type": "NotificationCapability", "operations": ["send"] }
-                  ],
-                  "bindings": [
-                    { "capability": "sendMail", "adapter": "plugin:generic" }
+                    {
+                      "name": "sendMail",
+                      "type": "NotificationCapability",
+                      "operations": [
+                        "send"
+                      ],
+                      "adapter": "plugin:generic"
+                    }
                   ],
                   "metadata": {
                     "pluginSource": "sendMail"
@@ -74,14 +79,14 @@ class ModelSourceResolverTest {
         Path model = write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
-                  "fragments": [{ "$ref": "plugin/sendMail.json" }],
                   "concepts": [
                     { "name": "User", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
                   ],
                   "capabilities": [
-                    { "name": "localCapability", "type": "ExternalCapability", "operations": ["run"] }
+                    { "name": "localCapability", "type": "ExternalCapability", "operations": ["run"] },
+                    { "$ref": "plugin/sendMail.json" }
                   ],
                   "metadata": {
                     "owner": "root"
@@ -93,12 +98,14 @@ class ModelSourceResolverTest {
 
         assertEquals("localCapability", resolved.get("capabilities").get(0).get("name").asText());
         assertEquals("sendMail", resolved.get("capabilities").get(1).get("name").asText());
+        assertEquals(2, resolved.get("capabilities").size());
+        assertEquals("plugin:generic", resolved.get("capabilities").get(1).get("adapter").asText());
         assertEquals("root", resolved.get("metadata").get("owner").asText());
-        assertEquals("sendMail", resolved.get("metadata").get("pluginSource").asText());
+        assertFalse(resolved.get("metadata").has("pluginSource"), "an included file's metadata is not merged into the model");
     }
 
     @Test
-    void nestedFragmentsResolveRelativeToContainingFile() throws Exception {
+    void nestedArrayRefsResolveRelativeToTheContainingFile() throws Exception {
         write("plugin/nested/capability.json", """
                 {
                   "capabilities": [
@@ -110,14 +117,14 @@ class ModelSourceResolverTest {
                 { "name": "sendMail", "type": "NotificationCapability", "operations": ["send"] }
                 """);
         write("plugin/sendMail.json", """
-                { "fragments": [{ "$ref": "nested/capability.json" }] }
+                { "capabilities": [{ "$ref": "nested/capability.json" }] }
                 """);
         Path model = write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
-                  "fragments": [{ "$ref": "plugin/sendMail.json" }],
+                  "capabilities": [{ "$ref": "plugin/sendMail.json" }],
                   "concepts": [
                     { "name": "User", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
                   ]
@@ -126,7 +133,27 @@ class ModelSourceResolverTest {
 
         JsonNode resolved = new ModelSourceResolver().resolve(model).resolvedRoot();
 
+        assertEquals(1, resolved.get("capabilities").size());
         assertEquals("sendMail", resolved.get("capabilities").get(0).get("name").asText());
+    }
+
+    @Test
+    void rootFragmentsIsRefusedWithAMigrationMessage() throws Exception {
+        write("plugin/sendMail.json", "{ \"capabilities\": [] }");
+        Path model = write("model.json", """
+                {
+                  "namespace": "demo",
+                  "dslVersion": "3.0.0",
+                  "version": "1.0",
+                  "fragments": [{ "$ref": "plugin/sendMail.json" }],
+                  "concepts": [
+                    { "name": "User", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
+                  ]
+                }
+                """);
+
+        IOException error = assertThrows(IOException.class, () -> new ModelSourceResolver().resolve(model));
+        assertTrue(error.getMessage().contains("Root 'fragments' was removed"), error.getMessage());
     }
 
     @Test
@@ -138,50 +165,27 @@ class ModelSourceResolverTest {
     }
 
     @Test
-    void rejectsCircularFragmentsThroughCanonicalPaths() throws Exception {
-        write("plugin/a.json", "{ \"fragments\": [{ \"$ref\": \"./sub/../b.json\" }] }");
-        write("plugin/b.json", "{ \"fragments\": [{ \"$ref\": \"a.json\" }] }");
+    void rejectsCircularArrayRefsThroughCanonicalPaths() throws Exception {
+        write("plugin/a.json", "{ \"concepts\": [{ \"$ref\": \"./sub/../b.json\" }] }");
+        write("plugin/b.json", "{ \"concepts\": [{ \"$ref\": \"a.json\" }] }");
         Path model = write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
-                  "fragments": [{ "$ref": "plugin/a.json" }],
-                  "concepts": [
-                    { "name": "User", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
-                  ]
+                  "concepts": [{ "$ref": "plugin/a.json" }]
                 }
                 """);
 
         IOException error = assertThrows(IOException.class, () -> new ModelSourceResolver().resolve(model));
-        assertTrue(error.getMessage().contains("Circular model include"));
-    }
-
-    @Test
-    void rejectsMetadataCollisionBetweenFragments() throws Exception {
-        write("plugin/a.json", "{ \"metadata\": { \"pluginSource\": \"a\" } }");
-        write("plugin/b.json", "{ \"metadata\": { \"pluginSource\": \"b\" } }");
-        Path model = write("model.json", """
-                {
-                  "namespace": "demo",
-                  "dslVersion": "1.0.0",
-                  "version": "1.0",
-                  "fragments": [{ "$ref": "plugin/a.json" }, { "$ref": "plugin/b.json" }],
-                  "concepts": [
-                    { "name": "User", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
-                  ]
-                }
-                """);
-
-        IOException error = assertThrows(IOException.class, () -> new ModelSourceResolver().resolve(model));
-        assertTrue(error.getMessage().contains("Duplicate fragment metadata key"));
+        assertTrue(error.getMessage().contains("Circular model include"), error.getMessage());
     }
 
     @Test
     void packNamespacesConceptsAndRewritesIntraPackReferences() throws Exception {
         write("pack/catalog.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "catalog",
                   "version": "1.0.0",
                   "domainTypes": [{ "name": "Sku", "baseType": "string" }],
@@ -201,7 +205,7 @@ class ModelSourceResolverTest {
         Path model = write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [{ "$ref": "pack/catalog.json" }],
                   "concepts": [
@@ -227,6 +231,48 @@ class ModelSourceResolverTest {
         assertEquals("catalog::lookup", resolved.get("capabilities").get(0).get("name").asText());
     }
 
+
+    /** FORM P3-T5b: a pack's own query / flow named by a flow step is qualified with its member. */
+    @Test
+    void packFlowStepsRewriteTheirRunQueryAndCallFlowTargets() throws Exception {
+        write("pack/reports.json", """
+                {
+                  "dslVersion": "3.0.0",
+                  "pack": "reports",
+                  "version": "1.0.0",
+                  "concepts": [
+                    { "name": "Item", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
+                  ],
+                  "queries": [ { "name": "AllItems", "concept": "Item" } ],
+                  "flows": [
+                    { "name": "Helper", "concept": "Item", "steps": [ { "name": "r", "type": "return", "value": "input" } ] },
+                    { "name": "Main", "concept": "Item", "steps": [
+                      { "name": "q", "type": "runQuery", "query": "AllItems", "output": "rows" },
+                      { "name": "c", "type": "callFlow", "flow": "Helper", "output": "x" } ] }
+                  ]
+                }
+                """);
+        Path model = write("model.json", """
+                {
+                  "namespace": "demo",
+                  "dslVersion": "3.0.0",
+                  "version": "1.0",
+                  "packs": [{ "$ref": "pack/reports.json" }]
+                }
+                """);
+
+        JsonNode flows = new ModelSourceResolver().resolve(model).resolvedRoot().get("flows");
+
+        JsonNode main = null;
+        for (JsonNode flow : flows) {
+            if (flow.get("name").asText().endsWith("Main")) {
+                main = flow;
+            }
+        }
+        assertEquals("reports::AllItems", main.get("steps").get(0).get("query").asText());
+        assertEquals("reports::Helper", main.get("steps").get(1).get("flow").asText());
+    }
+
     @Test
     void packContributedRolesPropertyScopesAndPropertiesAreMergedNotDropped() throws Exception {
         // Move 13 / REG-108: roles, propertyScopes and properties are top-level arrays exactly like
@@ -237,7 +283,7 @@ class ModelSourceResolverTest {
         // pack-contributed declarations specifically.
         write("pack/tenancy.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "tenancy",
                   "version": "1.0.0",
                   "roles": [{ "name": "PackRole", "grants": ["EXECUTE_FLOW"] }],
@@ -250,7 +296,7 @@ class ModelSourceResolverTest {
         Path model = write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [{ "$ref": "pack/tenancy.json" }],
                   "concepts": [
@@ -285,7 +331,7 @@ class ModelSourceResolverTest {
     void packAliasOverridesPackIdentifier() throws Exception {
         write("pack/catalog.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "catalog",
                   "version": "1.0.0",
                   "concepts": [
@@ -296,7 +342,7 @@ class ModelSourceResolverTest {
         Path model = write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [{ "$ref": "pack/catalog.json", "as": "cat" }],
                   "concepts": [
@@ -313,7 +359,7 @@ class ModelSourceResolverTest {
     void packAliasMayContainHyphenAndNamespacesConcepts() throws Exception {
         write("pack/catalog.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "catalog",
                   "version": "1.0.0",
                   "concepts": [
@@ -333,7 +379,7 @@ class ModelSourceResolverTest {
         Path model = write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [{ "$ref": "pack/catalog.json", "as": 123 }],
                   "concepts": [
@@ -374,7 +420,7 @@ class ModelSourceResolverTest {
         Path model = write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [
                     { "$ref": "pack/catalog.json", "as": "cat" },
@@ -422,22 +468,12 @@ class ModelSourceResolverTest {
                       "dataSources": [{ "name": "products", "concept": "Product" }],
                       "actions": [{ "name": "archive", "binding": "procedure", "concept": "Product" }]
                     }
-                  ],
-                  "ruleProfiles": [
-                    { "name": "ProductRules", "appliesTo": ["Product", "billing::Invoice"] }
-                  ],
-                  "orchestrations": [
-                    {
-                      "name": "ProductCreated",
-                      "trigger": { "type": "event", "event": "ProductCreated" },
-                      "action": { "type": "createConcept", "targetConcept": "Product" }
-                    }
                   ]
                 }
                 """);
         write("pack/catalog.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "catalog",
                   "version": "1.0.0",
                   "concepts": [
@@ -463,17 +499,13 @@ class ModelSourceResolverTest {
                 resolved.get("panels").get(0).get("dataSources").get(0).get("concept").asText());
         assertEquals("cat::Product",
                 resolved.get("panels").get(0).get("actions").get(0).get("concept").asText());
-        assertEquals("cat::Product", resolved.get("ruleProfiles").get(0).get("appliesTo").get(0).asText());
-        assertEquals("billing::Invoice", resolved.get("ruleProfiles").get(0).get("appliesTo").get(1).asText());
-        assertEquals("cat::Product",
-                resolved.get("orchestrations").get(0).get("action").get("targetConcept").asText());
     }
 
     @Test
     void packWithoutIdentifierOrAliasIsRejected() throws Exception {
         write("pack/catalog.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0.0",
                   "concepts": [
                     { "name": "Product", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
@@ -483,7 +515,7 @@ class ModelSourceResolverTest {
         Path model = write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [{ "$ref": "pack/catalog.json" }],
                   "concepts": [
@@ -508,7 +540,7 @@ class ModelSourceResolverTest {
     void packSchemaRejectsTypoConceptsProperty() throws Exception {
         write("pack/catalog.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "catalog",
                   "version": "1.0.0",
                   "concets": []
@@ -562,7 +594,7 @@ class ModelSourceResolverTest {
                 """);
         write("pack/catalog/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "catalog",
                   "version": "1.0.0",
                   "concepts": [
@@ -605,7 +637,7 @@ class ModelSourceResolverTest {
                 {
                   "pack": "catalog",
                   "version": "1.0.0",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "concepts": [
                     {
                       "name": "Product",
@@ -620,7 +652,7 @@ class ModelSourceResolverTest {
         Path model = write("model.json", """
                 {
                   "namespace": "order.app",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [{ "$ref": "packs/catalog.json" }],
                   "concepts": [
@@ -678,7 +710,7 @@ class ModelSourceResolverTest {
     void packFragmentRejectsIdentityFields() throws Exception {
         write("pack/catalog/fragments/product.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "concepts": [
                     { "name": "Product", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
                   ]
@@ -686,7 +718,7 @@ class ModelSourceResolverTest {
                 """);
         write("pack/catalog/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "catalog",
                   "version": "1.0.0",
                   "fragments": [{ "$ref": "fragments/product.json" }]
@@ -706,7 +738,7 @@ class ModelSourceResolverTest {
         Path model = write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     %s
@@ -722,7 +754,7 @@ class ModelSourceResolverTest {
         Path outside = temp.getParent().resolve("outside.json");
         if (!Files.exists(outside)) {
             Files.writeString(outside, """
-                    { "dslVersion": "1.0.0", "pack": "outside", "version": "1.0.0" }
+                    { "dslVersion": "3.0.0", "pack": "outside", "version": "1.0.0" }
                     """);
         }
         Path model = packImportModel(ref);
@@ -739,7 +771,7 @@ class ModelSourceResolverTest {
         return write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [{ "$ref": "%s", "as": "cat" }],
                   "concepts": [
@@ -753,7 +785,7 @@ class ModelSourceResolverTest {
         return write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [{ "$ref": "%s", "as": "%s" }],
                   "concepts": [
@@ -766,7 +798,7 @@ class ModelSourceResolverTest {
     private void writeSimplePack(String relative, String packId) throws IOException {
         write(relative, """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "%s",
                   "version": "1.0.0",
                   "concepts": [
@@ -780,7 +812,7 @@ class ModelSourceResolverTest {
         return """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     %s

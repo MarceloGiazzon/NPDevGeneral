@@ -15,13 +15,12 @@ import java.util.List;
  * time even after the fix the first round called for. Round 1: a check counting only flow/procedure
  * {@code emit} steps as producers false-positived on the canonical demo model, because a
  * concept-nested event's {@code triggerMode} (generated CRUD auto-publishing on create/update/
- * delete) and an orchestration rule's {@code scheduleEvent} action are also legitimate producers
+ * delete) and a {@code scheduleEvent} step are also legitimate producers
  * {@link ReferenceIndex} did not model. Round 2, after extending {@link ReferenceIndex} with edges
- * for both (P2.3 follow-up -- {@code SITE_CONCEPT_EVENT_TRIGGER_MODE} and
- * {@code SITE_ORCHESTRATION_ACTION_EVENT}, both genuinely useful graph enrichment kept regardless of
- * this check's fate) still false-positived, on a DIFFERENT and larger class: {@code
- * DslGrammarEvolutionTest}'s orchestration fixtures (and others like it across the corpus) declare a
- * real {@code events[]} entry used ONLY as an orchestration TRIGGER within that model, by design --
+ * for both (P2.3 follow-up -- {@code SITE_CONCEPT_EVENT_TRIGGER_MODE}, a genuinely useful graph
+ * enrichment kept regardless of this check's fate) still false-positived, on a DIFFERENT and larger class: {@code
+ * DslGrammarEvolutionTest}'s trigger-flow fixtures (and others like it across the corpus) declare a
+ * real {@code events[]} entry used ONLY as a flow TRIGGER within that model, by design --
  * these are narrow unit tests of one mechanism (trigger matching, condition evaluation) in
  * isolation, not complete production-shaped models, and the DSL does not require an event's
  * producer to live in the same model that consumes it (a webhook or external system is a legitimate

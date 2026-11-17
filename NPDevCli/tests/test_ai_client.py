@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import sys
 import tempfile
 import threading
@@ -18,6 +19,8 @@ import npdev_ai_config as aicfg  # noqa: E402
 import npdev_providers  # noqa: E402
 
 SECRET = "test-key-0123456789abcdef"
+# No test may read the developer's real user profiles (they would change which account a call uses).
+os.environ["NPDEV_USER_PROFILES"] = str(Path(tempfile.gettempdir()) / "npdev-tests-no-user-profiles.json")
 
 
 def shipped() -> dict:

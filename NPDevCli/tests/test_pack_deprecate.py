@@ -62,7 +62,7 @@ def _deprecate_args(pack_path: Path, *, since=None, reason="retired", superseded
 class PackDeprecateCliUnitTest(unittest.TestCase):
     def _pack(self, tmp_dir: Path, **extra) -> Path:
         pack_path = tmp_dir / "pack.json"
-        doc = {"dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0"}
+        doc = {"dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0"}
         doc.update(extra)
         _write(pack_path, doc)
         return pack_path
@@ -148,7 +148,7 @@ class CheckDeprecatedPacksUnitTest(unittest.TestCase):
 
     def _locked(self, tmp: Path, *, deprecated=None) -> tuple[Path, dict]:
         source = tmp / "cache" / "widgets" / "pack.json"
-        doc = {"dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0"}
+        doc = {"dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0"}
         if deprecated is not None:
             doc["deprecated"] = deprecated
         _write(source, doc)
@@ -228,7 +228,7 @@ class CheckDeprecatedPacksUnitTest(unittest.TestCase):
             tmp_dir = Path(tmp)
             model_path = tmp_dir / "model.json"
             _write(tmp_dir / "packs" / "oldwidgets" / "pack.json", {
-                "dslVersion": "1.0.0", "pack": "oldwidgets", "version": "1.0.0",
+                "dslVersion": "3.0.0", "pack": "oldwidgets", "version": "1.0.0",
                 "deprecated": {"since": "1.0.0", "reason": "retired",
                                "supersededBy": {"pack": "newwidgets", "version": "2.0.0"}},
             })
@@ -284,7 +284,7 @@ class PackDeprecateRoundTripTest(unittest.TestCase):
             src_repo.mkdir()
             _run(src_repo, "git", "init", "--quiet", "--initial-branch=main")
             _write(src_repo / "pack.json", {
-                "dslVersion": "1.0.0", "pack": "oldwidgets", "version": "1.0.0",
+                "dslVersion": "3.0.0", "pack": "oldwidgets", "version": "1.0.0",
                 "deprecated": {
                     "since": "1.0.0", "reason": "replaced by newwidgets",
                     "supersededBy": {"pack": "newwidgets", "version": "2.0.0"},
@@ -296,7 +296,7 @@ class PackDeprecateRoundTripTest(unittest.TestCase):
             coordinate = f"git+{src_repo.resolve().as_uri()}@v1.0.0"
             app_dir = tmp_dir / "app"
             model_path = app_dir / "model.json"
-            _write(model_path, {"namespace": "npdev.throwaway.deprecate", "dslVersion": "1.0.0",
+            _write(model_path, {"namespace": "npdev.throwaway.deprecate", "dslVersion": "3.0.0",
                                  "version": "1.0", "packs": [{"from": coordinate}]})
 
             env = {"NPDEV_PACK_CACHE_ROOT": str(tmp_dir / "pack-cache")}

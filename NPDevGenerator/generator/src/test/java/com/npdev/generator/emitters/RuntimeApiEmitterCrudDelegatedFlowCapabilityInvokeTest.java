@@ -38,38 +38,69 @@ class RuntimeApiEmitterCrudDelegatedFlowCapabilityInvokeTest {
     private static final String MODEL_JSON = """
             {
               "namespace": "wave3capinvoke",
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "version": "v1",
               "concepts": [
                 {
                   "name": "Widget",
                   "fields": [
-                    { "name": "id", "type": "uuid", "id": true, "required": true },
-                    { "name": "label", "type": "string", "required": true }
+                    {
+                      "name": "id",
+                      "type": "uuid",
+                      "id": true,
+                      "required": true
+                    },
+                    {
+                      "name": "label",
+                      "type": "string",
+                      "required": true
+                    }
                   ]
                 }
               ],
               "capabilities": [
-                { "name": "persistence", "type": "PersistenceCapability", "operations": ["save", "findById"] }
-              ],
-              "bindings": [
-                { "capability": "persistence", "adapter": "repository" },
-                { "capability": "eventBus", "adapter": "inproc" }
+                {
+                  "name": "persistence",
+                  "type": "PersistenceCapability",
+                  "operations": [
+                    "save",
+                    "findById"
+                  ]
+                }
               ],
               "flows": [
                 {
                   "name": "RegisterWidget",
-                  "input": { "concept": "Widget", "mode": "create" },
+                  "input": {
+                    "concept": "Widget",
+                    "mode": "create"
+                  },
                   "steps": [
-                    { "name": "save-widget", "type": "createConcept", "scope": "Widget", "input": "$input", "output": "$saved" },
-                    { "name": "return-widget", "type": "return", "value": "$saved" }
+                    {
+                      "name": "save-widget",
+                      "type": "createConcept",
+                      "scope": "Widget",
+                      "input": "$input",
+                      "output": "$saved"
+                    },
+                    {
+                      "name": "return-widget",
+                      "type": "return",
+                      "value": "$saved"
+                    }
                   ]
                 },
                 {
                   "name": "UnrelatedReport",
-                  "input": { "concept": "Widget" },
+                  "input": {
+                    "concept": "Widget"
+                  },
                   "steps": [
-                    { "name": "return-ok", "type": "return", "value": "true" }
+                    {
+                      "name": "return-ok",
+                      "type": "return",
+                      "value": "true"
+                    }
                   ]
                 }
               ]

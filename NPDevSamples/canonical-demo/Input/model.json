@@ -1,7 +1,7 @@
 {
   "$schema": "..\\..\\NPDevContract\\schemas\\model.schema.json",
   "namespace": "canonical.clinicdemo",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "version": "1.0",
   "domainTypes": [
     {
@@ -965,16 +965,6 @@
       ]
     }
   ],
-  "bindings": [
-    {
-      "capability": "persistence",
-      "adapter": "repository"
-    },
-    {
-      "capability": "notification",
-      "adapter": "notification-inproc"
-    }
-  ],
   "events": [
     {
       "name": "AppointmentCheckedIn",
@@ -1061,55 +1051,6 @@
       ]
     }
   ],
-  "orchestrationRules": [
-    {
-      "name": "CompleteAppointmentFlow",
-      "trigger": {
-        "type": "event",
-        "event": "AppointmentCompleted"
-      },
-      "condition": "$event.status == \"Completed\"",
-      "actions": [
-        {
-          "type": "create",
-          "concept": "InsuranceClaim",
-          "action": {
-            "label": "Create insurance claim",
-            "successMessage": "Draft insurance claim created.",
-            "failureHint": "Review the appointment event payload if claim creation fails.",
-            "dangerLevel": "low",
-            "permissionHint": "claims.create",
-            "inputFormHint": "claim-auto-draft"
-          },
-          "map": {
-            "appointmentId": "$event.appointmentId",
-            "patientId": "$event.patientId",
-            "providerId": "$event.providerId",
-            "status": "Draft"
-          }
-        },
-        {
-          "type": "callCapability",
-          "capability": "notification",
-          "operation": "send",
-          "action": {
-            "label": "Send completion notification",
-            "successMessage": "Completion notification sent.",
-            "failureHint": "Check the notification capability binding if delivery fails.",
-            "dangerLevel": "low",
-            "permissionHint": "notifications.send",
-            "inputFormHint": "appointment-completion-notification"
-          },
-          "map": {
-            "appointmentId": "$event.appointmentId",
-            "patientId": "$event.patientId",
-            "providerId": "$event.providerId",
-            "status": "$event.status"
-          }
-        }
-      ]
-    }
-  ],
   "flows": [
     {
       "name": "CreateAppointment",
@@ -1187,6 +1128,57 @@
           "name": "return-appointment",
           "type": "return",
           "value": "$saved"
+        }
+      ]
+    },
+    {
+      "name": "CompleteAppointmentFlow",
+      "expose": "internal",
+      "runAs": "system",
+      "trigger": {
+        "event": "AppointmentCompleted",
+        "condition": "$event.status == \"Completed\""
+      },
+      "steps": [
+        {
+          "name": "build-1",
+          "type": "map",
+          "select": {
+            "appointmentId": "$input.appointmentId",
+            "patientId": "$input.patientId",
+            "providerId": "$input.providerId",
+            "status": "Draft"
+          },
+          "output": "row1"
+        },
+        {
+          "name": "create-1",
+          "type": "createConcept",
+          "scope": "InsuranceClaim",
+          "input": "$row1",
+          "ifExists": "skip",
+          "output": "created1"
+        },
+        {
+          "name": "build-2",
+          "type": "map",
+          "select": {
+            "appointmentId": "$input.appointmentId",
+            "patientId": "$input.patientId",
+            "providerId": "$input.providerId",
+            "status": "$input.status"
+          },
+          "output": "payload2"
+        },
+        {
+          "name": "call-2",
+          "type": "capabilityCall",
+          "capability": "notification",
+          "operation": "send",
+          "args": [
+            "$payload2"
+          ],
+          "output": "result2"
         }
       ]
     }

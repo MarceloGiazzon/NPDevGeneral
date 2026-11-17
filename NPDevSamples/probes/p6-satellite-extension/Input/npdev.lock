@@ -3,12 +3,12 @@
   "packs" : {
     "clinical" : {
       "resolvedVersion" : "1.0.0",
-      "digest" : "sha256:31b4220767b7fae4a2adb61dc8725468c53cf905907489576c88f81ba8df820d",
+      "digest" : "sha256:fe5a51b56fe59e1d4c0a80ea7168b990a2d435328bdb533a6da10ec6d904c43a",
       "sourcePath" : "packs/clinical/pack.json"
     },
     "identity" : {
       "resolvedVersion" : "1.2.0",
-      "digest" : "sha256:f5acae79f76ddddc9acb2690b4a321cfda2c9df4f7287e949ec4d5a19ae11889",
+      "digest" : "sha256:6d42d91491a1e9adafb8876fac4b22441b4ae0f66abc18ce7019626dbe18af53",
       "sourcePath" : "packs/identity/pack.json"
     }
   }

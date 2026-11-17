@@ -28,7 +28,7 @@ class ComputedExpressionValidationTest {
     void invalidComputedExpressionIsReported() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.ap", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.ap", "version": "1.0",
               "concepts": [
                 { "name": "Item", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -49,7 +49,7 @@ class ComputedExpressionValidationTest {
     void validComputedExpressionPasses() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.ap", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.ap", "version": "1.0",
               "concepts": [
                 { "name": "Item", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -74,7 +74,7 @@ class ComputedExpressionValidationTest {
         // (don't block) so a declared computed[] never silently does nothing.
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.ap", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.ap", "version": "1.0",
               "concepts": [
                 { "name": "Item", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -98,7 +98,7 @@ class ComputedExpressionValidationTest {
     void computedWithRecomputeProcedureDoesNotWarn() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.ap", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.ap", "version": "1.0",
               "concepts": [
                 { "name": "Item", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

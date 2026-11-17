@@ -26,7 +26,7 @@ class OpenApiDocumentBuilderTest {
 
     private static final String MODEL = """
             {
-              "dslVersion": "1.0.0", "namespace": "shop", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "shop", "version": "1.0",
               "concepts": [
                 { "name": "Order", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -148,7 +148,7 @@ class OpenApiDocumentBuilderTest {
     void irregularPluralsAreAdvertisedUnderTheirRestCollectionName() throws Exception {
         String json = """
                 {
-                  "dslVersion": "1.0.0", "namespace": "desk", "version": "1.0",
+                  "dslVersion": "3.0.0", "namespace": "desk", "version": "1.0",
                   "concepts": [
                     { "name": "TicketCategory", "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true } ] },
@@ -195,7 +195,7 @@ class OpenApiDocumentBuilderTest {
     void aDefaultedQueryParameterIsAdvertisedAsOptionalAndNamesItsDefault() throws Exception {
         String json = """
                 {
-                  "dslVersion": "1.0.0", "namespace": "trial", "version": "1.0",
+                  "dslVersion": "3.0.0", "namespace": "trial", "version": "1.0",
                   "concepts": [
                     { "name": "Visit", "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true },

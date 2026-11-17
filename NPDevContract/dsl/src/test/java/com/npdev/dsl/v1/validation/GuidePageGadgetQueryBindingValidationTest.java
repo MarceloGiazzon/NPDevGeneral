@@ -27,7 +27,7 @@ class GuidePageGadgetQueryBindingValidationTest {
     private static String modelWithQueryAndGadget(String queryJson, String gadgetJson) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.gadget", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.gadget", "version": "1.0",
               "concepts": [
                 { "name": "ShipmentEvent", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

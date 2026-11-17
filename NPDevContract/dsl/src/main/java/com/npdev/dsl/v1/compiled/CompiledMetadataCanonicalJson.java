@@ -1076,35 +1076,6 @@ public final class CompiledMetadataCanonicalJson {
             appendFlowStepEntries(entries, flow, flow.getSteps(), "");
         }
 
-        for (CompiledOrchestration rule : sortedOrchestrationRules(model)) {
-            List<CompiledOrchestrationAction> actions = rule.getActions().isEmpty()
-                    ? (rule.getAction() == null ? List.of() : List.of(rule.getAction()))
-                    : rule.getActions();
-            for (int index = 0; index < actions.size(); index++) {
-                CompiledOrchestrationAction action = actions.get(index);
-                ObjectNode node = JsonNodeFactory.instance.objectNode();
-                node.put("kind", "orchestrationAction");
-                node.put("ownerName", safe(rule.getName()));
-                node.put("name", safe(rule.getName()) + "#" + (index + 1));
-                node.put("concept", safe(action.getConcept()));
-                node.put("mode", "");
-                node.put("actionType", safe(action.getType()));
-                node.put("orderKey", "rule:" + pad(index));
-                node.set("invariantRefs", JsonNodeFactory.instance.arrayNode());
-                node.put("triggerEvent", rule.getTrigger() == null ? "" : safe(rule.getTrigger().getEvent()));
-                node.put("capability", safe(action.getCapability()));
-                node.put("operation", safe(action.getOperation()));
-                node.put("eventName", safe(action.getEvent()));
-                node.put("condition", safe(rule.getCondition()));
-                node.put("scope", "");
-                node.put("mapFromRef", "");
-                node.put("mapToRef", "");
-                node.put("returnValueRef", "");
-                putActionMetadata(node, action.getAction(), null);
-                entries.add(node);
-            }
-        }
-
         entries.sort(Comparator
                 .comparing((ObjectNode node) -> text(node, "ownerName"))
                 .thenComparing(node -> text(node, "kind"))
@@ -2705,12 +2676,6 @@ public final class CompiledMetadataCanonicalJson {
         List<CompiledEvent> events = new ArrayList<>(model.getEvents());
         events.sort(Comparator.comparing(event -> normalize(event.getName())));
         return events;
-    }
-
-    private static List<CompiledOrchestration> sortedOrchestrationRules(CompiledModel model) {
-        List<CompiledOrchestration> rules = new ArrayList<>(model.getOrchestrationRules());
-        rules.sort(Comparator.comparing(rule -> normalize(rule.getName())));
-        return rules;
     }
 
     private static List<CompiledDomainType> sortedDomainTypes(CompiledModel model) {

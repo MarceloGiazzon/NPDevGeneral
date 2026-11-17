@@ -38,7 +38,7 @@ class IdentityPackResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "identity.pack.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [
                     { "$ref": "packs/identity/pack.json", "as": "id" }
@@ -100,7 +100,7 @@ class IdentityPackResolutionTest {
         Path unaliasedModel = write("unaliased/model.json", """
                 {
                   "namespace": "identity.pack.unaliased",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [
                     { "$ref": "packs/identity/pack.json" }
@@ -112,7 +112,7 @@ class IdentityPackResolutionTest {
         Path aliasedModel = write("aliased/model.json", """
                 {
                   "namespace": "identity.pack.aliased",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [
                     { "$ref": "packs/identity/pack.json", "as": "auth" }

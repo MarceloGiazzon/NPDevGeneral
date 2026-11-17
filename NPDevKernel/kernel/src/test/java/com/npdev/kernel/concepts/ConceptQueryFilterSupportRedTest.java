@@ -106,7 +106,7 @@ class ConceptQueryFilterSupportRedTest {
     @DisplayName("THE POINT OF LC-P0: an uncompilable predicate is a NAMED ERROR, never a default answer")
     void uncompilablePredicateThrowsInsteadOfGuessing() {
         for (String where : new String[]{
-                "status in ('ACTIVE','CLOSED')",          // unsupported operator
+                "status in ['ACTIVE','CLOSED']",          // unsupported operator
                 "status == 'ACTIVE' || status == 'CLOSED'", // OR: ConceptQuery is AND-combined by contract
                 "upper(status) == 'ACTIVE'",              // function on the left
                 "order.status == 'ACTIVE'",               // nested path
@@ -131,7 +131,8 @@ class ConceptQueryFilterSupportRedTest {
         ConceptQueryPredicateCompiler.UnsupportedPredicateException thrown = assertThrows(
                 ConceptQueryPredicateCompiler.UnsupportedPredicateException.class,
                 () -> ConceptQueryFilterSupport.applyWhere(ROWS, "warehouseId == $ctx.wh"));
-        assertTrue(thrown.getMessage().contains("substitute it before compiling"), thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("$ctx.wh") && thrown.getMessage().contains("$params.<name>"),
+                thrown.getMessage());
     }
 
     @Test

@@ -468,15 +468,6 @@ public class CapabilityIntegrationPanelService {
             ));
             flows.add(normalized);
         }
-        for (Map<String, Object> rule : mapList(model.get("orchestrationRules"))) {
-            if (!stringValue(rule.get("name")).isBlank()) {
-                Map<String, Object> flow = new LinkedHashMap<>();
-                flow.put("name", rule.get("name"));
-                flow.put("concept", stringValue(rule.get("concept")));
-                flow.put("capabilityConnections", capabilityConnectionsFromActions(rule.get("actions")));
-                flows.add(flow);
-            }
-        }
         return flows;
     }
 
@@ -519,30 +510,6 @@ public class CapabilityIntegrationPanelService {
             String capabilityName = stringValue(capability.get("capabilityName"));
             if (!capabilityName.isBlank() && !capabilities.contains(capabilityName)) {
                 capabilities.add(capabilityName);
-            }
-        }
-        return capabilities;
-    }
-
-    private List<String> capabilityConnectionsFromActions(Object rawActions) {
-        List<String> capabilities = new ArrayList<>();
-        if (rawActions instanceof Collection<?> collection) {
-            for (Object action : collection) {
-                if (action instanceof Map<?, ?> rawMap) {
-                    String capability = "";
-                    if (rawMap.containsKey("capability")) {
-                        capability = String.valueOf(rawMap.get("capability"));
-                    } else if ("notify".equals(String.valueOf(rawMap.get("type")))) {
-                        capability = "notification";
-                    } else if ("create".equals(String.valueOf(rawMap.get("type")))
-                            || "update".equals(String.valueOf(rawMap.get("type")))
-                            || "delete".equals(String.valueOf(rawMap.get("type")))) {
-                        capability = "persistence";
-                    }
-                    if (!capability.isBlank() && !capabilities.contains(capability)) {
-                        capabilities.add(capability);
-                    }
-                }
             }
         }
         return capabilities;

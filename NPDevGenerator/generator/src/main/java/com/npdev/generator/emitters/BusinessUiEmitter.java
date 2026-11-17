@@ -210,8 +210,10 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                 templates.render("npdev-review.js.mustache", java.util.Map.of()));
         // F6-5: the browser twin of the server expression engine (npdev-expr.js.mustache). Static, loaded by
         // the aggregate workbench page before its own script.
+        // FORM P3-T2: the function table is generated from the same functions-stdlib.json the Java side reads.
         writer.writeRelative("src/main/resources/static/npdev-expr.js",
-                templates.render("npdev-expr.js.mustache", java.util.Map.of()));
+                templates.render("npdev-expr.js.mustache", java.util.Map.of())
+                        .replace("/*@stdlib-table*/[]/*@end*/", com.npdev.dsl.v1.expr.StdlibRegistry.functionsJson()));
         // INT-9: zero-dependency .xlsx writer/reader for the grid's Export Excel / Import dialog.
         // Static (no model data); loaded by the business UI index before app.js.
         writer.writeRelative("src/main/resources/static/npdev-xlsx.js",

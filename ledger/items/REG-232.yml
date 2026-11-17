@@ -4,9 +4,11 @@ title: >-
   H2 NOT NULL exception when movimentoId is left null, instead of a clean validation error
 type: BUG
 severity: LOW
-status: DONE
+status: OBSOLETE
 opened: 2026-09-21
 closed: 2026-09-21
+decision: >-
+  Orchestration rules (orchestration[]) were removed end to end in FORM P3-T5c stage 6b; the record-movement-history action this item fixed no longer exists, so its NOT NULL classifier and guard test were deleted.
 verification: UNIT_TESTED
 source: >-
   Surfaced incidentally during REG-231's round-2 live verification (see REG-231.yml's "INCIDENTAL,
@@ -56,13 +58,3 @@ detail: |
   afterward (no regression). Not live-verified against a running app; the runtime-support jar would
   need restaging (`sync-runtimehost-libs.ps1 -BuildLocalJars`) before any generated app picks this
   change up.
-guard:
-  kind: test
-  ref: >-
-    NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportNotNullViolationTest.java#postgresAndH2ReportSqlState23502
-  asserts: >-
-    All 7 tests in the class green: SQLSTATE 23502 (Postgres/H2), MySQL vendor code 1048, SQL
-    Server vendor code 515, H2's real bare-message wording with no SQLState, a wrapped cause, and
-    two negative cases (unique/FK violations, and unrelated exceptions/null) never misclassified as
-    NOT NULL. Full :adapters:runtime-support:test module suite green afterward, no regression.
-  provenRed: true

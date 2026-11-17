@@ -52,12 +52,8 @@ import com.npdev.kernel.security.PermissionGrant;
 import com.npdev.kernel.security.StaticPermissionEvaluator;
 import com.finalexec.ai.ExternalAiPromptRunner;
 import com.finalexec.filestore.FileStoreCapabilityHandler;
-import com.finalexec.npdev.service.CapabilityOperationPolicies;
 import com.finalexec.npdev.service.ProcedureRunner;
-import com.npdev.kernel.capabilities.PolicyEnforcingCapabilityDispatcher;
 import com.npdev.runtime.support.GeneratedCrudRuntimeSupport;
-import com.npdev.runtime.support.InMemoryOrchestrationExecutionRegistry;
-import com.npdev.runtime.support.OrchestrationExecutionRegistry;
 import com.npdev.runtime.support.ReloadableInvariantEngine;
 import com.npdev.runtime.support.RuntimeClock;
 import com.npdev.runtime.support.SystemRuntimeClock;
@@ -694,9 +690,9 @@ public class NpdevCapabilityBindingConfig {
         // adapter just supplies the definition's own name back to it.
         ProcedureRunner procedureRunner = procedureRunnerProvider.getIfAvailable();
         if (procedureRunner != null) {
-            ProcedureExecutor procedureExecutor = (definition, input, context) ->
-                    procedureRunner.execute(definition.name(), input, context);
-            kernelRunner.withProcedureExecutor(procedureExecutor, procedureRunner.procedureRegistry());
+            // FORM P3-T5b/c: a flow's concept steps run through the runner's step executor, and callers that run a name
+            // as a procedure (aggregate hooks, workbench actions) reach the flow of that name through this kernel runner.
+            procedureRunner.attach(kernelRunner);
         }
         if (eventStore instanceof InProcEventStore inProcEventStore) {
             inProcEventStore.registerAppendListener(kernelRunner::onEventPersisted);
@@ -711,10 +707,7 @@ public class NpdevCapabilityBindingConfig {
      * rather than {@code modelHolder.get()} so a later {@link ModelHolder#swap} is actually observed.
      * A plain JDK Supplier, not ModelHolder itself, because :kernel adapters (where
      * GeneratedCrudRuntimeSupport lives) cannot depend on NPDevRuntimeHost.
-     * REG-241: a fresh Supplier read is not enough for the orchestration EventBus subscriptions --
-     * those are a side effect, not a lookup -- so a reload listener is registered here to close and
-     * re-register them against the reloaded model, the same idiom {@link #invariantEngine} and
-     * {@link #capabilityRegistry} already use. */
+     */
     @Bean
     public GeneratedCrudRuntimeSupport generatedCrudRuntimeSupport(
             ModelHolder modelHolder,
@@ -724,15 +717,12 @@ public class NpdevCapabilityBindingConfig {
             CapabilityRegistry capabilityRegistry,
             ObjectProvider<DataSource> dataSourceProvider,
             RuntimeClock runtimeClock,
-            OrchestrationExecutionRegistry orchestrationExecutionRegistry,
             RuntimeInvariantEngineFactory runtimeInvariantEngineFactory,
             AuditLogStore auditLogStore,
             PermissionEvaluator permissionEvaluator,
             IdempotencyStore idempotencyStore,
             ConceptGateway conceptGateway,
-            LiveConceptGatewaySemanticPolicy conceptGatewaySemanticPolicy,
-            ObjectProvider<CircuitBreakerStateStore> circuitBreakerStateStoreProvider,
-            @Value("${npdev.tenant.default-id:dev}") String homeTenantId
+            LiveConceptGatewaySemanticPolicy conceptGatewaySemanticPolicy
     ) {
         GeneratedCrudRuntimeSupport support = new GeneratedCrudRuntimeSupport(
                 modelHolder::get,
@@ -742,30 +732,16 @@ public class NpdevCapabilityBindingConfig {
                 capabilityRegistry,
                 dataSourceProvider.getIfAvailable(),
                 runtimeClock,
-                orchestrationExecutionRegistry,
                 runtimeInvariantEngineFactory,
                 auditLogStore,
                 permissionEvaluator,
                 idempotencyStore
         ).withConceptGateway(conceptGateway).withFieldDefaults(conceptGatewaySemanticPolicy);
-        // RUN-2: an orchestration capability action always carries a tenant (the event's, else the
-        // app's home tenant) and obeys the policy its operation declares, like a flow step (RUN-1).
-        support.withOrchestrationFallbackTenant(homeTenantId)
-                .withOrchestrationCapabilityDispatcher(new PolicyEnforcingCapabilityDispatcher(
-                        capabilityDispatcher,
-                        CapabilityOperationPolicies.forModel(modelHolder),
-                        circuitBreakerStateStoreProvider.getIfAvailable()));
-        modelHolder.addReloadListener((before, after) -> support.reloadOrchestrationSubscribers(after));
         return support;
     }
 
     @Bean
     public RuntimeClock runtimeClock() {
         return new SystemRuntimeClock();
-    }
-
-    @Bean
-    public OrchestrationExecutionRegistry orchestrationExecutionRegistry() {
-        return new InMemoryOrchestrationExecutionRegistry();
     }
 }

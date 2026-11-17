@@ -25,7 +25,7 @@ class SchemaRegexValidationTest {
     private static String model(String domainRegex, String nestedRegex) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "regex.validation", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "regex.validation", "version": "1.0",
               "domainTypes": [
                 { "name": "Code", "baseType": "string", "validation": { "type": "string", "regex": "%s" } }
               ],

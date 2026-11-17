@@ -103,7 +103,7 @@ class PackBondEmitterTest {
                 """);
         write("packs/catalog/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "catalog",
                   "version": "1.0.0",
                   "fragments": [
@@ -115,7 +115,7 @@ class PackBondEmitterTest {
         return write("model.json", """
                 {
                   "namespace": "pack.bond.generator",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [
                     { "$ref": "packs/catalog/pack.json", "as": "cat" }

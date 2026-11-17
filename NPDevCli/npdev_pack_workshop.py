@@ -382,12 +382,18 @@ def compose_scratch(pack_id: str, scratch: Path, find) -> tuple[Path, list[str],
         roles |= set(requires.get("roles", []))
         caps |= set(requires.get("capabilities", []))
     target = json.loads(find(pack_id).read_text(encoding="utf-8"))
-    model: dict = {"dslVersion": "1.0.0", "version": "1.0", "namespace": "scratch.packcheck",
+    model: dict = {"dslVersion": "3.0.0", "version": "1.0", "namespace": "scratch.packcheck",
                    "packs": [{"$ref": f"packs/{pid}/pack.json", "as": pid} for pid in order]}
     if roles:
         model["provides"] = {"roleBindings": {r: r.upper() for r in sorted(roles)}}
-        grants = {f"{pack_id}::{c['name']}": ["read"] for c in target.get("concepts", [])}
-        model["roles"] = [{"name": r.upper(), "concepts": grants} for r in sorted(roles)]
+        # default-deny (P0-T3): EVERY composed pack's concepts need a grant, not only the target's, or a dependency's
+        # concept (contacts::Address) is reported as unruled -- the consumer's fault, not the pack's.
+        grants = {}
+        for pid in order:
+            for c in json.loads(find(pid).read_text(encoding="utf-8")).get("concepts", []):
+                if isinstance(c, dict) and "name" in c:
+                    grants[f"{pid}::{c['name']}"] = ["read"]
+        model["roles"] = [{"name": r.upper(), "concepts": dict(grants)} for r in sorted(roles)]
     if caps:
         model.setdefault("provides", {})["capabilities"] = sorted(caps)
     if not target.get("concepts"):
@@ -399,6 +405,16 @@ def compose_scratch(pack_id: str, scratch: Path, find) -> tuple[Path, list[str],
     path = scratch / "model.json"
     path.write_text(json.dumps(model, indent=1), encoding="utf-8")
     return path, order, sorted(roles)
+
+
+_OBJECT_PROPERTY = re.compile(r'("(?:[^"\\]|\\.)*")(\s*:\s*)(?=[{\[])')
+
+
+def _scan_text(text: str) -> str:
+    """The text the secret scan reads. A JSON property whose value is an object or array (a field NAMED `accessKey`
+    holding its definition) is a name, never a secret assignment: rename it for the scan so the shared redaction rule,
+    which matches `...key": <value>`, does not flag the NFe 'accessKey' field. Scalar values are untouched."""
+    return _OBJECT_PROPERTY.sub(lambda m: m.group(1)[:-1] + '_obj"' + m.group(2), text)
 
 
 def _default_validate(cli, model_path: Path, report_path: Path):
@@ -441,10 +457,162 @@ def _step(steps: list, name: str, started: float, result: str, detail: str = "",
     steps.append(entry)
 
 
+class BootUnavailable(Exception):
+    """The consumer cannot be booted here (not built, no time budget, port/Java trouble): rung 4 is skipped, not failed."""
+
+
+def merge_probe_users(docs: dict[str, dict]) -> tuple[list[dict], str]:
+    """The union of every probe file's identities. Returns (users, conflict text or '')."""
+    merged: dict[str, dict] = {}
+    for doc in docs.values():
+        for user in doc["users"]:
+            known = merged.get(user["name"])
+            if known is not None and known.get("role") != user.get("role"):
+                return [], f"identity '{user['name']}' has the role {known.get('role')!r} in one probe file and {user.get('role')!r} in another"
+            merged[user["name"]] = user
+    return list(merged.values()), ""
+
+
+def _free_port() -> int:
+    import socket
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+def _consumer_roles(order: list[str], find, role_names: set[str]) -> list[dict]:
+    """Every role the probes use (and every role token the packs name) gets full coarse grants on every composed
+    concept: the PACK's own access rules are what the probes then test, so the consumer must not be the gate."""
+    grants: dict[str, list[str]] = {}
+    for pid in order:
+        for concept in json.loads(find(pid).read_text(encoding="utf-8")).get("concepts", []):
+            if isinstance(concept, dict) and "name" in concept:
+                grants[f"{pid}::{concept['name']}"] = ["read", "create", "update", "delete"]
+    return [{"name": name, "concepts": dict(grants)} for name in sorted(role_names)]
+
+
+def assemble_consumer(cli, run: Path, pack_id: str, order: list[str], find, users: list[dict], example_text: str | None,
+                      update=None) -> dict:
+    """Write run/consumer/definition/ in the AppGen app layout (config.json, model.json, db.definition.json, packs/) --
+    the folder `scripts/appgen/Build-NpdevApp.ps1 -AppFolder run/consumer` reads. The model is the pack's own
+    example-model.json when it sent one, else the composed scratch model with roles for the probe identities.
+    Returns {folder, definition, name, port, outputRoot}."""
+    folder = run / "consumer"
+    definition = folder / "definition"
+    if definition.exists():
+        shutil.rmtree(definition)
+    shutil.copytree(run / "compose" / "packs", definition / "packs")
+    if example_text is not None:
+        model = json.loads(example_text)
+    else:
+        model = json.loads((run / "compose" / "model.json").read_text(encoding="utf-8"))
+        role_names = {u["role"] for u in users if u.get("role")} | {r["name"] for r in model.get("roles", [])}
+        if role_names:
+            model["roles"] = _consumer_roles(order, find, role_names)
+    (definition / "model.json").write_text(json.dumps(model, indent=1), encoding="utf-8")
+    if len(order) > 1:
+        # a pack graph with transitive dependencies needs its own npdev.lock beside THIS model (the generator refuses
+        # it otherwise); the lock written for the scratch model in rung 2 belongs to another file.
+        ok, text = (update or (lambda path: _default_update(cli, path)))(definition / "model.json")
+        if not ok:
+            tail = text.strip().splitlines()[-1][:200] if text.strip() else "no reason given"
+            raise BootUnavailable(f"npdev pack update could not lock the consumer's packs: {tail}")
+    name = f"packprobe-{pack_id}"
+    port = _free_port()
+    out = _build_root(cli) / "generated-finalapps" / name
+    posix = lambda p: str(p).replace("\\", "/")  # noqa: E731 -- the generator reads forward-slash paths on every OS
+    config = {
+        "configVersion": "1.0",
+        "scenario": {"name": name, "description": f"Throwaway consumer for the probes of the workshop pack {pack_id}.",
+                     "outputRoot": posix(out)},
+        "generator": {"failIfModelMissing": True, "failIfConfigMissing": True, "cleanOutputBeforeGenerate": True,
+                      "emitPluginAssets": True, "emitRuntimeAssets": True, "emitUiAssets": True},
+        "bootstrap": {"root": posix(_repo_root() / "NPDevRuntimeHost"), "mergeStrategy": "clean-copy"},
+        "artifact": {"root": posix(out / "ArtifactNP"), "generatedFolderName": "npdev-generated",
+                     "libsFolderName": "libs", "metaFolderName": "npdev-meta"},
+        "finalExec": {"root": posix(out / "App"), "deleteBeforeMount": True},
+        "database": {"provider": "h2-local", "database": f"npdev_{name.replace('-', '_')}", "resetMode": "reset"},
+        "runtime": {"springProfile": "dev,trial", "serverPort": port, "javaArgs": [], "gradleTask": "bootRun"},
+        "trialDefaults": {"apiKey": "dev-key", "recommendedProfiles": "dev,trial", "runtimeUrl": f"http://127.0.0.1:{port}/",
+                          "databaseMode": "h2-local", "notes": ["workshop probe consumer; wiped on every run"]},
+    }
+    (definition / "config.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
+    (definition / "db.definition.json").write_text(json.dumps({
+        "database": {"engine": "H2Local", "databaseName": config["database"]["database"], "username": "sa", "password": "",
+                     "createInternalTables": True, "createBusinessTables": True},
+        "schemaLifecycle": {"strategy": "KeepExistingIfCompatible", "allowDestructiveRecreate": False,
+                            "destructiveRecreateConfirmation": "", "scope": "NpdevOwnedTablesOnly"}}, indent=2), encoding="utf-8")
+    return {"folder": folder, "definition": definition, "name": name, "port": port, "outputRoot": out}
+
+
+BOOT_BUDGET_SECONDS = 300  # owner rule (2026-11-14): nothing runs longer than 5 minutes; over budget = skipped, never rejected
+
+
+def _kill_tree(proc: subprocess.Popen) -> None:
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True)
+    else:
+        proc.kill()
+
+
+def _run_script(script: Path, args: list[str], log: Path, deadline: float, label: str) -> None:
+    """Run one PowerShell script, log to a file, and stop at the shared deadline. Any trouble = BootUnavailable
+    (the model passed the validator, so a generator/build/boot failure is not proof that the PACK is wrong)."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 5:
+        raise BootUnavailable(f"the {BOOT_BUDGET_SECONDS} s budget ran out before '{label}' could start")
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with log.open("wb") as handle:
+        proc = subprocess.Popen(["pwsh", "-NoProfile", "-File", str(script), *args], stdout=handle, stderr=subprocess.STDOUT)
+        try:
+            code = proc.wait(timeout=remaining)
+        except subprocess.TimeoutExpired:
+            _kill_tree(proc)
+            raise BootUnavailable(f"'{label}' did not finish inside the {BOOT_BUDGET_SECONDS} s budget (log: {log})")
+        except FileNotFoundError:
+            raise BootUnavailable("pwsh is not available on this machine")
+    if code != 0:
+        raise BootUnavailable(f"'{label}' failed with exit code {code} (log: {log})")
+
+
+def default_boot(cli, consumer: dict, env: dict):
+    """Generate, build and start the consumer, all inside BOOT_BUDGET_SECONDS. Returns (base_url, stop) or raises
+    BootUnavailable. The probe keys go into App/secrets/api-key.env (which the generated Start-App.ps1 loads and the
+    regeneration spares) after generation and before the start."""
+    deadline = time.monotonic() + BOOT_BUDGET_SECONDS
+    logs = consumer["folder"] / "logs"
+    out: Path = consumer["outputRoot"]
+    _run_script(_repo_root() / "scripts" / "appgen" / "Build-NpdevApp.ps1", ["-AppFolder", str(consumer["folder"])],
+                logs / "generate.log", deadline, "generate")
+    ops = out / "App" / "_ops"
+    if not ops.is_dir():
+        raise BootUnavailable(f"generation finished but {ops} does not exist (log: {logs / 'generate.log'})")
+    _run_script(ops / "Build-App.ps1", [], logs / "build.log", deadline, "build")
+    secrets = out / "App" / "secrets"
+    secrets.mkdir(parents=True, exist_ok=True)
+    (secrets / "api-key.env").write_text("".join(f"{name}={value}\n" for name, value in env.items()), encoding="utf-8")
+
+    def stop() -> None:
+        try:
+            subprocess.run(["pwsh", "-NoProfile", "-File", str(ops / "Stop-App.ps1")], capture_output=True, timeout=60)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+    try:
+        _run_script(ops / "Start-App.ps1", [], logs / "start.log", deadline, "start")
+    except BootUnavailable:
+        stop()
+        raise
+    return f"http://127.0.0.1:{consumer['port']}", stop
+
+
 def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stamp: str | None = None,
-              validate=None, update=None) -> dict:
+              validate=None, update=None, boot=None, probe_call=None, screens: bool = False, shoot=None) -> dict:
     """Run the ladder for one pack. Writes runs/<pack>@<version>/<stamp>/ and returns the verdict dict.
-    `validate(model_path, report_path) -> report|None` and `update(model_path) -> (ok, text)` are injectable for tests."""
+    `validate(model_path, report_path) -> report|None`, `update(model_path) -> (ok, text)` and
+    `boot(cli, consumer, env) -> (base_url, stop)` (or raise BootUnavailable) are injectable for tests;
+    `probe_call(key, method, path, body) -> (status, payload)` replaces the HTTP client in tests.
+    `screens=True` adds rung 5 (screenshots per identity); `shoot(base_url, out_dir, users, keys)` replaces the browser in tests."""
     folder = find_pack_dir(root, pack_id, version)
     if folder is None:
         raise WorkshopError(f"{pack_id}{'@' + version if version else ''} is not in the workshop ({root}); ingest it first")
@@ -477,7 +645,7 @@ def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stam
         _step(steps, "static", started, "fail", f"pack.json is not valid JSON ({exc})")
         feedback.append("pack.json - it is not valid JSON - fix the syntax and resend the whole file")
         return finish("rejected")
-    lines = npdev_relay_pack.static_errors(pack, pack_id, text)
+    lines = npdev_relay_pack.static_errors(pack, pack_id, _scan_text(text))
     handoff_path = folder / "handoff.json"
     if handoff_path.is_file():
         handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
@@ -525,6 +693,8 @@ def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stam
     if report.get("status") == "failed" or errors:
         _step(steps, "compose", started, "fail", f"{len(errors)} validator error(s)", "validate.txt")
         feedback.extend(errors[:20] or ["an application importing this pack does not validate"])
+        # the lint often names the exact fix for what the validator only reports as 'unknown concept'
+        feedback.extend(line for line in lint_pack(pack_path)[0] if line not in feedback)
         return finish("rejected")
     _step(steps, "compose", started, "pass", f"with {', '.join(o for o in order if o != pack_id) or 'no dependencies'}")
     status = "composes"
@@ -542,12 +712,262 @@ def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stam
     status = "secure"
     feedback.extend(f"(warning) {w}" for w in lint_warnings)
 
-    # rung 4: probed -- needs a generated consumer booted on a free port plus a pack-probe file format; not built yet.
-    # Recorded as skipped so the verdict never claims a rung it did not climb.
+    # rung 4: probed -- the pack's declarative probes run against a booted consumer. Anything that stops the rung
+    # from being CLIMBED (no probes, no boot on this machine) is recorded as skipped, never as a rejection.
+    # rung 5 (opt-in, `screens=True`): while that same consumer is up, one screenshot pass per identity (npdev_pack_screens).
     started = time.monotonic()
-    _step(steps, "behavior-probes", started, "skipped", "rung 4 (generate, boot, run probes + exposure matrix) is not implemented yet")
+    import npdev_pack_probe
+    probe_files = sorted((folder / "probes").glob("*.json"))
+    if not probe_files and not screens:
+        _step(steps, "behavior-probes", started, "skipped", "the pack delivered no probes/*.json, so it cannot reach 'probed'")
+        return finish(status)
+    docs: dict[str, dict] = {}
+    shape: list[str] = []
+    for path in probe_files:
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except ValueError as exc:
+            shape.append(f"probes/{path.name} - it is not valid JSON ({exc}) - fix the syntax")
+            continue
+        problems = npdev_pack_probe.check_shape(doc)
+        if not problems and doc["pack"] != pack_id:
+            problems = [f"probe pack - it says '{doc['pack']}' but lives in the pack '{pack_id}' - write \"pack\": \"{pack_id}\""]
+        shape.extend(f"probes/{path.name}: {line}" if not line.startswith("probes/") else line for line in problems)
+        docs[path.name] = doc
+    if shape:
+        _step(steps, "behavior-probes", started, "fail", f"{len(shape)} problem(s) in the probe files")
+        feedback.extend(shape)
+        return finish("rejected")
+    users, conflict = merge_probe_users(docs)
+    if conflict:
+        _step(steps, "behavior-probes", started, "fail", conflict)
+        feedback.append(f"probes - {conflict} - give each identity one role across all probe files")
+        return finish("rejected")
+    if not docs:   # screens were asked for a pack that sent no probes: identities come from the roles the pack names
+        import npdev_pack_screens
+        users = npdev_pack_screens.default_users(roles)
+    example_path = folder / "example-model.json"
+    try:
+        consumer = assemble_consumer(cli, run, pack_id, order, make_pack_finder(root), users,
+                                     example_path.read_text(encoding="utf-8") if example_path.is_file() else None, update=update)
+    except BootUnavailable as exc:
+        _step(steps, "behavior-probes", started, "skipped", f"the consumer could not be assembled: {exc}")
+        if screens:
+            _step(steps, "screens", time.monotonic(), "skipped", "the consumer could not be assembled, so there is nothing to photograph")
+        return finish(status)
+    keys = npdev_pack_probe.new_keys(users)
+    keys_value = npdev_pack_probe.api_keys_env(users, keys)
+    env = {"NPDEV_AUTH_API_KEYS": keys_value, "NPDEV_AUTH_APIKEYS": keys_value}
+    boot = boot or default_boot
+    try:
+        base_url, stop = boot(cli, consumer, env)
+    except BootUnavailable as exc:
+        _step(steps, "behavior-probes", started, "skipped", f"the consumer was assembled but not booted: {exc}", "consumer")
+        if screens:
+            _step(steps, "screens", time.monotonic(), "skipped", "the consumer was not booted, so there is nothing to photograph")
+        return finish(status)
+    results: dict[str, list[dict]] = {}
+    shots: dict | None = None
+    screens_note = ""
+    screens_started = time.monotonic()
+    try:
+        for name, doc in docs.items():
+            results[name] = npdev_pack_probe.run_probe(base_url, doc, keys, probe_call)
+        probes_ok = all(r["ok"] for rows in results.values() for r in rows)
+        if screens and probes_ok:
+            import npdev_pack_screens
+            try:
+                shots = npdev_pack_screens.capture(base_url, users, keys, run / "screens", f"{pack_id}@{version}", shoot=shoot)
+            except npdev_pack_screens.ScreensUnavailable as exc:
+                screens_note = str(exc)
+    finally:
+        stop()
+    failed = [(file, r) for file, rows in results.items() for r in rows if not r["ok"]]
+    total = sum(len(rows) for rows in results.values())
+    if docs:
+        (run / "probes.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
+        if failed:
+            _step(steps, "behavior-probes", started, "fail", f"{len(failed)} of {total} step(s) failed", "probes.json")
+            feedback.extend(f"probes/{file} step '{r['name']}' (as {r['as']}) - {r['detail']} - fix the pack's rules or the probe's expectation"
+                            for file, r in failed[:20])
+            return finish("rejected")
+        _step(steps, "behavior-probes", started, "pass", f"{len(docs)} probe file(s), {total} step(s)", "probes.json")
+        status = "probed"
+        _step(steps, "exposure-matrix", time.monotonic(), "skipped",
+              "the matrix logs in with passwords; the probe consumer uses static API keys -- not wired yet")
+    else:
+        _step(steps, "behavior-probes", started, "skipped", "the pack delivered no probes/*.json, so it cannot reach 'probed'")
+    if screens:
+        if shots is None:
+            _step(steps, "screens", screens_started, "skipped", f"no screenshots were taken: {screens_note}")
+        else:
+            detail = f"{shots['shots']} screenshot(s) for {shots['identities']} identit{'y' if shots['identities'] == 1 else 'ies'}"
+            if shots["consoleErrors"]:
+                detail += f"; {len(shots['consoleErrors'])} console error(s) (see manifest.json)"
+            if status == "probed":
+                status = "browsed"
+            else:
+                detail += "; the rung 'browsed' is not claimed because the pack is not 'probed'"
+            _step(steps, "screens", screens_started, "pass", detail, shots["gallery"])
     return finish(status)
 
+
+# ---------------------------------------------------------------------------------------------------------------
+# STATUS / FEEDBACK / PROMOTE (P6-T5)
+# ---------------------------------------------------------------------------------------------------------------
+
+RUNGS = ("delivered", "valid", "composes", "secure", "probed", "browsed", "reviewed", "published")
+STEP_REACHES = (("static", "valid"), ("compose", "composes"), ("access-lint", "secure"), ("behavior-probes", "probed"),
+                ("screens", "browsed"), ("owner-review", "reviewed"), ("publish", "published"))
+
+
+def latest_verdict(root: Path, pack_id: str, version: str) -> tuple[dict, str] | None:
+    """(verdict, stamp) of the newest run of pack@version, or None when it was never tested."""
+    runs = root / "runs" / f"{pack_id}@{version}"
+    stamps = sorted(p.name for p in runs.iterdir() if (p / "verdict.json").is_file()) if runs.is_dir() else []
+    if not stamps:
+        return None
+    return json.loads((runs / stamps[-1] / "verdict.json").read_text(encoding="utf-8")), stamps[-1]
+
+
+def highest_rung(verdict: dict | None) -> str:
+    """The highest rung CLIMBED, also for a rejected verdict (whose `status` only says 'rejected')."""
+    if verdict is None:
+        return "delivered"
+    if verdict["status"] != "rejected":
+        return verdict["status"]
+    reached = "delivered"
+    passed = {s["step"] for s in verdict["steps"] if s["result"] == "pass"}
+    for step, rung in STEP_REACHES:
+        if step in passed:
+            reached = rung
+        else:
+            break
+    return reached
+
+
+def failed_step(verdict: dict | None) -> str:
+    if verdict is None:
+        return ""
+    return next((s["step"] for s in verdict["steps"] if s["result"] == "fail"), "")
+
+
+def list_workshop_packs(root: Path, batch: str | None = None) -> list[tuple[str, str, str]]:
+    """[(pack, version, area)], for one batch (from batches/<id>.json) or for everything in packs/."""
+    if batch:
+        record = root / "batches" / f"{batch}.json"
+        if not record.is_file():
+            raise WorkshopError(f"batch '{batch}' is unknown (no {record}); ingest its zip first")
+        seen: dict[tuple[str, str], str] = {}
+        for delivery in json.loads(record.read_text(encoding="utf-8")).get("deliveries", []):
+            for p in delivery.get("packs", []):
+                seen[(p["pack"], p["version"])] = p.get("area", "")
+        return sorted((pack, version, area) for (pack, version), area in seen.items())
+    found = []
+    for pack_json in sorted((root / "packs").glob("*/*/*/pack.json")):
+        version_dir = pack_json.parent
+        found.append((version_dir.parent.name, version_dir.name, version_dir.parent.parent.name))
+    return found
+
+
+def status_rows(root: Path, batch: str | None = None) -> list[dict]:
+    rows = []
+    for pack, version, area in list_workshop_packs(root, batch):
+        found = latest_verdict(root, pack, version)
+        verdict, stamp = found if found else (None, "")
+        rejected = bool(verdict and verdict["status"] == "rejected")
+        rows.append({"pack": pack, "version": version, "area": area, "rung": highest_rung(verdict), "rejected": rejected,
+                     "stoppedAt": failed_step(verdict) if rejected else "", "stamp": stamp,
+                     "firstFeedback": (verdict or {}).get("feedbackForAi", [""])[0] if rejected else ""})
+    return rows
+
+
+def format_status(rows: list[dict]) -> str:
+    if not rows:
+        return "(no packs)"
+    width = max(len(f"{r['pack']}@{r['version']}") for r in rows)
+    lines = [f"{'PACK':{width}}  {'HIGHEST RUNG':12}  STOPPED AT / NOTE"]
+    for r in rows:
+        note = f"REJECTED at {r['stoppedAt']}: {r['firstFeedback'][:90]}" if r["rejected"] else ("not tested yet" if not r["stamp"] else "")
+        lines.append(f"{r['pack'] + '@' + r['version']:{width}}  {r['rung']:12}  {note}")
+    return "\n".join(lines)
+
+
+def feedback_text(root: Path, batch: str) -> str:
+    """One paste-ready text for the authoring AI: what to fix per pack, and which packs need nothing."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    lines = [f"Feedback on your batch {batch} ({today}). Fix only what is listed; send each fixed pack again with a HIGHER version "
+             f"(a delivered version is immutable) in a new zip that follows the guide's 'Delivering' section.", ""]
+    listed = list_workshop_packs(root, batch)
+    newest = {}
+    for pack, version, _ in listed:
+        newest[pack] = max(newest.get(pack, ()), _semver(version))
+    for pack, version, _ in listed:
+        if _semver(version) < newest[pack]:
+            continue  # a later version of this pack was delivered: the AI already fixed this one
+        found = latest_verdict(root, pack, version)
+        if found is None:
+            lines += [f"## {pack}@{version}: not tested yet", ""]
+            continue
+        verdict, _stamp = found
+        fixes = [f for f in verdict.get("feedbackForAi", []) if not f.startswith("(warning)")]
+        warnings = [f[len("(warning) "):] for f in verdict.get("feedbackForAi", []) if f.startswith("(warning)")]
+        if verdict["status"] == "rejected":
+            lines.append(f"## {pack}@{version}: REJECTED at {failed_step(verdict)} (reached: {highest_rung(verdict)})")
+            lines += [f"- {f}" for f in fixes]
+        else:
+            lines.append(f"## {pack}@{version}: {verdict['status'].upper()} - no fix required")
+        if warnings:
+            lines.append("Advice (not blocking):")
+            lines += [f"- {w}" for w in warnings]
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def write_feedback(root: Path, batch: str) -> tuple[Path, str]:
+    text = feedback_text(root, batch)
+    folder = root / "feedback"
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{batch}__{datetime.now(timezone.utc).strftime('%Y%m%d')}.md"
+    path.write_text(text, encoding="utf-8")
+    return path, text
+
+
+def promote_pack(root: Path, pack_id: str, version: str, confirm: bool) -> dict:
+    """Owner-confirmed promotion: stage the pack in the NPR layout under <root>/npr-staging/ and record the owner review.
+    NEVER publishes: pushing to the public NPR is a separate act that always asks the owner."""
+    folder = find_pack_dir(root, pack_id, version)
+    if folder is None:
+        raise WorkshopError(f"{pack_id}@{version} is not in the workshop; ingest it first")
+    found = latest_verdict(root, pack_id, version)
+    rung = highest_rung(found[0] if found else None)
+    if found is None or found[0]["status"] == "rejected" or RUNGS.index(rung) < RUNGS.index("probed"):
+        raise WorkshopError(f"{pack_id}@{version} has only reached '{rung}'; promotion needs 'probed' (run `npdev pack workshop test` "
+                            f"and fix what it reports -- no pack goes out without probes)")
+    if not confirm:
+        raise WorkshopError(f"{pack_id}@{version} reached '{rung}' and can be promoted, but promotion records the OWNER's review: "
+                            f"read the rules sheet (scripts/pack-repo/generate-pack-rules-sheet.py) and re-run with --confirm")
+    verdict, _ = found
+    stage = root / "npr-staging" / "packs" / pack_id / version
+    if stage.exists():
+        shutil.rmtree(stage)
+    stage.mkdir(parents=True)
+    for name in KNOWN_FILES:
+        if (folder / name).is_file():
+            shutil.copy2(folder / name, stage / name)
+    if (folder / "probes").is_dir():
+        shutil.copytree(folder / "probes", stage / "probes")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    run = root / "runs" / f"{pack_id}@{version}" / stamp
+    run.mkdir(parents=True, exist_ok=True)
+    steps = [s for s in verdict["steps"] if s["step"] not in ("owner-review", "publish")]
+    steps.append({"step": "owner-review", "result": "pass", "detail": "owner confirmed with --confirm"})
+    steps.append({"step": "publish", "result": "skipped", "detail": "staged only; publishing to the public NPR is a separate owner act"})
+    reviewed = {"schemaVersion": "npdev-pack-verdict.v1", "pack": pack_id, "version": version, "status": "reviewed", "steps": steps}
+    _validate("verdict", reviewed, "the promoted verdict")
+    (run / "verdict.json").write_text(json.dumps(reviewed, indent=2) + "\n", encoding="utf-8")
+    shutil.copy2(run / "verdict.json", stage / "verdict.json")
+    return {"pack": pack_id, "version": version, "status": "reviewed", "staging": str(stage), "run": str(run)}
 
 def downloads_dir(override: str | None) -> Path:
     return Path(override).expanduser() if override else Path.home() / "Downloads"
@@ -567,15 +987,32 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     test = sub.add_parser("test", help="Run the status ladder (valid, composes, secure) on one workshop pack; writes runs/.../verdict.json.")
     test.add_argument("pack", help="<packId> or <packId>@<version> (default: the highest version in the workshop)")
     test.add_argument("--root", default=None, help=f"workshop root (default: ${ENV_ROOT}, else PackWorkshop next to the Build root)")
+    test.add_argument("--screens", action="store_true",
+                      help="also photograph the booted consumer, one pass per identity (needs node and the ScrapForAI engine; "
+                           "writes <run>/screens/gallery.html; 'browsed' needs the pack to be 'probed' first)")
     test.add_argument("--json", action="store_true")
+    status = sub.add_parser("status", help="Table of workshop packs x highest rung reached.")
+    status.add_argument("--batch", default=None, help="only the packs of this batch id")
+    status.add_argument("--root", default=None, help="workshop root")
+    status.add_argument("--json", action="store_true")
+    feedback = sub.add_parser("feedback", help="One paste-ready text for the authoring AI, from the latest verdicts of a batch.")
+    feedback.add_argument("batch", help="batch id, e.g. w1-modules")
+    feedback.add_argument("--root", default=None, help="workshop root")
+    promote = sub.add_parser("promote", help="After the OWNER reviewed a probed pack: stage it for the NPR (never publishes).")
+    promote.add_argument("pack", help="<packId>@<version>")
+    promote.add_argument("--confirm", action="store_true", help="the owner has read the rules sheet and says yes")
+    promote.add_argument("--root", default=None, help="workshop root")
+    promote.add_argument("--json", action="store_true")
 
 
 def main(cli, args: argparse.Namespace) -> int:
     command = getattr(args, "workshop_command", None)
     if command == "test":
         return _main_test(cli, args)
+    if command in ("status", "feedback", "promote"):
+        return _main_t5(cli, args, command)
     if command != "ingest":
-        print("usage: npdev pack workshop ingest [<zip> ...] [--downloads] | test <packId>[@version]", file=sys.stderr)
+        print("usage: npdev pack workshop ingest [<zip> ...] [--downloads] | test <packId>[@version] | status [--batch id] | feedback <batch> | promote <pack>@<version> --confirm", file=sys.stderr)
         return 2
     root = workshop_root(cli, args.root)
     zips = [Path(z) for z in args.zips]
@@ -617,7 +1054,7 @@ def _main_test(cli, args: argparse.Namespace) -> int:
     root = workshop_root(cli, args.root)
     pack_id, _, version = args.pack.partition("@")
     try:
-        verdict = test_pack(cli, root, pack_id, version or None)
+        verdict = test_pack(cli, root, pack_id, version or None, screens=args.screens)
     except WorkshopError as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 2
@@ -630,3 +1067,26 @@ def _main_test(cli, args: argparse.Namespace) -> int:
         for line in verdict.get("feedbackForAi", []):
             print(f"  feedback: {line}")
     return 1 if verdict["status"] == "rejected" else 0
+
+
+def _main_t5(cli, args: argparse.Namespace, command: str) -> int:
+    root = workshop_root(cli, args.root)
+    try:
+        if command == "status":
+            rows = status_rows(root, args.batch)
+            print(json.dumps(rows, indent=2) if args.json else format_status(rows))
+        elif command == "feedback":
+            path, text = write_feedback(root, args.batch)
+            print(text)
+            print(f"(saved: {path})", file=sys.stderr)
+        else:
+            pack_id, _, version = args.pack.partition("@")
+            if not version:
+                raise WorkshopError("promote needs <packId>@<version> (a promotion is for one exact version)")
+            result = promote_pack(root, pack_id, version, args.confirm)
+            print(json.dumps(result, indent=2) if args.json else
+                  f"{pack_id}@{version}: REVIEWED, staged at {result['staging']}\n(nothing was published; pushing to the public NPR is a separate owner act)")
+    except WorkshopError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    return 0

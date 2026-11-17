@@ -40,39 +40,76 @@ class ServiceBaseUpdateFlowRowClaimTest {
     private static final String MODEL_JSON = """
             {
               "namespace": "reg308claim",
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "version": "v1",
               "concepts": [
                 {
                   "name": "Ticket",
                   "fields": [
-                    { "name": "id", "type": "uuid", "id": true, "required": true },
-                    { "name": "subject", "type": "string", "required": true }
+                    {
+                      "name": "id",
+                      "type": "uuid",
+                      "id": true,
+                      "required": true
+                    },
+                    {
+                      "name": "subject",
+                      "type": "string",
+                      "required": true
+                    }
                   ]
                 },
                 {
                   "name": "Note",
                   "fields": [
-                    { "name": "id", "type": "uuid", "id": true, "required": true },
-                    { "name": "body", "type": "string", "required": true }
+                    {
+                      "name": "id",
+                      "type": "uuid",
+                      "id": true,
+                      "required": true
+                    },
+                    {
+                      "name": "body",
+                      "type": "string",
+                      "required": true
+                    }
                   ]
                 }
               ],
               "capabilities": [
-                { "name": "persistence", "type": "PersistenceCapability", "operations": ["save", "unique", "findById"] }
-              ],
-              "bindings": [
-                { "capability": "persistence", "adapter": "repository" },
-                { "capability": "eventBus", "adapter": "inproc" }
+                {
+                  "name": "persistence",
+                  "type": "PersistenceCapability",
+                  "operations": [
+                    "save",
+                    "unique",
+                    "findById"
+                  ]
+                }
               ],
               "flows": [
                 {
                   "name": "UpdateTicket",
-                  "input": { "concept": "Ticket", "mode": "update" },
+                  "input": {
+                    "concept": "Ticket",
+                    "mode": "update"
+                  },
                   "steps": [
-                    { "name": "save-ticket", "type": "capabilityCall", "capability": "persistence", "operation": "save",
-                      "args": ["$input"], "output": "$saved" },
-                    { "name": "return-ticket", "type": "return", "value": "$saved" }
+                    {
+                      "name": "save-ticket",
+                      "type": "capabilityCall",
+                      "capability": "persistence",
+                      "operation": "save",
+                      "args": [
+                        "$input"
+                      ],
+                      "output": "$saved"
+                    },
+                    {
+                      "name": "return-ticket",
+                      "type": "return",
+                      "value": "$saved"
+                    }
                   ]
                 }
               ]

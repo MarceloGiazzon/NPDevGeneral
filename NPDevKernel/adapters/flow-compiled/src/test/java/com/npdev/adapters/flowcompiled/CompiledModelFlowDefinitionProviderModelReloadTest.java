@@ -32,7 +32,7 @@ class CompiledModelFlowDefinitionProviderModelReloadTest {
         CompiledModel withoutOnboard = compile("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -62,30 +62,59 @@ class CompiledModelFlowDefinitionProviderModelReloadTest {
         CompiledModel withOnboard = compile("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
                       "name": "User",
                       "fields": [
-                        { "name":"id", "type":"uuid", "id":true, "required":true },
-                        { "name":"email", "type":"string", "required":true }
+                        {
+                          "name": "id",
+                          "type": "uuid",
+                          "id": true,
+                          "required": true
+                        },
+                        {
+                          "name": "email",
+                          "type": "string",
+                          "required": true
+                        }
                       ]
                     }
                   ],
                   "capabilities": [
-                    { "name":"persistence", "type":"PersistenceCapability", "operations":["save"] }
-                  ],
-                  "bindings": [
-                    { "capability":"persistence", "adapter":"inmemory" }
+                    {
+                      "name": "persistence",
+                      "type": "PersistenceCapability",
+                      "operations": [
+                        "save"
+                      ],
+                      "adapter": "inmemory"
+                    }
                   ],
                   "flows": [
                     {
                       "name": "onboard",
-                      "input": { "concept":"User", "mode":"create" },
+                      "input": {
+                        "concept": "User",
+                        "mode": "create"
+                      },
                       "steps": [
-                        { "name":"save", "type":"capabilityCall", "capability":"persistence", "operation":"save", "args":["$input"], "output":"$saved" },
-                        { "name":"ret", "type":"return", "value":"$saved" }
+                        {
+                          "name": "save",
+                          "type": "capabilityCall",
+                          "capability": "persistence",
+                          "operation": "save",
+                          "args": [
+                            "$input"
+                          ],
+                          "output": "$saved"
+                        },
+                        {
+                          "name": "ret",
+                          "type": "return",
+                          "value": "$saved"
+                        }
                       ]
                     }
                   ]

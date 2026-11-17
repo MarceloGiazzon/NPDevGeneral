@@ -27,7 +27,7 @@ public class BusinessUiBoardViewTest {
     // two guarded transitions, plus an enum-only concept grouped via ui.defaultGroup.
     private static final String MODEL = """
             {
-              "namespace": "board.demo", "dslVersion": "1.0.0", "version": "1.0",
+              "namespace": "board.demo", "dslVersion": "3.0.0", "version": "1.0",
               "concepts": [
                 { "name": "Cap",
                   "fields": [

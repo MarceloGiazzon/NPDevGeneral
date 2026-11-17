@@ -94,8 +94,7 @@ class NpdevCronSchedulerServiceMultiInstanceTest {
                         null,
                         false,
                         new CompiledFlowSchedule("* * * * * *", List.of("tenant-a"))
-                )),
-                List.of()
+                ))
         );
 
         DataSource sharedDataSource = newSharedClaimTableDataSource();

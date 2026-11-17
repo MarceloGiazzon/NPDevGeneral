@@ -111,7 +111,7 @@ class ExpandTests(unittest.TestCase):
         self.assertIn("upsert.widgets", out["errors"][0])
 
     def test_a_list_without_names_is_refused_with_its_reason_and_the_way_out(self):
-        out = expand(base_model(), {"bindings": [{"capability": "x", "adapter": "y"}]})
+        out = expand(base_model(), {"packs": [{"id": "x", "version": "1.0.0"}]})
         self.assertFalse(out["ok"])
         self.assertIn("no name", out["errors"][0])
         self.assertIn("complete model.json", out["errors"][0])

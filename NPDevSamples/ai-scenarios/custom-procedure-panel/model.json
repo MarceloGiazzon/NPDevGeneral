@@ -4,16 +4,27 @@
   "concepts": [
     {
       "name": "Learner",
-      "fields": ["id", "name", "score", "status"]
+      "fields": [
+        "id",
+        "name",
+        "score",
+        "status"
+      ]
     },
     {
       "name": "Assessment",
-      "fields": ["id", "learnerId", "score"]
+      "fields": [
+        "id",
+        "learnerId",
+        "score"
+      ]
     }
   ],
-  "procedures": [
+  "flows": [
     {
-      "name": "promote-learner"
+      "name": "promote-learner",
+      "expose": "internal",
+      "steps": []
     }
   ],
   "panels": [

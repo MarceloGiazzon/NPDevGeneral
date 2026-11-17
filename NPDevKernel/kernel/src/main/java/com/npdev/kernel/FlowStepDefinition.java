@@ -23,13 +23,13 @@ public final class FlowStepDefinition {
          * forEach shape (collectionRef/itemKey/nested steps) -- but, unlike Procedures' plain
          * in-memory loop, durably checkpoints progress per iteration (see KernelRunner). */
         FOR_EACH,
-        /** Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): synchronously invokes a named
-         * procedure from a flow -- the asymmetry this closes: procedure-to-procedure calls already
-         * existed (DefaultProcedureExecutor's CALL_PROCEDURE), flow-to-procedure did not. Gives
-         * flows every procedure step at once (patchConcept included) rather than mirroring each one
-         * into the flow engine individually. Synchronous and non-suspending -- procedures have no
-         * awaitEvent, so the call completes or fails within this one step; see CallProcedureStep. */
-        CALL_PROCEDURE
+        /** FORM P3-T5b: one concept step of the merged vocabulary (set, readConcept, listConcepts,
+         * runQuery, deleteConcept) carried as the procedure step the procedure executor already
+         * implements, so a flow and a procedure run the SAME code for it -- see ProcedureFlowStep. */
+        PROCEDURE_STEP,
+        /** FORM P3-T5b: synchronously starts another flow by name ({@link #getProcedureName()} carries
+         * the flow name here) and binds its output -- see CallFlowStep. */
+        CALL_FLOW
     }
 
     public enum InvariantCheckpoint {
@@ -76,6 +76,14 @@ public final class FlowStepDefinition {
     private final Long timeoutSeconds;
     private final List<FlowStepDefinition> onTimeoutSteps;
     private final ConceptWrite conceptWrite;
+    /** FORM P3-T5b: set once by {@link #procedureStep}, before the instance is shared; copied by every copy constructor. */
+    private com.npdev.kernel.procedures.ProcedureStep embeddedStep;
+    /** FORM P3-T5c: capabilityCall -- a failed call is stored under this state key instead of failing the flow. */
+    private String errorTarget;
+    /** FORM P3-T5c: createConcept -- {@code "skip"} turns a unique-constraint conflict into a skipped step (output null). */
+    private String ifExists;
+    /** FORM P3-T5c stage 4: scheduleEvent -- expression that makes a delayed schedule unique across executions (null = per execution). */
+    private String dedupeKey;
 
     private FlowStepDefinition(
             String name,
@@ -227,7 +235,7 @@ public final class FlowStepDefinition {
     }
 
     /** Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): canonical constructor, adding
-     * {@code procedureName} for {@link Type#CALL_PROCEDURE}. B15(B) (S6,
+     * {@code procedureName} for {@link Type#CALL_FLOW}. B15(B) (S6,
      * docs/BOUNDARY_LIFT_ROADMAP.md §B15(B)) adds the trailing {@code parallelAwait} for
      * {@link Type#FOR_EACH}. */
     private FlowStepDefinition(
@@ -369,6 +377,10 @@ public final class FlowStepDefinition {
         this.timeoutSeconds = source.timeoutSeconds;
         this.onTimeoutSteps = source.onTimeoutSteps;
         this.conceptWrite = source.conceptWrite;
+        this.embeddedStep = source.embeddedStep;
+        this.errorTarget = source.errorTarget;
+        this.ifExists = source.ifExists;
+        this.dedupeKey = source.dedupeKey;
     }
 
     /**
@@ -384,9 +396,14 @@ public final class FlowStepDefinition {
      *                                the lifecycle status field), checked against the payload before the
      *                                write. Empty for an update.
      */
-    public record ConceptWrite(String mode, List<String> requiredInvariantRefs) {
+    public record ConceptWrite(String mode, List<String> requiredInvariantRefs, String conceptName) {
         public static final String CREATE = "create";
         public static final String UPDATE = "update";
+
+        /** The concept written is the flow's own (FORM P3-T5c added {@code conceptName} for steps whose {@code scope} differs). */
+        public ConceptWrite(String mode, List<String> requiredInvariantRefs) {
+            this(mode, requiredInvariantRefs, null);
+        }
 
         public ConceptWrite {
             if (!CREATE.equals(mode) && !UPDATE.equals(mode)) {
@@ -445,6 +462,37 @@ public final class FlowStepDefinition {
         this.timeoutSeconds = source.timeoutSeconds;
         this.onTimeoutSteps = source.onTimeoutSteps;
         this.conceptWrite = conceptWrite;
+        this.embeddedStep = source.embeddedStep;
+        this.errorTarget = source.errorTarget;
+        this.ifExists = source.ifExists;
+        this.dedupeKey = source.dedupeKey;
+    }
+
+    /** FORM P3-T5c: the capability-call options {@code errorTarget} and {@code ifExists} (either may be null). */
+    public FlowStepDefinition withCallOptions(String errorTarget, String ifExists) {
+        FlowStepDefinition copy = new FlowStepDefinition(this, this.onFailureSteps);
+        copy.errorTarget = errorTarget == null || errorTarget.isBlank() ? null : errorTarget.trim();
+        copy.ifExists = ifExists == null || ifExists.isBlank() ? null : ifExists.trim();
+        return copy;
+    }
+
+    public String getErrorTarget() {
+        return errorTarget;
+    }
+
+    public String getIfExists() {
+        return ifExists;
+    }
+
+    /** FORM P3-T5c stage 4: the scheduleEvent step's {@code dedupeKey} expression (null = schedule is unique per execution). */
+    public FlowStepDefinition withDedupeKey(String dedupeKey) {
+        FlowStepDefinition copy = new FlowStepDefinition(this, this.onFailureSteps);
+        copy.dedupeKey = dedupeKey == null || dedupeKey.isBlank() ? null : dedupeKey.trim();
+        return copy;
+    }
+
+    public String getDedupeKey() {
+        return dedupeKey;
     }
 
     /** Marks a capability-call step as a concept create/update (see {@link ConceptWrite}). */
@@ -514,6 +562,10 @@ public final class FlowStepDefinition {
                 ? List.of()
                 : Collections.unmodifiableList(new ArrayList<>(onTimeoutSteps));
         this.conceptWrite = source.conceptWrite;
+        this.embeddedStep = source.embeddedStep;
+        this.errorTarget = source.errorTarget;
+        this.ifExists = source.ifExists;
+        this.dedupeKey = source.dedupeKey;
     }
 
     /** R2.5: attaches a durable await deadline (seconds from when the step first parks) and the
@@ -998,10 +1050,8 @@ public final class FlowStepDefinition {
         );
     }
 
-    /** Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): synchronously invokes a named
-     * procedure. {@code inputRef}/{@code outputRef} reuse the same state-ref convention every
-     * other step here uses -- {@code inputRef} may be null (procedure receives an empty map). */
-    public static FlowStepDefinition callProcedure(
+    private static FlowStepDefinition procedureLike(
+            Type type,
             String name,
             String procedureName,
             String inputRef,
@@ -1009,7 +1059,7 @@ public final class FlowStepDefinition {
     ) {
         return new FlowStepDefinition(
                 name,
-                Type.CALL_PROCEDURE,
+                type,
                 null,
                 null,
                 List.of(),
@@ -1044,6 +1094,34 @@ public final class FlowStepDefinition {
                 requireNonBlank(procedureName, "procedureName"),
                 false
         );
+    }
+
+    /**
+     * FORM P3-T5b: a concept step of the merged vocabulary, carried as the {@link
+     * com.npdev.kernel.procedures.ProcedureStep} that implements it. {@code outputRef} is the flow-state
+     * key the result lands in (the procedure step's own {@code outputKey}).
+     */
+    public static FlowStepDefinition procedureStep(
+            String name,
+            com.npdev.kernel.procedures.ProcedureStep step,
+            String outputRef
+    ) {
+        if (step == null) {
+            throw new IllegalArgumentException("step must be non-null");
+        }
+        FlowStepDefinition built = procedureLike(Type.PROCEDURE_STEP, name, "-", null, outputRef);
+        built.embeddedStep = step;
+        return built;
+    }
+
+    /** FORM P3-T5b: synchronously starts the flow {@code flowName}; {@code inputRef} is its input, {@code outputRef} receives its output. */
+    public static FlowStepDefinition callFlow(String name, String flowName, String inputRef, String outputRef) {
+        return procedureLike(Type.CALL_FLOW, name, flowName, inputRef, outputRef);
+    }
+
+    /** The procedure step a {@link Type#PROCEDURE_STEP} carries; null for every other type. */
+    public com.npdev.kernel.procedures.ProcedureStep getEmbeddedStep() {
+        return embeddedStep;
     }
 
     public static FlowStepDefinition returnValue(String name, String returnRef) {

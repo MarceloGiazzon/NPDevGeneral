@@ -189,17 +189,6 @@ public record ProcedureStep(
                 null, null, null, null, List.of(), null, eventName, payloadRef);
     }
 
-    public static ProcedureStep callProcedure(
-            String name,
-            String procedureName,
-            String payloadRef,
-            String outputKey
-    ) {
-        return new ProcedureStep(name, ProcedureStepType.CALL_PROCEDURE, null, null, null,
-                null, null, null, null, List.of(), outputKey, null, payloadRef,
-                null, null, null, null, procedureName, null, List.of(), List.of(), List.of(), Map.of(), false);
-    }
-
     public static ProcedureStep ifThenElse(
             String name,
             String conditionRef,
@@ -252,6 +241,23 @@ public record ProcedureStep(
         return new ProcedureStep(name, ProcedureStepType.MAP_VALUE, null, null, null,
                 null, null, null, null, List.of(), outputKey, null, null,
                 null, null, null, valueRef, null, null, List.of(), List.of(), List.of(), Map.of(), false);
+    }
+
+    /** FORM P3-T5c: the flow {@code map} step without a collection: one object whose keys are the select keys (literal-or-ref values). */
+    public static ProcedureStep buildObject(String name, Map<String, Object> selectValues, String outputKey) {
+        return new ProcedureStep(name, ProcedureStepType.BUILD_OBJECT, null, null, null,
+                null, null, null, null, List.of(), outputKey, null, null,
+                null, null, null, null, null, null, List.of(), List.of(), List.of(), selectValues, false);
+    }
+
+    /**
+     * FORM P3-T5c: the flow {@code set} step. {@code valueRef} holds the TEXT of one expression of the one
+     * expression language (see {@code docs/EXPRESSIONS.md}); every {@code $ref} in it resolves strictly.
+     */
+    public static ProcedureStep evaluate(String name, String expression, String outputKey) {
+        return new ProcedureStep(name, ProcedureStepType.EVALUATE, null, null, null,
+                null, null, null, null, List.of(), outputKey, null, null,
+                null, null, null, expression, null, null, List.of(), List.of(), List.of(), Map.of(), false);
     }
 
     /**
@@ -327,7 +333,6 @@ public record ProcedureStep(
             case "deleteconcept", "conceptdelete" -> ProcedureStepType.DELETE_CONCEPT;
             case "callcapability", "capabilitycall" -> ProcedureStepType.CALL_CAPABILITY;
             case "publishevent", "eventpublish" -> ProcedureStepType.PUBLISH_EVENT;
-            case "callprocedure", "procedurecall" -> ProcedureStepType.CALL_PROCEDURE;
             case "if", "condition" -> ProcedureStepType.IF;
             case "foreach", "loop" -> ProcedureStepType.FOR_EACH;
             case "maplist", "listtransform" -> ProcedureStepType.MAP_LIST;

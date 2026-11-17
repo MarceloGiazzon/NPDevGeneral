@@ -16,9 +16,9 @@
      aggregates -- GeneXus's Transaction), Panels (every UI surface: autoPanels/panels/selectors/
      documents/guidePages/pages.json/menu.json, PLUS their implementation source -- widget JS,
      hand-authored web/ pages, untrusted-extension panel HTML -- GeneXus's Web Panel), and Procedures
-     (flows/procedures/orchestrationRules/conversions, PLUS their Java source -- custom-capability
+     (flows/procedures/conversions, PLUS their Java source -- custom-capability
      plugins, untrusted-extension procedures -- GeneXus's Procedure object). Features holds the
-     cross-cutting, non-object DSL wiring (packs, roles, properties, capabilities, bindings,
+     cross-cutting, non-object DSL wiring (packs, roles, properties, capabilities,
      events, queries, ...). Configs splits into Project General (config.json + the model's own
      identity/meta fields) and DB Engines (db.definition.json). Tests splits into Checks
      (untrusted-extension-manifest.json's policy/expectedOutcome), Scripts (smoke-plan.json, when an
@@ -220,8 +220,6 @@ $ModelKeyToBucket = @{
   # Objects > Procedures -- GeneXus Procedure: server-side behavior.
   flows               = 'Procedures'
   procedures          = 'Procedures'
-  orchestrationRules  = 'Procedures'
-  orchestrations      = 'Procedures'
   conversions         = 'Procedures'
   # Features -- cross-cutting DSL wiring, not a concrete KB object.
   packs               = 'Features'
@@ -233,7 +231,6 @@ $ModelKeyToBucket = @{
   properties          = 'Features'
   capabilities        = 'Features'
   customCapabilities  = 'Features'
-  bindings            = 'Features'
   events              = 'Features'
   queries             = 'Features'
   ruleProfiles        = 'Features'

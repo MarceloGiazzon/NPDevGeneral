@@ -37,7 +37,7 @@ class ReferenceIntegrityValidationTest {
         return """
                 {
                   "namespace": "reg185.sample",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "WidgetOrder", "ui": { "label": "Widget order" }, "fields": [
@@ -153,7 +153,7 @@ class ReferenceIntegrityValidationTest {
         List<String> errors = validate("""
                 {
                   "namespace": "reg185.duplicate",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "WidgetOrder", "ui": { "label": "Widget order" }, "fields": [

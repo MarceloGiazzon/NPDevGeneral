@@ -11,8 +11,6 @@ import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledFlowStep;
-import com.npdev.dsl.v1.compiled.CompiledOrchestration;
-import com.npdev.dsl.v1.compiled.CompiledOrchestrationAction;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPresentationMetadata;
@@ -586,11 +584,6 @@ writer.writeRelative(
             addIfPresent(permissions, flow.getAction() == null ? null : flow.getAction().getPermissionHint());
             collectStepPermissionHints(flow.getSteps(), permissions);
         }
-        for (CompiledOrchestration orchestration : model.getOrchestrationRules()) {
-            for (CompiledOrchestrationAction action : orchestration.getActions()) {
-                addIfPresent(permissions, action.getAction() == null ? null : action.getAction().getPermissionHint());
-            }
-        }
         for (CompiledProcedure procedure : model.getProcedures()) {
             for (String requirement : procedure.permissionRequirements()) {
                 addIfPresent(permissions, requirement);
@@ -870,15 +863,6 @@ writer.writeRelative(
                 actionPolicies.add(actionPolicy(flow.getName(), flow.getName(), "flow"));
             }
             collectStepActionPolicies(flow, flow.getSteps(), actionPolicies);
-        }
-        for (CompiledOrchestration orchestration : model.getOrchestrationRules()) {
-            int index = 1;
-            for (CompiledOrchestrationAction action : orchestration.getActions()) {
-                if (action.getAction() != null && !isBlank(action.getAction().getPermissionHint())) {
-                    actionPolicies.add(actionPolicy(orchestration.getName() + "#" + index, orchestration.getName(), "orchestrationAction"));
-                }
-                index++;
-            }
         }
 
         return """

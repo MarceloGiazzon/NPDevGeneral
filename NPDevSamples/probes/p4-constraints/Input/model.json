@@ -1,7 +1,7 @@
 {
   "$schema": "..\\\\..\\\\..\\\\..\\\\NPDevContract\\\\schemas\\\\model.schema.json",
   "namespace": "sample.probes.p4constraints",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "version": "1.0",
   "metadata": {
     "purpose": "Storage probe I2/I3: introspection must report a column's type, nullability and default, and must distinguish a UNIQUE index from a plain one. REG-129 was exactly that bug on one engine; a hand-written CREATE TABLE would test the test's SQL rather than NPDev's realized schema.",
@@ -56,12 +56,6 @@
         "save",
         "findById"
       ]
-    }
-  ],
-  "bindings": [
-    {
-      "capability": "persistence",
-      "adapter": "repository"
     }
   ]
 }

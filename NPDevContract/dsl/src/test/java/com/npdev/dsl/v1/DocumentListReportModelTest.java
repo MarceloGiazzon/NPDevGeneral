@@ -136,7 +136,7 @@ class DocumentListReportModelTest {
     private static String model(String documentMembers) {
         return """
                 {
-                  "dslVersion": "1.0.0", "namespace": "rep1.sales", "version": "1.0",
+                  "dslVersion": "3.0.0", "namespace": "rep1.sales", "version": "1.0",
                   "concepts": [
                     { "name": "Sale", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true },

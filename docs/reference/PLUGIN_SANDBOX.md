@@ -120,8 +120,8 @@ These are permanent limits, not TODOs (`docs/ACCEPTED_BOUNDARIES.md`, B30):
 
 ## Declaring and testing one
 
-1. Declare a custom capability and bind it to the adapter in the model:
-   `"bindings": [{"capability": "adminTools", "adapter": "plugin:java-controller"}]`, or
+1. Declare a custom capability with the adapter on it:
+   `{"name": "adminTools", "adapter": "plugin:java-controller"}`, or
    `"adapter": "plugin:java-source"` for a capability a flow calls. Working examples:
    `NPDevSamples/probes/p7-plugin-controller` (controller) and `NPDevSamples/probes/lib-probe`
    (java-source).

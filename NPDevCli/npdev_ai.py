@@ -297,8 +297,16 @@ def add_arguments(ai_sub) -> None:
 
     context = ai_sub.add_parser("context", help="The authoring context to paste into a chat AI that has no MCP "
                                                 "tools: contract, value reference, golden models. Compact by default.")
-    context.add_argument("--full", action="store_true", help="The full bundle instead (adds the interview and "
-                                                             "tool-loop sections an MCP agent uses), ~25 %% larger.")
+    context.add_argument("--full", action="store_true", help="Same as --detail full: the full bundle (adds the interview "
+                                                             "and tool-loop sections an MCP agent uses), ~25 %% larger.")
+    context.add_argument("--detail", choices=["lean", "standard", "full", "auto"], help="How much to teach: lean = a one-shot simple "
+                                                                                 "CRUD app (about a fifth of standard), standard = "
+                                                                                 "the default, full = everything, auto = pick from "
+                                                                                 "--ask-file's text.")
+    context.add_argument("--ask-file", help="With --detail auto: what the user wants ('-' = stdin).")
+    context.add_argument("--with-catalog", metavar="AREA", help="Also append the catalog lines (one per reusable pack) of this area "
+                                                                "(sales, finance, people, ...; 'all' = every area), so the AI reuses "
+                                                                "a pack instead of re-modelling it. Needs scripts/pack-repo/build-ai-catalog.py run once.")
     context.add_argument("--output", help="Write it to this file instead of stdout.")
     json_flag(context)
 
@@ -346,6 +354,38 @@ def add_arguments(ai_sub) -> None:
     import npdev_relay  # `npdev ai relay ...`: the browser-chat engine (prompt, ingest)
     npdev_relay.add_arguments(ai_sub)
 
+    users = ai_sub.add_parser("users", help="User profiles: whose keys pay for which AI work. Without a subcommand: "
+                                            "list them and say which key each role uses.")
+    json_flag(users)
+    usub = users.add_subparsers(dest="ai_action")
+    p = usub.add_parser("add", help="Create a user profile and, right away, store its provider keys (hidden prompt). "
+                                    "Without --key, a terminal asks which providers to store a key for.")
+    p.add_argument("id", help="Letters, digits, '-' or '_' (also the key account name).")
+    p.add_argument("--name", help="Display name.")
+    p.add_argument("--key", action="append", metavar="PROVIDER",
+                   help="Store this profile's key for PROVIDER (repeatable), e.g. --key gemini --key groq.")
+    json_flag(p)
+    p = usub.add_parser("key", help="Store or replace one provider key of an existing profile (hidden prompt).")
+    p.add_argument("id")
+    p.add_argument("provider")
+    json_flag(p)
+    p = usub.add_parser("remove", help="Delete a user profile (its stored keys stay in the vault).")
+    p.add_argument("id")
+    json_flag(p)
+    p = usub.add_parser("use", help="Make a profile the active one: every AI call on this machine uses its keys. "
+                                    f"({'NPDEV_AI_USER'} overrides it for one shell.)")
+    p.add_argument("id")
+    json_flag(p)
+    p = usub.add_parser("anonymous", help="No active profile: the roles decide, otherwise the main key.")
+    json_flag(p)
+    p = usub.add_parser("assign", help="Give a role (a feature: bench, review, ...) to a profile: its keys pay for that work.")
+    p.add_argument("id")
+    p.add_argument("role")
+    json_flag(p)
+    p = usub.add_parser("unassign", help="Take a role away from whoever holds it.")
+    p.add_argument("role")
+    json_flag(p)
+
 
 def argparse_bool():
     import argparse
@@ -354,7 +394,7 @@ def argparse_bool():
 
 
 COMMANDS = ("providers", "models", "profiles", "bindings", "bind", "reset", "validate", "complete", "test",
-            "usage", "spend", "detect", "app", "context", "relay")
+            "usage", "spend", "detect", "app", "context", "relay", "users")
 
 
 def run(args) -> int:
@@ -366,6 +406,8 @@ def run(args) -> int:
     try:
         if command == "context":
             return _run_context(args)
+        if command == "users":
+            return _run_users(args, action)
         config = aicfg.load()
         if command == "validate":
             return _answer(args, {"ok": True, "mine": str(aicfg.mine_path()), "providers": len(config.providers),
@@ -524,6 +566,60 @@ def run(args) -> int:
         return 2
 
 
+def catalog_section(area: str) -> str:
+    """FORM P7-T3: the L0 catalog lines of one area (or all), under a heading that tells the AI what to do with them."""
+    import npdev_ai_common  # scripts/ai is on sys.path by the caller
+
+    l0_path = npdev_ai_common.build_root() / "npr-catalog" / "catalog" / "l0.txt"
+    if not l0_path.is_file():
+        raise AiConfigError(f"the pack catalog is not built yet: run python scripts/pack-repo/build-ai-catalog.py (expected at {l0_path})")
+    wanted = area.strip().lower()
+    lines = [ln for ln in l0_path.read_text(encoding="utf-8").splitlines() if ln.count("|") >= 5]
+    chosen = lines if wanted == "all" else [ln for ln in lines if ln.split("|")[2].lower() == wanted]
+    if not chosen:
+        areas = sorted({ln.split("|")[2] for ln in lines})
+        raise AiConfigError(f"no pack in the catalog has the area '{area}' (areas: {', '.join(areas)}, or 'all')")
+    return ("\n\n## Pack catalog (" + wanted + ")\n"
+            "Reuse a catalog pack instead of re-modelling what it already covers. One line per pack: "
+            "id|kind|area|trust|need|requires (trust: draft < verified < certified). To use one, add it to the model's `packs[]`; "
+            "its card (what it provides, the exact line to consume it, its main limit) is the file catalog/cards/<id>.json "
+            "or the MCP tool npdev_pack_card.\n"
+            "First match every part of the request to a catalog line; for each match put that pack in `packs[]` (copy the `from` "
+            "exactly) and do NOT re-declare its concepts - reference them as `<packId>::<Concept>`. Model inline only what no line "
+            "covers. Copy the card's `use` line whole and bind EVERY role in its `provides.roleBindings` to one of your roles.\n\n"
+            + "\n".join(chosen) + "\n")
+
+
+DETAIL_SIGNALS_PATH = Path(__file__).resolve().parent / "ai-detail-signals.json"
+
+
+def suggest_detail(ask: str) -> tuple[str, str]:
+    """(level, why) for `npdev ai context --detail auto`: how much of the authoring context this request needs.
+    Words live in ai-detail-signals.json. Unsure means standard -- lean is only for a short request that is just records to keep."""
+    import re
+
+    signals = json.loads(DETAIL_SIGNALS_PATH.read_text(encoding="utf-8"))
+    text = (ask or "").lower()
+
+    def hit(words: list[str]) -> str | None:
+        for word in words:
+            if re.search(r"(?<!\w)" + re.escape(word.lower()), text):
+                return word
+        return None
+
+    word = hit(signals["full"])
+    if word:
+        return "full", f"the request mentions '{word}'"
+    word = hit(signals["standard"])
+    if word:
+        return "standard", f"the request mentions '{word}'"
+    if len(text) > int(signals["longAskChars"]):
+        return "standard", "a long request usually hides rules"
+    if not text.strip():
+        return "standard", "no request given"
+    return "lean", "just records to keep: no roles, states, reports or integrations mentioned"
+
+
 def _run_context(args) -> int:
     """The core-context bundle the AI bench measures (scripts/ai/build_core_context.py), for a chat AI
     reached by copy-paste. Compact by default: a one-shot chat cannot use the interview and tool-loop
@@ -534,12 +630,28 @@ def _run_context(args) -> int:
         sys.path.insert(0, scripts_ai)
     import build_core_context
 
-    variant = "full" if args.full else "compact"
+    if args.full and args.detail not in (None, "full"):
+        raise AiConfigError("--full and --detail disagree: use one of them")
+    detail = "full" if args.full else (args.detail or "standard")
+    chosen_because = None
+    if detail == "auto":
+        if not args.ask_file:
+            raise AiConfigError("--detail auto needs --ask-file (what the user wants; '-' = stdin)")
+        ask_text = sys.stdin.read() if args.ask_file == "-" else Path(args.ask_file).read_text(encoding="utf-8")
+        detail, chosen_because = suggest_detail(ask_text)
+    variant = "compact" if detail == "standard" else detail
     try:
-        bundle, manifest = build_core_context.build_bundle(compact=not args.full)
+        bundle, manifest = build_core_context.build_bundle(detail=detail)
     except (OSError, ValueError) as exc:
         raise AiConfigError(f"cannot build the authoring context: {exc}") from None
     payload = {"ok": True, "variant": variant, "bytes": manifest["bytes"], "contentSha256": manifest["contentSha256"]}
+    if chosen_because:
+        payload["detailChosen"] = detail
+        payload["detailBecause"] = chosen_because
+    if getattr(args, "with_catalog", None):
+        bundle += catalog_section(args.with_catalog)
+        payload["bytes"] = len(bundle.encode("utf-8"))
+        payload["catalogArea"] = args.with_catalog.strip().lower()
     if args.output:
         target = Path(args.output)
         try:
@@ -605,6 +717,101 @@ def _run_call(args, config) -> int:
     else:
         print(f"error: {result['error']}", file=sys.stderr)
     return 0 if result["ok"] else 1
+
+
+def _run_users(args, action) -> int:
+    """`npdev ai users ...` -- user profiles (npdev_user_profiles). Keys are never read, written or shown here."""
+    import npdev_providers
+    import npdev_user_profiles as users
+
+    try:
+        document = users.read()
+        if action == "add":
+            wanted = list(dict.fromkeys(args.key or []))
+            if not wanted and not getattr(args, "json", False) and sys.stdin.isatty():
+                wanted = _ask_providers()
+            for provider_id in wanted:   # check every provider before anything is created or stored
+                _key_provider(provider_id)
+            users.add(document, args.id, args.name)
+            stored = _store_user_keys(args.id, wanted)
+            subject = (f"added user profile {args.id}; keys stored: {', '.join(stored) or 'none'}"
+                       + ("" if stored else f" (add one: npdev ai users key {args.id} <provider>)"))
+        elif action == "key":
+            _key_provider(args.provider)
+            users.require_profile(document, args.id)
+            _store_user_keys(args.id, [args.provider])
+            subject = f"stored the {args.provider} key of {args.id}"
+            return _answer(args, {"ok": True, "changed": True}, subject)
+        elif action == "remove":
+            users.remove(document, args.id)
+            subject = f"removed user profile {args.id}"
+        elif action == "use":
+            users.use(document, args.id)
+            subject = f"{args.id} is now the active profile: every AI call on this machine uses its keys"
+        elif action == "anonymous":
+            users.use(document, None)
+            subject = "no active profile: roles decide, otherwise the main key"
+        elif action == "assign":
+            users.assign_role(document, args.id, args.role)
+            subject = f"role {args.role} now uses the keys of {args.id}"
+        elif action == "unassign":
+            holder = users.unassign_role(document, args.role)
+            subject = f"role {args.role} " + (f"taken from {holder}" if holder else "had no holder")
+        else:
+            active = users.active_name(document)
+            rows = [{"id": name, "displayName": entry.get("displayName"), "active": name == active,
+                     "aiRoles": entry.get("aiRoles") or []} for name, entry in sorted(document["profiles"].items())]
+            payload = {"ok": True, "file": str(users.path()), "active": active, "profiles": rows}
+            text = _table(rows, ("id", "displayName", "active", "aiRoles")) + \
+                f"\nactive: {active or 'none (anonymous: roles decide, otherwise the main key)'}"
+            return _answer(args, payload, text)
+        file = users.write(document)
+        return _answer(args, {"ok": True, "changed": True, "file": str(file)}, f"{subject} ({file})")
+    except (users.UserProfileError, npdev_providers.ProviderError) as exc:
+        if getattr(args, "json", False):
+            print(json.dumps({"ok": False, "error": str(exc)}))
+        else:
+            print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _key_provider(provider_id: str) -> dict:
+    """The catalogue entry of a provider that takes a key, or an error that names the known ones."""
+    import npdev_providers
+
+    entry = npdev_providers.get_provider(provider_id)
+    if not entry.get("keyEnvVar"):
+        raise npdev_providers.ProviderError(f"{provider_id} needs no key")
+    return entry
+
+
+def _ask_providers() -> list[str]:
+    print("Providers to store a key for (e.g. gemini, groq). Enter alone to finish.")
+    chosen: list[str] = []
+    while True:
+        answer = input("provider> ").strip().lower()
+        if not answer:
+            return chosen
+        if answer not in chosen:
+            chosen.append(answer)
+
+
+def _store_user_keys(profile_id: str, providers: list[str]) -> list[str]:
+    """Hidden prompt per provider, then the vault under `<provider>:<profile_id>`. The key is never printed."""
+    import getpass
+
+    import npdev_providers as prov
+
+    if not providers:
+        return []
+    vault = prov.Vault()
+    stored = []
+    for provider_id in providers:
+        entry = _key_provider(provider_id)
+        key = getpass.getpass(f"{entry['name']} API key for {profile_id} (input hidden; get one at {entry['signupUrl']}): ").strip()
+        vault.set(prov.account_key_id(provider_id, profile_id), key)
+        stored.append(provider_id)
+    return stored
 
 
 def _answer(args, payload: dict, text: str) -> int:

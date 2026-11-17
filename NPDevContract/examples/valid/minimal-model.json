@@ -1,6 +1,6 @@
 {
   "$schema": "../../schemas/authoring/model.schema.json",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "namespace": "examples.minimal",
   "version": "1.0",
   "concepts": [

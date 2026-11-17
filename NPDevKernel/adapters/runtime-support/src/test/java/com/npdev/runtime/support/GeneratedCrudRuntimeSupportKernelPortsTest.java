@@ -201,7 +201,6 @@ class GeneratedCrudRuntimeSupportKernelPortsTest {
                 null,
                 dataSource,
                 new SystemRuntimeClock(),
-                new InMemoryOrchestrationExecutionRegistry(),
                 new RuntimeInvariantEngineFactory() {
                     @Override
                     public InvariantEngine create(
@@ -368,7 +367,7 @@ class GeneratedCrudRuntimeSupportKernelPortsTest {
         java.nio.file.Files.writeString(modelPath, """
                 {
                   "namespace": "audit.redact.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -622,7 +621,6 @@ class GeneratedCrudRuntimeSupportKernelPortsTest {
                 null,
                 null,
                 new SystemRuntimeClock(),
-                new InMemoryOrchestrationExecutionRegistry(),
                 new RuntimeInvariantEngineFactory() {
                     @Override
                     public InvariantEngine create(

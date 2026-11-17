@@ -29,7 +29,7 @@ class PackPublishGateTest {
     @Test
     void breakingChangeWithOnlyAPatchBump_isRefusedNamingWhatChangedAndWhatBumpIsRequired() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
                   { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "sku", "type": "string", "required": true }
@@ -37,7 +37,7 @@ class PackPublishGateTest {
                 ] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.1", "concepts": [
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.1", "concepts": [
                   { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true }
                   ] }
@@ -58,12 +58,12 @@ class PackPublishGateTest {
     @Test
     void additiveChangeWithOnlyAMajorBumpVersion_isAllowed_sinceBiggerBumpsAlwaysSatisfySmallerRequirements() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
                   { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
                 ] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0", "concepts": [
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.0", "concepts": [
                   { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "nickname", "type": "string", "required": false }
@@ -81,12 +81,12 @@ class PackPublishGateTest {
     @Test
     void additiveOnlyBump_succeeds_andEmptyMigrationChainEntryIsWritten() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
                   { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
                 ] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.1.0", "concepts": [
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.1.0", "concepts": [
                   { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "nickname", "type": "string", "required": false }
@@ -114,13 +114,13 @@ class PackPublishGateTest {
     @Test
     void patchOnlyBump_succeeds_andEmptyMigrationChainEntryIsWritten() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                   "description": "first draft",
                   "concepts": [ { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ]
                 }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.1",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.1",
                   "description": "better copy",
                   "concepts": [ { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ]
                 }
@@ -137,13 +137,13 @@ class PackPublishGateTest {
     @Test
     void patchOnlyChangeWithNoVersionBumpAtAll_isRefused() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                   "description": "first draft",
                   "concepts": [ { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ]
                 }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                   "description": "better copy",
                   "concepts": [ { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ]
                 }
@@ -159,7 +159,7 @@ class PackPublishGateTest {
     @Test
     void byteIdenticalRepublishWithNoVersionChange_isAllowed_asATrueNoOp() {
         String json = """
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
                   { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
                 ] }
                 """;
@@ -174,12 +174,12 @@ class PackPublishGateTest {
     @Test
     void versionDowngrade_isAlwaysRefused_evenWithNoContentChange() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0", "concepts": [
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.0", "concepts": [
                   { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
                 ] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.9.0", "concepts": [
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.9.0", "concepts": [
                   { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
                 ] }
                 """);
@@ -195,7 +195,7 @@ class PackPublishGateTest {
     @Test
     void breakingChangeWithACorrectMajorBump_isAllowed_butNoMigrationEntryIsWritten() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
                   { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "sku", "type": "string", "required": true }
@@ -203,7 +203,7 @@ class PackPublishGateTest {
                 ] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0", "concepts": [
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.0", "concepts": [
                   { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true }
                   ] }
@@ -224,10 +224,10 @@ class PackPublishGateTest {
     @Test
     void missingVersionField_isRejectedWithAClearMessage() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets" }
+                { "dslVersion": "3.0.0", "pack": "widgets" }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0" }
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0" }
                 """);
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
@@ -240,14 +240,14 @@ class PackPublishGateTest {
     @Test
     void alteringAnAlreadyPublishedHopRefusesRegardlessOfVersionBump() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.0",
                   "migrations": { "1.0.0 -> 2.0.0": [
                     { "op": "renameField", "concept": "Widget", "from": "sku", "to": "code" }
                   ] },
                   "concepts": [ { "name": "Widget", "fields": [ { "name": "code", "type": "string" } ] } ] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "3.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "3.0.0",
                   "migrations": {
                     "1.0.0 -> 2.0.0": [
                       { "op": "renameField", "concept": "Widget", "from": "sku", "to": "identifier" }
@@ -267,12 +267,12 @@ class PackPublishGateTest {
     @Test
     void removingAnAlreadyPublishedHopRefuses() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.0",
                   "migrations": { "1.0.0 -> 2.0.0": [] },
                   "concepts": [] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "3.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "3.0.0",
                   "migrations": { "2.0.0 -> 3.0.0": [] },
                   "concepts": [] }
                 """);
@@ -286,12 +286,12 @@ class PackPublishGateTest {
     @Test
     void unchangedHistoryPlusAPatchOnlyChangeIsUnaffectedByTheImmutabilityCheck() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.0",
                   "migrations": { "1.0.0 -> 2.0.0": [] },
                   "concepts": [ { "name": "Widget", "fields": [] } ] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.1", "description": "updated docs",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.1", "description": "updated docs",
                   "migrations": { "1.0.0 -> 2.0.0": [] },
                   "concepts": [ { "name": "Widget", "fields": [] } ] }
                 """);
@@ -306,13 +306,13 @@ class PackPublishGateTest {
     @Test
     void declaredRenameFieldWithNoMatchingDiffRefuses() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                   "concepts": [ { "name": "Widget", "fields": [ { "name": "sku", "type": "string" } ] } ] }
                 """);
         // A fabricated rename op: sku was never removed, code was never added -- nothing actually
         // changed on Widget in this diff at all.
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.0",
                   "migrations": { "1.0.0 -> 2.0.0": [
                     { "op": "renameField", "concept": "Widget", "from": "sku", "to": "code" }
                   ] },
@@ -328,11 +328,11 @@ class PackPublishGateTest {
     @Test
     void declaredRenameFieldMatchingTheRealDiffIsAllowed() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                   "concepts": [ { "name": "Widget", "fields": [ { "name": "sku", "type": "string" } ] } ] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.0",
                   "migrations": { "1.0.0 -> 2.0.0": [
                     { "op": "renameField", "concept": "Widget", "from": "sku", "to": "code" }
                   ] },
@@ -347,11 +347,11 @@ class PackPublishGateTest {
     @Test
     void declaredAddFieldWithNoMatchingDiffRefuses() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                   "concepts": [ { "name": "Widget", "fields": [] } ] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.1.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.1.0",
                   "migrations": { "1.0.0 -> 1.1.0": [
                     { "op": "addField", "concept": "Widget", "field": "notes" }
                   ] },
@@ -367,10 +367,10 @@ class PackPublishGateTest {
     @Test
     void malformedHopArrayIsRefusedRatherThanThrowing() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [] }
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.0",
                   "migrations": { "1.0.0 -> 2.0.0": [ { "op": "notARealOp" } ] },
                   "concepts": [] }
                 """);
@@ -386,12 +386,12 @@ class PackPublishGateTest {
     @Test
     void changingAnAlreadyPinnedFirstPublishedVersionRefuses() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.0",
                   "firstPublishedVersion": "1.0.0",
                   "migrations": { "1.0.0 -> 2.0.0": [] }, "concepts": [] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.1",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.1",
                   "firstPublishedVersion": "1.5.0",
                   "migrations": { "1.0.0 -> 2.0.0": [] }, "concepts": [] }
                 """);
@@ -406,12 +406,12 @@ class PackPublishGateTest {
     @Test
     void removingAnAlreadyPinnedFirstPublishedVersionRefuses() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.0",
                   "firstPublishedVersion": "1.0.0",
                   "migrations": { "1.0.0 -> 2.0.0": [] }, "concepts": [] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.1",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.1",
                   "migrations": { "1.0.0 -> 2.0.0": [] }, "concepts": [] }
                 """);
 
@@ -424,12 +424,12 @@ class PackPublishGateTest {
     @Test
     void propagatingThePinnedFirstPublishedVersionUnchangedIsAllowed() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.0",
                   "firstPublishedVersion": "1.0.0",
                   "migrations": { "1.0.0 -> 2.0.0": [] }, "concepts": [] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.1",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.1",
                   "firstPublishedVersion": "1.0.0",
                   "migrations": { "1.0.0 -> 2.0.0": [] }, "concepts": [] }
                 """);
@@ -442,11 +442,11 @@ class PackPublishGateTest {
     @Test
     void withFirstPublishedVersionAnchor_backfillsFromTheChainsEarliestHopWhenNoAnchorYetExists() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.0",
                   "migrations": { "1.0.0 -> 2.0.0": [] }, "concepts": [] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.1",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.1",
                   "migrations": { "1.0.0 -> 2.0.0": [] }, "concepts": [] }
                 """);
 
@@ -458,10 +458,10 @@ class PackPublishGateTest {
     @Test
     void withFirstPublishedVersionAnchor_usesOldPacksOwnVersionWhenThereIsNoChainYet() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [] }
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.1.0", "concepts": [] }
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.1.0", "concepts": [] }
                 """);
 
         JsonNode updated = PackPublishGate.withFirstPublishedVersionAnchor(oldPack, newPack);
@@ -472,12 +472,12 @@ class PackPublishGateTest {
     @Test
     void withFirstPublishedVersionAnchor_leavesAnAlreadyPresentAnchorUntouched() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.0",
                   "firstPublishedVersion": "1.0.0",
                   "migrations": { "1.0.0 -> 2.0.0": [] }, "concepts": [] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.1",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.1",
                   "firstPublishedVersion": "1.0.0",
                   "migrations": { "1.0.0 -> 2.0.0": [] }, "concepts": [] }
                 """);

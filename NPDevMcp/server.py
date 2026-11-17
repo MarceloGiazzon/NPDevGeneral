@@ -20,6 +20,8 @@ that exposes the NPDev authoring pipeline as typed tools. It wraps the portable 
   - npdev_app_context    : the volatile per-app half -- what THIS app already contains
   - npdev_search_examples: retrieve real, working example snippets (RAG; reads the Phase 3 index)
   - npdev_search_fix      : given a validator diagnostic, retrieve precedent fixes by failure signature
+  - npdev_pack_search    : find reusable packs by need -> L0 catalog lines (one line per pack, trust included)
+  - npdev_pack_card      : the L1 card of one pack (what it provides, how to consume it, its main limit)
   - npdev_check_support   : is a feature a known gap/constraint/lifted boundary? (queries the ledger projection)
   - npdev_migration_diff : classify a schema change as safe-additive vs destructive
   - npdev_impact         : ONE change-preview report -- migration classification + xref usage + the
@@ -44,6 +46,7 @@ from __future__ import annotations
 import difflib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -449,6 +452,59 @@ def tool_search_examples(arguments: dict[str, Any]) -> dict[str, Any]:
     index = json.loads(index_path.read_text(encoding="utf-8"))
     matches = _rank_chunks(index.get("chunks", []), query, limit)
     return _text(json.dumps({"query": query, "matches": matches}, indent=2))
+
+
+PACK_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
+TRUST_RANK = {"certified": 2, "verified": 1, "draft": 0}
+CATALOG_HINT = "run: python scripts/pack-repo/build-ai-catalog.py (expected at {path})"
+
+
+def _catalog_dir() -> Path:
+    return build_root() / "npr-catalog" / "catalog"
+
+
+def tool_pack_search(arguments: dict[str, Any]) -> dict[str, Any]:
+    """FORM P7-T2: rank the L0 catalog lines (id|kind|area|trust|need|requires:..) against a need in plain words."""
+    need = (arguments.get("need") or "").strip()
+    if not need:
+        return _text_error("need is required (the user need in plain words, e.g. 'track sales leads')")
+    area = (arguments.get("area") or "").strip().lower()
+    limit = max(1, min(int(arguments.get("limit") or 5), 20))
+    l0_path = _catalog_dir() / "l0.txt"
+    if not l0_path.exists():
+        return _text_error("pack catalog not built yet -- " + CATALOG_HINT.format(path=l0_path))
+    terms = _tokenize(need)
+    scored = []
+    for line in l0_path.read_text(encoding="utf-8").splitlines():
+        parts = line.split("|")
+        if len(parts) < 6:
+            continue
+        if area and parts[2].lower() != area:
+            continue
+        pack_id, text = parts[0].lower(), line.lower()
+        score = sum(text.count(term) for term in terms) + sum(3 for term in terms if term in pack_id.replace("-", " ").split())
+        if score > 0:
+            scored.append((score, TRUST_RANK.get(parts[3], 0), line))
+    scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return _text(json.dumps({"need": need, "area": area or None, "matches": [item[2] for item in scored[:limit]],
+                             "next": "call npdev_pack_card(id) for the card of the pack you want to use"}, indent=2))
+
+
+def tool_pack_card(arguments: dict[str, Any]) -> dict[str, Any]:
+    """FORM P7-T2: the L1 card of one pack."""
+    pack_id = (arguments.get("id") or "").strip()
+    if not PACK_ID_PATTERN.match(pack_id):
+        return _text_error("id must be a pack id like 'leads' (lowercase letters, digits, - and _); see npdev_pack_search")
+    cards = _catalog_dir() / "cards"
+    path = cards / f"{pack_id}.json"
+    if not (_catalog_dir() / "l0.txt").exists():
+        return _text_error("pack catalog not built yet -- " + CATALOG_HINT.format(path=_catalog_dir()))
+    if not path.exists():
+        known = sorted(p.stem for p in cards.glob("*.json"))
+        near = [k for k in known if pack_id in k or k in pack_id][:5]
+        return _text_error(f"no pack '{pack_id}' in the catalog" + (f"; did you mean: {', '.join(near)}" if near else
+                                                                   "; call npdev_pack_search with the need in plain words"))
+    return _text(path.read_text(encoding="utf-8"))
 
 
 def tool_search_fix(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -1285,7 +1341,7 @@ TOOLS: list[dict[str, Any]] = [
                     "type": "string",
                     "enum": ["full", "compact"],
                     "description": "compact = ~25 % smaller (no interview/tool-loop sections, value reference limited to "
-                                   "concepts/roles/flows/events/queries/orchestrations/capabilities); same pass rate on "
+                                   "concepts/roles/flows/events/queries/capabilities); same pass rate on "
                                    "the bench. Default full.",
                 },
             },
@@ -1323,6 +1379,35 @@ TOOLS: list[dict[str, Any]] = [
                 "limit": {"type": "integer", "minimum": 1, "maximum": 20},
             },
             "required": ["query"],
+        },
+    },
+    {
+        "name": "npdev_pack_search",
+        "description": (
+            "Find reusable packs for a need in plain words (e.g. 'track sales leads', 'valid Brazilian tax ids'). "
+            "Returns one catalog line per pack: id|kind|area|trust|need|requires. Prefer a catalog pack to writing "
+            "the same concepts yourself; trust is draft < verified < certified. Then call npdev_pack_card."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "need": {"type": "string", "description": "the user need in plain words"},
+                "area": {"type": "string", "description": "optional: only this area (sales, finance, people, ...)"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 20},
+            },
+            "required": ["need"],
+        },
+    },
+    {
+        "name": "npdev_pack_card",
+        "description": (
+            "The card of one catalog pack (about 300 tokens): concepts with key fields and states, roles to bind, "
+            "flows, events, screens, the exact packs[] line to consume it, and its main limit."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"id": {"type": "string", "description": "pack id from npdev_pack_search"}},
+            "required": ["id"],
         },
     },
     {
@@ -1681,6 +1766,8 @@ TOOL_HANDLERS = {
     "npdev_app_context": tool_app_context,
     "npdev_search_examples": tool_search_examples,
     "npdev_search_fix": tool_search_fix,
+    "npdev_pack_search": tool_pack_search,
+    "npdev_pack_card": tool_pack_card,
     "npdev_check_support": tool_check_support,
     "npdev_graph_explain": tool_graph_explain,
     "npdev_graph_reuse": tool_graph_reuse,

@@ -45,7 +45,7 @@ class ExternalAiPromptRunnerTest {
     private static CompiledModel model(String egress, String promptExtra) throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.ai", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.ai", "version": "1.0",
               "concepts": [ { "name": "Cap", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
               "propertyScopes": [ { "name": "user", "from": "$user.id" }, { "name": "tenant" } ],

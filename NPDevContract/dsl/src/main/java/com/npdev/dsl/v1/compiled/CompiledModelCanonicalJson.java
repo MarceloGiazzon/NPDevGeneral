@@ -53,9 +53,7 @@ public final class CompiledModelCanonicalJson {
         root.set("bindings", toBindings(model));
         root.set("events", toEvents(model));
         root.set("flows", toFlows(model));
-        root.set("orchestrationRules", toOrchestrationRules(model));
         root.set("queries", toQueries(model));
-        root.set("ruleProfiles", toRuleProfiles(model));
         root.set("procedures", toProcedures(model));
         root.set("panels", toPanels(model));
         root.set("guidePages", toGuidePages(model));
@@ -1338,6 +1336,31 @@ public final class CompiledModelCanonicalJson {
             node.set("steps", toFlowSteps(flow.getSteps()));
             node.set("schedule", toFlowSchedule(flow.getSchedule()));
             node.set("origin", toOrigin(flow.getOrigin()));
+            // FORM P3-T5a: emitted ONLY when declared, so every existing app's canonical JSON stays
+            // byte-identical (deterministic-generation baseline).
+            if (flow.getTrigger() != null) {
+                ObjectNode trigger = JsonNodeFactory.instance.objectNode();
+                trigger.put("kind", flow.getTrigger().kind());
+                if (flow.getTrigger().event() != null) {
+                    trigger.put("event", flow.getTrigger().event());
+                }
+                if (flow.getTrigger().condition() != null) {
+                    trigger.put("condition", flow.getTrigger().condition());
+                }
+                if (flow.getTrigger().webhook() != null) {
+                    trigger.put("webhook", flow.getTrigger().webhook());
+                }
+                node.set("trigger", trigger);
+            }
+            if (flow.getExpose() != null) {
+                node.put("expose", flow.getExpose());
+            }
+            if (flow.getRunAs() != null) {
+                node.put("runAs", flow.getRunAs());
+            }
+            if (flow.getDescription() != null) {
+                node.put("description", flow.getDescription());
+            }
             flows.add(node);
         }
         return flows;
@@ -1423,22 +1446,6 @@ public final class CompiledModelCanonicalJson {
             array.add(node);
         }
         return array;
-    }
-
-    private static ArrayNode toRuleProfiles(CompiledModel model) {
-        ArrayNode profiles = JsonNodeFactory.instance.arrayNode();
-        List<CompiledRuleProfile> sorted = new ArrayList<>(model.getRuleProfiles());
-        sorted.sort(Comparator.comparing(profile -> normalize(profile.name())));
-        for (CompiledRuleProfile profile : sorted) {
-            ObjectNode node = JsonNodeFactory.instance.objectNode();
-            node.put("name", safe(profile.name()));
-            node.put("description", safe(profile.description()));
-            node.set("appliesTo", toStringArray(profile.appliesTo()));
-            node.put("enabled", profile.enabled());
-            node.set("metadata", toObjectMap(profile.metadata()));
-            profiles.add(node);
-        }
-        return profiles;
     }
 
     private static ArrayNode toProcedures(CompiledModel model) {
@@ -1890,74 +1897,6 @@ public final class CompiledModelCanonicalJson {
         return node;
     }
 
-    private static ArrayNode toOrchestrationRules(CompiledModel model) {
-        ArrayNode rules = JsonNodeFactory.instance.arrayNode();
-        List<CompiledOrchestration> sorted = new ArrayList<>(model.getOrchestrationRules());
-        sorted.sort(Comparator.comparing(rule -> normalize(rule.getName())));
-        for (CompiledOrchestration rule : sorted) {
-            ObjectNode node = JsonNodeFactory.instance.objectNode();
-            node.put("name", safe(rule.getName()));
-            node.put("condition", safe(rule.getCondition()));
-
-            ObjectNode triggerNode = JsonNodeFactory.instance.objectNode();
-            if (rule.getTrigger() != null) {
-                triggerNode.put("type", safe(rule.getTrigger().getType()));
-                triggerNode.put("event", safe(rule.getTrigger().getEvent()));
-            } else {
-                triggerNode.put("type", "");
-                triggerNode.put("event", "");
-            }
-            node.set("trigger", triggerNode);
-
-            List<CompiledOrchestrationAction> actions = rule.getActions().isEmpty()
-                    ? (rule.getAction() == null ? List.of() : List.of(rule.getAction()))
-                    : rule.getActions();
-            CompiledOrchestrationAction primaryAction = actions.isEmpty() ? null : actions.get(0);
-            node.set("action", toOrchestrationActionNode(primaryAction));
-            node.set("actions", toOrchestrationActions(actions));
-            rules.add(node);
-        }
-        return rules;
-    }
-
-    private static ObjectNode toOrchestrationActionNode(CompiledOrchestrationAction action) {
-        ObjectNode actionNode = JsonNodeFactory.instance.objectNode();
-        if (action != null) {
-            actionNode.put("type", safe(action.getType()));
-            actionNode.put("concept", safe(action.getConcept()));
-            actionNode.put("capability", safe(action.getCapability()));
-            actionNode.put("operation", safe(action.getOperation()));
-            actionNode.put("event", safe(action.getEvent()));
-            if (action.getDelaySeconds() == null) {
-                actionNode.putNull("delaySeconds");
-            } else {
-                actionNode.put("delaySeconds", action.getDelaySeconds());
-            }
-            actionNode.set("action", toActionMetadata(action.getAction()));
-            actionNode.set("map", toStringMap(action.getMap()));
-            return actionNode;
-        }
-        actionNode.put("type", "");
-        actionNode.put("concept", "");
-        actionNode.put("capability", "");
-        actionNode.put("operation", "");
-        actionNode.put("event", "");
-        actionNode.putNull("delaySeconds");
-        actionNode.set("map", JsonNodeFactory.instance.objectNode());
-        return actionNode;
-    }
-
-    private static ArrayNode toOrchestrationActions(List<CompiledOrchestrationAction> actions) {
-        ArrayNode out = JsonNodeFactory.instance.arrayNode();
-        if (actions == null) {
-            return out;
-        }
-        for (CompiledOrchestrationAction action : actions) {
-            out.add(toOrchestrationActionNode(action));
-        }
-        return out;
-    }
-
     private static ArrayNode toFlowSteps(List<CompiledFlowStep> flowSteps) {
         ArrayNode steps = JsonNodeFactory.instance.arrayNode();
         for (CompiledFlowStep flowStep : flowSteps) {
@@ -2007,7 +1946,7 @@ public final class CompiledModelCanonicalJson {
                 stepNode.put("maxLoopIterations", flowStep.getMaxLoopIterations());
             }
             stepNode.set("onFailureSteps", toFlowSteps(flowStep.getOnFailureSteps()));
-            // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): callProcedure's procedure name.
+            // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): the retired callProcedure step's procedure name (inert).
             stepNode.put("procedureName", safe(flowStep.getProcedureName()));
             // B15(B) (S6, docs/BOUNDARY_LIFT_ROADMAP.md §B15(B)): a forEach step's opt-in into
             // N-way parallel waiting.
@@ -2031,6 +1970,37 @@ public final class CompiledModelCanonicalJson {
             // canonical JSON stays byte-identical (deterministic-generation baseline).
             if (flowStep.getTask() != null) {
                 stepNode.set("task", humanTaskNode(flowStep.getTask()));
+            }
+            // FORM P3-T5a: the concept steps' keys, emitted only when declared (same reason as above).
+            if (flowStep.getRecordIdRef() != null) {
+                stepNode.put("recordIdRef", flowStep.getRecordIdRef());
+            }
+            if (flowStep.getQueryName() != null) {
+                stepNode.put("queryName", flowStep.getQueryName());
+            }
+            if (!flowStep.getQueryParams().isEmpty()) {
+                ObjectNode params = JsonNodeFactory.instance.objectNode();
+                flowStep.getQueryParams().forEach(params::put);
+                stepNode.set("queryParams", params);
+            }
+            if (flowStep.getFlowName() != null) {
+                stepNode.put("flowName", flowStep.getFlowName());
+            }
+            // FORM P3-T5c: field map (select / set), createIfMissing, errorTarget, ifExists -- emitted only when declared.
+            if (!flowStep.getFieldValues().isEmpty()) {
+                stepNode.set("fieldValues", MAPPER.valueToTree(flowStep.getFieldValues()));
+            }
+            if (flowStep.getCreateIfMissing() != null) {
+                stepNode.put("createIfMissing", flowStep.getCreateIfMissing());
+            }
+            if (flowStep.getErrorTarget() != null) {
+                stepNode.put("errorTarget", flowStep.getErrorTarget());
+            }
+            if (flowStep.getIfExists() != null) {
+                stepNode.put("ifExists", flowStep.getIfExists());
+            }
+            if (flowStep.getDedupeKey() != null) {
+                stepNode.put("dedupeKey", flowStep.getDedupeKey());
             }
             steps.add(stepNode);
         }

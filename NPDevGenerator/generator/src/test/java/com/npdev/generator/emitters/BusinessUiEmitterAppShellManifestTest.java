@@ -49,7 +49,7 @@ public class BusinessUiEmitterAppShellManifestTest {
         CompiledModel model = compile("""
                 {
                   "namespace": "appshell.manifest.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "WidgetOrder", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
@@ -79,7 +79,7 @@ public class BusinessUiEmitterAppShellManifestTest {
         CompiledModel model = compile("""
                 {
                   "namespace": "appshell.manifest.none.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Order", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
@@ -101,7 +101,7 @@ public class BusinessUiEmitterAppShellManifestTest {
         CompiledModel model = compile("""
                 {
                   "namespace": "autopanel.nav.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Order", "fields": [

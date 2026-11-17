@@ -2,9 +2,11 @@ id: REG-73
 title: "ProcedureRunner never resolved a capability adapter from the model's bindings list -- every procedure-side capabilityCall step (panel action procedure bindings, and AggregateRuntime.invoke()) reached the dispatcher with a null adapterId and failed CAPABILITY_BINDING_MISSING even with a real binding declared"
 type: BUG
 severity: HIGH
-status: DONE
+status: OBSOLETE
 opened: 2026-07-29
 closed: 2026-07-29
+decision: >-
+  ProcedureRunner's own step interpreter was replaced in FORM P3-T5c: procedures now run as flows, whose compiled path already resolves adapters from bindings (CompiledModelFlowDefinitionProvider); the procedure-side resolution this item fixed no longer exists and its guard test was deleted.
 verification: VERIFIED_LIVE
 source: docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md G2 -- found live while assessing the Sugerir* flows
   against invoke() ("procedure over draft" is the candidate mechanism for a computed-array
@@ -68,8 +70,3 @@ detail: |
   (Move 3, `docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md`) -- the plan's own hypothesis ("invoke is the
   candidate mechanism ... if it does not fit, say so and name the gap") held once the real bug
   underneath it was fixed, so no gap needed naming.
-guard:
-  kind: test
-  ref: NPDevRuntimeHost/src/test/java/com/finalexec/npdev/service/ProcedureRunnerCapabilityCallTest.java#callCapabilityStepResolvesAdapterFromModelBindings
-  asserts: a procedure-side capabilityCall step resolves its adapter id from the model's bindings list instead of reaching the dispatcher with a null adapterId.
-  provenRed: true

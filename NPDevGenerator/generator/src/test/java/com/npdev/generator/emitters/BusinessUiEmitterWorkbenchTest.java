@@ -36,7 +36,7 @@ public class BusinessUiEmitterWorkbenchTest {
     void aggregateAutoPanelEmitsAServedWorkbenchPage() throws Exception {
         CompiledModel model = compile("""
             {
-              "dslVersion": "1.0.0", "namespace": "wms", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms", "version": "1.0",
               "concepts": [
                 { "name": "Expedicao", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -110,7 +110,7 @@ public class BusinessUiEmitterWorkbenchTest {
     void settingsStringsOverridesRenderIntoWorkbenchPage() throws Exception {
         CompiledModel model = compile("""
             {
-              "dslVersion": "1.0.0", "namespace": "wms", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms", "version": "1.0",
               "concepts": [
                 { "name": "Expedicao", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -141,7 +141,7 @@ public class BusinessUiEmitterWorkbenchTest {
     void appWithoutAggregateAutoPanelEmitsNoWorkbenchPage() throws Exception {
         CompiledModel model = compile("""
             {
-              "dslVersion": "1.0.0", "namespace": "plain", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "plain", "version": "1.0",
               "concepts": [ { "name": "Thing", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ]
             }
             """);

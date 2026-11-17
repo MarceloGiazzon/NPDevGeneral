@@ -53,7 +53,7 @@ VERSION = "0.9.0"
 # one file): NPDevContract/dsl/build.gradle's own `version` and model.schema.json's own
 # properties.dslVersion.const.
 DSL_COMPILER_VERSION = "0.1.0"
-DSL_MODEL_FORMAT_VERSION = "1.0.0"
+DSL_MODEL_FORMAT_VERSION = "3.0.0"
 
 
 class CliError(Exception):
@@ -197,7 +197,7 @@ def _capture_validation(model_path: Path, report: dict) -> None:
             raw = read_json(Path(model_path).expanduser())
         except Exception:
             raw = {}
-        namespace = str((raw.get("namespace") or raw.get("model") or "")).strip() if isinstance(raw, dict) else ""
+        namespace = str((raw.get("namespace") or "")).strip() if isinstance(raw, dict) else ""
         key = namespace or str(Path(model_path).expanduser().resolve())
         key_hash = hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
 
@@ -421,13 +421,9 @@ MODEL_ARRAY_KEYS = {
     "domainTypes",
     "capabilities",
     "customCapabilities",
-    "bindings",
     "events",
     "flows",
-    "orchestrationRules",
-    "orchestrations",
     "queries",
-    "ruleProfiles",
     "procedures",
     "panels",
     # The 10 real schema array keys this Python whitelist had drifted from -- the exact REG-108
@@ -446,20 +442,19 @@ MODEL_ARRAY_KEYS = {
     "roles",
     "propertyScopes",
     "properties",
-    "contexts",
+    "modules",
     # R8.8: pack-declared seed data. Added to ModelSourceResolver.MODEL_ARRAY_KEYS (the Java-side
     # composer gate) in the same change; this Python copy is the build-free `npdev inspect` /
     # `validate model --structural-only` path, and a key missing here is silently invisible to it --
     # exactly the drift the block above was written to stop repeating.
     "seeds",
-    # webhooks/sequences joined the Java composer in R6.2/R5.3 but never this copy, so the
-    # build-free path refused models that validate everywhere else. Now pinned by
-    # test_root_keys_match_schema.py against model.schema.json itself, not a hand-kept list.
-    "webhooks",
+    # sequences joined the Java composer in R5.3 but never this copy, so the build-free path
+    # refused models that validate everywhere else. Now pinned by test_root_keys_match_schema.py
+    # against model.schema.json itself, not a hand-kept list.
     "sequences",
 }
 ROOT_SCALAR_KEYS = {
-    "$schema", "schemaVersion", "dslVersion", "namespace", "model", "version",
+    "$schema", "schemaVersion", "dslVersion", "namespace", "version",
     # Same drift fix as MODEL_ARRAY_KEYS above, for the object-shaped (not array-shaped) top-level
     # keys. `packs` stays listed here so the REGISTRY of pack imports survives into the resolved
     # model verbatim (model.schema.json's `packs` property expects exactly the raw
@@ -468,7 +463,6 @@ ROOT_SCALAR_KEYS = {
     # declaration through.
     "packs", "provides", "externalAi", "settings", "appShell", "agentAccess",
 }
-FRAGMENT_KEYS = MODEL_ARRAY_KEYS | {"metadata", "fragments"}
 
 # REG-186: the two top-level arrays whose entries are a $ref PLUS identity keys, rather than the
 # bare `{"$ref": "..."}` this resolver's generic fragment composition uses everywhere else. Before
@@ -479,7 +473,7 @@ FRAGMENT_KEYS = MODEL_ARRAY_KEYS | {"metadata", "fragments"}
 #
 # key -> the additional keys an entry of that array may legally carry alongside "$ref"
 REF_ENTRY_EXTRA_KEYS = {
-    "contexts": frozenset({"name", "physicallyIsolate"}),
+    "modules": frozenset({"name", "physicallyIsolate"}),
     "packs": frozenset({"as", "allowSideBySide"}),
 }
 # A `packs[]` entry is `$ref` (a local file, hermetic by design) OR `from` (PK-5's remote
@@ -508,7 +502,7 @@ QUALIFIER_SEPARATOR = "::"
 # model's other arrays under a qualifier, so they must not go through the generic `resolve_array`
 # path (which would splice the referenced file's whole body in as if it were a context/pack entry
 # and lose the `name`/`as` that decides the qualifier).
-QUALIFIED_COMPOSITION_KEYS = ("packs", "contexts")
+QUALIFIED_COMPOSITION_KEYS = ("packs", "modules")
 
 
 def resolve_member_reference(target: str | None, known_names, referrer: str | None = None) -> str | None:
@@ -685,53 +679,13 @@ def resolve_split_model(path: Path, collect_sources: set[Path] | None = None,
             child_path = include_path(ref, source)
             child = read_fragment(child_path, depth + 1, [*stack, source])
             if isinstance(child, dict) and isinstance(child.get(key), list):
+                # PACK-12: an included file that contributes arrays is a fragment -- check its keys against
+                # `model-fragment.schema.json` (a warning, never a refusal).
+                _warn_on_fragment_schema_violations(child_path, child)
                 out.extend(resolve_array(key, child[key], child_path, depth + 1, [*stack, source]))
             else:
                 out.append(child)
         return out
-
-    def resolve_model_fragment(fragment_path: Path, depth: int, stack: list[Path]) -> dict:
-        fragment = read_fragment(fragment_path, depth, stack)
-        if not isinstance(fragment, dict):
-            fail(str(fragment_path), "model fragment must be an object")
-        unsupported = set(fragment.keys()) - FRAGMENT_KEYS
-        if unsupported:
-            fail(str(fragment_path), "unsupported model fragment key: " + sorted(unsupported)[0])
-        # PACK-12: `NPDevContract/schemas/model-fragment.schema.json` had NO consumer, and had
-        # drifted into declaring 14 keys with `additionalProperties: false` and no `concepts` -- so
-        # as written it rejected the most ordinary fragment there is, while this composer merged
-        # one without complaint. Correcting it without wiring it would leave exactly the condition
-        # that let it drift. `collect_sources` already knows every fragment file visited; this is
-        # the point at which one is in hand.
-        _warn_on_fragment_schema_violations(fragment_path, fragment)
-        resolved_fragment: dict = {}
-        for key in MODEL_ARRAY_KEYS:
-            if key in fragment:
-                resolved_fragment[key] = resolve_array(key, fragment[key], fragment_path, depth + 1, [*stack, fragment_path])
-        if "metadata" in fragment:
-            if not isinstance(fragment["metadata"], dict):
-                fail(str(fragment_path), "metadata must be an object")
-            resolved_fragment["metadata"] = dict(fragment["metadata"])
-        for index, nested in enumerate(fragment.get("fragments") or []):
-            ref = ref_value(nested, f"{fragment_path}/fragments/{index}")
-            if ref is None:
-                fail(f"{fragment_path}/fragments/{index}", "fragment entry must be a $ref object")
-            append_fragment(resolved_fragment, resolve_model_fragment(include_path(ref, fragment_path), depth + 1, [*stack, fragment_path]), set())
-        return resolved_fragment
-
-    def append_fragment(target: dict, fragment: dict, root_metadata_keys: set[str]) -> None:
-        for key in MODEL_ARRAY_KEYS:
-            if key in fragment:
-                target.setdefault(key, [])
-                target[key].extend(fragment[key])
-        if "metadata" in fragment:
-            metadata = target.setdefault("metadata", {})
-            for meta_key, meta_value in fragment["metadata"].items():
-                if meta_key in root_metadata_keys:
-                    continue
-                if meta_key in metadata:
-                    fail(str(root_path), f"duplicate fragment metadata key: {meta_key}")
-                metadata[meta_key] = meta_value
 
     def compose_qualified(kind_key: str, entries: object, resolved: dict) -> list:
         """REG-186: merge every member a `packs[]`/`contexts[]` entry contributes into the model's
@@ -764,7 +718,7 @@ def resolve_split_model(path: Path, collect_sources: set[Path] | None = None,
             if not isinstance(content, dict):
                 fail(str(child_path), f"{kind_key} target must be an object")
 
-            if kind_key == "contexts":
+            if kind_key == "modules":
                 qualifier = entry.get("name")
                 if not isinstance(qualifier, str) or not qualifier.strip():
                     fail(label + "/name", "Context 'name' must be a non-blank string")
@@ -801,7 +755,7 @@ def resolve_split_model(path: Path, collect_sources: set[Path] | None = None,
             # `additionalProperties: false`. `physicallyIsolate` is emitted only when true, matching
             # ModelSourceResolver's own note that a model never declaring it must resolve unchanged.
             keep = {"$ref": ref}
-            if kind_key == "contexts":
+            if kind_key == "modules":
                 keep = {"name": qualifier, "$ref": ref}
                 if entry.get("physicallyIsolate") is True:
                     keep["physicallyIsolate"] = True
@@ -816,7 +770,10 @@ def resolve_split_model(path: Path, collect_sources: set[Path] | None = None,
     raw = read_json(root_path)
     if not isinstance(raw, dict):
         fail(str(root_path), "root model must be an object")
-    unsupported = set(raw.keys()) - (ROOT_SCALAR_KEYS | MODEL_ARRAY_KEYS | {"metadata", "fragments"})
+    if "fragments" in raw:
+        fail(str(root_path), "root 'fragments' was removed: put {\"$ref\": \"file.json\"} entries in the arrays "
+                             "themselves (capabilities, flows, ...); an included file's same-named array is spliced in")
+    unsupported = set(raw.keys()) - (ROOT_SCALAR_KEYS | MODEL_ARRAY_KEYS | {"metadata"})
     if unsupported:
         fail(str(root_path), "unsupported model top-level key: " + sorted(unsupported)[0])
     validate_refs(raw, str(root_path))
@@ -831,14 +788,8 @@ def resolve_split_model(path: Path, collect_sources: set[Path] | None = None,
     for key in QUALIFIED_COMPOSITION_KEYS:
         if key in raw:
             resolved[key] = compose_qualified(key, raw[key], resolved)
-    root_metadata_keys = set((raw.get("metadata") or {}).keys()) if isinstance(raw.get("metadata"), dict) else set()
     if "metadata" in raw and not isinstance(raw["metadata"], dict):
         fail(str(root_path), "metadata must be an object")
-    for index, fragment_ref in enumerate(raw.get("fragments") or []):
-        ref = ref_value(fragment_ref, f"{root_path}/fragments/{index}")
-        if ref is None:
-            fail(f"{root_path}/fragments/{index}", "fragment entry must be a $ref object")
-        append_fragment(resolved, resolve_model_fragment(include_path(ref, root_path), 1, [root_path]), root_metadata_keys)
     if "metadata" in raw:
         metadata = resolved.setdefault("metadata", {})
         metadata.update(raw["metadata"])
@@ -902,7 +853,7 @@ def normalize_ai_model(path: Path) -> dict:
         )
     namespace = re.sub(r"[^a-z0-9]+", ".", app_name.lower()).strip(".") or "npdev.app"
     return {
-        "dslVersion": "1.0.0",
+        "dslVersion": "3.0.0",
         "version": "1.0",
         "namespace": namespace,
         "concepts": concepts,
@@ -1039,7 +990,7 @@ def migrate_legacy_model(args: argparse.Namespace) -> None:
         model["$schema"] = "NPDevContract/schemas/model.schema.json"
     if not model.get("$schema"):
         model["$schema"] = "NPDevContract/schemas/model.schema.json"
-    model.setdefault("dslVersion", "1.0.0")
+    model.setdefault("dslVersion", DSL_MODEL_FORMAT_VERSION)
     model.pop("schemaVersion", None)
     validate_json_schema(repo_root() / "NPDevContract" / "schemas" / "model.schema.json", write_temp_model(model, target))
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -12168,7 +12119,7 @@ def run_pack_export(args: argparse.Namespace) -> int:
 
     pack_doc: dict = {
         "$schema": "../../schemas/pack.schema.json",
-        "dslVersion": "1.0.0",
+        "dslVersion": "3.0.0",
         "pack": args.pack,
         "version": args.pack_version or "1.0.0",
         "description": args.description or f"Exported from concept(s) {', '.join(concept_names)} in {model_path}.",
@@ -13092,7 +13043,7 @@ def inspect_app(args: argparse.Namespace) -> None:
     report = (
         {
             "model": str(model_path),
-            "namespace": model.get("namespace") or model.get("model"),
+            "namespace": model.get("namespace"),
             "version": model.get("version"),
             "counts": {
                 "concepts": len(concepts),

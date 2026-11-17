@@ -2,7 +2,6 @@ package com.npdev.dsl.v1.validation;
 
 import com.npdev.dsl.v1.ast.CapabilityAst;
 import com.npdev.dsl.v1.ast.ConceptAccessAst;
-import com.npdev.dsl.v1.ast.CapabilityBindingAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
 import com.npdev.dsl.v1.ast.DomainTypeAst;
 import com.npdev.dsl.v1.ast.CapabilityPolicyAst;
@@ -17,9 +16,6 @@ import com.npdev.dsl.v1.ast.FlowScheduleAst;
 import com.npdev.dsl.v1.ast.InvariantAst;
 import com.npdev.dsl.v1.ast.LifecycleAst;
 import com.npdev.dsl.v1.ast.ModelAst;
-import com.npdev.dsl.v1.ast.OrchestrationActionAst;
-import com.npdev.dsl.v1.ast.OrchestrationAst;
-import com.npdev.dsl.v1.ast.OrchestrationTriggerAst;
 import com.npdev.dsl.v1.ast.AggregateAst;
 import com.npdev.dsl.v1.ast.AggregateCollectionAst;
 import com.npdev.dsl.v1.ast.AutoPanelAst;
@@ -40,7 +36,6 @@ import com.npdev.dsl.v1.ast.ProcedureParameterAst;
 import com.npdev.dsl.v1.ast.ProcedureStepAst;
 import com.npdev.dsl.v1.ast.QueryAst;
 import com.npdev.dsl.v1.ast.ReferenceSemanticsAst;
-import com.npdev.dsl.v1.ast.RuleProfileAst;
 import com.npdev.dsl.v1.ast.TruthLevel;
 import com.npdev.dsl.v1.ast.SchemaAst;
 import com.npdev.dsl.v1.ast.StateMachineStateAst;
@@ -77,7 +72,7 @@ import java.util.stream.Collectors;
  * checks themselves live in (T1.15 split of what used to be one 4,244-line file):
  * {@link ConceptValidation} (+ {@link DomainTypeValidation}, {@link ReferenceValidation},
  * {@link FieldValueValidation}, {@link LifecycleValidation} sub-boundaries),
- * {@link FlowValidation} (+ {@link OrchestrationValidation}), {@link PanelValidation}
+ * {@link FlowValidation}, {@link PanelValidation}
  * (+ {@link UxMetadataValidation}), {@link AggregateValidation}, {@link DocumentValidation},
  * {@link PackValidation}, {@link RoleValidation}, {@link WebhookValidation},
  * {@link SequenceValidation}, {@link SeedValidation}, and {@link ExpressionValidation}. {@link #normalize} and
@@ -123,7 +118,6 @@ public final class SemanticValidator {
         ConceptValidation.validateNoCredentialConcept(effectiveModel, errors);
 
         ConceptValidation.validateCapabilities(effectiveModel, errors, semanticWarnings);
-        ConceptValidation.validateBindings(effectiveModel, errors);
         PackValidation.validateExternalAiEgress(effectiveModel, errors);
         ExternalAiValidation.validate(effectiveModel, errors, semanticWarnings);
         FlowValidation.validateEvents(effectiveModel, errors);
@@ -141,9 +135,7 @@ public final class SemanticValidator {
 
         FlowValidation.validateFlows(effectiveModel, entitiesByLower, effectiveCache, allowUnboundFlowCapabilities, errors, semanticWarnings);
         HumanTaskValidation.validate(effectiveModel, errors, semanticWarnings);
-        OrchestrationValidation.validateOrchestrationRules(effectiveModel, errors);
         PackValidation.validateQueries(effectiveModel, entitiesByLower, errors);
-        PackValidation.validateRuleProfiles(effectiveModel, entitiesByLower, errors);
         PackValidation.validateProcedures(effectiveModel, entitiesByLower, errors);
         PanelValidation.validatePanels(effectiveModel, entitiesByLower, errors);
         PanelValidation.validateGuidePages(effectiveModel, errors);

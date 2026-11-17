@@ -35,7 +35,7 @@ class AgentAggregateToolTest {
     static CompiledModel model(String operations) throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "demo.mosaic", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "demo.mosaic", "version": "1.0",
               "concepts": [
                 { "name": "Mosaic", "ui": { "label": "Mosaic" }, "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -131,7 +131,7 @@ class AgentAggregateToolTest {
     private static String modelJsonWithoutOperations() {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "demo.mosaic", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "demo.mosaic", "version": "1.0",
               "concepts": [ { "name": "Mosaic", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
               "aggregates": [ { "name": "MosaicAggregate", "root": "Mosaic" } ],
               "agentAccess": { "channels": { "mcp": { "enabled": true } }, "expose": [ { "aggregate": "MosaicAggregate" } ] }

@@ -47,7 +47,7 @@ JSON definition. **The JSON definition is the only thing that matters long-term.
 | Term | Plain-language meaning |
 | --- | --- |
 | **Concept** | A "thing" your app stores — like a database table. Example: `User`, `Invoice`, `Product`. It has **fields** (columns). |
-| **Flow** | An action your app can perform, callable over the web (`POST /api/flows/<Name>/execute`). Example: "create a user", "issue an invoice". You describe it as a sequence of **steps**. |
+| **Flow** | An action your app can perform, callable over the web (`POST /api/flows/<Name>/execute`; only flows with `expose: api`, the default; `ui` and `internal` flows answer 404). Example: "create a user", "issue an invoice". You describe it as a sequence of **steps**. |
 | **Capability** | A verb your app needs but doesn't implement itself — "save to storage", "send a notification", "score a support ticket". Built-in capabilities (persistence, events, notifications) come for free. You can also write your own in a few lines of Java (a "custom capability"). |
 | **Panel** | A screen in the web UI (a table, a form, a dashboard). Most simple apps don't need to write panels by hand — NPDev **generates a working data-entry web UI automatically** from your concepts. You only write panels yourself when you want a custom-looking screen. |
 
@@ -56,7 +56,7 @@ Two more words you'll see as you go deeper:
 | Term | Plain-language meaning |
 | --- | --- |
 | **Event** | An announcement your app broadcasts when something happens (`UserCreated`, `InvoiceIssued`). Other parts of the app can react to it. |
-| **Orchestration rule** | "When event X happens, automatically do Y" — no manual trigger needed. |
+| **Event-triggered flow** | A flow whose `trigger` names an event: "when event X happens, automatically do Y" — no manual trigger needed. |
 | **Reference / bond** | A link from one concept to another, like a foreign key — e.g. an `Invoice` field that points at the `User` who owns it. |
 | **Procedure** | A small server-side routine (declarative steps like "read this", "compute that", "save this") for logic that doesn't need to be a public web action. |
 
@@ -353,8 +353,8 @@ carry it say so in a `NOTICE` on every boot. Existing apps keep working unchange
 
 This is where your app "happens": `version` (your own app
 version string), `namespace` (a Java-style package name), and `concepts` (at least one) are
-required. (`dslVersion` is optional: omit it, or write `"1.0.0"`.) Everything else — `flows`, `events`, `queries`, `procedures`, `panels`,
-`orchestrationRules`, `capabilities`, `customCapabilities` — is optional and is exactly what
+required. (`dslVersion` is optional: omit it, or write `"3.0.0"`.) Everything else — `flows`, `events`, `queries`, `procedures`, `panels`,
+`capabilities`, `customCapabilities` — is optional and is exactly what
 the four levels below add, one at a time.
 
 **Choosing one value, or several.** A field that holds one of a fixed set is
@@ -390,7 +390,7 @@ be called by another program rather than looked at by a person.
 ```json
 {
   "$schema": "..\\..\\..\\..\\NPDev_General\\NPDevContract\\schemas\\model.schema.json",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "version": "0.1.0",
   "namespace": "com.example.notes",
   "concepts": [
@@ -409,9 +409,6 @@ be called by another program rather than looked at by a person.
   "capabilities": [
     { "name": "persistence", "type": "PersistenceCapability", "operations": ["save", "findById"] }
   ],
-  "bindings": [
-    { "capability": "persistence", "adapter": "repository" }
-  ],
   "flows": [
     {
       "name": "CreateNote",
@@ -427,12 +424,12 @@ be called by another program rather than looked at by a person.
 }
 ```
 
-> **About the `capabilities` + `bindings` blocks.** `createConcept` (and `updateConcept`) is shorthand for
-> "persist this via the `persistence` capability". You may omit both blocks: the compiler adds the
-> `persistence` capability and a `repository` binding implicitly for any flow that creates, updates or saves a
-> concept, and an explicit declaration still wins. `"adapter": "repository"` is the portable abstract name —
+> **About the `capabilities` block.** `createConcept` (and `updateConcept`) is shorthand for
+> "persist this via the `persistence` capability". You may omit the block: the compiler adds the
+> `persistence` capability and its `repository` adapter implicitly for any flow that creates, updates or saves a
+> concept, and an explicit declaration still wins. `repository` is the portable abstract name —
 > it resolves to the in-memory store under the `dev,step0,trial` profile and to Postgres in production; you
-> never name a concrete adapter here. They are shown above only to make the mechanism visible.
+> never name a concrete adapter here. The block is shown above only to make the mechanism visible.
 
 `definition\config.json` sets `"defaults": { "ui.generateBusinessUi": false }` (a top-level
 sibling of `scenario`/`generator`/etc.) to deliberately skip the automatic web UI, since this
@@ -483,7 +480,7 @@ This exact pattern already exists and is proven green as the reference app
 ```json
 {
   "namespace": "trial.userregistry",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "version": "1.0",
   "concepts": [
     {
@@ -533,15 +530,15 @@ value of Level 2: **zero UI code, a working screen.**
 
 ---
 
-### Level 3 — Connected data with automation (relationships, events, orchestration)
+### Level 3 — Connected data with automation (relationships, events, event-triggered flows)
 
 **What you learn:** linking concepts together (references/"bonds"), reacting to events
 automatically without a manual trigger, and read-only server-side procedures.
-**New vocabulary:** `reference` field, `onDelete`, `orchestrations`, `procedure`,
+**New vocabulary:** `reference` field, `onDelete`, flow `trigger`, `procedure`,
 `query`.
 
 Real apps are rarely one flat table. Level 3 introduces **references** — a field on one
-concept that points at another (like a foreign key) — plus **orchestration rules**, which say
+concept that points at another (like a foreign key) — plus **event-triggered flows**, which say
 "whenever event X fires, automatically do Y" with no human or explicit flow call involved.
 
 This is exactly what the reference app `invoice-bonds-demo` demonstrates: `User`, `Product`,
@@ -553,7 +550,7 @@ automatic notification created the moment an invoice is issued.
 ```json
 {
   "namespace": "com.npdev.invoicebonds",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "version": "0.2.0",
   "concepts": [
     {
@@ -585,10 +582,6 @@ automatic notification created the moment an invoice is issued.
   "capabilities": [
     { "name": "persistence", "type": "PersistenceCapability", "operations": ["save", "findById"] }
   ],
-  "bindings": [
-    { "capability": "persistence", "adapter": "repository" },
-    { "capability": "eventBus", "adapter": "inproc" }
-  ],
   "events": [ { "name": "InvoiceIssued", "payload": ["id", "invoiceNumber"] } ],
   "queries": [
     { "name": "PendingInvoices", "concept": "Invoice", "where": "status == 'DRAFT'", "orderBy": ["invoiceNumber"] }
@@ -603,14 +596,15 @@ automatic notification created the moment an invoice is issued.
         { "name": "announce", "type": "emitEvent", "event": "InvoiceIssued", "from": "$issued" },
         { "name": "return-issued", "type": "return", "value": "$issued" }
       ]
-    }
-  ],
-  "orchestrationRules": [
+    },
     {
       "name": "NotifyOnInvoiceIssued",
-      "trigger": { "type": "event", "event": "InvoiceIssued" },
-      "actions": [
-        { "type": "create", "concept": "InvoiceNotification", "map": { "invoiceId": "id", "message": "invoiceNumber" } }
+      "expose": "internal",
+      "runAs": "system",
+      "trigger": { "event": "InvoiceIssued" },
+      "steps": [
+        { "name": "build-notification", "type": "map", "select": { "invoiceId": "$input.id", "message": "$input.invoiceNumber" }, "output": "row" },
+        { "name": "create-notification", "type": "createConcept", "scope": "InvoiceNotification", "input": "$row", "output": "created" }
       ]
     }
   ]
@@ -618,8 +612,8 @@ automatic notification created the moment an invoice is issued.
 ```
 
 Read it as: *"When `IssueInvoice` runs, it emits `InvoiceIssued`. Nobody called
-`NotifyOnInvoiceIssued` directly — it fires by itself because it's subscribed to that
-event, and creates an `InvoiceNotification` row automatically."* That's the whole point of
+`NotifyOnInvoiceIssued` directly — it is a flow with an event trigger, so it fires by itself
+whenever that event is published, and creates an `InvoiceNotification` row automatically."* That's the whole point of
 Level 3: **behavior that reacts on its own**, driven by relationships between your data.
 
 `db.definition.json` uses a real, persistent `H2Server` engine here (paired with
@@ -645,9 +639,10 @@ optional sample material; the generated script does not read them.)
 | Clause | Example |
 |---|---|
 | `field == != > >= < <= literal` | `status == 'DRAFT'`, `total >= 100` |
-| `field contains / startsWith 'text'` | `name startsWith 'Ac'` |
-| `field in ('a', 'b')` | `status in ('DRAFT', 'SENT')` |
-| `field is null` / `is not null` (or `== null`) | `paidAt is null` |
+| `contains(field, 'text')` / `startsWith(field, 'text')` | `startsWith(name, 'Ac')` |
+| `withinKm(latField, lngField, lat, lng, km)` | `withinKm(lat, lng, $params.lat, $params.lng, 5)` |
+| `field in ['a', 'b']` | `status in ['DRAFT', 'SENT']` |
+| `field == null` / `field != null` | `paidAt == null` |
 
 A *field* may be a reference path (`customerId.name`, up to 3 hops) and a *literal* is `'text'`, a number,
 `true`, `false`, or a `:name` bind placeholder. Anything else is refused when the model is validated,
@@ -686,10 +681,8 @@ green end-to-end. Three pieces, trimmed from its real `model.json`:
 
 ```json
 "customCapabilities": [
-  { "name": "triageAssistant", "type": "TriageAssistantCapability", "operations": ["score"] }
-],
-"bindings": [
-  { "capability": "triageAssistant", "adapter": "plugin:java-source" }
+  { "name": "triageAssistant", "type": "TriageAssistantCapability",
+    "adapter": "plugin:java-source", "operations": ["score"] }
 ]
 ```
 
@@ -777,7 +770,7 @@ above, just more of it at once.
 | Reference app | (`notes-app`, write it yourself) | `simple-user-registry-inmemory` | `invoice-bonds-demo` | `Claude` |
 | Concepts | 1, standalone | 1, standalone | Several, linked by `reference` | Several, linked, multi-tenant |
 | Web UI | None (`ui.generateBusinessUi: false`) | Automatic (table + form) | Automatic | Automatic + hand-authored panels |
-| Behavior | One flow, one invariant | Flow + uniqueness rule | Flow + event + orchestration rule + query | + custom Java capability + resumable (`awaitEvent`) flow |
+| Behavior | One flow, one invariant | Flow + uniqueness rule | Flow + event + event-triggered flow + query | + custom Java capability + resumable (`awaitEvent`) flow |
 | Database | InMemory | InMemory | Persistent (H2Server) | InMemory (`Ephemeral`) |
 | You write Java? | No | No | No | Yes — one small plain class |
 | Talk to it via | REST only | Browser + REST | Browser + REST + smoke test | Browser (custom panel) + REST + smoke test |

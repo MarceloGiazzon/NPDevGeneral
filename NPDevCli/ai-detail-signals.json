@@ -1,0 +1,7 @@
+{
+  "_comment": "Words in the user's request that decide how much of the authoring context a chat AI needs (npdev ai context --detail auto, npdev_ai.suggest_detail). Facts only; matched case-insensitively as whole words or word starts. A request with a `full` word gets full, else with a `standard` word gets standard, else lean. When unsure the answer is standard: lean is only for a request that is clearly just records to keep. English and Portuguese, because the ask is written in the owner's language. Measured 2026-11-17 (Build/ai-bench/lvl-*): lean passes simple-crud at ~2.4k tokens per app and needs 3 repairs on a role/lifecycle app.",
+  "schemaVersion": 1,
+  "full": ["pack", "packs", "plugin", "extension", "extensions", "custom code", "own code", "api", "webhook", "webhooks", "integrat", "import", "external", "synchron", "sync", "pacote", "pacotes", "extens", "integra", "codigo proprio", "código próprio", "api externa"],
+  "standard": ["role", "roles", "approv", "workflow", "status", "state", "stage", "step", "permission", "permissions", "manager", "admin", "supervisor", "only", "report", "total", "sum", "count", "average", "dashboard", "calculat", "notif", "email", "deadline", "due date", "schedule", "invoice", "rule", "aprov", "fluxo", "papel", "papéis", "papeis", "perfil", "perfis", "permiss", "gerente", "somente", "apenas", "relat", "soma", "média", "media", "calcul", "notific", "prazo", "etapa", "fatura", "regra", "estado", "situação", "situacao"],
+  "longAskChars": 700
+}

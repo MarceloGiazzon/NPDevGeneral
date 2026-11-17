@@ -1,7 +1,7 @@
 {
   "$schema": "..\\..\\NPDevContract\\schemas\\model.schema.json",
   "namespace": "trial.contactintake",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "version": "1.0",
   "concepts": [
     {
@@ -79,20 +79,6 @@
       "operations": [
         "send"
       ]
-    }
-  ],
-  "bindings": [
-    {
-      "capability": "persistence",
-      "adapter": "repository"
-    },
-    {
-      "capability": "notification",
-      "adapter": "notification-inproc"
-    },
-    {
-      "capability": "eventBus",
-      "adapter": "inproc"
     }
   ],
   "events": [

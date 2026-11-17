@@ -29,7 +29,7 @@ class PresentationMetadataSupportTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "presentation.metadata.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -107,7 +107,7 @@ class PresentationMetadataSupportTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "presentation.metadata.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {

@@ -1,5 +1,5 @@
 {
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "pack": "invoicing",
   "version": "1.0.0",
   "concepts": [

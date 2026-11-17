@@ -30,14 +30,14 @@ class QueryParameterDefaultExpressionTest {
     private static String modelJson(String queryParam, String procedureParam) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "trial.overdue", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "trial.overdue", "version": "1.0",
               "concepts": [
                 { "name": "Visit", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "dueDate", "type": "date" } ] }
               ],
               "queries": [
-                { "name": "OverdueVisits", "concept": "Visit", "where": "dueDate < :asOf",
+                { "name": "OverdueVisits", "concept": "Visit", "where": "dueDate < $params.asOf",
                   "parameters": [ %s ] }
               ],
               "procedures": [

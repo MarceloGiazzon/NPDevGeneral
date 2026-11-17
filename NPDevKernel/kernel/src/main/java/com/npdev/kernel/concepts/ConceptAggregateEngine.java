@@ -181,6 +181,8 @@ public final class ConceptAggregateEngine {
                         && candidates.stream().anyMatch(candidate -> ConceptQueryEngine.valuesEqual(actual, candidate));
                 case IS_NULL -> actual == null;
                 case IS_NOT_NULL -> actual != null;
+                case DISTANCE_KM -> throw new IllegalArgumentException(
+                        "distanceKm/withinKm is a row-level condition and cannot appear in a having[] list");
                 case OR_GROUPS -> throw new IllegalArgumentException(
                         "OR_GROUPS is a marker filter (nested OR-of-AND groups) and cannot appear in a flat "
                                 + "having[] list -- ConceptQueryPredicateCompiler#compile never produces one");

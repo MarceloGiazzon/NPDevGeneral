@@ -17,6 +17,10 @@
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"
     },
+    "scripts/pack-repo/build-ai-catalog.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "docs/PACK_DESIGN.md"
+    },
     "scripts/pack-repo/build-pack-catalog-view.py": {
       "invocation": "manual-runbook",
       "documentedIn": "docs/PACK_DESIGN.md"
@@ -344,6 +348,9 @@
       "invocation": "ci-gate"
     },
     "scripts/quality/check-closeable-streams.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-concept-map.py": {
       "invocation": "ci-gate"
     },
     "scripts/quality/check-config-schema.py": {

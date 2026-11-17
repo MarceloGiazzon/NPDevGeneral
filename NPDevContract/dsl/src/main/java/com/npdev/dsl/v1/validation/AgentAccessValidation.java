@@ -212,11 +212,14 @@ final class AgentAccessValidation {
             }
         }
         if (hasText(intake.getProcedure())) {
+            // FORM P3-T5c: the intake names a procedure or the flow that replaced it
             boolean declared = modelAst.getProcedures().stream()
-                    .anyMatch(procedure -> normalize(procedure.name()).equals(normalize(intake.getProcedure())));
+                    .anyMatch(procedure -> normalize(procedure.name()).equals(normalize(intake.getProcedure())))
+                    || modelAst.getFlows().stream()
+                    .anyMatch(flow -> normalize(flow.getName()).equals(normalize(intake.getProcedure())));
             if (!declared) {
-                errors.add(here + ".procedure: '" + intake.getProcedure() + "' does not resolve to a declared procedure"
-                        + " -- suggestedFix: Name a procedure declared in procedures[], or drop procedure.");
+                errors.add(here + ".procedure: '" + intake.getProcedure() + "' does not resolve to a declared procedure or flow"
+                        + " -- suggestedFix: Name a procedure declared in procedures[] or a flow declared in flows[], or drop procedure.");
             }
             boolean rooted = modelAst.getAggregates().stream()
                     .anyMatch(aggregate -> normalize(aggregate.root()).equals(normalize(concept.getName())));

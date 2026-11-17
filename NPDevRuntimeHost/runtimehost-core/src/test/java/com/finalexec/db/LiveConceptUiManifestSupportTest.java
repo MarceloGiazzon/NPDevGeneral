@@ -55,7 +55,7 @@ class LiveConceptUiManifestSupportTest {
     void appendsNodeForNewConceptAndLeavesExistingNodeUntouched() throws Exception {
         Path manifestFile = writeManifest(EXISTING_MANIFEST);
         CompiledModel newModel = compile("""
-                { "namespace": "reg244.phase4d", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
+                { "namespace": "reg244.phase4d", "dslVersion": "3.0.0", "version": "1.0", "concepts": [
                   { "name": "Thing", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true }
                   ] },
@@ -98,7 +98,7 @@ class LiveConceptUiManifestSupportTest {
     void refreshIsIdempotentOnRepeatedCall() throws Exception {
         Path manifestFile = writeManifest(EXISTING_MANIFEST);
         CompiledModel newModel = compile("""
-                { "namespace": "reg244.phase4d", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
+                { "namespace": "reg244.phase4d", "dslVersion": "3.0.0", "version": "1.0", "concepts": [
                   { "name": "Thing", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
                   { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
                 ] }
@@ -124,7 +124,7 @@ class LiveConceptUiManifestSupportTest {
     void missingManifestFileFailsEveryNameWithoutThrowing() throws Exception {
         Path manifestFile = tempDir.resolve("does-not-exist.json");
         CompiledModel newModel = compile("""
-                { "namespace": "reg244.phase4d", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
+                { "namespace": "reg244.phase4d", "dslVersion": "3.0.0", "version": "1.0", "concepts": [
                   { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
                 ] }
                 """);
@@ -141,7 +141,7 @@ class LiveConceptUiManifestSupportTest {
     void conceptNotInModelFailsNamedWithoutThrowing() throws Exception {
         Path manifestFile = writeManifest(EXISTING_MANIFEST);
         CompiledModel newModel = compile("""
-                { "namespace": "reg244.phase4d", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
+                { "namespace": "reg244.phase4d", "dslVersion": "3.0.0", "version": "1.0", "concepts": [
                   { "name": "Thing", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
                 ] }
                 """);
@@ -157,7 +157,7 @@ class LiveConceptUiManifestSupportTest {
     void enumAndNestedObjectFieldsAreFullyDescribed() throws Exception {
         Path manifestFile = writeManifest(EXISTING_MANIFEST);
         CompiledModel newModel = compile("""
-                { "namespace": "reg244.phase4d", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
+                { "namespace": "reg244.phase4d", "dslVersion": "3.0.0", "version": "1.0", "concepts": [
                   { "name": "Thing", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
                   { "name": "Order", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -191,7 +191,7 @@ class LiveConceptUiManifestSupportTest {
     void emptyProvisionedListIsANoOp() throws Exception {
         Path manifestFile = writeManifest(EXISTING_MANIFEST);
         CompiledModel newModel = compile("""
-                { "namespace": "reg244.phase4d", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
+                { "namespace": "reg244.phase4d", "dslVersion": "3.0.0", "version": "1.0", "concepts": [
                   { "name": "Thing", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
                 ] }
                 """);
@@ -215,7 +215,7 @@ class LiveConceptUiManifestSupportTest {
             """;
 
     private static final String THING_WITH_NICKNAME = """
-            { "namespace": "live1.manifest", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
+            { "namespace": "live1.manifest", "dslVersion": "3.0.0", "version": "1.0", "concepts": [
               { "name": "Thing", "fields": [
                 { "name": "id", "type": "uuid", "id": true, "required": true },
                 { "name": "nickname", "type": "string", "ui": { "label": "Nick" } },

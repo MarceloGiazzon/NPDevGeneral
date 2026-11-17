@@ -29,7 +29,7 @@ class ConceptTemporalValidationTest {
     private static String modelWithConceptFields(String extraFieldsJson) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "temporal.validation", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "temporal.validation", "version": "1.0",
               "concepts": [
                 { "name": "WidgetPrice", "temporal": true, "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true }
@@ -89,7 +89,7 @@ class ConceptTemporalValidationTest {
     void nonTemporalConceptIsNeverCheckedEvenWithoutValidFromValidTo() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "temporal.validation", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "temporal.validation", "version": "1.0",
               "concepts": [
                 { "name": "OrdinaryThing", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

@@ -82,6 +82,7 @@ def fix_model(model: Any) -> tuple[Any, list[dict]]:
     def note(rule: str, path: str, wrote, now) -> None:
         fixes.append({"rule": rule, "path": path, "wrote": wrote, "now": now})
 
+    _fix_removed_root_keys(model, note)
     concepts = _Concepts(model)
     _fix_flow_modes(model, note)
     _fix_roles(model, concepts, note)
@@ -89,11 +90,76 @@ def fix_model(model: Any) -> tuple[Any, list[dict]]:
     _fix_data_sources(model, concepts, note)
     _fix_queries(model, note)
     _fix_rollups(model, note)
-    _fix_orchestrations(model, note)
     _fix_field_types(model, note)
     _fix_field_derived(model, note)
     _fix_flow_steps(model, note)
     return model, fixes
+
+
+# FORM P3-T9/T11: root keys the DSL no longer accepts. Only the rewrites with one clear canonical reading
+# live here; `webhooks`, `orchestrations`/`orchestrationRules`, `fragments` and `procedures` need a human
+# (the parser refuses each with a LEGACY_* diagnostic that says what to write instead).
+_DEFAULT_ADAPTERS = {"persistence": "repository", "eventbus": "inproc"}
+_NOTIFICATION_DEFAULT = "notification-inproc"
+# Every earlier DSL generation an AI may still remember; the field is optional, so dropping it is the whole fix.
+_OLD_DSL_VERSIONS = {"1", "1.0", "1.0.0", "2", "2.0", "2.0.0"}
+
+
+def _fix_removed_root_keys(model: dict, note) -> None:
+    if "model" in model and isinstance(model["model"], str):
+        if "namespace" not in model:
+            model["namespace"] = model.pop("model")
+            note("root-model-to-namespace", "$.model", "model", "namespace")
+        elif model["namespace"] == model["model"]:
+            del model["model"]
+            note("root-model-to-namespace", "$.model", "model", "(dropped, same as namespace)")
+    if isinstance(model.get("contexts"), list) and "modules" not in model:
+        model["modules"] = model.pop("contexts")
+        note("root-contexts-to-modules", "$.contexts", "contexts", "modules")
+    if isinstance(model.get("dslVersion"), str) and model["dslVersion"].strip() in _OLD_DSL_VERSIONS:
+        old = model.pop("dslVersion")
+        note("root-old-dsl-version-dropped", "$.dslVersion", f"dslVersion {old}", "(optional, defaults to the current DSL)")
+    if "ruleProfiles" in model:
+        del model["ruleProfiles"]
+        note("root-rule-profiles-removed", "$.ruleProfiles", "ruleProfiles", "(removed, it never changed behaviour)")
+    if isinstance(model.get("bindings"), list):
+        _fix_bindings(model, note)
+
+
+def _fix_bindings(model: dict, note) -> None:
+    caps = model.get("capabilities")
+    if not isinstance(caps, list):
+        caps = model["capabilities"] = []
+    by_name = {str(c.get("name", "")).lower(): c for c in caps if isinstance(c, dict)}
+    leftover = []
+    for i, binding in enumerate(model["bindings"]):
+        path = f"$.bindings[{i}]"
+        if not (isinstance(binding, dict) and isinstance(binding.get("capability"), str)
+                and isinstance(binding.get("adapter"), str)):
+            leftover.append(binding)
+            continue
+        name, adapter = binding["capability"], binding["adapter"]
+        cap = by_name.get(name.lower())
+        is_default = (_DEFAULT_ADAPTERS.get(name.lower()) == adapter
+                      or (cap is not None and str(cap.get("type", "")).lower() == "notificationcapability"
+                          and adapter == _NOTIFICATION_DEFAULT))
+        if is_default:
+            note("binding-default-dropped", path, f"{name} -> {adapter}", "(derived by the compiler)")
+        elif cap is None:
+            caps.append({"name": name, "adapter": adapter})
+            by_name[name.lower()] = caps[-1]
+            note("binding-to-capability-adapter", path, f"{name} -> {adapter}", f"capabilities[{name}].adapter")
+        elif cap.get("adapter") in (None, adapter):
+            cap["adapter"] = adapter
+            note("binding-to-capability-adapter", path, f"{name} -> {adapter}", f"capabilities[{name}].adapter")
+        else:
+            leftover.append(binding)  # two different adapters for one capability: the author decides
+    if leftover:
+        model["bindings"] = leftover  # still refused by the parser, which says why
+    else:
+        del model["bindings"]
+    if not caps:
+        del model["capabilities"]
 
 
 def _fix_flow_modes(model: dict, note) -> None:
@@ -320,12 +386,11 @@ def _fix_queries(model: dict, note) -> None:
                     note("query-groupby-object", f"$.queries[{qi}].groupBy[{gi}]", item, group[gi])
 
 
-# Spellings of rollups / orchestration triggers+actions / field types, shared with
+# Spellings of rollups / field types, shared with
 # npdev_validation_hints through one measured table (run_bench mine).
 with open(Path(__file__).resolve().parent / "desire-path-aliases.json", encoding="utf-8") as _fh:
     _ALIASES = {o["id"]: o for o in json.load(_fh)["objects"]}
 ROLLUP_KEY_ALIASES = _ALIASES["rollup"]["keyAliases"]
-ACTION_KEY_ALIASES = _ALIASES["orchestrationAction"]["keyAliases"]
 FIELD_TYPE_ALIASES = _ALIASES["fieldType"]["valueAliases"]
 FIELD_DERIVED_ALIASES = _ALIASES["fieldDerived"]["keyAliases"]
 FLOW_STEP_TYPE_ALIASES = _ALIASES["flowStepType"]["valueAliases"]
@@ -392,28 +457,6 @@ def _fix_rollups(model: dict, note) -> None:
                     note("rollup-field-derived", f"{path}.field", None, derived)
 
 
-def _fix_orchestrations(model: dict, note) -> None:
-    for oi, orch in enumerate(model.get("orchestrations") or []):
-        if not isinstance(orch, dict):
-            continue
-        trigger = orch.get("trigger")
-        if isinstance(trigger, dict) and "type" not in trigger and isinstance(trigger.get("event"), str):
-            trigger["type"] = "event"
-            note("orchestration-trigger-type", f"$.orchestrations[{oi}].trigger.type", None, "event")
-        for ai, action in enumerate(orch.get("actions") or []):
-            if not isinstance(action, dict):
-                continue
-            path = f"$.orchestrations[{oi}].actions[{ai}]"
-            for alias, canonical in ACTION_KEY_ALIASES.items():
-                if alias in action and canonical not in action:
-                    action[canonical] = action.pop(alias)
-                    note("orchestration-action-map-alias", f"{path}.{alias}", alias, canonical)
-            if "type" not in action and isinstance(action.get("concept"), str) \
-                    and "capability" not in action and "event" not in action:
-                action["type"] = "create"
-                note("orchestration-action-type", f"{path}.type", None, "create")
-
-
 def _fix_field_types(model: dict, note) -> None:
     for ci, concept in enumerate(model.get("concepts") or []):
         for fi, field in enumerate(concept.get("fields") or [] if isinstance(concept, dict) else []):
@@ -469,6 +512,9 @@ def _fix_step_list(steps, base: str, note) -> None:
                 if alias in step and canonical not in step and isinstance(step[alias], str):
                     step[canonical] = step.pop(alias)
                     note("flow-step-scope-alias", f"{path}.{alias}", alias, canonical)
+        if step.get("type") == "callFlow" and "procedure" in step and "flow" not in step:
+            step["flow"] = step.pop("procedure")
+            note("flow-step-procedure-to-flow", f"{path}.procedure", "procedure", "flow")
         for nested in ("steps", "then", "else"):
             _fix_step_list(step.get(nested), f"{path}.{nested}", note)
 

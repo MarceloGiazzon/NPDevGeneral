@@ -28,7 +28,7 @@ class ContractSurfaceSupportTest {
     void parsesCompilesAndRoundTripsContractSurfaces() throws Exception {
         Path modelPath = writeTempModel("""
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "namespace": "close.contract",
                   "version": "1.0.0",
                   "concepts": [
@@ -51,13 +51,6 @@ class ContractSurfaceSupportTest {
                       "parameters": [
                         { "name": "tenantId", "type": "string", "required": true }
                       ]
-                    }
-                  ],
-                  "ruleProfiles": [
-                    {
-                      "name": "interactive",
-                      "appliesTo": ["WorkItem"],
-                      "enabled": true
                     }
                   ],
                   "procedures": [
@@ -109,7 +102,6 @@ class ContractSurfaceSupportTest {
 
         ModelAst ast = new JsonModelParser().parse(modelPath);
         assertEquals(1, ast.getQueries().size());
-        assertEquals(1, ast.getRuleProfiles().size());
         assertEquals(1, ast.getProcedures().size());
         assertEquals(1, ast.getPanels().size());
 
@@ -129,7 +121,6 @@ class ContractSurfaceSupportTest {
         assertTrue(canonical.has("concepts"));
         assertFalse(canonical.has("entities"));
         assertEquals("OpenWorkItems", canonical.get("queries").get(0).get("name").asText());
-        assertEquals("interactive", canonical.get("ruleProfiles").get(0).get("name").asText());
         assertEquals("SubmitWorkItem", canonical.get("procedures").get(0).get("name").asText());
         assertEquals("WorkQueue", canonical.get("panels").get(0).get("name").asText());
 
@@ -140,54 +131,37 @@ class ContractSurfaceSupportTest {
     }
 
     @Test
-    void parsesFirstClassOrchestrationsSurfaceAsSupportedAlias() throws Exception {
-        Path modelPath = writeTempModel("""
-                {
-                  "dslVersion": "1.0.0",
-                  "namespace": "close.contract",
-                  "version": "1.0.0",
-                  "concepts": [
+    void rejectsRemovedOrchestrationsSurfaceWithTheFlowReplacement() throws Exception {
+        for (String key : new String[] {"orchestrations", "orchestrationRules"}) {
+            Path modelPath = writeTempModel("""
                     {
-                      "name": "WorkItem",
-                      "fields": [
-                        { "name": "id", "type": "uuid", "id": true, "required": true }
-                      ]
-                    }
-                  ],
-                  "events": [
-                    { "name": "WorkItemSubmitted", "payload": [{ "name": "id", "type": "uuid" }] }
-                  ],
-                  "orchestrations": [
-                    {
-                      "name": "NotifyOnSubmit",
-                      "trigger": { "type": "event", "event": "WorkItemSubmitted" },
-                      "actions": [
+                      "dslVersion": "3.0.0",
+                      "namespace": "close.contract",
+                      "version": "1.0.0",
+                      "concepts": [
                         {
-                          "type": "scheduleEvent",
-                          "event": "WorkItemSubmitted",
-                          "delaySeconds": 0,
-                          "map": {
-                            "id": "$event.id"
-                          }
+                          "name": "WorkItem",
+                          "fields": [
+                            { "name": "id", "type": "uuid", "id": true, "required": true }
+                          ]
                         }
-                      ]
+                      ],
+                      "KEY": []
                     }
-                  ]
-                }
-                """);
+                    """.replace("KEY", key));
 
-        ModelAst ast = new JsonModelParser().parse(modelPath);
-        assertEquals(1, ast.getOrchestrationRules().size());
-
-        CompiledModel compiled = new ModelCompiler().compile(ast);
-        assertEquals("NotifyOnSubmit", compiled.getOrchestrationRules().get(0).getName());
+            java.io.IOException failure = org.junit.jupiter.api.Assertions.assertThrows(
+                    java.io.IOException.class, () -> new JsonModelParser().parse(modelPath));
+            // The schema refuses the key first; the parser's own refusal (with the flow replacement) is the backstop.
+            org.junit.jupiter.api.Assertions.assertTrue(failure.getMessage().contains(key), failure.getMessage());
+        }
     }
 
     @Test
     void rejectsSupportedSurfaceThatCompilerWouldNotUnderstand() throws Exception {
         Path modelPath = writeTempModel("""
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "namespace": "close.contract",
                   "version": "1.0.0",
                   "concepts": [
@@ -223,7 +197,7 @@ class ContractSurfaceSupportTest {
                 "\"procedures\": [ { \"name\": \"Noop\", \"steps\": [ { \"name\": \"r\", \"type\": \"return\", \"value\": \"x\" } ], \"tracePolicy\": \"detailed\" } ]"}) {
             Path modelPath = writeTempModel("""
                     {
-                      "dslVersion": "1.0.0", "namespace": "close.contract", "version": "1.0.0",
+                      "dslVersion": "3.0.0", "namespace": "close.contract", "version": "1.0.0",
                       "concepts": [ { "name": "WorkItem", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
                       %s
                     }
@@ -241,7 +215,7 @@ class ContractSurfaceSupportTest {
         // `npdev migrate dsl-2` strips it.
         Path modelPath = writeTempModel("""
                 {
-                  "dslVersion": "1.0.0", "namespace": "close.contract", "version": "1.0.0",
+                  "dslVersion": "3.0.0", "namespace": "close.contract", "version": "1.0.0",
                   "concepts": [ { "name": "WorkItem", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
                   "aggregates": [ { "name": "WorkAggregate", "root": "WorkItem", "collections": [
                     { "name": "children", "concept": "WorkItem", "childField": "id", "via": "bondChildren" } ] } ]
@@ -258,7 +232,7 @@ class ContractSurfaceSupportTest {
         // ENF-1 (2026-10-24): read and served by nothing, declared by no model; `npdev migrate dsl-2` strips it.
         Path modelPath = writeTempModel("""
                 {
-                  "dslVersion": "1.0.0", "namespace": "close.contract", "version": "1.0.0",
+                  "dslVersion": "3.0.0", "namespace": "close.contract", "version": "1.0.0",
                   "concepts": [ { "name": "WorkItem", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
                   "aggregates": [ { "name": "WorkAggregate", "root": "WorkItem", "metadata": { "purpose": "still fine" }, "collections": [
                     { "name": "children", "concept": "WorkItem", "childField": "id", "metadata": { "note": "retired" } } ] } ]
@@ -277,17 +251,17 @@ class ContractSurfaceSupportTest {
         // field uid stay (rename identity).
         String[] models = {
                 """
-                { "dslVersion": "1.0.0", "namespace": "close.contract", "version": "1.0.0",
+                { "dslVersion": "3.0.0", "namespace": "close.contract", "version": "1.0.0",
                   "concepts": [ { "name": "WorkItem", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
                   "flows": [ { "name": "DoWork", "uid": "flow0000000001", "concept": "WorkItem", "steps": [ { "name": "r", "type": "return", "value": "$input" } ] } ] }
                 """,
                 """
-                { "dslVersion": "1.0.0", "namespace": "close.contract", "version": "1.0.0",
+                { "dslVersion": "3.0.0", "namespace": "close.contract", "version": "1.0.0",
                   "concepts": [ { "name": "WorkItem", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
                   "queries": [ { "name": "AllWork", "uid": "query000000001", "concept": "WorkItem" } ] }
                 """,
                 """
-                { "dslVersion": "1.0.0", "namespace": "close.contract", "version": "1.0.0",
+                { "dslVersion": "3.0.0", "namespace": "close.contract", "version": "1.0.0",
                   "concepts": [ { "name": "WorkItem", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
                   "aggregates": [ { "name": "WorkAggregate", "uid": "aggr0000000001", "root": "WorkItem" } ] }
                 """
@@ -305,7 +279,7 @@ class ContractSurfaceSupportTest {
     void rejectsLegacyEntitiesContractAlias() throws Exception {
         Path modelPath = writeTempModel("""
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "namespace": "close.contract",
                   "version": "1.0.0",
                   "entities": [

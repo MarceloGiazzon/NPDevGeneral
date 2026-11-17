@@ -1,5 +1,5 @@
 {
-  "dslVersion" : "1.0.0",
+  "dslVersion" : "3.0.0",
   "namespace" : "npdev.bootstrapexec.async",
   "version" : "1.0",
   "domainTypes" : [ ],
@@ -304,6 +304,5 @@
       "returnValueRef" : "$saved",
       "capabilityCall" : null
     } ]
-  } ],
-  "orchestrationRules" : [ ]
+  } ]
 }

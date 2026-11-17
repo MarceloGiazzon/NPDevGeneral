@@ -48,7 +48,7 @@ class TransactionHooksValidationTest {
                 + (aggregateOnCommit == null ? "" : ", \"onCommit\": \"" + aggregateOnCommit + "\"");
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.hooks", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.hooks", "version": "1.0",
               "concepts": [
                 { "name": "Movimento", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true } ] },

@@ -40,11 +40,11 @@ class HintTests(unittest.TestCase):
         self.assertIn("Keys: field, from, via, fn, of", far)
 
     def test_required_missing_names_key_and_renames_alias_from_model(self):
-        diag = _diag("json_schema_required", "$.orchestrations[0].actions[0]", "required property 'map' not found")
-        model = {"orchestrations": [{"actions": [{"type": "create", "data": {"title": "x"}}]}]}
-        self.assertIn("rename 'data' to 'map'", vh.hint_for(diag, model))
+        diag = _diag("json_schema_required", "$.flows[0].steps[0]", "required property 'scope' not found")
+        model = {"flows": [{"steps": [{"type": "createConcept", "concept": "Order"}]}]}
+        self.assertIn("rename 'concept' to 'scope'", vh.hint_for(diag, model))
         plain = vh.hint_for(diag)
-        self.assertIn("required 'map' is missing", plain)
+        self.assertIn("required 'scope' is missing", plain)
         self.assertNotIn("rename", plain)
 
     def test_enum_value_from_model_and_from_message(self):

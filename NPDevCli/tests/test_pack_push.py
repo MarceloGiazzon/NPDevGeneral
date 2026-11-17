@@ -21,7 +21,7 @@ sys.path.insert(0, str(HERE.parent))
 import npdev_pack_push as pp  # noqa: E402
 import npdev_relay_engine as engine  # noqa: E402
 
-PACK = {"dslVersion": "1.0.0", "pack": "ratings", "version": "1.0.0", "namespace": "com.example.ratings",
+PACK = {"dslVersion": "3.0.0", "pack": "ratings", "version": "1.0.0", "namespace": "com.example.ratings",
         "description": "Star ratings.", "concepts": [{"name": "Rating", "fields": [
             {"name": "id", "type": "uuid", "id": True, "required": True}, {"name": "stars", "type": "integer", "min": 1, "max": 5}]}]}
 PASSED = {"status": "passed", "diagnostics": []}

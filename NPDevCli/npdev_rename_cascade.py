@@ -165,7 +165,8 @@ def _rename_sorted(text: str, old: str, new: str) -> str:
 
 
 # Words that sit in a predicate's operator position or are literals, never a field path.
-_PREDICATE_WORDS = frozenset({"in", "contains", "startsWith", "is", "not", "null", "true", "false"})
+_PREDICATE_WORDS = frozenset({"in", "contains", "startsWith", "withinKm", "distanceKm",
+                              "is", "not", "null", "true", "false"})
 _PATH_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*")
 
 # Sites whose `#N` is a CLAUSE number (ReferenceIndex numbers clauses in textual order across the
@@ -179,7 +180,9 @@ def _predicate_path_tokens(text: str) -> list[re.Match]:
     Quoted literals are skipped, and so is anything introduced by `:` (a bind placeholder) or `$`
     (`$user.id`), and the operator words, which leaves exactly one path token per clause.
     """
-    spans = [m.span() for m in re.finditer(r"'[^']*'", text)]
+    # Both quote styles: the expression lexer accepts "..." as well as '...' (a field name inside a
+    # double-quoted literal must not be counted as a path).
+    spans = [m.span() for m in re.finditer(r"'[^']*'|\"[^\"]*\"", text)]
     tokens = []
     for match in _PATH_TOKEN_RE.finditer(text):
         start = match.start()

@@ -25,7 +25,7 @@ class DefaultExecutionAuthorizationPolicyModelReloadTest {
     private static CompiledModel compiledModelWithRoles(CompiledRole... roles) {
         return new CompiledModel(
                 "ns", "2.0", "1.0.0", Map.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 List.of(), List.of(), List.of(), List.of(), List.of(),
                 null, null,
                 List.of(roles)

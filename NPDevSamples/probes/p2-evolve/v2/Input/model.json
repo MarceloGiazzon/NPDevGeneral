@@ -1,7 +1,7 @@
 {
   "$schema": "..\\\\..\\\\..\\\\..\\\\NPDevContract\\\\schemas\\\\model.schema.json",
   "namespace": "sample.probes.p2evolve",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "version": "1.0",
   "metadata": {
     "purpose": "Storage probe E1 (v2): adding a NULLABLE column must preserve existing rows. Uses KeepExistingIfCompatible and forbids destructive recreate -- a probe that recreates cannot test preservation, which is the entire point of this one.",
@@ -42,12 +42,6 @@
         "save",
         "findById"
       ]
-    }
-  ],
-  "bindings": [
-    {
-      "capability": "persistence",
-      "adapter": "repository"
     }
   ]
 }

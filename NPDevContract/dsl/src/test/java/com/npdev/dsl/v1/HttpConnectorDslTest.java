@@ -31,68 +31,145 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class HttpConnectorDslTest {
 
-    private static final String CONNECTOR_MODEL = """
+    private static final String CONNECTOR_MODEL = compact("""
             {
-              "namespace":"demo",
-              "dslVersion":"1.0.0",
-              "version":"v1",
-              "concepts":[{"name":"Thing","fields":[{"name":"id","type":"uuid","id":true}]}],
-              "propertyScopes":[{"name":"tenant"}],
-              "properties":[
-                {"name":"paymentsBaseUrl","type":"string","default":"https://api.payments.example/v1","settableAt":["tenant"],"label":"Payments API base URL"}
-              ],
-              "capabilities":[
+              "namespace": "demo",
+              "dslVersion": "3.0.0",
+              "version": "v1",
+              "concepts": [
                 {
-                  "name":"payments",
-                  "type":"HttpConnector",
-                  "http":{
-                    "baseUrl":"https://api.payments.example/v1",
-                    "baseUrlProperty":"paymentsBaseUrl",
-                    "auth":{"type":"bearer","secretEnvVar":"NPDEV_CONNECTOR_PAYMENTS_TOKEN"},
-                    "headers":{"Accept":"application/json"},
-                    "timeoutMs":10000,
-                    "maxRetries":1
-                  },
-                  "operations":[
+                  "name": "Thing",
+                  "fields": [
                     {
-                      "name":"getCustomer",
-                      "sideEffects":"reads",
-                      "policy":{"retryCount":2,"retryDelayMs":500},
-                      "http":{"method":"GET","path":"/customers/{customerId}","params":["customerId"],"response":{"pointer":"/data"}}
-                    },
-                    {
-                      "name":"createCharge",
-                      "sideEffects":"external",
-                      "http":{
-                        "method":"POST",
-                        "path":"/charges",
-                        "params":["amount","currency","customerId"],
-                        "query":{"expand":"customer"},
-                        "bodyEncoding":"json",
-                        "body":{"amount":"{amount}","currency":"{currency}","customer":{"id":"{customerId}"}},
-                        "response":{"pointer":"/id"}
-                      }
+                      "name": "id",
+                      "type": "uuid",
+                      "id": true
                     }
                   ]
                 }
               ],
-              "bindings":[
-                {"capability":"payments","adapter":"http-connector"}
+              "propertyScopes": [
+                {
+                  "name": "tenant"
+                }
+              ],
+              "properties": [
+                {
+                  "name": "paymentsBaseUrl",
+                  "type": "string",
+                  "default": "https://api.payments.example/v1",
+                  "settableAt": [
+                    "tenant"
+                  ],
+                  "label": "Payments API base URL"
+                }
+              ],
+              "capabilities": [
+                {
+                  "name": "payments",
+                  "type": "HttpConnector",
+                  "http": {
+                    "baseUrl": "https://api.payments.example/v1",
+                    "baseUrlProperty": "paymentsBaseUrl",
+                    "auth": {
+                      "type": "bearer",
+                      "secretEnvVar": "NPDEV_CONNECTOR_PAYMENTS_TOKEN"
+                    },
+                    "headers": {
+                      "Accept": "application/json"
+                    },
+                    "timeoutMs": 10000,
+                    "maxRetries": 1
+                  },
+                  "operations": [
+                    {
+                      "name": "getCustomer",
+                      "sideEffects": "reads",
+                      "policy": {
+                        "retryCount": 2,
+                        "retryDelayMs": 500
+                      },
+                      "http": {
+                        "method": "GET",
+                        "path": "/customers/{customerId}",
+                        "params": [
+                          "customerId"
+                        ],
+                        "response": {
+                          "pointer": "/data"
+                        }
+                      }
+                    },
+                    {
+                      "name": "createCharge",
+                      "sideEffects": "external",
+                      "http": {
+                        "method": "POST",
+                        "path": "/charges",
+                        "params": [
+                          "amount",
+                          "currency",
+                          "customerId"
+                        ],
+                        "query": {
+                          "expand": "customer"
+                        },
+                        "bodyEncoding": "json",
+                        "body": {
+                          "amount": "{amount}",
+                          "currency": "{currency}",
+                          "customer": {
+                            "id": "{customerId}"
+                          }
+                        },
+                        "response": {
+                          "pointer": "/id"
+                        }
+                      }
+                    }
+                  ],
+                  "adapter": "http-connector"
+                }
               ]
             }
-            """;
+            """);
+
+    /** The fixture is pretty-printed for reading; the replace-based negative tests below match compact JSON. */
+    private static String compact(String json) {
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(json));
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException(e);
+        }
+    }
 
     private static final String PLAIN_MODEL = """
             {
-              "namespace":"demo",
-              "dslVersion":"1.0.0",
-              "version":"v1",
-              "concepts":[{"name":"Thing","fields":[{"name":"id","type":"uuid","id":true}]}],
-              "capabilities":[
-                {"name":"persistence","type":"PersistenceCapability","operations":["save"]}
+              "namespace": "demo",
+              "dslVersion": "3.0.0",
+              "version": "v1",
+              "concepts": [
+                {
+                  "name": "Thing",
+                  "fields": [
+                    {
+                      "name": "id",
+                      "type": "uuid",
+                      "id": true
+                    }
+                  ]
+                }
               ],
-              "bindings":[
-                {"capability":"persistence","adapter":"inmemory"}
+              "capabilities": [
+                {
+                  "name": "persistence",
+                  "type": "PersistenceCapability",
+                  "operations": [
+                    "save"
+                  ],
+                  "adapter": "inmemory"
+                }
               ]
             }
             """;
@@ -127,12 +204,12 @@ class HttpConnectorDslTest {
     @Test
     void specializationAddingAnOperationInheritsBaseHttpBlock() throws Exception {
         String model = CONNECTOR_MODEL
-                .replace("\"bindings\":[", "\"bindings\":[{\"capability\":\"payments2\",\"adapter\":\"http-connector\"},")
                 .replace("\"capabilities\":[", """
                         "capabilities":[
                           {
                             "name":"payments2",
                             "type":"HttpConnector",
+                            "adapter":"http-connector",
                             "specializes":"payments",
                             "operations":[
                               {"name":"refund","sideEffects":"external","http":{"method":"POST","path":"/refunds","params":["chargeId"],"body":{"charge":"{chargeId}"}}}

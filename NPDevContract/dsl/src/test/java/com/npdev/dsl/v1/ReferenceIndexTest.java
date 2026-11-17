@@ -68,7 +68,7 @@ class ReferenceIndexTest {
         ReferenceIndex index = ReferenceIndex.build(parse("""
                 {
                   "namespace": "xref.panels",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "WidgetOrder", "ui": { "label": "Widget order" }, "fields": [
@@ -104,7 +104,7 @@ class ReferenceIndexTest {
         ReferenceIndex index = ReferenceIndex.build(parse("""
                 {
                   "namespace": "xref.actions",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "WidgetOrder", "ui": { "label": "Widget order" }, "fields": [
@@ -139,7 +139,7 @@ class ReferenceIndexTest {
         ReferenceIndex index = ReferenceIndex.build(parse("""
                 {
                   "namespace": "xref.queries",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "WidgetOrder", "ui": { "label": "Widget order" }, "fields": [
@@ -163,7 +163,7 @@ class ReferenceIndexTest {
         ReferenceIndex index = ReferenceIndex.build(parse("""
                 {
                   "namespace": "xref.aggregatealias",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Shipment", "ui": { "label": "Shipment" }, "fields": [
@@ -193,7 +193,7 @@ class ReferenceIndexTest {
         ReferenceIndex index = ReferenceIndex.build(parse("""
                 {
                   "namespace": "xref.sortdirection",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Shipment", "ui": { "label": "Shipment" }, "fields": [
@@ -217,7 +217,7 @@ class ReferenceIndexTest {
         ReferenceIndex index = ReferenceIndex.build(parse("""
                 {
                   "namespace": "xref.named",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "WidgetOrder", "ui": { "label": "Widget order" }, "fields": [
@@ -249,7 +249,7 @@ class ReferenceIndexTest {
         ReferenceIndex index = ReferenceIndex.build(parse("""
                 {
                   "namespace": "xref.dsname",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "WidgetOrder", "ui": { "label": "Widget order" }, "fields": [
@@ -279,7 +279,7 @@ class ReferenceIndexTest {
         ReferenceIndex index = ReferenceIndex.build(parse("""
                 {
                   "namespace": "xref.predicate",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "WidgetOrder", "ui": { "label": "Widget order" }, "fields": [
@@ -312,7 +312,7 @@ class ReferenceIndexTest {
         ReferenceIndex index = ReferenceIndex.build(parse("""
                 {
                   "namespace": "xref.uipredicate",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "WidgetOrder", "ui": { "label": "Widget order" }, "fields": [
@@ -349,7 +349,7 @@ class ReferenceIndexTest {
         ReferenceIndex index = ReferenceIndex.build(resolve(parse("""
                 {
                   "namespace": "xref.inheritance",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "BaseDoc", "ui": { "label": "Base doc" }, "fields": [
@@ -380,7 +380,7 @@ class ReferenceIndexTest {
         ReferenceIndex index = ReferenceIndex.build(parse("""
                 {
                   "namespace": "xref.aggregates",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Order", "ui": { "label": "Order" }, "fields": [
@@ -409,7 +409,7 @@ class ReferenceIndexTest {
         ReferenceIndex index = ReferenceIndex.build(parse("""
                 {
                   "namespace": "xref.usages",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Patient", "ui": { "label": "Patient" }, "fields": [
@@ -455,7 +455,7 @@ class ReferenceIndexTest {
         ReferenceIndex index = ReferenceIndex.build(parse("""
                 {
                   "namespace": "xref.dottedsource",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Expense", "ui": { "label": "Expense" }, "fields": [
@@ -486,7 +486,7 @@ class ReferenceIndexTest {
         ReferenceIndex index = ReferenceIndex.build(parse("""
                 {
                   "namespace": "xref.dsconcept",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Task", "ui": { "label": "Task" }, "fields": [
@@ -519,7 +519,7 @@ class ReferenceIndexTest {
         ReferenceIndex index = ReferenceIndex.build(parse("""
                 {
                   "namespace": "xref.visibility",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Project", "ui": { "label": "Project" }, "fields": [
@@ -558,7 +558,7 @@ class ReferenceIndexTest {
         ReferenceIndex index = ReferenceIndex.build(parse("""
                 {
                   "namespace": "xref.generatedaction",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Order", "ui": { "label": "Order" }, "fields": [
@@ -593,7 +593,7 @@ class ReferenceIndexTest {
         ReferenceIndex index = ReferenceIndex.build(parse("""
                 {
                   "namespace": "xref.groupbyjoin",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Invoice", "ui": { "label": "Invoice" }, "fields": [
@@ -634,7 +634,7 @@ class ReferenceIndexTest {
     private static final String QUERY_WHERE_MODEL = """
             {
               "namespace": "xref.querywherev2",
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "version": "1.0",
               "concepts": [
                 { "name": "Invoice", "ui": { "label": "Invoice" }, "fields": [
@@ -720,7 +720,7 @@ class ReferenceIndexTest {
         ReferenceIndex index = ReferenceIndex.build(parse("""
                 {
                   "namespace": "xref.actioninput",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Order", "ui": { "label": "Order" }, "fields": [
@@ -767,7 +767,7 @@ class ReferenceIndexTest {
         String json = """
                 {
                   "namespace": "xref.determinism",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Alpha", "ui": { "label": "Alpha" }, "fields": [

@@ -56,17 +56,17 @@ class AggregateRuntimeCommitTransactionalTest {
 
     private static final String MODEL = """
         {
-          "dslVersion": "1.0.0", "namespace": "wms", "version": "1.0",
+          "dslVersion": "3.0.0", "namespace": "wms", "version": "1.0",
           "concepts": [
             { "name": "Expedicao", "fields": [
-              { "name": "id", "type": "uuid", "id": true, "required": true },
+              { "name": "id", "type": "string", "id": true, "required": true },
               { "name": "cliente", "type": "string" } ] },
             { "name": "ExpedicaoItem", "fields": [
-              { "name": "id", "type": "uuid", "id": true, "required": true },
-              { "name": "expedicaoId", "type": "uuid" }, { "name": "produtoId", "type": "string" } ] },
+              { "name": "id", "type": "string", "id": true, "required": true },
+              { "name": "expedicaoId", "type": "string" }, { "name": "produtoId", "type": "string" } ] },
             { "name": "MovtoOrigem", "fields": [
-              { "name": "id", "type": "uuid", "id": true, "required": true },
-              { "name": "itemSeq", "type": "uuid" }, { "name": "local", "type": "string" } ] }
+              { "name": "id", "type": "string", "id": true, "required": true },
+              { "name": "itemSeq", "type": "string" }, { "name": "local", "type": "string" } ] }
           ],
           "aggregates": [
             { "name": "Expedicao", "root": "Expedicao",

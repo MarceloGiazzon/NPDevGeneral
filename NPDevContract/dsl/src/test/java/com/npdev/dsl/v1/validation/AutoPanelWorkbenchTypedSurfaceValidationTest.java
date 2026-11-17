@@ -28,7 +28,7 @@ class AutoPanelWorkbenchTypedSurfaceValidationTest {
     private static String modelWithTransaction(String transactionJson) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.typed7.validation", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.typed7.validation", "version": "1.0",
               "concepts": [
                 { "name": "Movimento", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] },

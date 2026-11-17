@@ -690,7 +690,7 @@ await page.setViewportSize({ width: 1400, height: 1000 });
   // The folder could not be opened: the file's place goes under See details, the sentence says something is left to do.
   await start();
   await pick("google-ai-mode");
-  await page.evaluate(() => { window.__attachmentAnswer = { ok: true, code: "ZWW4", round: 1, bytes: 19277, file: "C:/fixture/ai-relay/ZWW4/round-1/npdev-prompt-ZWW4-1.txt", chatMessage: window.__FIXTURES__.relay.attachment.chatMessage, revealed: false }; });
+  await page.evaluate(() => { window.__attachmentAnswer = { ok: true, code: "ZWW4", round: 1, bytes: 31294, file: "C:/fixture/ai-relay/ZWW4/round-1/npdev-prompt-ZWW4-1.txt", chatMessage: window.__FIXTURES__.relay.attachment.chatMessage, revealed: false }; });
   await page.click("#browserai-save-file");
   await page.waitForTimeout(300);
   const byHand = await noteOf("#browserai-save-note");

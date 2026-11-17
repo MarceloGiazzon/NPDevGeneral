@@ -51,7 +51,7 @@ public class BusinessUiEmitterPanelRouteControllerTest {
         CompiledModel model = compile("""
                 {
                   "namespace": "panel.route.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Expense", "fields": [
@@ -84,7 +84,7 @@ public class BusinessUiEmitterPanelRouteControllerTest {
     void aggregateWorkbenchPanelRouteRedirectsToItsOwnServedPageNotTheGenericHashSection() throws Exception {
         CompiledModel model = compile("""
                 {
-                  "dslVersion": "1.0.0", "namespace": "wms", "version": "1.0",
+                  "dslVersion": "3.0.0", "namespace": "wms", "version": "1.0",
                   "concepts": [
                     { "name": "Expedicao", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -133,7 +133,7 @@ public class BusinessUiEmitterPanelRouteControllerTest {
         );
         CompiledModel model = new CompiledModel(
                 "trusted.source.route.test", "1.0.0", "1.0",
-                Map.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                Map.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 List.of(), List.of(trustedPanel));
 
         Path out = Files.createTempDirectory("npdev-panel-route-trusted-out-");

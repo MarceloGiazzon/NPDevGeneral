@@ -1,6 +1,6 @@
 {
   "$schema": "../../../../../NPDevContract/schemas/pack.schema.json",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "pack": "approvals",
   "version": "1.2.1",
   "namespace": "com.npdev.approvals",
@@ -309,8 +309,8 @@
           "onTimeout": [
             {
               "name": "expire-request",
-              "type": "callProcedure",
-              "procedure": "ExpireApprovalRequest",
+              "type": "callFlow",
+              "flow": "ExpireApprovalRequest",
               "input": "$saved",
               "output": "$expired"
             }
@@ -323,8 +323,8 @@
           "then": [
             {
               "name": "apply-decision",
-              "type": "callProcedure",
-              "procedure": "ApplyApprovalDecision",
+              "type": "callFlow",
+              "flow": "ApplyApprovalDecision",
               "input": "$decision",
               "output": "$applied"
             }
@@ -336,50 +336,49 @@
           "value": "$saved"
         }
       ]
-    }
-  ],
-  "procedures": [
+    },
     {
       "name": "ApplyApprovalDecision",
       "description": "A human task answered from My tasks publishes ApprovalDecided {requestId, status, comment, completedBy}; this writes the audit row (who decided, when, why) and moves the request itself to the chosen status, unless it already left PENDING. The decision row takes the request's id, so a request has at most one.",
+      "expose": "internal",
       "steps": [
         {
           "name": "read-request",
           "type": "readConcept",
-          "concept": "ApprovalRequest",
+          "scope": "ApprovalRequest",
           "id": "$input.requestId",
-          "target": "request"
+          "output": "request"
         },
         {
           "name": "still-pending",
-          "type": "if",
+          "type": "branch",
           "condition": "$request.status == 'PENDING'",
           "then": [
             {
               "name": "log-decision",
-              "type": "patchConcept",
-              "concept": "ApprovalDecision",
+              "type": "updateConcept",
+              "scope": "ApprovalDecision",
               "id": "$input.requestId",
-              "createIfMissing": true,
               "set": {
                 "requestId": "$input.requestId",
                 "status": "$input.status",
                 "completedBy": "$input.completedBy",
                 "comment": "$input.comment"
               },
-              "target": "logged"
+              "createIfMissing": true,
+              "output": "logged"
             },
             {
               "name": "apply",
-              "type": "patchConcept",
-              "concept": "ApprovalRequest",
+              "type": "updateConcept",
+              "scope": "ApprovalRequest",
               "id": "$input.requestId",
               "set": {
                 "status": "$input.status",
                 "decidedBy": "$input.completedBy",
                 "decisionComment": "$input.comment"
               },
-              "target": "request"
+              "output": "request"
             }
           ]
         },
@@ -393,28 +392,29 @@
     {
       "name": "ExpireApprovalRequest",
       "description": "The RequestApproval flow's awaitEvent timeout path: a request still PENDING when its 14 days run out moves to EXPIRED.",
+      "expose": "internal",
       "steps": [
         {
           "name": "read-request",
           "type": "readConcept",
-          "concept": "ApprovalRequest",
+          "scope": "ApprovalRequest",
           "id": "$input.id",
-          "target": "request"
+          "output": "request"
         },
         {
           "name": "still-pending",
-          "type": "if",
+          "type": "branch",
           "condition": "$request.status == 'PENDING'",
           "then": [
             {
               "name": "expire",
-              "type": "patchConcept",
-              "concept": "ApprovalRequest",
+              "type": "updateConcept",
+              "scope": "ApprovalRequest",
               "id": "$input.id",
               "set": {
                 "status": "EXPIRED"
               },
-              "target": "request"
+              "output": "request"
             }
           ]
         },

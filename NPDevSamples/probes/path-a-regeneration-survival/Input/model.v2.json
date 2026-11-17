@@ -1,7 +1,7 @@
 {
   "$schema": "..\\..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
   "namespace": "sample.probes.pathARegenSurvival",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "version": "1.0",
   "metadata": {
     "purpose": "Path A P5.4: the 'changed model' half of the golden regeneration-survival probe -- identical to model.json except SurvivalRecord gains a new field. check-golden-regeneration-survival.py copies this OVER model.json for the second (regenerate) pass, proving that ordinary model changes still take effect (the new field shows up in the regenerated entity) at the same time the hand-edited javaHook file survives untouched."
@@ -38,7 +38,9 @@
         "class": "com.npdev.samples.regensurvival.SurvivalHook",
         "method": "summarize"
       },
-      "claims": [ "summary" ]
+      "claims": [
+        "summary"
+      ]
     }
   ],
   "capabilities": [
@@ -49,12 +51,6 @@
         "save",
         "findById"
       ]
-    }
-  ],
-  "bindings": [
-    {
-      "capability": "persistence",
-      "adapter": "repository"
     }
   ]
 }

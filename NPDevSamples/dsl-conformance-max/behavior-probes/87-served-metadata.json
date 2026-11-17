@@ -208,11 +208,11 @@
       ]
     },
     {
-      "id": "meta-orchestration-action-metadata-served",
+      "id": "meta-trigger-flow-step-action-metadata-served",
       "keywords": [
-        "orchestrationAction.action"
+        "flowStep.action"
       ],
-      "description": "ENF-1: an orchestration rule action's action metadata reaches the actions catalog a client builds its buttons and confirmations from. FollowUpNewShelf's first action (create WidgetSeedDemo) is served as kind orchestrationAction, name FollowUpNewShelf#1, with its label, confirmation text and danger level.",
+      "description": "FORM P3-T5c stage 4: the action metadata of a trigger flow's step reaches the actions catalog a client builds its buttons and confirmations from, exactly as an orchestration rule's action did before the rule FollowUpNewShelf became a flow: step create-follow-up is served as kind flowStep (owner FollowUpNewShelf) with its label, confirmation text and danger level.",
       "steps": [
         {
           "name": "actions catalog",
@@ -221,10 +221,9 @@
           "expect": {
             "status": 200,
             "json": {
-              "$.items[?kind=orchestrationAction&name=FollowUpNewShelf#1].actionType": "create",
-              "$.items[?kind=orchestrationAction&name=FollowUpNewShelf#1].label": "Create shelf follow-up",
-              "$.items[?kind=orchestrationAction&name=FollowUpNewShelf#1].confirmationText": "Create a seed row for the new shelf?",
-              "$.items[?kind=orchestrationAction&name=FollowUpNewShelf#1].dangerLevel": "low"
+              "$.items[?kind=flowStep&ownerName=FollowUpNewShelf&name=create-follow-up].label": "Create shelf follow-up",
+              "$.items[?kind=flowStep&ownerName=FollowUpNewShelf&name=create-follow-up].confirmationText": "Create a seed row for the new shelf?",
+              "$.items[?kind=flowStep&ownerName=FollowUpNewShelf&name=create-follow-up].dangerLevel": "low"
             }
           }
         }

@@ -43,7 +43,7 @@ class AgentPhotoIntakeTest {
     static CompiledModel model(String intake) throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "demo.photo", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "demo.photo", "version": "1.0",
               "concepts": [
                 { "name": "Cap", "ui": { "label": "Beer cap" }, "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

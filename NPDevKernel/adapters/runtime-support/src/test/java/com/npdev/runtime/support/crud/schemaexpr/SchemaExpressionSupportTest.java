@@ -23,7 +23,7 @@ class SchemaExpressionSupportTest {
         assertThrows(ComputedExpression.ExpressionException.class,
                 () -> SchemaExpressionSupport.evaluateSchemaExpression("uppercse(firstName)", values));
         assertThrows(ComputedExpression.ExpressionException.class,
-                () -> SchemaExpressionSupport.evaluateSchemaExpression("now()", values));
+                () -> SchemaExpressionSupport.evaluateSchemaExpression("nosuchfunction()", values));
     }
 
     @Test

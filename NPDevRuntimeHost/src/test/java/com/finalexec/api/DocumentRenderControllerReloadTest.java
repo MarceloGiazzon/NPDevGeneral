@@ -39,8 +39,8 @@ class DocumentRenderControllerReloadTest {
     private static CompiledModel modelWithDocuments(CompiledDocument... documents) {
         return new CompiledModel(
                 "demo", "1.0.0", "v1", Map.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(),
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 List.of(documents));
     }
 

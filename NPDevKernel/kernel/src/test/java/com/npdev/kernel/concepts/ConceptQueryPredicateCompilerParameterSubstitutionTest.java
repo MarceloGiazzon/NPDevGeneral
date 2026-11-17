@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <pre>
  *   { "name": "SalesByStore", "concept": "Sale",
- *     "where": "storeId == :storeId",
+ *     "where": "storeId == $params.storeId",
  *     "parameters": [ { "name": "storeId", "type": "uuid", "required": true } ] }
  * </pre>
  *
@@ -34,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ConceptQueryPredicateCompilerParameterSubstitutionTest {
 
     private static final ExecutionContext CTX = ExecutionContext.of("tenant-a", "actor-a");
-    private static final String WHERE = "storeId == :storeId";
+    private static final String WHERE = "storeId == $params.storeId";
     private static final List<CompiledProcedureParameter> SALES_BY_STORE_PARAMETERS =
             List.of(new CompiledProcedureParameter("storeId", "uuid", true, null, null));
 
@@ -81,7 +81,7 @@ class ConceptQueryPredicateCompilerParameterSubstitutionTest {
         ConceptQueryPredicateCompiler.UnsupportedPredicateException thrown = assertThrows(
                 ConceptQueryPredicateCompiler.UnsupportedPredicateException.class,
                 () -> ConceptQueryPredicateCompiler.compile(WHERE, SALES_BY_STORE_PARAMETERS, Map.of()));
-        assertTrue(thrown.getMessage().contains(":storeId"), thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("$params.storeId"), thrown.getMessage());
         assertTrue(thrown.getMessage().contains("not supplied a value"), thrown.getMessage());
     }
 

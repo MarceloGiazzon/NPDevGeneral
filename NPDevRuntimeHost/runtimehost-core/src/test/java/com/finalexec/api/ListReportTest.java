@@ -41,7 +41,7 @@ class ListReportTest {
 
     private static final String MODEL = """
             {
-              "dslVersion": "1.0.0", "namespace": "hr", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "hr", "version": "1.0",
               "concepts": [
                 { "name": "Payroll", "fields": [
                     { "name": "id", "type": "string", "id": true, "required": true },

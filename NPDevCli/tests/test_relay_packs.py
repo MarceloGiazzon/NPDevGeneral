@@ -209,7 +209,7 @@ class RealResolutionTests(unittest.TestCase):
         repo = self.dir / "npr"
         (repo / "packs" / "widgets").mkdir(parents=True)
         (repo / "packs" / "widgets" / "pack.json").write_text(json.dumps({
-            "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+            "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
             "concepts": [{"name": "Widget", "fields": [{"name": "id", "type": "uuid", "id": True, "required": True}]}],
         }), encoding="utf-8")
         _git(repo, "init", "--quiet", "--initial-branch=main")

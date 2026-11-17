@@ -22,7 +22,7 @@ class InvariantExpressionValidationTest {
     private static String modelWithInvariant(String expression) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.inv", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.inv", "version": "1.0",
               "concepts": [
                 { "name": "Item", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

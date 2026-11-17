@@ -1,5 +1,5 @@
 {
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "pack": "billing",
   "version": "1.0.0",
   "description": "B20 (S2, ADR-0011) dsl-conformance-max witness: the 'billing' bounded context, imported by 'shipping' below.",

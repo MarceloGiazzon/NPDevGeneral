@@ -33,7 +33,7 @@ class AppShellModelThreadingTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "appshell.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Widget", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] },
@@ -80,7 +80,7 @@ class AppShellModelThreadingTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "appshell.none.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Widget", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
@@ -112,7 +112,7 @@ class AppShellModelThreadingTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "appshell.badtarget.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Widget", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
@@ -146,7 +146,7 @@ class AppShellModelThreadingTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "appshell.baddefault.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Widget", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }

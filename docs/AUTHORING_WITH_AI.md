@@ -167,7 +167,7 @@ pwsh -NoProfile -File scripts/ai/Start-ValidatorTunnel.ps1 -NgrokDomain name-123
 pwsh -NoProfile -File scripts/ai/Start-ValidatorTunnel.ps1                                         # every run after
 ```
 
-Limits of version 1: one `model.json` only (a model split into `$ref` fragments, `config.json` and
+Limits of version 1: one `model.json` only (a model split with `$ref` entries, `config.json` and
 remote packs are not supported; the built-in packs are), at most 2 MB, 50 diagnostics per answer
 (20 over MCP; `maxDiagnostics` changes it, up to 500), at most two validations at a time. The
 validation journal is off, so a stranger's model never reaches your records (`--capture` turns it

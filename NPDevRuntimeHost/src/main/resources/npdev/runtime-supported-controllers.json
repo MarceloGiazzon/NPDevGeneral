@@ -71,6 +71,7 @@
     "PermissionAwareUiMetadataService",
     "CapabilityOperationPolicies",
     "ProcedureRunner",
+    "FlowInvoker",
     "PublicationChainReferenceResolver",
     "PublicationExecutorService",
     "PublicationRollbackExecutorService",

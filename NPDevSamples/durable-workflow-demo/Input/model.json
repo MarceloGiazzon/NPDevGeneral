@@ -1,7 +1,7 @@
 {
   "$schema": "..\\..\\NPDevContract\\schemas\\model.schema.json",
   "namespace": "trial.durableworkflowdemo",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "version": "1.0",
   "concepts": [
     {
@@ -78,20 +78,6 @@
       ]
     }
   ],
-  "bindings": [
-    {
-      "capability": "persistence",
-      "adapter": "repository"
-    },
-    {
-      "capability": "notification",
-      "adapter": "notification-inproc"
-    },
-    {
-      "capability": "eventBus",
-      "adapter": "inproc"
-    }
-  ],
   "events": [
     {
       "name": "ExpenseSubmitted",
@@ -122,22 +108,6 @@
           "type": "string"
         }
       ]
-    }
-  ],
-  "ruleProfiles": [
-    {
-      "name": "always",
-      "description": "Shared ExpenseRequest semantic rules evaluated by the Concept Gateway.",
-      "appliesTo": [
-        "ExpenseRequest"
-      ],
-      "enabled": true,
-      "metadata": {
-        "invariants": [
-          "EmployeeEmailRequired",
-          "PositiveAmount"
-        ]
-      }
     }
   ],
   "flows": [

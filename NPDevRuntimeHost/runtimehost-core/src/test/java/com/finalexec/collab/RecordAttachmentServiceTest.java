@@ -37,7 +37,7 @@ class RecordAttachmentServiceTest {
 
     private static final String MODEL = """
         {
-          "dslVersion": "1.0.0", "namespace": "demo.attach", "version": "1.0",
+          "dslVersion": "3.0.0", "namespace": "demo.attach", "version": "1.0",
           "concepts": [
             { "name": "Mosaic", "collaboration": { "comments": true, "attachments": true },
               "fields": [

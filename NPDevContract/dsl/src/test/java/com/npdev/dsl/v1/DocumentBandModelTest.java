@@ -182,7 +182,7 @@ class DocumentBandModelTest {
     private static String model(String aggregateLine, String bandsBlock, String logoLine) {
         return """
                 {
-                  "dslVersion": "1.0.0", "namespace": "r57.invoicing", "version": "1.0",
+                  "dslVersion": "3.0.0", "namespace": "r57.invoicing", "version": "1.0",
                   "concepts": [
                     { "name": "Invoice", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true },

@@ -34,7 +34,7 @@ class DslSchemaConformanceTest {
         JsonNode model = MAPPER.readTree("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
@@ -69,7 +69,7 @@ class DslSchemaConformanceTest {
         JsonNode model = MAPPER.readTree("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "domainTypes": [
                     {
@@ -111,7 +111,7 @@ class DslSchemaConformanceTest {
         JsonNode model = MAPPER.readTree("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
@@ -155,7 +155,7 @@ class DslSchemaConformanceTest {
         JsonNode model = MAPPER.readTree("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
@@ -201,7 +201,7 @@ class DslSchemaConformanceTest {
         JsonNode model = MAPPER.readTree("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
@@ -249,7 +249,7 @@ class DslSchemaConformanceTest {
         JsonNode model = MAPPER.readTree("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
@@ -276,7 +276,7 @@ class DslSchemaConformanceTest {
         JsonNode model = MAPPER.readTree("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
@@ -325,7 +325,7 @@ class DslSchemaConformanceTest {
         JsonNode model = MAPPER.readTree("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
@@ -371,7 +371,7 @@ class DslSchemaConformanceTest {
         JsonNode model = MAPPER.readTree("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
@@ -415,7 +415,7 @@ class DslSchemaConformanceTest {
         JsonNode model = MAPPER.readTree("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
@@ -452,29 +452,6 @@ class DslSchemaConformanceTest {
                       "payload": [
                         { "name": "appointmentId", "type": "uuid" },
                         { "name": "status", "type": "string" }
-                      ]
-                    }
-                  ],
-                  "orchestrationRules": [
-                    {
-                      "name": "NotifyCompletion",
-                      "trigger": { "type": "event", "event": "AppointmentCompleted" },
-                      "actions": [
-                        {
-                          "type": "scheduleEvent",
-                          "event": "AppointmentCompleted",
-                          "delayMinutes": 5,
-                          "action": {
-                            "label": "Queue completion notification",
-                            "successMessage": "Notification queued.",
-                            "dangerLevel": "low",
-                            "permissionHint": "notifications.send",
-                            "inputFormHint": "notification-send"
-                          },
-                          "map": {
-                            "appointmentId": "$event.appointmentId"
-                          }
-                        }
                       ]
                     }
                   ],
@@ -521,7 +498,7 @@ class DslSchemaConformanceTest {
         JsonNode model = MAPPER.readTree("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "unexpectedRootKey": "boom",
                   "concepts": [

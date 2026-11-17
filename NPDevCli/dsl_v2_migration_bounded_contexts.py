@@ -51,12 +51,13 @@ from pathlib import Path
 # resolved before the MODEL_ARRAY_KEYS merge so it's absent from that Java set, but still legitimately
 # movable content).
 MOVABLE_KEYS = (
-    "concepts", "domainTypes", "capabilities", "customCapabilities", "bindings", "events", "flows",
-    "orchestrationRules", "orchestrations", "queries", "ruleProfiles", "procedures", "panels",
+    "concepts", "domainTypes", "capabilities", "customCapabilities", "events", "flows",
+    "queries", "procedures", "panels",
     "fragments",
 )
 
-DEFAULT_CONTEXT_DSL_VERSION = "1.0.0"
+DEFAULT_CONTEXT_DSL_VERSION = "3.0.0"
+DEFAULT_CONTEXT_PACK_VERSION = "1.0.0"
 
 
 class UnresolvableRefError(Exception):
@@ -234,7 +235,7 @@ def plan_migration(doc: dict, base_dir: Path) -> MigrationPlan:
     model's own root document (e.g. an AppGen app's `definition/` directory)."""
     result = MigrationResult()
 
-    if doc.get("contexts"):
+    if doc.get("modules"):
         result.skipped = True
         result.ambiguities.append(
             "model already declares contexts[] -- left untouched, this tool does not guess which "
@@ -255,10 +256,10 @@ def plan_migration(doc: dict, base_dir: Path) -> MigrationPlan:
     context_doc: dict = {
         "dslVersion": doc.get("dslVersion", DEFAULT_CONTEXT_DSL_VERSION),
         "pack": context_pack_id,
-        "version": doc.get("version") or DEFAULT_CONTEXT_DSL_VERSION,
+        "version": doc.get("version") or DEFAULT_CONTEXT_PACK_VERSION,
     }
     if not doc.get("version"):
-        result.changes.append(f"context '{context_name}': no root version field -- defaulted to '{DEFAULT_CONTEXT_DSL_VERSION}'")
+        result.changes.append(f"context '{context_name}': no root version field -- defaulted to '{DEFAULT_CONTEXT_PACK_VERSION}'")
 
     moved_any_key = False
     for key in MOVABLE_KEYS:
@@ -306,7 +307,7 @@ def plan_migration(doc: dict, base_dir: Path) -> MigrationPlan:
         # $ref migrates as a pure structural move").
         plan.context_ref = f"contexts/{context_name}.model.json"
 
-    root_doc["contexts"] = list(root_doc.get("contexts") or []) + [
+    root_doc["modules"] = list(root_doc.get("modules") or []) + [
         {"name": context_name, "$ref": plan.context_ref}
     ]
     result.changes.append(f"root: added contexts[] entry '{context_name}' -> '{plan.context_ref}'")

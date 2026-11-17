@@ -30,7 +30,7 @@ class ModelValidatorMainReleaseGateTest {
 
     private static final String MODEL_ALL_T3 = """
             {
-              "namespace": "release.cli.ok", "dslVersion": "1.0.0", "version": "1.0",
+              "namespace": "release.cli.ok", "dslVersion": "3.0.0", "version": "1.0",
               "concepts": [
                 { "name": "Product", "truthLevel": "T3",
                   "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
@@ -45,7 +45,7 @@ class ModelValidatorMainReleaseGateTest {
 
     private static final String MODEL_MIXED_LEVELS = """
             {
-              "namespace": "release.cli.mixed", "dslVersion": "1.0.0", "version": "1.0",
+              "namespace": "release.cli.mixed", "dslVersion": "3.0.0", "version": "1.0",
               "concepts": [
                 { "name": "Product", "truthLevel": "T1",
                   "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },

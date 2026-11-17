@@ -168,8 +168,6 @@ final class UntrustedExtensionEmitterGeneratedActionJdbcEvidenceTest {
                 List.of(),
                 List.of(),
                 List.of(),
-                List.of(),
-                List.of(),
                 List.of(procedure),
                 List.of()
         );

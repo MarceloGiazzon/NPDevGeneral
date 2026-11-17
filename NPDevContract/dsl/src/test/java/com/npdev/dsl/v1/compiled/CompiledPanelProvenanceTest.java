@@ -24,7 +24,7 @@ class CompiledPanelProvenanceTest {
     private static JsonNode panelsCatalog() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.ap", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.ap", "version": "1.0",
               "concepts": [
                 { "name": "Cliente", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -81,7 +81,7 @@ class CompiledPanelProvenanceTest {
     void handDeclaredPanelHasNoProvenance() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.hp", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.hp", "version": "1.0",
               "concepts": [
                 { "name": "Widget", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

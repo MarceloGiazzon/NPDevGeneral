@@ -23,42 +23,56 @@ class CompiledCapabilityPolicyProjectionTest {
     void mapsCompiledCapabilityPolicyIntoKernelStepPolicy() throws Exception {
         CompiledModel compiled = compile("""
                 {
-                  "namespace":"demo",
-                  "dslVersion":"1.0.0",
-                  "version":"v1",
-                  "concepts":[
+                  "namespace": "demo",
+                  "dslVersion": "3.0.0",
+                  "version": "v1",
+                  "concepts": [
                     {
-                      "name":"User",
-                      "fields":[
-                        {"name":"id","type":"uuid","id":true},
-                        {"name":"email","type":"string","required":true}
+                      "name": "User",
+                      "fields": [
+                        {
+                          "name": "id",
+                          "type": "uuid",
+                          "id": true
+                        },
+                        {
+                          "name": "email",
+                          "type": "string",
+                          "required": true
+                        }
                       ]
                     }
                   ],
-                  "capabilities":[
-                    {"name":"persistence","type":"PersistenceCapability","operations":["save"]}
-                  ],
-                  "bindings":[
-                    {"capability":"persistence","adapter":"inmemory"}
-                  ],
-                  "flows":[
+                  "capabilities": [
                     {
-                      "name":"CreateUser",
-                      "concept":"User",
-                      "steps":[
+                      "name": "persistence",
+                      "type": "PersistenceCapability",
+                      "operations": [
+                        "save"
+                      ],
+                      "adapter": "inmemory"
+                    }
+                  ],
+                  "flows": [
+                    {
+                      "name": "CreateUser",
+                      "concept": "User",
+                      "steps": [
                         {
-                          "name":"save",
-                          "type":"capabilityCall",
-                          "capability":"persistence",
-                          "operation":"save",
-                          "args":["$input"],
-                          "output":"$saved",
-                          "policy":{
-                            "retryCount":3,
-                            "retryDelayMs":250,
-                            "timeoutMs":1000,
-                            "idempotencyKeyField":"$input.requestId",
-                            "failureClassification":"contract"
+                          "name": "save",
+                          "type": "capabilityCall",
+                          "capability": "persistence",
+                          "operation": "save",
+                          "args": [
+                            "$input"
+                          ],
+                          "output": "$saved",
+                          "policy": {
+                            "retryCount": 3,
+                            "retryDelayMs": 250,
+                            "timeoutMs": 1000,
+                            "idempotencyKeyField": "$input.requestId",
+                            "failureClassification": "contract"
                           }
                         }
                       ]

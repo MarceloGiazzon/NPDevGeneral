@@ -1,5 +1,6 @@
 package com.finalexec.npdev.service;
 
+import com.finalexec.acceptance.InProcessAcceptanceRunner;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiler.ModelCompiler;
 import com.npdev.dsl.v1.parser.JsonModelParser;
@@ -44,7 +45,7 @@ class ApprovalsPackProcedureTest {
         Files.copy(pack, temp.resolve("packs/approvals/pack.json"));
         Files.writeString(temp.resolve("model.json"), """
                 {
-                  "namespace": "approvals.proc.test", "dslVersion": "1.0.0", "version": "1.0",
+                  "namespace": "approvals.proc.test", "dslVersion": "3.0.0", "version": "1.0",
                   "packs": [ { "$ref": "packs/approvals/pack.json", "as": "approvals" } ],
                   "provides": { "roleBindings": { "approver": "MANAGER", "requester": "STAFF" } }
                 }
@@ -62,6 +63,7 @@ class ApprovalsPackProcedureTest {
     @Test
     void aDecisionMovesTheRequestAndLogsWhoDecidedWhenAndWhy() {
         ProcedureRunner runner = new ProcedureRunner(model, gateway, null, null);
+        InProcessAcceptanceRunner.attachKernel(runner, model, null, gateway, null);
 
         ProcedureExecutionResult result = runner.execute("approvals::ApplyApprovalDecision",
                 Map.of("requestId", "r-1", "status", "APPROVED", "comment", "Go ahead", "completedBy", "bob"),
@@ -85,6 +87,7 @@ class ApprovalsPackProcedureTest {
     @Test
     void aRequestThatAlreadyLeftPendingIsNotDecidedTwice() {
         ProcedureRunner runner = new ProcedureRunner(model, gateway, null, null);
+        InProcessAcceptanceRunner.attachKernel(runner, model, null, gateway, null);
         runner.execute("approvals::ApplyApprovalDecision",
                 Map.of("requestId", "r-1", "status", "REJECTED", "comment", "No", "completedBy", "bob"),
                 ExecutionContext.resuming("dev", "alice"));
@@ -103,6 +106,7 @@ class ApprovalsPackProcedureTest {
     @Test
     void expiringAPendingRequestMarksItExpired() {
         ProcedureRunner runner = new ProcedureRunner(model, gateway, null, null);
+        InProcessAcceptanceRunner.attachKernel(runner, model, null, gateway, null);
 
         ProcedureExecutionResult result = runner.execute("approvals::ExpireApprovalRequest",
                 Map.of("id", "r-1"), ExecutionContext.resuming("dev", "alice"));

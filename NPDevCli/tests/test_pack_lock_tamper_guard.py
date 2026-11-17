@@ -76,7 +76,7 @@ class GuardAgainstRemotePackTamperUnitTest(unittest.TestCase):
     def test_same_coordinate_same_version_different_digest_is_refused_and_lock_restored(self):
         with tempfile.TemporaryDirectory() as tmp:
             model_path = Path(tmp) / "model.json"
-            _write(model_path, {"namespace": "t", "dslVersion": "1.0.0", "version": "1.0"})
+            _write(model_path, {"namespace": "t", "dslVersion": "3.0.0", "version": "1.0"})
             lock_path = Path(tmp) / "npdev.lock"
 
             before = {"widgets": {"resolvedVersion": "1.0.0", "digest": "sha256:aaaa",
@@ -191,7 +191,7 @@ class PackTreeDigestMatchesJavaTest(unittest.TestCase):
             _run(src_repo, "git", "init", "--quiet", "--initial-branch=main")
             pack_json = src_repo / "pack.json"
             _write(pack_json, {
-                "dslVersion": "1.0.0", "pack": "digestcheck", "version": "1.0.0",
+                "dslVersion": "3.0.0", "pack": "digestcheck", "version": "1.0.0",
                 "concepts": [{"name": "Thing", "fields": [
                     {"name": "id", "type": "uuid", "id": True, "required": True},
                 ]}],
@@ -203,7 +203,7 @@ class PackTreeDigestMatchesJavaTest(unittest.TestCase):
             coordinate = f"git+{src_repo.resolve().as_uri()}@v1.0.0"
             app_dir = tmp_dir / "app"
             model_path = app_dir / "model.json"
-            _write(model_path, {"namespace": "npdev.throwaway.digestcheck", "dslVersion": "1.0.0",
+            _write(model_path, {"namespace": "npdev.throwaway.digestcheck", "dslVersion": "3.0.0",
                                  "version": "1.0", "packs": [{"from": coordinate}]})
 
             env = {"NPDEV_PACK_CACHE_ROOT": str(tmp_dir / "pack-cache")}
@@ -232,7 +232,7 @@ class MutatedTagRefusedOnPackUpdateRoundTripTest(unittest.TestCase):
             src_repo.mkdir()
             _run(src_repo, "git", "init", "--quiet", "--initial-branch=main")
             _write(src_repo / "pack.json", {
-                "dslVersion": "1.0.0", "pack": "honeypot", "version": "2.0.0",
+                "dslVersion": "3.0.0", "pack": "honeypot", "version": "2.0.0",
                 "concepts": [{"name": "Account", "fields": [
                     {"name": "id", "type": "uuid", "id": True, "required": True},
                 ]}],
@@ -243,7 +243,7 @@ class MutatedTagRefusedOnPackUpdateRoundTripTest(unittest.TestCase):
             coordinate = f"git+{src_repo.resolve().as_uri()}@v2.0.0"
             app_dir = tmp_dir / "app"
             model_path = app_dir / "model.json"
-            _write(model_path, {"namespace": "npdev.throwaway.tamper", "dslVersion": "1.0.0",
+            _write(model_path, {"namespace": "npdev.throwaway.tamper", "dslVersion": "3.0.0",
                                  "version": "1.0", "packs": [{"from": coordinate}]})
 
             env = {"NPDEV_PACK_CACHE_ROOT": str(tmp_dir / "pack-cache")}
@@ -259,7 +259,7 @@ class MutatedTagRefusedOnPackUpdateRoundTripTest(unittest.TestCase):
                 # The attack: force-move the SAME tag name to point at DIFFERENT content, version
                 # string unchanged.
                 _write(src_repo / "pack.json", {
-                    "dslVersion": "1.0.0", "pack": "honeypot", "version": "2.0.0",
+                    "dslVersion": "3.0.0", "pack": "honeypot", "version": "2.0.0",
                     "concepts": [{"name": "Account", "fields": [
                         {"name": "id", "type": "uuid", "id": True, "required": True},
                         {"name": "backdoor", "type": "string", "required": False},

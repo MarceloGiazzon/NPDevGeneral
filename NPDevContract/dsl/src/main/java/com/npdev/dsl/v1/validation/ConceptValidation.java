@@ -4,7 +4,6 @@ import com.npdev.dsl.v1.ast.CapabilityAst;
 import com.npdev.dsl.v1.ast.ConceptAccessAst;
 import com.npdev.dsl.v1.ast.PublicReadAst;
 import com.npdev.dsl.v1.ast.RollupAst;
-import com.npdev.dsl.v1.ast.CapabilityBindingAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
 import com.npdev.dsl.v1.ast.DomainTypeAst;
 import com.npdev.dsl.v1.ast.CapabilityPolicyAst;
@@ -20,9 +19,6 @@ import com.npdev.dsl.v1.ast.FlowScheduleAst;
 import com.npdev.dsl.v1.ast.InvariantAst;
 import com.npdev.dsl.v1.ast.LifecycleAst;
 import com.npdev.dsl.v1.ast.ModelAst;
-import com.npdev.dsl.v1.ast.OrchestrationActionAst;
-import com.npdev.dsl.v1.ast.OrchestrationAst;
-import com.npdev.dsl.v1.ast.OrchestrationTriggerAst;
 import com.npdev.dsl.v1.ast.AggregateAst;
 import com.npdev.dsl.v1.ast.AggregateCollectionAst;
 import com.npdev.dsl.v1.ast.AutoPanelAst;
@@ -44,7 +40,6 @@ import com.npdev.dsl.v1.ast.ProcedureParameterAst;
 import com.npdev.dsl.v1.ast.ProcedureStepAst;
 import com.npdev.dsl.v1.ast.QueryAst;
 import com.npdev.dsl.v1.ast.ReferenceSemanticsAst;
-import com.npdev.dsl.v1.ast.RuleProfileAst;
 import com.npdev.dsl.v1.ast.TruthLevel;
 import com.npdev.dsl.v1.ast.SchemaAst;
 import com.npdev.dsl.v1.ast.StateMachineStateAst;
@@ -300,6 +295,12 @@ final class ConceptValidation {
 
                 validateFieldWidgetCompatibility(e, f, normalizedType, errors);
                 validateFieldValueBehavior(e.getName(), f, fieldNames, errors);
+                if (f.getSchema() != null) {
+                    TypedExpressionValidation.validateFieldValueExpression(
+                            e.getName(), f, "defaultExpression", f.getSchema().getDefaultExpression(), effective.fields(), errors);
+                    TypedExpressionValidation.validateFieldValueExpression(
+                            e.getName(), f, "derivedExpression", f.getSchema().getDerivedExpression(), effective.fields(), errors);
+                }
                 validateFieldAccessRules(e.getName(), f, fieldNames, errors);
             }
             validateFieldValueBehaviorGraph(e.getName(), effective.fields(), fieldNames, errors);
@@ -348,11 +349,20 @@ final class ConceptValidation {
                         // REG-269: a date ordered against a non-date is refused, not silently true.
                         InvariantTemporalComparisonValidation.validate(
                                 e.getName(), expression, effective.fields(), errors);
+                        // FORM P3-T2: the static type check of the same expression.
+                        TypedExpressionValidation.validateInvariant(e.getName(), expression, effective.fields(), errors);
                     }
                 }
             }
 
             validateAccessRules(e.getName(), e.getAccess(), fieldNames, errors);
+            if (e.getAccess() != null) {
+                // FORM P3-T4: the static type check of the row rules (the context table's access.read/write).
+                TypedExpressionValidation.validateAccessRule(
+                        e.getName(), "read", e.getAccess().getRead(), effective.fields(), errors);
+                TypedExpressionValidation.validateAccessRule(
+                        e.getName(), "write", e.getAccess().getWrite(), effective.fields(), errors);
+            }
             // SEC-16: parentField('ref', 'field') in access.write -- the reference and the target field must exist.
             ParentFieldValidation.validate(
                     e.getName(), e.getAccess(), effective.fields(),
@@ -825,24 +835,6 @@ final class ConceptValidation {
         }
     }
 
-    static void validateBindings(ModelAst modelAst, List<String> errors) {
-        Set<String> declaredCapabilities = new HashSet<>(BUILTIN_CAPABILITIES);
-        for (CapabilityAst capability : modelAst.getCapabilities()) {
-            declaredCapabilities.add(normalize(capability.getName()));
-        }
-
-        Set<String> boundCapabilities = new HashSet<>();
-        for (CapabilityBindingAst binding : modelAst.getBindings()) {
-            String capabilityKey = normalize(binding.getCapability());
-            if (!boundCapabilities.add(capabilityKey)) {
-                errors.add("Duplicate binding for capability: " + binding.getCapability());
-            }
-            if (!declaredCapabilities.contains(capabilityKey)) {
-                errors.add("Binding references unknown capability: " + binding.getCapability());
-            }
-        }
-    }
-
     private static List<String> referencedFields(InvariantAst inv) {
         if ("expression".equalsIgnoreCase(inv.getType())) {
             List<String> fromInv = inv.getFields();
@@ -1068,6 +1060,10 @@ final class ConceptValidation {
         }
         for (List<com.npdev.dsl.v1.query.QueryPredicateGrammar.PredicateClause> group : groups) {
             for (com.npdev.dsl.v1.query.QueryPredicateGrammar.PredicateClause clause : group) {
+                if (clause.operator() == com.npdev.dsl.v1.query.QueryPredicateGrammar.PredicateOperator.DISTANCE_KM) {
+                    errors.add(label + ".where: withinKm/distanceKm is not supported in a public filter: " + where);
+                    continue;
+                }
                 if (!(clause.path() instanceof com.npdev.dsl.v1.query.GroupByJoinGrammar.Target.Direct direct)) {
                     errors.add(label + ".where: reference-path joins are not supported in a public filter: " + where);
                 } else if (!byName.containsKey(SemanticValidator.normalize(direct.field()))) {

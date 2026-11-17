@@ -50,7 +50,7 @@ class AuthoringDiffGateTest {
 
     private static String conceptModel(String version, String conceptsJson) {
         return """
-            { "dslVersion": "1.0.0", "namespace": "authoring.test", "version": "%s", "concepts": %s }
+            { "dslVersion": "3.0.0", "namespace": "authoring.test", "version": "%s", "concepts": %s }
             """.formatted(version, conceptsJson);
     }
 

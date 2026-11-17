@@ -117,6 +117,10 @@ public class DirectExecutionGateway {
 
         CompiledFlow flow = modelHolder.get().findFlow(flowName)
                 .orElseThrow(() -> new IllegalArgumentException("flowName is not present in the compiled model."));
+        if (flow.getExpose() != null && !"api".equals(flow.getExpose())) {
+            // FORM P3-T5b: expose ui / internal flows have no public start route, this one included.
+            throw new IllegalArgumentException("flowName is not present in the compiled model.");
+        }
 
         Map<String, Object> capabilityRoute = resolveCapabilityRoute(flow);
         if (isRouteRejected(capabilityRoute)) {

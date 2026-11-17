@@ -9,11 +9,14 @@ public enum ProcedureStepType {
     DELETE_CONCEPT,
     CALL_CAPABILITY,
     PUBLISH_EVENT,
-    CALL_PROCEDURE,
     IF,
     FOR_EACH,
     MAP_LIST,
     MAP_VALUE,
     COMPUTE_VALUE,
+    /** FORM P3-T5c: a flow {@code set} step -- one expression of the one expression language, evaluated strictly. */
+    EVALUATE,
+    /** FORM P3-T5c: a flow {@code map} step with {@code select} and no collection -- builds ONE object from literals and refs. */
+    BUILD_OBJECT,
     RETURN
 }

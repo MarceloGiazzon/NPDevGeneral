@@ -2,7 +2,6 @@ package com.npdev.dsl.v1.validation;
 
 import com.npdev.dsl.v1.ast.CapabilityAst;
 import com.npdev.dsl.v1.ast.ConceptAccessAst;
-import com.npdev.dsl.v1.ast.CapabilityBindingAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
 import com.npdev.dsl.v1.ast.DomainTypeAst;
 import com.npdev.dsl.v1.ast.CapabilityPolicyAst;
@@ -17,9 +16,6 @@ import com.npdev.dsl.v1.ast.FlowScheduleAst;
 import com.npdev.dsl.v1.ast.InvariantAst;
 import com.npdev.dsl.v1.ast.LifecycleAst;
 import com.npdev.dsl.v1.ast.ModelAst;
-import com.npdev.dsl.v1.ast.OrchestrationActionAst;
-import com.npdev.dsl.v1.ast.OrchestrationAst;
-import com.npdev.dsl.v1.ast.OrchestrationTriggerAst;
 import com.npdev.dsl.v1.ast.AggregateAst;
 import com.npdev.dsl.v1.ast.AggregateCollectionAst;
 import com.npdev.dsl.v1.ast.AutoPanelAst;
@@ -47,7 +43,6 @@ import com.npdev.dsl.v1.query.GroupByJoinGrammar;
 import com.npdev.dsl.v1.query.QueryPredicateGrammar;
 import com.npdev.dsl.v1.ast.QueryAst;
 import com.npdev.dsl.v1.ast.ReferenceSemanticsAst;
-import com.npdev.dsl.v1.ast.RuleProfileAst;
 import com.npdev.dsl.v1.ast.TruthLevel;
 import com.npdev.dsl.v1.ast.SchemaAst;
 import com.npdev.dsl.v1.ast.StateMachineStateAst;
@@ -94,16 +89,12 @@ final class PackValidation {
     private static final Set<String> POLICY_CLASSIFICATIONS =
             Set.of("transient", "permanent", "contract");
 
-    private static final Set<String> RULE_PROFILE_NAMES =
-            Set.of("always", "interactive", "interactiveonly", "headless", "headlessonly", "query", "beforecommit", "aftercommit");
-
     private static final Set<String> PROCEDURE_STEP_TYPES =
             Set.of("assign", "mapvalue", "map_value", "condition", "if", "loop", "foreach",
                     "maplist", "map_list", "listtransform", "computevalue", "compute_value", "compute", "arithmetic",
                     "conceptquery", "readconcept", "read_concept", "listconcepts", "list_concepts",
                     "runquery", "run_query", "conceptcreate", "conceptupdate", "saveconcept", "save_concept",
-                    "conceptdelete", "deleteconcept", "delete_concept", "procedurecall", "callprocedure",
-                    "call_procedure", "capabilitycall", "callcapability", "call_capability",
+                    "conceptdelete", "deleteconcept", "delete_concept", "capabilitycall", "callcapability", "call_capability",
                     "eventpublish", "publishevent", "publish_event", "patchconcept", "return");
     private static final Set<String> PROCEDURE_MAP_LIST_STEP_TYPES =
             Set.of("maplist", "map_list", "listtransform");
@@ -126,8 +117,6 @@ final class PackValidation {
             Set.of("patchconcept");
     private static final Set<String> PROCEDURE_QUERY_STEP_TYPES =
             Set.of("conceptquery", "runquery", "run_query");
-    private static final Set<String> PROCEDURE_CALL_STEP_TYPES =
-            Set.of("procedurecall", "callprocedure", "call_procedure");
     private static final Set<String> PROCEDURE_CAPABILITY_CALL_STEP_TYPES =
             Set.of("capabilitycall", "callcapability", "call_capability");
     private static final Set<String> PROCEDURE_BRANCH_STEP_TYPES =
@@ -229,6 +218,10 @@ final class PackValidation {
             errors.add(here + ": where cannot be compiled -- " + unsupported.getMessage());
             return;
         }
+        if (concept != null) {
+            // FORM P3-T4: the static type check of a where (pushable context).
+            TypedExpressionValidation.validateQueryWhere(here, where, concept.getFields(), errors);
+        }
         Set<String> declaredParameters = parameters.stream()
                 .map(ProcedureParameterAst::name)
                 .map(SemanticValidator::normalize)
@@ -245,6 +238,14 @@ final class PackValidation {
                 validatePredicateLiteralPlaceholders(here, clause, declaredParameters, errors);
                 if (concept != null) {
                     validatePredicatePath(here, clause.path(), concept, fieldsByLower, entitiesByLower, errors);
+                    if (clause.literal() instanceof QueryPredicateGrammar.PredicateLiteral.Distance distance) {
+                        // FORM P3-T4: every field coordinate of a withinKm/distanceKm is a path of its own.
+                        for (QueryPredicateGrammar.PredicateLiteral.DistanceOperand operand : distanceOperands(distance)) {
+                            if (operand instanceof QueryPredicateGrammar.PredicateLiteral.DistanceOperand.Field field) {
+                                validatePredicatePath(here, field.target(), concept, fieldsByLower, entitiesByLower, errors);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -264,16 +265,28 @@ final class PackValidation {
             for (QueryPredicateGrammar.PredicateLiteral element : values.values()) {
                 validateOnePredicatePlaceholder(here, element, declaredParameters, errors);
             }
+        } else if (literal instanceof QueryPredicateGrammar.PredicateLiteral.Distance distance) {
+            for (QueryPredicateGrammar.PredicateLiteral.DistanceOperand operand : distanceOperands(distance)) {
+                if (operand instanceof QueryPredicateGrammar.PredicateLiteral.DistanceOperand.Value value) {
+                    validateOnePredicatePlaceholder(here, value.literal(), declaredParameters, errors);
+                }
+            }
+            validateOnePredicatePlaceholder(here, distance.km(), declaredParameters, errors);
         } else {
             validateOnePredicatePlaceholder(here, literal, declaredParameters, errors);
         }
+    }
+
+    private static List<QueryPredicateGrammar.PredicateLiteral.DistanceOperand> distanceOperands(
+            QueryPredicateGrammar.PredicateLiteral.Distance distance) {
+        return List.of(distance.lat1(), distance.lng1(), distance.lat2(), distance.lng2());
     }
 
     private static void validateOnePredicatePlaceholder(
             String here, QueryPredicateGrammar.PredicateLiteral literal, Set<String> declaredParameters, List<String> errors) {
         if (literal instanceof QueryPredicateGrammar.PredicateLiteral.Placeholder placeholder
                 && !declaredParameters.contains(normalize(placeholder.name()))) {
-            errors.add(here + ": where references bind placeholder :" + placeholder.name()
+            errors.add(here + ": where references bind placeholder $params." + placeholder.name()
                     + ", which is not declared in this query's parameters[] (declared: "
                     + (declaredParameters.isEmpty() ? "none" : new TreeSet<>(declaredParameters)) + ")"
                     + " -- suggestedFix: add a parameter named '" + placeholder.name() + "' to this "
@@ -695,35 +708,6 @@ final class PackValidation {
         }
     }
 
-    static void validateRuleProfiles(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
-        Set<String> names = new HashSet<>();
-        Set<String> knownTargets = new HashSet<>(entitiesByLower.keySet());
-        for (QueryAst query : modelAst.getQueries()) {
-            knownTargets.add(normalize(query.name()));
-        }
-        for (ProcedureAst procedure : modelAst.getProcedures()) {
-            knownTargets.add(normalize(procedure.name()));
-        }
-        for (PanelAst panel : modelAst.getPanels()) {
-            knownTargets.add(normalize(panel.name()));
-        }
-
-        for (RuleProfileAst profile : modelAst.getRuleProfiles()) {
-            String name = normalize(profile.name());
-            if (!names.add(name)) {
-                errors.add("RuleProfile " + profile.name() + ": duplicate rule profile name");
-            }
-            if (!RULE_PROFILE_NAMES.contains(name)) {
-                errors.add("RuleProfile " + profile.name() + ": unsupported rule profile name");
-            }
-            for (String target : profile.appliesTo()) {
-                if (!knownTargets.contains(normalize(target))) {
-                    errors.add("RuleProfile " + profile.name() + ": appliesTo target not found: " + target);
-                }
-            }
-        }
-    }
-
     static void validateProcedures(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
         Set<String> procedureNames = modelAst.getProcedures().stream()
                 .map(ProcedureAst::name)
@@ -858,10 +842,6 @@ final class PackValidation {
                     && hasText(step.query())
                     && !queryNames.contains(normalize(step.query()))) {
                 errors.add("Procedure " + procedureName + " step " + stepPath + ": query not found: " + step.query());
-            }
-            if (PROCEDURE_CALL_STEP_TYPES.contains(type)
-                    && !procedureNames.contains(normalize(step.procedure()))) {
-                errors.add("Procedure " + procedureName + " step " + stepPath + ": procedure not found: " + step.procedure());
             }
             if (PROCEDURE_CAPABILITY_CALL_STEP_TYPES.contains(type)) {
                 validateProcedureCapabilityCall(procedureName, stepPath, step, capabilitiesByLower, errors);
@@ -1099,19 +1079,31 @@ final class PackValidation {
         if (referencedCapabilities == null || referencedCapabilities.isEmpty()) {
             return;
         }
-        Set<String> boundCapabilities = modelAst.getBindings().stream()
-                .map(CapabilityBindingAst::getCapability)
-                .map(SemanticValidator::normalize)
-                .collect(Collectors.toSet());
+        Set<String> boundCapabilities = new HashSet<>();
+        // FORM P3-T9 (D15): a capability is bound by its own `adapter`, or by a derived deployment default
+        // (a NotificationCapability gets notification-inproc; persistence/eventBus are builtin).
+        for (CapabilityAst capability : modelAst.getCapabilities()) {
+            if (capability.getAdapter() != null
+                    || "NotificationCapability".equalsIgnoreCase(capability.getType())
+                    || "PersistenceCapability".equalsIgnoreCase(capability.getType())) {
+                boundCapabilities.add(SemanticValidator.normalize(capability.getName()));
+            }
+        }
+        boolean notificationDeclared = modelAst.getCapabilities().stream()
+                .anyMatch(c -> "notification".equals(SemanticValidator.normalize(c.getName())));
         for (String capability : referencedCapabilities) {
             if (BUILTIN_CAPABILITIES.contains(capability)) {
                 continue;
             }
+            // FORM P3-T8: a notify step calls `notification`; ModelCompiler implies the capability + notification-inproc
+            if ("notification".equals(capability) && !notificationDeclared) {
+                continue;
+            }
             if (!boundCapabilities.contains(capability)) {
                 errors.add("Flow references capability without binding: " + capability
-                        + " -- suggestedFix: add a bindings[] entry for capability '" + capability
+                        + " -- suggestedFix: set capabilities[].adapter on capability '" + capability
                         + "' naming the adapter that implements it; a flow may only call a capability "
-                        + "the model has bound to something runnable");
+                        + "bound to something runnable");
             }
         }
     }

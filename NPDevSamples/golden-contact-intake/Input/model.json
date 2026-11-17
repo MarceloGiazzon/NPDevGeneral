@@ -1,32 +1,63 @@
 {
   "namespace": "trial.contactintake",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "version": "1.0",
   "concepts": [
     {
       "name": "ContactMessage",
       "fields": [
-        { "name": "id", "type": "uuid", "id": true, "required": true },
-        { "name": "name", "type": "string", "required": true },
-        { "name": "email", "type": "string", "required": true, "unique": true },
-        { "name": "message", "type": "string", "required": true, "maxLength": 2000 }
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "email",
+          "type": "string",
+          "required": true,
+          "unique": true
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "required": true,
+          "maxLength": 2000
+        }
       ]
     }
-  ],
-  "capabilities": [
-    { "name": "notification", "type": "NotificationCapability", "operations": ["send"] }
-  ],
-  "bindings": [
-    { "capability": "notification", "adapter": "notification-inproc" }
   ],
   "flows": [
     {
       "name": "SubmitContactMessage",
-      "input": { "concept": "ContactMessage", "mode": "create" },
+      "input": {
+        "concept": "ContactMessage",
+        "mode": "create"
+      },
       "steps": [
-        { "name": "save", "type": "createConcept", "scope": "ContactMessage", "input": "$input", "output": "$saved" },
-        { "name": "notify", "type": "capabilityCall", "capability": "notification", "operation": "send", "args": ["$saved"], "output": "$delivery" },
-        { "name": "done", "type": "return", "value": "$saved" }
+        {
+          "name": "save",
+          "type": "createConcept",
+          "scope": "ContactMessage",
+          "input": "$input",
+          "output": "$saved"
+        },
+        {
+          "name": "notify",
+          "type": "notify",
+          "to": "$saved.email",
+          "message": "$saved.message"
+        },
+        {
+          "name": "done",
+          "type": "return",
+          "value": "$saved"
+        }
       ]
     }
   ]

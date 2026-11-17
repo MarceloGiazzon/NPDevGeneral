@@ -1,5 +1,6 @@
 package com.finalexec.npdev.service;
 
+import com.finalexec.acceptance.InProcessAcceptanceRunner;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiler.ModelCompiler;
@@ -32,31 +33,142 @@ class AggregateRuntimeAllowedActionsTest {
 
     private static final String MODEL = """
         {
-          "dslVersion": "1.0.0", "namespace": "t", "version": "1.0",
+          "dslVersion": "3.0.0",
+          "namespace": "t",
+          "version": "1.0",
           "concepts": [
-            { "name": "Ord", "fields": [
-                { "name": "id", "type": "uuid", "id": true, "required": true },
-                { "name": "status", "type": "string" },
-                { "name": "note", "type": "string" } ],
+            {
+              "name": "Ord",
+              "fields": [
+                {
+                  "name": "id",
+                  "type": "uuid",
+                  "id": true,
+                  "required": true
+                },
+                {
+                  "name": "status",
+                  "type": "string"
+                },
+                {
+                  "name": "note",
+                  "type": "string"
+                }
+              ],
               "lifecycle": {
                 "statusField": "status",
                 "states": [
-                  { "value": "Draft", "initial": true, "allowedActions": ["StampProcedure"] },
-                  { "value": "Submitted" },
-                  { "value": "Done", "terminal": true } ],
-                "transitions": [ { "from": "Draft", "to": "Submitted" }, { "from": "Submitted", "to": "Done" } ] } }
+                  {
+                    "value": "Draft",
+                    "initial": true,
+                    "allowedActions": [
+                      "StampProcedure"
+                    ]
+                  },
+                  {
+                    "value": "Submitted"
+                  },
+                  {
+                    "value": "Done",
+                    "terminal": true
+                  }
+                ],
+                "transitions": [
+                  {
+                    "from": "Draft",
+                    "to": "Submitted"
+                  },
+                  {
+                    "from": "Submitted",
+                    "to": "Done"
+                  }
+                ]
+              }
+            }
           ],
-          "aggregates": [ { "name": "OrdAggregate", "root": "Ord" } ],
+          "aggregates": [
+            {
+              "name": "OrdAggregate",
+              "root": "Ord"
+            }
+          ],
           "autoPanels": [
-            { "name": "OrdWorkbench", "aggregate": "OrdAggregate", "route": "/ords",
-              "transaction": { "actions": [
-                { "label": "Stamp", "procedure": "StampProcedure" },
-                { "label": "Clear", "procedure": "ClearProcedure" } ] } }
+            {
+              "name": "OrdWorkbench",
+              "aggregate": "OrdAggregate",
+              "route": "/ords",
+              "transaction": {
+                "actions": [
+                  {
+                    "label": "Stamp",
+                    "procedure": "StampProcedure"
+                  },
+                  {
+                    "label": "Clear",
+                    "procedure": "ClearProcedure"
+                  }
+                ]
+              }
+            }
           ],
-          "procedures": [
-            { "name": "StampProcedure", "steps": [ { "name": "r", "type": "return", "value": { "note": "stamped" } } ] },
-            { "name": "ClearProcedure", "steps": [ { "name": "r", "type": "return", "value": { "note": "" } } ] },
-            { "name": "RecomputeProcedure", "steps": [ { "name": "r", "type": "return", "value": { "note": "recomputed" } } ] }
+          "flows": [
+            {
+              "name": "StampProcedure",
+              "expose": "ui",
+              "steps": [
+                {
+                  "name": "r-value",
+                  "type": "map",
+                  "select": {
+                    "note": "stamped"
+                  },
+                  "output": "ret_r"
+                },
+                {
+                  "name": "r",
+                  "type": "return",
+                  "value": "$ret_r"
+                }
+              ]
+            },
+            {
+              "name": "ClearProcedure",
+              "expose": "ui",
+              "steps": [
+                {
+                  "name": "r-value",
+                  "type": "map",
+                  "select": {
+                    "note": ""
+                  },
+                  "output": "ret_r"
+                },
+                {
+                  "name": "r",
+                  "type": "return",
+                  "value": "$ret_r"
+                }
+              ]
+            },
+            {
+              "name": "RecomputeProcedure",
+              "expose": "internal",
+              "steps": [
+                {
+                  "name": "r-value",
+                  "type": "map",
+                  "select": {
+                    "note": "recomputed"
+                  },
+                  "output": "ret_r"
+                },
+                {
+                  "name": "r",
+                  "type": "return",
+                  "value": "$ret_r"
+                }
+              ]
+            }
           ]
         }
         """;
@@ -69,7 +181,10 @@ class AggregateRuntimeAllowedActionsTest {
     void setUp() throws Exception {
         CompiledModel model = new ModelCompiler().compile(new JsonModelParser().parse(MAPPER.readTree(MODEL)));
         gateway = DefaultConceptGateway.governedBy(new InMemoryConceptStore(model), model);
-        runtime = new AggregateRuntime(model, gateway, new ProcedureRunner(model, gateway, null, null));
+        ProcedureRunner procedureRunner = new ProcedureRunner(model, gateway, null, null);
+        InProcessAcceptanceRunner.attachKernel(procedureRunner, model, null, gateway, null);
+        InProcessAcceptanceRunner.attachKernel(procedureRunner, model, null, gateway, null);
+        runtime = new AggregateRuntime(model, gateway, procedureRunner);
     }
 
     private static Map<String, Object> draft(String id, String claimedStatus) {

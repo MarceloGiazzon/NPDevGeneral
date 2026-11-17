@@ -22,7 +22,7 @@ class PropertyValidationTest {
     private static String modelJson(String propertyScopesJson, String propertiesJson) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.props", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.props", "version": "1.0",
               "concepts": [
                 { "name": "Widget", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }

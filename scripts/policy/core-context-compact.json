@@ -1,5 +1,5 @@
 {
-  "_comment": "F4a compact core-context variant (scripts/ai/build_core_context.py --compact). Facts only, no logic: which contract sections and which value-reference paths a one-shot external AI authoring simple-crud / workflow-roles / integration-report apps does not need. The full bundle is untouched; the compact one is written beside it as bundle-compact.json. Measure with run_bench.py --knowledge-file before adopting.",
+  "_comment": "F4a compact core-context variant (scripts/ai/build_core_context.py --compact). Facts only, no logic: which contract sections and which value-reference paths a one-shot external AI authoring simple-crud / workflow-roles / integration-report apps does not need. The full bundle is untouched; the compact one is written beside it as bundle-compact.json. Measure with run_bench.py --knowledge-file before adopting. DETAIL LEVELS (npdev ai context --detail): `full` = no policy; `standard` = the top-level keys of this file (what --compact always was); `lean` = the object under `lean`, for a one-shot simple-crud app. A level ships only if run_bench.py --knowledge-file shows it passes its tier as often as `full`.",
   "dropContractSectionPrefixes": [
     "Ask before you write",
     "Field types",
@@ -11,7 +11,6 @@
     "$.events[]",
     "$.flows[]",
     "$.queries[]",
-    "$.orchestrations[]",
     "$.capabilities[]",
     "$.roles[]",
     "$.procedures[]",
@@ -30,5 +29,37 @@
     "access.public",
     "http.auth",
     "actionDescriptor"
-  ]
+  ],
+  "lean": {
+    "dropContractSectionPrefixes": [
+      "Ask before you write",
+      "Field types",
+      "Writing a pack",
+      "The loop",
+      "Which block do I use?",
+      "Totals, reports and reactions",
+      "Reuse and extend"
+    ],
+    "goldenSamples": [
+      "golden-contact-intake"
+    ],
+    "valueReferencePathPrefixes": [
+      "$.concepts[]",
+      "$.roles[]"
+    ],
+    "valueReferenceExcludeSubstrings": [
+      "truthLevel",
+      "formPresentation",
+      "duplicationPolicy",
+      "inputSchema",
+      "outputSchema",
+      "dangerLevel",
+      "hooks[]",
+      "checkpoint",
+      "phase",
+      "access.public",
+      "http.auth",
+      "actionDescriptor"
+    ]
+  }
 }

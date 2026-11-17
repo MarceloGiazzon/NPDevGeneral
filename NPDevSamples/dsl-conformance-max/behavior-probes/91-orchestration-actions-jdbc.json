@@ -1,19 +1,14 @@
 {
   "probes": [
     {
-      "id": "orchestration-create-and-schedule-actions-run",
+      "id": "follow-up-flow-creates-and-schedules-once-per-shelf",
       "requires": [
         "jdbc"
       ],
       "keywords": [
-        "orchestrationAction.concept",
-        "orchestrationAction.event",
-        "orchestrationAction.delayMs",
-        "orchestrationAction.delaySeconds",
-        "orchestrationAction.delayMinutes",
-        "orchestrationAction.map"
+        "flowStep.dedupeKey"
       ],
-      "description": "Orchestration rule FollowUpNewShelf fires on ShelfLayoutRegistered (published by the ShelfLayout CRUD create). Its create action (concept WidgetSeedDemo) inserts a row whose label is the new shelf's id, and its three scheduleEvent actions (event ShelfCheckDueMs / ShelfCheckDueSeconds / ShelfCheckDueMinutes) each record a durable schedule carrying shelfId, due 120000 ms, 600 s and 60 min after the create -- a delay unit the runtime ignored would show as due now (or the record would be missing). create and scheduleEvent need a DataSource, so this runs on the JDBC variant only (-StorageVariant h2local); on InMemory the rule is refused at startup (SEVERE, REG-286). GET /api/runtime/schedules is admin-only (the run's ADMIN key).",
+      "description": "FORM P3-T5c stage 4: the trigger flow FollowUpNewShelf (it replaced the orchestration rule of the same name) runs on ShelfLayoutRegistered, published by the ShelfLayout CRUD create, and fires exactly ONCE: its createConcept step (WidgetSeedDemo, ifExists skip) inserts ONE row labelled with the new shelf's id (a double fire would show two), and its three scheduleEvent steps (ShelfCheckDueMs / ShelfCheckDueSeconds / ShelfCheckDueMinutes) each record a durable schedule carrying shelfId, due 120000 ms, 600 s and 60 min after the create -- a delay unit the runtime ignored would show as due now (or the record would be missing). Each schedule declares dedupeKey $input.id, so it is unique per shelf across executions. create and scheduleEvent need a DataSource, so this runs on the JDBC variant only (-StorageVariant h2local). GET /api/runtime/schedules is admin-only (the run's ADMIN key).",
       "steps": [
         {
           "name": "create a shelf",
@@ -32,7 +27,7 @@
           }
         },
         {
-          "name": "the create action inserted a WidgetSeedDemo labelled with the shelf id",
+          "name": "the createConcept step inserted exactly one WidgetSeedDemo labelled with the shelf id",
           "method": "GET",
           "path": "/api/widget_seed_demos?size=200",
           "retry": {
@@ -49,7 +44,7 @@
           }
         },
         {
-          "name": "each scheduleEvent action recorded its own due time",
+          "name": "each scheduleEvent step recorded its own due time",
           "method": "GET",
           "path": "/api/runtime/schedules?limit=50",
           "retry": {
@@ -91,9 +86,9 @@
         "jdbc"
       ],
       "keywords": [
-        "orchestrationAction.event"
+        "flowStep.dedupeKey"
       ],
-      "description": "A durable schedule recorded under tenant dev (FollowUpNewShelf, fired by this probe's ShelfLayout create) carries the shelf id in its payload. Another tenant (${key_othertenant}, tenant rep1probe-other, role USER) asking GET /api/runtime/schedules must be refused or shown only its own tenant's records: the shelf id must never appear in its response.",
+      "description": "A durable schedule recorded under tenant dev (the FollowUpNewShelf flow, fired by this probe's ShelfLayout create) carries the shelf id in its payload. Another tenant (${key_othertenant}, tenant rep1probe-other, role USER) asking GET /api/runtime/schedules must be refused or shown only its own tenant's records: the shelf id must never appear in its response.",
       "steps": [
         {
           "name": "tenant dev creates a shelf",

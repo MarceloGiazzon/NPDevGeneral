@@ -28,6 +28,10 @@
     "root": "..\\Output\\App",
     "deleteBeforeMount": true
   },
+  "build": {
+    "javaVersion": 17,
+    "dependencies": [ "com.google.guava:guava:33.0.0-jre" ]
+  },
   "database": {
     "provider": "docker-postgres",
     "host": "localhost",

@@ -13,25 +13,34 @@ by the receiver, and a receiver that is down for hours still gets the event.
 ```json
 {
   "capabilities": [
-    { "name": "webhook", "type": "WebhookCapability",
+    { "name": "webhook", "type": "WebhookCapability", "adapter": "webhook-http",
       "operations": [ { "name": "post", "sideEffects": "external" } ] }
   ],
-  "bindings": [ { "capability": "webhook", "adapter": "webhook-http" } ],
-  "orchestrationRules": [
+  "flows": [
     {
       "name": "PushNewOrdersToErp",
-      "trigger": { "type": "event", "event": "WidgetOrderPlaced" },
-      "actions": [
+      "expose": "internal",
+      "runAs": "system",
+      "trigger": { "event": "WidgetOrderPlaced" },
+      "steps": [
         {
-          "type": "callCapability",
-          "capability": "webhook",
-          "operation": "post",
-          "map": {
+          "name": "build",
+          "type": "map",
+          "select": {
             "url": "http://127.0.0.1:9099/hooks/orders",
             "event": "WidgetOrderPlaced",
-            "orderId": "$event.id",
-            "status": "$event.status"
-          }
+            "orderId": "$input.id",
+            "status": "$input.status"
+          },
+          "output": "payload"
+        },
+        {
+          "name": "post",
+          "type": "capabilityCall",
+          "capability": "webhook",
+          "operation": "post",
+          "args": [ "$payload" ],
+          "output": "result"
         }
       ]
     }
@@ -111,18 +120,25 @@ All three answer 503 when the app's model does not bind `webhook-http`. The tabl
 ## Receiving webhooks from a provider (INT-6)
 
 The other direction: an outside system (a payment provider, a Git host, a shop) calls
-`POST /api/hooks/{source}` with no NPDev credential. The call is accepted only when its signature
-verifies against a secret read from the environment variable the door names. A verified delivery
-publishes `eventName` (resuming a flow parked on `awaitEvent`, and firing `orchestrationRules` on
-that event), starts `startFlow` with the mapped payload, or both.
+`POST /api/hooks/{path}` with no NPDev credential. The door is the `inbound` block of the capability it serves.
+The call is accepted only when its signature verifies against a secret read from an environment variable
+(`inbound.hmacSecretEnvVar`, by default `NPDEV_WEBHOOK_<PATH upper-cased, - as _>_SECRET`). A verified delivery
+publishes `inbound.eventName` (resuming a flow parked on `awaitEvent`, and starting every flow whose `trigger.event` names
+that event), starts the flow whose `trigger` is `{"webhook": "<capability name>"}` with the mapped payload, or both.
+`path` defaults to the capability name; a pack-qualified capability must set it, because the URL a provider posts to
+never depends on pack composition.
 
 ```json
 {
-  "webhooks": [
-    { "source": "stripe", "hmacSecretEnvVar": "NPDEV_WEBHOOK_STRIPE_SECRET",
-      "signature": { "scheme": "stripe-v1", "header": "Stripe-Signature", "toleranceSeconds": 300 },
-      "idempotencyKey": "id", "startFlow": "RecordStripePayment",
-      "fieldMapping": { "orderId": "data.object.metadata.orderId", "amount": "data.object.amount_received" } }
+  "capabilities": [
+    { "name": "stripe",
+      "inbound": {
+        "signature": { "scheme": "stripe-v1" },
+        "idempotencyKey": "id",
+        "fieldMapping": { "orderId": "data.object.metadata.orderId", "amount": "data.object.amount_received" } } }
+  ],
+  "flows": [
+    { "name": "RecordStripePayment", "trigger": { "webhook": "stripe" }, "steps": [ "..." ] }
   ]
 }
 ```
@@ -139,8 +155,9 @@ that event), starts `startFlow` with the mapped payload, or both.
   `{"ok":true,"duplicate":true}` and runs nothing; the key is recorded only after the event or flow
   succeeded, so a provider retry of a failed attempt still runs.
 - Bodies may be JSON objects or `application/x-www-form-urlencoded`.
-- `startFlow` runs synchronously inside the provider's request (providers wait about 10 s, then
+- `stripe-v1` defaults its header to `Stripe-Signature` and its tolerance to 300 seconds.
+- The triggered flow runs synchronously inside the provider's request (providers wait about 10 s, then
   retry): keep it short. A flow that fails answers 500 `WEBHOOK_FLOW_FAILED`.
 - Rejections are 401 with `WEBHOOK_SIGNATURE_MISSING`, `WEBHOOK_SIGNATURE_INVALID`,
   `WEBHOOK_SIGNATURE_EXPIRED` (genuine `stripe-v1` signature outside the tolerance) or
-  `WEBHOOK_SECRET_NOT_CONFIGURED`; an unknown `source` is 404.
+  `WEBHOOK_SECRET_NOT_CONFIGURED`; an unknown `path` is 404.

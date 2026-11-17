@@ -21,7 +21,7 @@ class FileFieldValidationTest {
     private static String modelJson(String fileFieldJson) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.upload", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.upload", "version": "1.0",
               "concepts": [
                 { "name": "Document", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },

@@ -6,6 +6,7 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 CLI_DIR = Path(__file__).resolve().parents[1]
@@ -14,7 +15,7 @@ import npdev_pack_workshop as ws  # noqa: E402
 
 
 def _pack(pack="leads", version="1.0.0", **extra):
-    doc = {"dslVersion": "1.0.0", "pack": pack, "version": version,
+    doc = {"dslVersion": "3.0.0", "pack": pack, "version": version,
            "concepts": [{"name": "Lead", "access": {"read": "true", "write": "true"},
                          "fields": [{"name": "id", "type": "uuid", "id": True, "required": True}]}]}
     doc.update(extra)
@@ -36,6 +37,20 @@ def _ok_report(model, report_path):
 
 def _update_ok(model):
     return True, ""
+
+
+def _no_boot(cli, consumer, env):
+    raise ws.BootUnavailable("test: no boot here")
+
+
+class _FakeCli:
+    """Just enough of the CLI module for assemble_consumer: the Build root."""
+
+    def __init__(self, root: Path):
+        self._build = root / "Build"
+
+    def _ai_build_root(self):
+        return self._build
 
 
 class LadderTest(unittest.TestCase):
@@ -71,6 +86,17 @@ class LadderTest(unittest.TestCase):
         verdict = self.run_ladder()
         self.assertEqual(verdict["status"], "rejected")
 
+    def test_field_named_access_key_holding_an_object_is_not_a_secret(self):
+        doc = _pack()
+        doc["concepts"][0]["fields"].append({"name": "accessKey", "type": "string"})
+        doc["domainTypes"] = [{"name": "Chave", "accessKey": {"digits": 44}}]
+        _put(self.root, doc)
+        self.assertEqual(self.run_ladder()["status"], "secure")
+
+    def test_scalar_secret_assignment_is_still_caught_next_to_object_properties(self):
+        _put(self.root, _pack(description='config {"accessKey": {"a": 1}} then api_key = "sk_live_abcdefghijklmnop1234"'))
+        self.assertEqual(self.run_ladder()["status"], "rejected")
+
     def test_handoff_checklist_answered_no_is_rejected(self):
         handoff = {"schemaVersion": "npdev-pack-handoff.v1", "pack": "leads", "version": "1.0.0",
                    "checklist": [{"id": "own-record-write-null-owner", "answer": "no"}], "limits": ["x"]}
@@ -89,6 +115,18 @@ class LadderTest(unittest.TestCase):
         self.assertEqual(verdict["status"], "rejected")
         self.assertEqual(self.steps(verdict), {"static": "pass", "compose": "fail"})
         self.assertEqual(verdict["feedbackForAi"], ["concepts[0] - bad thing - do this"])
+
+    def test_compose_failure_also_carries_the_lint_fix(self):
+        doc = _pack()
+        doc["concepts"][0]["rollups"] = [{"field": "total", "from": "LeadLine"}]
+        _put(self.root, doc)
+
+        def failing(model, report_path):
+            return {"status": "failed", "diagnostics": [{"severity": "error", "path": "x", "message": "unknown concept 'LeadLine'"}]}
+        verdict = self.run_ladder(validate=failing)
+        self.assertEqual(self.steps(verdict)["compose"], "fail")
+        self.assertEqual(len(verdict["feedbackForAi"]), 2)
+        self.assertIn("leads::LeadLine", verdict["feedbackForAi"][1])
 
     def test_no_validator_on_this_machine_is_not_a_rejection(self):
         _put(self.root, _pack())
@@ -111,6 +149,16 @@ class LadderTest(unittest.TestCase):
         self.assertEqual(seen, ["model.json"])
         model = json.loads((Path(verdict["_run"]) / "compose" / "model.json").read_text(encoding="utf-8"))
         self.assertEqual([p["as"] for p in model["packs"]], ["base-thing", "leads"])
+
+    def test_roles_in_the_scratch_model_grant_every_composed_packs_concepts(self):
+        base = _pack("base-thing")
+        base["concepts"][0]["name"] = "Address"
+        _put(self.root, base)
+        _put(self.root, _pack("leads", packs=[{"pack": "base-thing", "version": "1.0.0"}],
+                              requires={"roles": ["salesRep"]}))
+        verdict = self.run_ladder()
+        model = json.loads((Path(verdict["_run"]) / "compose" / "model.json").read_text(encoding="utf-8"))
+        self.assertEqual(sorted(model["roles"][0]["concepts"]), ["base-thing::Address", "leads::Lead"])
 
     def test_unresolvable_composition_is_rejected(self):
         _put(self.root, _pack("base-thing"))
@@ -149,6 +197,249 @@ class LadderTest(unittest.TestCase):
         _put(self.root, _pack(version="1.10.0"))
         self.assertEqual(self.run_ladder()["version"], "1.10.0")
         self.assertEqual(self.run_ladder(version="1.2.0")["version"], "1.2.0")
+
+    # ---- rung 4: probes ------------------------------------------------------------------------------------------
+
+    def _probe(self, **over):
+        doc = {"schemaVersion": "npdev-pack-probe.v1", "pack": "leads",
+               "users": [{"name": "rep", "role": "REP"}, {"name": "plain"}],
+               "steps": [{"name": "rep creates", "as": "rep", "method": "POST", "path": "/api/leads",
+                          "body": {"code": "L-${rand}"}, "expect": {"status": 201}, "save": {"leadId": "id"}},
+                         {"name": "plain denied", "as": "plain", "method": "GET", "path": "/api/leads/${leadId}",
+                          "expect": {"status": 403}}]}
+        doc.update(over)
+        return doc
+
+    def _put_probe(self, folder: Path, doc, name="basic.json"):
+        (folder / "probes").mkdir(exist_ok=True)
+        (folder / "probes" / name).write_text(json.dumps(doc), encoding="utf-8")
+
+    def _boot(self, record):
+        def boot(cli, consumer, env):
+            record["consumer"], record["env"], record["stopped"] = consumer, env, False
+
+            def stop():
+                record["stopped"] = True
+            return "http://probe.invalid", stop
+        return boot
+
+    def ladder4(self, boot, call, version=None):
+        return ws.test_pack(_FakeCli(self.root), self.root, "leads", version, stamp="20261114-100000", validate=_ok_report,
+                            update=_update_ok, boot=boot, probe_call=call)
+
+    def test_no_probes_means_skipped_and_never_probed(self):
+        _put(self.root, _pack())
+        verdict = self.run_ladder()
+        self.assertEqual(verdict["status"], "secure")
+        self.assertIn("no probes", [s for s in verdict["steps"] if s["step"] == "behavior-probes"][0]["detail"])
+
+    def test_probes_pass_reaches_probed_and_stops_the_app(self):
+        folder = _put(self.root, _pack())
+        self._put_probe(folder, self._probe())
+        record = {}
+        answers = iter([(201, {"id": "n1"}), (403, {"error": "no"})])
+        verdict = self.ladder4(self._boot(record), lambda key, method, path, body: next(answers))
+        self.assertEqual(verdict["status"], "probed")
+        self.assertTrue(record["stopped"])
+        self.assertEqual(self.steps(verdict)["behavior-probes"], "pass")
+        self.assertEqual(self.steps(verdict)["exposure-matrix"], "skipped")
+        self.assertIn("=dev:rep:REP;", record["env"]["NPDEV_AUTH_API_KEYS"])
+        self.assertEqual(record["env"]["NPDEV_AUTH_API_KEYS"], record["env"]["NPDEV_AUTH_APIKEYS"])
+
+    # ---- rung 5: screens (opt-in) ----------------------------------------------------------------------------------
+
+    def _shoot(self, record, fail=None):
+        import npdev_pack_screens as screens
+
+        def shoot(base_url, out_dir, users, keys):
+            record["shot"] = {"base": base_url, "users": [u["name"] for u in users], "keys": dict(keys)}
+            if fail:
+                raise screens.ScreensUnavailable(fail)
+            rows = []
+            for u in users:
+                (out_dir / f"{u['name']}-home.png").write_bytes(b"png")
+                rows.append({"user": u["name"], "role": u.get("role"), "screen": "home", "file": f"{u['name']}-home.png"})
+                rows.append({"user": u["name"], "role": u.get("role"), "navLinks": 1, "consoleErrors": []})
+            (out_dir / "manifest.json").write_text(json.dumps(rows), encoding="utf-8")
+        return shoot
+
+    def ladder5(self, boot, call, shoot, version=None):
+        return ws.test_pack(_FakeCli(self.root), self.root, "leads", version, stamp="20261114-100000", validate=_ok_report,
+                            update=_update_ok, boot=boot, probe_call=call, screens=True, shoot=shoot)
+
+    def test_screens_after_passing_probes_reach_browsed_and_write_a_gallery_without_keys(self):
+        folder = _put(self.root, _pack())
+        self._put_probe(folder, self._probe())
+        record, shot = {}, {}
+        answers = iter([(201, {"id": "n1"}), (403, {"error": "no"})])
+        verdict = self.ladder5(self._boot(record), lambda key, method, path, body: next(answers), self._shoot(shot))
+        self.assertEqual(verdict["status"], "browsed")
+        self.assertTrue(record["stopped"])
+        self.assertEqual(shot["shot"]["users"], ["rep", "plain"])
+        step = [s for s in verdict["steps"] if s["step"] == "screens"][0]
+        self.assertEqual((step["result"], step["evidence"]), ("pass", "screens/gallery.html"))
+        run = Path(verdict["_run"])
+        self.assertIn("rep", (run / "screens" / "gallery.html").read_text(encoding="utf-8"))
+        for file in run.rglob("*"):   # the identities' keys must never be written into the run folder
+            if file.is_file() and file.suffix in (".json", ".html", ".txt"):
+                text = file.read_text(encoding="utf-8", errors="ignore")
+                self.assertFalse(any(k in text for k in shot["shot"]["keys"].values()), file.name)
+
+    def test_screens_without_probes_photograph_one_identity_per_role_and_do_not_claim_probed(self):
+        _put(self.root, _pack())
+        record, shot = {}, {}
+        verdict = self.ladder5(self._boot(record), None, self._shoot(shot))
+        self.assertEqual(verdict["status"], "secure")
+        steps = self.steps(verdict)
+        self.assertEqual((steps["behavior-probes"], steps["screens"]), ("skipped", "pass"))
+        self.assertTrue(record["stopped"])
+        self.assertTrue(shot["shot"]["users"])
+        self.assertIn("not claimed", [s for s in verdict["steps"] if s["step"] == "screens"][0]["detail"])
+
+    def test_no_engine_means_skipped_never_rejected(self):
+        folder = _put(self.root, _pack())
+        self._put_probe(folder, self._probe())
+        answers = iter([(201, {"id": "n1"}), (403, {"error": "no"})])
+        verdict = self.ladder5(self._boot({}), lambda key, method, path, body: next(answers),
+                               self._shoot({}, fail="the ScrapForAI engine is not installed on this machine"))
+        self.assertEqual(verdict["status"], "probed")
+        step = [s for s in verdict["steps"] if s["step"] == "screens"][0]
+        self.assertEqual(step["result"], "skipped")
+        self.assertIn("engine is not installed", step["detail"])
+
+    def test_failed_probe_means_no_screens_and_the_app_is_still_stopped(self):
+        folder = _put(self.root, _pack())
+        self._put_probe(folder, self._probe())
+        record, shot = {}, {}
+        answers = iter([(201, {"id": "n1"}), (200, {"leak": True})])
+        verdict = self.ladder5(self._boot(record), lambda key, method, path, body: next(answers), self._shoot(shot))
+        self.assertEqual(verdict["status"], "rejected")
+        self.assertTrue(record["stopped"])
+        self.assertNotIn("shot", shot)
+
+    def test_not_booted_skips_the_screens_step_too(self):
+        _put(self.root, _pack())
+        verdict = ws.test_pack(_FakeCli(self.root), self.root, "leads", None, stamp="20261114-100000", validate=_ok_report,
+                               update=_update_ok, boot=_no_boot, screens=True, shoot=self._shoot({}))
+        self.assertEqual(verdict["status"], "secure")
+        self.assertEqual(self.steps(verdict)["screens"], "skipped")
+
+    def _with_dependency(self):
+        _put(self.root, _pack("base-thing"))
+        return _put(self.root, _pack("leads", packs=[{"pack": "base-thing", "version": "1.0.0"}]))
+
+    def test_a_consumer_with_dependencies_is_locked_beside_its_own_model(self):
+        self._with_dependency()
+        locked = []
+
+        def update(model):
+            locked.append(model)
+            return True, ""
+
+        shot = {}
+        verdict = ws.test_pack(_FakeCli(self.root), self.root, "leads", None, stamp="20261114-100000", validate=_ok_report,
+                               update=update, boot=self._boot({}), screens=True, shoot=self._shoot(shot))
+        self.assertEqual(verdict["status"], "secure")
+        self.assertEqual([m.parent.name for m in locked], ["compose", "definition"])   # rung 2, then the consumer itself
+        self.assertEqual(self.steps(verdict)["screens"], "pass")
+
+    def test_a_refused_consumer_lock_is_skipped_never_rejected(self):
+        self._with_dependency()
+        answers = iter([(True, ""), (False, "lock refused")])
+        verdict = ws.test_pack(_FakeCli(self.root), self.root, "leads", None, stamp="20261114-100000", validate=_ok_report,
+                               update=lambda model: next(answers), boot=self._boot({}), screens=True, shoot=self._shoot({}))
+        self.assertEqual(verdict["status"], "secure")
+        steps = {s["step"]: s for s in verdict["steps"]}
+        self.assertEqual((steps["behavior-probes"]["result"], steps["screens"]["result"]), ("skipped", "skipped"))
+        self.assertIn("lock refused", steps["behavior-probes"]["detail"])
+
+    def test_the_engine_is_searched_from_the_repo_and_a_running_one_is_found_again_by_files(self):
+        import npdev_monitor
+        import npdev_pack_screens as screens
+        calls = []
+
+        def detect(port=3010, configured_root=None, workspace_root=None, search_derived=True):
+            calls.append((port, workspace_root is not None))
+            if port == 3010:
+                return {"found": True, "state": "running", "root": None}
+            return {"found": True, "state": "installed-stopped", "root": str(self.root)}
+
+        with mock.patch.object(npdev_monitor, "detect_engine", detect):
+            self.assertEqual(screens.find_engine_root(), self.root)
+        self.assertEqual(calls, [(3010, True), (0, True)])
+        with mock.patch.object(npdev_monitor, "detect_engine", lambda **kw: {"found": False, "root": None}):
+            with self.assertRaises(screens.ScreensUnavailable):
+                screens.find_engine_root()
+
+    def test_default_users_follow_the_roles_the_pack_names(self):
+        import npdev_pack_screens as screens
+        self.assertEqual(screens.default_users(["REP", "MANAGER"]),
+                         [{"name": "rep-user", "role": "REP"}, {"name": "manager-user", "role": "MANAGER"}])
+        self.assertEqual(screens.default_users([]), [{"name": "tester", "role": "USER"}])
+
+    def test_gallery_escapes_what_the_app_printed(self):
+        import npdev_pack_screens as screens
+        page = screens.gallery_html("t<b>", [{"user": "u", "role": "R", "screen": "<script>", "file": "a.png"},
+                                              {"user": "u", "role": "R", "navLinks": 1, "consoleErrors": ["<img onerror=x>"]}])
+        self.assertNotIn("<script>", page)
+        self.assertNotIn("<img onerror", page)
+
+    def test_failed_probe_step_rejects_with_file_step_and_identity(self):
+        folder = _put(self.root, _pack())
+        self._put_probe(folder, self._probe())
+        record = {}
+        answers = iter([(201, {"id": "n1"}), (200, {"leak": True})])
+        verdict = self.ladder4(self._boot(record), lambda key, method, path, body: next(answers))
+        self.assertEqual(verdict["status"], "rejected")
+        self.assertTrue(record["stopped"])
+        self.assertIn("probes/basic.json step 'plain denied' (as plain)", verdict["feedbackForAi"][0])
+        self.assertIn("status 200, wanted 403", verdict["feedbackForAi"][0])
+
+    def test_malformed_probe_is_rejected_before_any_boot(self):
+        folder = _put(self.root, _pack())
+        self._put_probe(folder, self._probe(schemaVersion="wrong"))
+        booted = []
+        verdict = self.ladder4(lambda *a: booted.append(1), None)
+        self.assertEqual(verdict["status"], "rejected")
+        self.assertEqual(booted, [])
+        self.assertTrue(verdict["feedbackForAi"][0].startswith("probes/basic.json: probe"))
+
+    def test_probe_for_another_pack_and_conflicting_roles_are_rejected(self):
+        folder = _put(self.root, _pack())
+        self._put_probe(folder, self._probe(pack="other"))
+        self.assertIn("'other'", self.ladder4(None, None)["feedbackForAi"][0])
+        self._put_probe(folder, self._probe())
+        self._put_probe(folder, self._probe(users=[{"name": "rep", "role": "BOSS"}, {"name": "plain"}]), "second.json")
+        verdict = self.ladder4(None, None, version="1.0.0")
+        self.assertIn("identity 'rep'", verdict["feedbackForAi"][0])
+
+    def test_default_boot_is_skipped_not_rejected_and_the_consumer_is_assembled(self):
+        folder = _put(self.root, _pack())
+        self._put_probe(folder, self._probe())
+        verdict = ws.test_pack(_FakeCli(self.root), self.root, "leads", None, stamp="20261114-100000", validate=_ok_report, update=_update_ok,
+                            boot=_no_boot)
+        self.assertEqual(verdict["status"], "secure")
+        step = [s for s in verdict["steps"] if s["step"] == "behavior-probes"][0]
+        self.assertEqual(step["result"], "skipped")
+        definition = Path(verdict["_run"]) / "consumer" / "definition"
+        config = json.loads((definition / "config.json").read_text(encoding="utf-8"))
+        model = json.loads((definition / "model.json").read_text(encoding="utf-8"))
+        self.assertEqual(config["scenario"]["name"], "packprobe-leads")
+        self.assertIn("generated-finalapps/packprobe-leads", config["scenario"]["outputRoot"])
+        self.assertGreater(config["runtime"]["serverPort"], 0)
+        self.assertEqual(model["roles"], [{"name": "REP", "concepts": {"leads::Lead": ["read", "create", "update", "delete"]}}])
+        self.assertTrue((definition / "packs" / "leads" / "pack.json").is_file())
+        self.assertTrue((definition / "db.definition.json").is_file())
+
+    def test_example_model_wins_over_the_generated_one(self):
+        folder = _put(self.root, _pack())
+        self._put_probe(folder, self._probe())
+        example = {"namespace": "x.example", "dslVersion": "3.0.0", "version": "1.0", "packs": [{"$ref": "packs/leads/pack.json", "as": "leads"}]}
+        (folder / "example-model.json").write_text(json.dumps(example), encoding="utf-8")
+        verdict = ws.test_pack(_FakeCli(self.root), self.root, "leads", None, stamp="20261114-100000", validate=_ok_report, update=_update_ok,
+                            boot=_no_boot)
+        model = json.loads((Path(verdict["_run"]) / "consumer" / "definition" / "model.json").read_text(encoding="utf-8"))
+        self.assertEqual(model["namespace"], "x.example")
 
     def test_unknown_pack_is_refused(self):
         with self.assertRaises(ws.WorkshopError):

@@ -23,15 +23,14 @@ class ProcedureParamsErrorTargetValidationTest {
     private static String model(String steps) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.qparams", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.qparams", "version": "1.0",
               "concepts": [ { "name": "Order", "fields": [
                 { "name": "id", "type": "uuid", "id": true, "required": true },
                 { "name": "customer", "type": "string" } ] } ],
-              "capabilities": [ { "name": "psp", "type": "HttpConnector",
+              "capabilities": [ { "name": "psp", "type": "HttpConnector", "adapter": "http-connector",
                 "http": { "baseUrl": "https://psp.example.com" },
                 "operations": [ { "name": "charge", "sideEffects": "writes", "http": { "method": "POST", "path": "/charge" } } ] } ],
-              "bindings": [ { "capability": "psp", "adapter": "http-connector" } ],
-              "queries": [ { "name": "ByCustomer", "concept": "Order", "where": "customer == :who",
+              "queries": [ { "name": "ByCustomer", "concept": "Order", "where": "customer == $params.who",
                 "parameters": [ { "name": "who", "type": "string", "required": true } ] } ],
               "procedures": [ { "name": "P", "steps": [ %s ] } ]
             }

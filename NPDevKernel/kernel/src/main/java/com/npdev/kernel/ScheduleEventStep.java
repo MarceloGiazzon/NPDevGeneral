@@ -33,6 +33,9 @@ import java.util.Objects;
  */
 final class ScheduleEventStep {
 
+    /** Key under the envelope's {@code _meta} that carries the step's resolved {@code dedupeKey}. */
+    public static final String DEDUPE_KEY_META = "dedupeKey";
+
     private ScheduleEventStep() {
     }
 
@@ -90,20 +93,42 @@ final class ScheduleEventStep {
         String currentCausationId = executionId;
         long safeDelaySeconds = step.getDelaySeconds() == null ? 0L : Math.max(0L, step.getDelaySeconds());
         long scheduledForEpochMs = KernelRunner.nowEpochMillis() + (safeDelaySeconds * 1000L);
+        // FORM P3-T5c stage 4: an author-chosen identity that makes a DELAYED schedule unique across
+        // executions (the orchestration scheduleEvent action had this per source event). A key that
+        // resolves to nothing fails the step -- falling back to per-execution would silently double-schedule.
+        Map<String, Object> scheduleMeta = new java.util.LinkedHashMap<>();
+        scheduleMeta.put("flow", flow.getName());
+        scheduleMeta.put("step", step.getName());
+        scheduleMeta.put("stepIndex", traceStepIndex);
+        scheduleMeta.put("deliveryMode", "scheduled");
+        scheduleMeta.put("delaySeconds", safeDelaySeconds);
+        scheduleMeta.put("scheduledForEpochMs", scheduledForEpochMs);
+        if (step.getDedupeKey() != null) {
+            // A $reference must resolve (the lenient resolver would hand back the reference TEXT as the key);
+            // anything else is a literal.
+            String keyReference = step.getDedupeKey().trim();
+            Object resolvedKey = keyReference.startsWith("$")
+                    ? KernelRunner.resolveReferenceStrict(keyReference, state, input)
+                    : keyReference;
+            String keyText = resolvedKey == null || resolvedKey == KernelRunner.UNRESOLVED
+                    ? "" : String.valueOf(resolvedKey).trim();
+            if (keyText.isEmpty()) {
+                return persistFailure(
+                        runner,
+                        req,
+                        currentCorrelationId,
+                        "scheduleEvent dedupeKey '" + step.getDedupeKey() + "' resolved to nothing"
+                );
+            }
+            scheduleMeta.put(DEDUPE_KEY_META, keyText);
+        }
         EventEnvelope envelope = KernelRunner.newEnvelope(
                 runner.nextId("event"),
                 Objects.requireNonNull(step.getEventName(), "eventName is required"),
                 currentCorrelationId,
                 currentCausationId,
                 envelopePayload,
-                Map.of(
-                        "flow", flow.getName(),
-                        "step", step.getName(),
-                        "stepIndex", traceStepIndex,
-                        "deliveryMode", "scheduled",
-                        "delaySeconds", safeDelaySeconds,
-                        "scheduledForEpochMs", scheduledForEpochMs
-                ),
+                scheduleMeta,
                 flow.getName(),
                 traceStepIndex,
                 effectiveContext.tenantId(),

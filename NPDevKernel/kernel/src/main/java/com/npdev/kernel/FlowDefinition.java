@@ -12,6 +12,7 @@ public final class FlowDefinition {
     private final List<FlowStepDefinition> steps;
     private final SchemaObject inputSchema;
     private final SchemaObject outputSchema;
+    private final boolean runAsSystem;
 
     /**
      * REG-238: lazily computed, then memoized. Safe because this class is immutable -- {@code name}
@@ -33,6 +34,22 @@ public final class FlowDefinition {
             SchemaObject inputSchema,
             SchemaObject outputSchema
     ) {
+        this(name, entityName, steps, inputSchema, outputSchema, false);
+    }
+
+    /**
+     * @param runAsSystem FORM P3-T5b: {@code runAs: "system"} in the model -- every step runs as the tenant's system
+     *                    principal (the tenant never changes), the caller kept for audit. The caller must still be
+     *                    allowed to START the flow; only what the steps may touch is elevated.
+     */
+    public FlowDefinition(
+            String name,
+            String entityName,
+            List<FlowStepDefinition> steps,
+            SchemaObject inputSchema,
+            SchemaObject outputSchema,
+            boolean runAsSystem
+    ) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("name must be non-blank");
         }
@@ -47,6 +64,11 @@ public final class FlowDefinition {
         this.steps = Collections.unmodifiableList(new ArrayList<>(steps));
         this.inputSchema = inputSchema;
         this.outputSchema = outputSchema;
+        this.runAsSystem = runAsSystem;
+    }
+
+    public boolean isRunAsSystem() {
+        return runAsSystem;
     }
 
     public String getName() {

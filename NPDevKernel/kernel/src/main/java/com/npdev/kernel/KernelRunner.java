@@ -28,7 +28,6 @@ import com.npdev.kernel.ports.ExecutionTracer;
 import com.npdev.kernel.ports.SchemaValidator;
 import com.npdev.kernel.ports.EventSchemaProvider;
 import com.npdev.kernel.ports.PermissionEvaluator;
-import com.npdev.kernel.procedures.ProcedureDefinition;
 import com.npdev.kernel.procedures.ProcedureExecutor;
 import com.npdev.kernel.schema.SchemaObject;
 import com.npdev.kernel.trace.FlowTrace;
@@ -75,19 +74,18 @@ final EventBus eventBus;
     private PermissionEvaluator permissionEvaluator = PermissionEvaluator.allowAll();
     private final IdProvider idProvider;
     // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): optional, set-after-construction like
-    // eventSchemaProvider/permissionEvaluator above -- a callProcedure flow step is a no-op-safe
+    // eventSchemaProvider/permissionEvaluator above -- the procedure-step flow steps are a no-op-safe
     // addition that most existing KernelRunner callers (and all 16 of its constructors) never need
-    // to know about; CallProcedureStep fails cleanly with NO_PROCEDURE_RUNNER when unset.
+    // to know about; ProcedureFlowStep fails cleanly when unset.
     private ProcedureExecutor procedureExecutor;
     private ConceptGateway conceptGateway;
-    private Map<String, ProcedureDefinition> procedureRegistry = Map.of();
     // R2.4: optional, set-after-construction for the same reason procedureExecutor above is -- the
     // durable scheduled-event table lives in an adapter that depends on this module, so the binding
     // arrives from outside. Left null, a scheduleEvent step with delaySeconds > 0 fails cleanly
     // (see ScheduleEventStep); it is never treated as "publish now".
     DeferredEventScheduler deferredEventScheduler;
     private final ThreadLocal<String> currentFlowContext = new ThreadLocal<>();
-    private static final Object UNRESOLVED = new Object();
+    static final Object UNRESOLVED = new Object();
     private final CapabilityInvoker capabilityInvoker;
 
     public KernelRunner withEventSchemaProvider(EventSchemaProvider provider) {
@@ -100,17 +98,9 @@ final EventBus eventBus;
         return this;
     }
 
-    /** Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): wires a {@code callProcedure} flow
-     * step to a real {@link ProcedureExecutor} and its named procedure registry. Follow
-     * {@link com.npdev.kernel.ports.FlowDefinitionProvider}'s own precedent -- the caller already
-     * assembles a {@code Map<String, ProcedureDefinition>} for its own ProcedureExecutor
-     * construction; this just shares that same map. */
-    public KernelRunner withProcedureExecutor(
-            ProcedureExecutor procedureExecutor,
-            Map<String, ProcedureDefinition> procedureRegistry
-    ) {
+    /** Wires the procedure-step flow steps (set, readConcept, listConcepts, runQuery, deleteConcept ...) to a real {@link ProcedureExecutor}. */
+    public KernelRunner withProcedureExecutor(ProcedureExecutor procedureExecutor) {
         this.procedureExecutor = procedureExecutor;
-        this.procedureRegistry = procedureRegistry == null ? Map.of() : Map.copyOf(procedureRegistry);
         return this;
     }
 
@@ -144,9 +134,6 @@ final EventBus eventBus;
         return procedureExecutor;
     }
 
-    ProcedureDefinition findProcedureDefinition(String name) {
-        return name == null ? null : procedureRegistry.get(name);
-    }
 
 
     public KernelRunner(EventBus eventBus, InvariantEngine invariantEngine) {
@@ -1431,8 +1418,14 @@ final EventBus eventBus;
                     case RETURN -> {
                         return ReturnStep.execute(this, req);
                     }
-                    case CALL_PROCEDURE -> {
-                        StepExecutionOutcome outcome = CallProcedureStep.execute(this, req);
+                    case PROCEDURE_STEP -> {
+                        StepExecutionOutcome outcome = ProcedureFlowStep.execute(this, req);
+                        if (outcome != null) {
+                            return outcome;
+                        }
+                    }
+                    case CALL_FLOW -> {
+                        StepExecutionOutcome outcome = CallFlowStep.execute(this, req);
                         if (outcome != null) {
                             return outcome;
                         }
@@ -1512,6 +1505,11 @@ final EventBus eventBus;
         if (scope != null && !scope.isBlank()) {
             return scope;
         }
+        // FORM P3-T5c: a createConcept/updateConcept step names its own scope (a concept-less flow has none of its own)
+        FlowStepDefinition.ConceptWrite write = step.getConceptWrite();
+        if (write != null && write.conceptName() != null && !write.conceptName().isBlank()) {
+            return write.conceptName();
+        }
         return flow.getEntityName();
     }
 
@@ -1556,7 +1554,27 @@ final EventBus eventBus;
             boolean resumed
     ) {
         long startedAtMs = nowEpochMillis();
-        ExecutionResult result = executeFlowInstance(flow, input, initialInstance, startStepIndex, traceId, executionContext, resumed);
+        ExecutionContext runContext = executionContext;
+        boolean elevated = false;
+        String previousCaller = null;
+        if (flow.isRunAsSystem()) {
+            // FORM P3-T5b: runAs "system" -- the same elevation a procedure gets (DefaultProcedureExecutor), so the
+            // two surfaces mean the same thing: tenant unchanged, system principal, original caller kept for audit.
+            ExecutionContext caller = normalizeExecutionContext(executionContext);
+            if (!ExecutionContext.isSystem(caller)) {
+                runContext = ExecutionContext.system(caller.tenantId());
+                previousCaller = com.npdev.kernel.procedures.ProcedureElevation.swap(caller.actorId());
+                elevated = true;
+            }
+        }
+        ExecutionResult result;
+        try {
+            result = executeFlowInstance(flow, input, initialInstance, startStepIndex, traceId, runContext, resumed);
+        } finally {
+            if (elevated) {
+                com.npdev.kernel.procedures.ProcedureElevation.swap(previousCaller);
+            }
+        }
         long durationMs = nowEpochMillis() - startedAtMs;
         String outcome = FlowRunOutcomes.flowOutcomeTag(result.getStatus());
         FlowRunOutcomes.logFlowOutcome(flow.getName(), result, outcome, durationMs);
@@ -1926,7 +1944,8 @@ final EventBus eventBus;
         }
 
         try {
-            return ComputedExpression.evaluateBoolean(trimmed, new ConditionScope(state, input));
+            return ComputedExpression.evaluateBoolean(
+                    trimmed, new ConditionScope(state, input), com.npdev.kernel.concepts.ValueExpressionFunctions.flow());
         } catch (ComputedExpression.ExpressionException notDecidable) {
             throw new IllegalStateException(
                     "branch condition '" + trimmed + "' cannot be decided: " + notDecidable.getMessage()
@@ -2007,7 +2026,7 @@ final EventBus eventBus;
         return resolved;
     }
 
-    private static Object resolveReferenceStrict(String reference, Map<String, Object> state, Object input) {
+    static Object resolveReferenceStrict(String reference, Map<String, Object> state, Object input) {
         String ref = normalizeRef(reference);
         if (ref.isBlank() || "last".equals(ref)) {
             return state.get("last");
@@ -2038,6 +2057,12 @@ final EventBus eventBus;
         for (String segment : segments) {
             if (!(current instanceof Map<?, ?> map)) {
                 return UNRESOLVED;
+            }
+            // FORM P3-T5c: a concept record is a plain map {conceptName,id,tenantId,data,rowVersion}; its FIELDS resolve first
+            Map<?, ?> fields = com.npdev.kernel.procedures.DefaultProcedureExecutor.recordFields(map);
+            if (fields != null && fields.containsKey(segment)) {
+                current = fields.get(segment);
+                continue;
             }
             if (!map.containsKey(segment)) {
                 return UNRESOLVED;

@@ -59,7 +59,7 @@ class PackFromCoordinateResolutionTest {
         Path repo = initRepo(temp.resolve("identity-repo"));
         Files.writeString(repo.resolve("pack.json"), """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "identity",
                   "version": "2.1.0",
                   "concepts": [
@@ -75,7 +75,7 @@ class PackFromCoordinateResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "pk5.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "from": "%s" } ]
                 }
@@ -125,7 +125,7 @@ class PackFromCoordinateResolutionTest {
         Path repo = initRepo(temp.resolve("catalog-repo"));
         Files.writeString(repo.resolve("pack.json"), """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "catalog",
                   "version": "1.0.0",
                   "concepts": [
@@ -155,7 +155,7 @@ class PackFromCoordinateResolutionTest {
         Files.writeString(model, """
                 {
                   "namespace": "pk5.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "from": "%s" } ]
                 }
@@ -198,7 +198,7 @@ class PackFromCoordinateResolutionTest {
         Path repo = initRepo(temp.resolve("linked-catalog-repo"));
         Files.writeString(repo.resolve("pack.json"), """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "catalog",
                   "version": "1.0.0",
                   "concepts": [
@@ -228,7 +228,7 @@ class PackFromCoordinateResolutionTest {
         Files.writeString(model, """
                 {
                   "namespace": "pk5.linked",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "from": "%s" } ]
                 }
@@ -272,7 +272,7 @@ class PackFromCoordinateResolutionTest {
         Path repo = initRepo(temp.resolve("catalog-repo"));
         Files.writeString(repo.resolve("pack.json"), """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "catalog",
                   "version": "1.0.0",
                   "fragments": [
@@ -294,7 +294,7 @@ class PackFromCoordinateResolutionTest {
         Files.writeString(model, """
                 {
                   "namespace": "pk5.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "from": "%s" } ]
                 }
@@ -317,7 +317,7 @@ class PackFromCoordinateResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "pk5.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "from": "%s" } ]
                 }
@@ -337,7 +337,7 @@ class PackFromCoordinateResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "pk5.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "from": "%s" } ]
                 }
@@ -363,7 +363,7 @@ class PackFromCoordinateResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "pk5.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "from": "%s" } ]
                 }
@@ -396,7 +396,7 @@ class PackFromCoordinateResolutionTest {
         Path identityRepo = initRepo(temp.resolve("identity-repo"));
         Files.writeString(identityRepo.resolve("pack.json"), """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "identity",
                   "version": "1.0.0",
                   "concepts": [
@@ -413,7 +413,7 @@ class PackFromCoordinateResolutionTest {
         Path crmRepo = initRepo(temp.resolve("crm-repo"));
         Files.writeString(crmRepo.resolve("pack.json"), """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "crm",
                   "version": "1.0.0",
                   "packs": [
@@ -433,7 +433,7 @@ class PackFromCoordinateResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "pk8.transitive.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "from": "%s" } ]
                 }
@@ -474,7 +474,7 @@ class PackFromCoordinateResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "pk5.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "from": "%s" } ]
                 }
@@ -508,7 +508,7 @@ class PackFromCoordinateResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "pk5.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "from": "%s" } ]
                 }
@@ -563,7 +563,7 @@ class PackFromCoordinateResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "pk5.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "from": "%s" } ]
                 }
@@ -608,7 +608,7 @@ class PackFromCoordinateResolutionTest {
     private static String minimalPackJson() {
         return """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "identity",
                   "version": "1.0.0",
                   "concepts": [

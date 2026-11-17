@@ -29,41 +29,86 @@ class GeneratorMultiConceptTest {
         CompiledModel model = compile("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
                       "name": "User",
                       "fields": [
-                        { "name": "id", "type": "uuid", "id": true, "required": true },
-                        { "name": "name", "type": "string", "required": true },
-                        { "name": "email", "type": "string", "required": true }
+                        {
+                          "name": "id",
+                          "type": "uuid",
+                          "id": true,
+                          "required": true
+                        },
+                        {
+                          "name": "name",
+                          "type": "string",
+                          "required": true
+                        },
+                        {
+                          "name": "email",
+                          "type": "string",
+                          "required": true
+                        }
                       ],
                       "invariants": [
-                        { "name": "EmailUnique", "type": "unique", "fields": ["email"] }
+                        {
+                          "name": "EmailUnique",
+                          "type": "unique",
+                          "fields": [
+                            "email"
+                          ]
+                        }
                       ]
                     },
                     {
                       "name": "Patient",
                       "fields": [
-                        { "name": "id", "type": "uuid", "id": true, "required": true },
-                        { "name": "mrn", "type": "string" },
-                        { "name": "firstName", "type": "string", "required": true },
-                        { "name": "lastName", "type": "string", "required": true },
-                        { "name": "dateOfBirth", "type": "string", "required": true }
+                        {
+                          "name": "id",
+                          "type": "uuid",
+                          "id": true,
+                          "required": true
+                        },
+                        {
+                          "name": "mrn",
+                          "type": "string"
+                        },
+                        {
+                          "name": "firstName",
+                          "type": "string",
+                          "required": true
+                        },
+                        {
+                          "name": "lastName",
+                          "type": "string",
+                          "required": true
+                        },
+                        {
+                          "name": "dateOfBirth",
+                          "type": "string",
+                          "required": true
+                        }
                       ],
                       "invariants": [
-                        { "name": "PatientMrnUnique", "type": "unique", "fields": ["mrn"] }
+                        {
+                          "name": "PatientMrnUnique",
+                          "type": "unique",
+                          "fields": [
+                            "mrn"
+                          ]
+                        }
                       ]
                     }
                   ],
-                  "bindings": [
-                    { "capability": "persistence", "adapter": "repository" },
-                    { "capability": "eventBus", "adapter": "inproc" }
-                  ],
                   "events": [
-                    { "name": "UserCreated" },
-                    { "name": "PatientCreated" }
+                    {
+                      "name": "UserCreated"
+                    },
+                    {
+                      "name": "PatientCreated"
+                    }
                   ]
                 }
                 """);
@@ -118,7 +163,7 @@ class GeneratorMultiConceptTest {
         CompiledModel model = compile("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {

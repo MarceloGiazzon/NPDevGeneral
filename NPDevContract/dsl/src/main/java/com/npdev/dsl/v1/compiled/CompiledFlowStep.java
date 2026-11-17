@@ -7,6 +7,11 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 public final class CompiledFlowStep {
+    private final Map<String, Object> fieldValues;
+    private final Boolean createIfMissing;
+    private final String errorTarget;
+    private final String ifExists;
+    private final String dedupeKey;
     private final String name;
     private final String type;
     private final String checkpoint;
@@ -38,6 +43,10 @@ public final class CompiledFlowStep {
     private final Boolean parallelAwait;
     private final Long timeoutSeconds;
     private final List<CompiledFlowStep> onTimeoutSteps;
+    private final String recordIdRef;
+    private final String queryName;
+    private final Map<String, String> queryParams;
+    private final String flowName;
     private final CompiledHumanTask task;
 
     public CompiledFlowStep(
@@ -214,7 +223,7 @@ public final class CompiledFlowStep {
     }
 
     /** Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): canonical constructor, adding
-     * {@code procedureName} -- the procedure a {@code callProcedure} flow step invokes. B15(B)
+     * {@code procedureName} -- the retired callProcedure step's procedure name (inert: no step reads it any more). B15(B)
      * (S6, docs/BOUNDARY_LIFT_ROADMAP.md §B15(B)) adds the trailing {@code parallelAwait}. */
     public CompiledFlowStep(
             String name,
@@ -332,6 +341,141 @@ public final class CompiledFlowStep {
             List<CompiledFlowStep> onTimeoutSteps,
             CompiledHumanTask task
     ) {
+        this(name, type, checkpoint, scope, invariants, eventName, payloadRef, eventDataRefs, condition, thenSteps, elseSteps, awaitEventName, awaitRef, awaitMatchCorrelation, awaitPayloadMatch, delaySeconds, mapFromRef, mapToRef, returnValueRef, capabilityCall, action, generatedActionName, collectionRef, itemKey, loopSteps, maxLoopIterations, onFailureSteps, procedureName, parallelAwait, timeoutSeconds, onTimeoutSteps, task, null, null, null, null);
+    }
+
+    /** FORM P3-T5a: canonical constructor, adding the concept-step keys; {@code null} means absent. */
+    /** Pre-P3-T5c constructor: {@code null} for every key the merged flow vocabulary added after it. */
+    public CompiledFlowStep(
+            String name,
+            String type,
+            String checkpoint,
+            String scope,
+            List<String> invariants,
+            String eventName,
+            String payloadRef,
+            Map<String, String> eventDataRefs,
+            String condition,
+            List<CompiledFlowStep> thenSteps,
+            List<CompiledFlowStep> elseSteps,
+            String awaitEventName,
+            String awaitRef,
+            Boolean awaitMatchCorrelation,
+            Map<String, String> awaitPayloadMatch,
+            Long delaySeconds,
+            String mapFromRef,
+            String mapToRef,
+            String returnValueRef,
+            CompiledCapabilityCall capabilityCall,
+            CompiledActionMetadata action,
+            String generatedActionName,
+            String collectionRef,
+            String itemKey,
+            List<CompiledFlowStep> loopSteps,
+            Integer maxLoopIterations,
+            List<CompiledFlowStep> onFailureSteps,
+            String procedureName,
+            Boolean parallelAwait,
+            Long timeoutSeconds,
+            List<CompiledFlowStep> onTimeoutSteps,
+            CompiledHumanTask task,
+            String recordIdRef,
+            String queryName,
+            Map<String, String> queryParams,
+            String flowName
+    ) {
+        this(name, type, checkpoint, scope, invariants, eventName, payloadRef, eventDataRefs, condition, thenSteps, elseSteps, awaitEventName, awaitRef, awaitMatchCorrelation, awaitPayloadMatch, delaySeconds, mapFromRef, mapToRef, returnValueRef, capabilityCall, action, generatedActionName, collectionRef, itemKey, loopSteps, maxLoopIterations, onFailureSteps, procedureName, parallelAwait, timeoutSeconds, onTimeoutSteps, task, recordIdRef, queryName, queryParams, flowName, null, null, null, null);
+    }
+
+    /** FORM P3-T5c stage 4: constructor before {@code dedupeKey}; {@code null} = absent. */
+    public CompiledFlowStep(
+            String name,
+            String type,
+            String checkpoint,
+            String scope,
+            List<String> invariants,
+            String eventName,
+            String payloadRef,
+            Map<String, String> eventDataRefs,
+            String condition,
+            List<CompiledFlowStep> thenSteps,
+            List<CompiledFlowStep> elseSteps,
+            String awaitEventName,
+            String awaitRef,
+            Boolean awaitMatchCorrelation,
+            Map<String, String> awaitPayloadMatch,
+            Long delaySeconds,
+            String mapFromRef,
+            String mapToRef,
+            String returnValueRef,
+            CompiledCapabilityCall capabilityCall,
+            CompiledActionMetadata action,
+            String generatedActionName,
+            String collectionRef,
+            String itemKey,
+            List<CompiledFlowStep> loopSteps,
+            Integer maxLoopIterations,
+            List<CompiledFlowStep> onFailureSteps,
+            String procedureName,
+            Boolean parallelAwait,
+            Long timeoutSeconds,
+            List<CompiledFlowStep> onTimeoutSteps,
+            CompiledHumanTask task,
+            String recordIdRef,
+            String queryName,
+            Map<String, String> queryParams,
+            String flowName,
+            Map<String, Object> fieldValues,
+            Boolean createIfMissing,
+            String errorTarget,
+            String ifExists
+    ) {
+        this(name, type, checkpoint, scope, invariants, eventName, payloadRef, eventDataRefs, condition, thenSteps, elseSteps, awaitEventName, awaitRef, awaitMatchCorrelation, awaitPayloadMatch, delaySeconds, mapFromRef, mapToRef, returnValueRef, capabilityCall, action, generatedActionName, collectionRef, itemKey, loopSteps, maxLoopIterations, onFailureSteps, procedureName, parallelAwait, timeoutSeconds, onTimeoutSteps, task, recordIdRef, queryName, queryParams, flowName, fieldValues, createIfMissing, errorTarget, ifExists, null);
+    }
+
+    public CompiledFlowStep(
+            String name,
+            String type,
+            String checkpoint,
+            String scope,
+            List<String> invariants,
+            String eventName,
+            String payloadRef,
+            Map<String, String> eventDataRefs,
+            String condition,
+            List<CompiledFlowStep> thenSteps,
+            List<CompiledFlowStep> elseSteps,
+            String awaitEventName,
+            String awaitRef,
+            Boolean awaitMatchCorrelation,
+            Map<String, String> awaitPayloadMatch,
+            Long delaySeconds,
+            String mapFromRef,
+            String mapToRef,
+            String returnValueRef,
+            CompiledCapabilityCall capabilityCall,
+            CompiledActionMetadata action,
+            String generatedActionName,
+            String collectionRef,
+            String itemKey,
+            List<CompiledFlowStep> loopSteps,
+            Integer maxLoopIterations,
+            List<CompiledFlowStep> onFailureSteps,
+            String procedureName,
+            Boolean parallelAwait,
+            Long timeoutSeconds,
+            List<CompiledFlowStep> onTimeoutSteps,
+            CompiledHumanTask task,
+            String recordIdRef,
+            String queryName,
+            Map<String, String> queryParams,
+            String flowName,
+            Map<String, Object> fieldValues,
+            Boolean createIfMissing,
+            String errorTarget,
+            String ifExists,
+            String dedupeKey
+    ) {
         this.name = name;
         this.type = type;
         this.checkpoint = checkpoint;
@@ -364,7 +508,31 @@ public final class CompiledFlowStep {
         this.timeoutSeconds = timeoutSeconds;
         this.onTimeoutSteps = onTimeoutSteps == null ? List.of() : new ArrayList<>(onTimeoutSteps);
         this.task = task;
+        this.recordIdRef = recordIdRef;
+        this.queryName = queryName;
+        this.queryParams = queryParams == null ? Map.of() : new LinkedHashMap<>(queryParams);
+        this.flowName = flowName;
+        this.fieldValues = fieldValues == null ? Map.of() : java.util.Collections.unmodifiableMap(new LinkedHashMap<>(fieldValues));
+        this.createIfMissing = createIfMissing;
+        this.errorTarget = errorTarget;
+        this.ifExists = ifExists;
+        this.dedupeKey = dedupeKey;
     }
+
+    /** FORM P3-T5c: the {@code select} of a {@code map} step / the {@code set} of an {@code updateConcept} step: field to literal-or-$ref; a value may be null. */
+    public Map<String, Object> getFieldValues() { return fieldValues; }
+
+    /** FORM P3-T5c: {@code updateConcept}: create the row when it does not exist (null = absent). */
+    public Boolean getCreateIfMissing() { return createIfMissing; }
+
+    /** FORM P3-T5c: {@code capabilityCall}: a failed call is stored under this state key instead of failing the flow. */
+    public String getErrorTarget() { return errorTarget; }
+
+    /** FORM P3-T5c: {@code createConcept}: {@code "skip"} leaves an existing row alone (null = a duplicate fails). */
+    public String getIfExists() { return ifExists; }
+
+    /** FORM P3-T5c stage 4: {@code scheduleEvent}: an expression that makes a delayed schedule unique across executions (null = per execution). */
+    public String getDedupeKey() { return dedupeKey; }
 
     public String getName() { return name; }
 
@@ -452,4 +620,18 @@ public final class CompiledFlowStep {
 
     /** PROC-1: human-task metadata of an {@code awaitEvent} step; {@code null} when not a human task. */
     public CompiledHumanTask getTask() { return task; }
+
+    /** FORM P3-T5a: compiled counterpart of {@code StepAst#getId()}. */
+    public String getRecordIdRef() { return recordIdRef; }
+
+    /** FORM P3-T5a: compiled counterpart of {@code StepAst#getQuery()}. */
+    public String getQueryName() { return queryName; }
+
+    /** FORM P3-T5a: compiled counterpart of {@code StepAst#getParams()}. */
+    public Map<String, String> getQueryParams() {
+        return Collections.unmodifiableMap(queryParams);
+    }
+
+    /** FORM P3-T5a: compiled counterpart of {@code StepAst#getFlow()}. */
+    public String getFlowName() { return flowName; }
 }

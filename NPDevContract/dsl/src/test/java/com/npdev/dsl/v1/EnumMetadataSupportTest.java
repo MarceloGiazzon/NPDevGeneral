@@ -25,7 +25,7 @@ class EnumMetadataSupportTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "enum.metadata.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -95,7 +95,7 @@ class EnumMetadataSupportTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "enum.metadata.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {

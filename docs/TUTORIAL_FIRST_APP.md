@@ -30,7 +30,7 @@ slice through NPDev's concept/capability/flow/event model.
 ```json
 {
   "namespace": "trial.contactintake",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "version": "1.0",
   "concepts": [
     {
@@ -52,11 +52,6 @@ slice through NPDev's concept/capability/flow/event model.
   "capabilities": [
     { "name": "persistence", "type": "PersistenceCapability", "operations": ["save"] },
     { "name": "notification", "type": "NotificationCapability", "operations": ["send"] }
-  ],
-  "bindings": [
-    { "capability": "persistence", "adapter": "repository" },
-    { "capability": "notification", "adapter": "notification-inproc" },
-    { "capability": "eventBus", "adapter": "inproc" }
   ],
   "events": [
     { "name": "ContactMessageReceived", "payload": [
@@ -88,7 +83,7 @@ concrete adapter backs it (`notification-inproc` here logs instead of sending re
 an SMTP adapter, see `docs/reference/EMAIL_NOTIFICATIONS.md`, without touching the flow). A **flow** is an
 explicit sequence of steps — this one is the platform's generated `POST` handler for creating a
 `ContactMessage`, made explicit rather than implicit so you can see exactly what happens on
-create: validate, save, notify, emit an event other flows/orchestrations can react to, return.
+create: validate, save, notify, emit an event other event-triggered flows can react to, return.
 
 If you're prompting an AI to build something like this rather than hand-writing JSON: describe the
 concept and what should happen on submit in plain language; the AI should reach for

@@ -32,16 +32,6 @@ class StaleDslExamplesTest(unittest.TestCase):
         changes = build_rag_index._stale_dsl_examples(_fence(flow))
         self.assertEqual(3, len(changes))
 
-    def test_scalar_orchestration_action_is_reported(self):
-        rule = ('{"name": "R", "trigger": {"type": "event", "event": "E"}, '
-                '"action": {"type": "create", "concept": "C", "map": {"a": "b"}}}')
-        self.assertTrue(build_rag_index._stale_dsl_examples(_fence(rule)))
-
-    def test_canonical_orchestration_rule_is_clean(self):
-        rule = ('{"name": "R", "trigger": {"type": "event", "event": "E"}, '
-                '"actions": [{"type": "callCapability", "capability": "c", "operation": "o"}]}')
-        self.assertEqual([], build_rag_index._stale_dsl_examples(_fence(rule)))
-
     def test_trigger_object_alone_is_not_mistaken_for_a_step(self):
         self.assertEqual([], build_rag_index._stale_dsl_examples(
             _fence('{ "type": "event", "event": "InvoiceIssued" }')))

@@ -47,6 +47,32 @@ class ConceptQueryFilterSupportPredicateTest {
     }
 
     @Test
+    @DisplayName("FORM P3-T4: withinKm / distanceKm compare the great-circle distance, in memory, with SQL NULL semantics")
+    void withinKmKeepsRowsInsideTheRadiusAndDropsMissingCoordinates() {
+        List<ConceptRecord> places = List.of(
+                place("origin", 0, 0), place("one-degree-east", 0, 1), place("far", 10, 10), place("no-coords", null, null));
+        // 1 degree of longitude on the equator is 111.195 km
+        assertEquals(List.of("origin", "one-degree-east"),
+                ids(ConceptQueryFilterSupport.applyPredicate(places, "withinKm(lat, lng, 0, 0, 112)")));
+        assertEquals(List.of("origin"),
+                ids(ConceptQueryFilterSupport.applyPredicate(places, "withinKm(lat, lng, 0, 0, 100)")));
+        assertEquals(List.of("one-degree-east", "far"),
+                ids(ConceptQueryFilterSupport.applyPredicate(places, "distanceKm(lat, lng, 0, 0) > 50")));
+        // NOT (distance <= km) is distance > km: a row with no coordinates is in neither branch
+        assertEquals(List.of("far"),
+                ids(ConceptQueryFilterSupport.applyPredicate(places, "!withinKm(lat, lng, 0, 0, 112)")));
+        assertEquals(List.of("origin", "far"),
+                ids(ConceptQueryFilterSupport.applyPredicate(places, "withinKm(lat, lng, 0, 0, 50) || lat >= 10")));
+    }
+
+    private static ConceptRecord place(String id, Integer lat, Integer lng) {
+        java.util.Map<String, Object> data = new java.util.LinkedHashMap<>();
+        data.put("lat", lat);
+        data.put("lng", lng);
+        return new ConceptRecord("Place", id, "t1", data);
+    }
+
+    @Test
     @DisplayName("blank where returns every row, unchanged -- same contract as applyWhere")
     void blankWhereIsNoFilter() {
         assertEquals(ids(rows()), ids(ConceptQueryFilterSupport.applyPredicate(rows(), null)));
@@ -74,24 +100,24 @@ class ConceptQueryFilterSupportPredicateTest {
     @DisplayName("IN: matches any value in the list")
     void inMatchesAnyListedValue() {
         assertEquals(List.of("r1", "r3"),
-                ids(ConceptQueryFilterSupport.applyPredicate(rows(), "name in ('widget-alpha', 'widget-gamma', 'nope')")));
+                ids(ConceptQueryFilterSupport.applyPredicate(rows(), "name in ['widget-alpha', 'widget-gamma', 'nope']")));
     }
 
     @Test
     @DisplayName("contains / startsWith: case-insensitive substring / prefix")
     void containsAndStartsWith() {
         assertEquals(List.of("r1", "r3"),
-                ids(ConceptQueryFilterSupport.applyPredicate(rows(), "name contains 'WIDGET'")));
+                ids(ConceptQueryFilterSupport.applyPredicate(rows(), "contains(name, 'WIDGET')")));
         assertEquals(List.of("r2"),
-                ids(ConceptQueryFilterSupport.applyPredicate(rows(), "name startsWith 'gadget'")));
+                ids(ConceptQueryFilterSupport.applyPredicate(rows(), "startsWith(name, 'gadget')")));
     }
 
     @Test
     @DisplayName("is-null / is-not-null")
     void isNullAndIsNotNull() {
-        assertEquals(List.of("r2"), ids(ConceptQueryFilterSupport.applyPredicate(rows(), "supplierId is null")));
+        assertEquals(List.of("r2"), ids(ConceptQueryFilterSupport.applyPredicate(rows(), "supplierId == null")));
         assertEquals(List.of("r1", "r3", "r4"),
-                ids(ConceptQueryFilterSupport.applyPredicate(rows(), "supplierId is not null")));
+                ids(ConceptQueryFilterSupport.applyPredicate(rows(), "supplierId != null")));
     }
 
     @Test
@@ -144,7 +170,7 @@ class ConceptQueryFilterSupportPredicateTest {
         gateway.save(new ConceptWriteRequest("Item", "i-3", "tenant-a", Map.of("id", "i-3", "status", "PENDING", "sku", "A3")), CTX);
 
         List<ConceptRecord> all = gateway.list(new ConceptListRequest("Item", "tenant-a", null, null), CTX);
-        List<ConceptRecord> filtered = ConceptQueryFilterSupport.applyPredicate(all, "status == 'ACTIVE' || sku in ('A3')");
+        List<ConceptRecord> filtered = ConceptQueryFilterSupport.applyPredicate(all, "status == 'ACTIVE' || sku in ['A3']");
 
         assertEquals(List.of("i-1", "i-3"), ids(filtered));
     }

@@ -251,6 +251,17 @@ final class CapabilityInvoker {
         );
     }
 
+    /** FORM P3-T5c: a unique-constraint / duplicate-key conflict (what {@code createConcept ifExists: skip} tolerates). */
+    static boolean isUniqueViolation(CapabilityError error) {
+        if (error == null || error.message() == null) {
+            return false;
+        }
+        String normalized = error.message().toLowerCase(java.util.Locale.ROOT);
+        return normalized.contains("unique index or primary key")
+                || normalized.contains("unique constraint")
+                || normalized.contains("duplicate key");
+    }
+
     private static boolean isIntegrityViolationMessage(String message) {
         if (message == null || message.isBlank()) {
             return false;
@@ -264,7 +275,43 @@ final class CapabilityInvoker {
                 || normalized.contains("unique constraint");
     }
 
+    /**
+     * FORM P3-T5c: a createConcept/updateConcept step names its own concept ({@code scope}); a flow with no concept of
+     * its own (or another one) must still write THAT concept. The persistence dispatchers read the concept from the
+     * flow state's {@code _npdevEntityName}, so it is pointed at the step's concept for the duration of the call.
+     */
     CapabilityResult invokeCapabilityWithPolicy(
+            FlowStepDefinition step,
+            List<Object> args,
+            Map<String, Object> state,
+            String correlationId,
+            String idempotencyKey,
+            CapabilityExecutionPolicy policy,
+            EffectiveCapabilityPolicy effectivePolicy,
+            Map<String, Object> traceInfo,
+            String tenantId
+    ) {
+        FlowStepDefinition.ConceptWrite write = step == null ? null : step.getConceptWrite();
+        String stepConcept = write == null ? null : write.conceptName();
+        if (state == null || stepConcept == null || stepConcept.isBlank()) {
+            return invokeCapabilityWithPolicyForConcept(
+                    step, args, state, correlationId, idempotencyKey, policy, effectivePolicy, traceInfo, tenantId);
+        }
+        boolean hadKey = state.containsKey("_npdevEntityName");
+        Object previous = state.put("_npdevEntityName", stepConcept);
+        try {
+            return invokeCapabilityWithPolicyForConcept(
+                    step, args, state, correlationId, idempotencyKey, policy, effectivePolicy, traceInfo, tenantId);
+        } finally {
+            if (hadKey) {
+                state.put("_npdevEntityName", previous);
+            } else {
+                state.remove("_npdevEntityName");
+            }
+        }
+    }
+
+    private CapabilityResult invokeCapabilityWithPolicyForConcept(
             FlowStepDefinition step,
             List<Object> args,
             Map<String, Object> state,
@@ -961,7 +1008,8 @@ CapabilityCall call = new CapabilityCall(
         if (conceptForDebug != null) {
             contextState.put("_npdevConcept", conceptForDebug);
         }
-        Map<String, Object> finalContextState = Map.copyOf(contextState);
+        // FORM P3-T5c: NOT Map.copyOf -- a failed errorTarget call leaves a null output in flow state, which copyOf refuses (NPE)
+        Map<String, Object> finalContextState = java.util.Collections.unmodifiableMap(contextState);
 
         // REG-231: a target that itself doesn't need bounding (see
         // CapabilityDispatcher#requiresBoundedAsyncDispatch) takes the SAME synchronous path as

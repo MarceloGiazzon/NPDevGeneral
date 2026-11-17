@@ -25,7 +25,7 @@ class ExternalAiEgressValidationTest {
     private static String modelWithExternalAi(String externalAiJson) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.externalai", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.externalai", "version": "1.0",
               "concepts": [
                 { "name": "Order", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }

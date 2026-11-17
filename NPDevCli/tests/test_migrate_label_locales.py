@@ -23,7 +23,7 @@ def _write_model(tmp_dir: Path, name: str, concepts: list[dict]) -> Path:
     model = {
         "$schema": "NPDevContract/schemas/model.schema.json",
         "namespace": "test.migrate.label.locales",
-        "dslVersion": "1.0.0",
+        "dslVersion": "3.0.0",
         "version": "1.0",
         "concepts": concepts,
     }

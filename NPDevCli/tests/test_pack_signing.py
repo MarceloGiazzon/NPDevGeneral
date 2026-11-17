@@ -414,7 +414,7 @@ class PushSigningUnitTest(unittest.TestCase):
             catalog_repo = tmp_dir / "catalog-repo"
             (catalog_repo / ".git").mkdir(parents=True)
             new_pack_path = tmp_dir / "widgets.json"
-            _write(new_pack_path, {"dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+            _write(new_pack_path, {"dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                                     "concepts": [{"name": "Widget", "fields": [
                                         {"name": "id", "type": "uuid", "id": True, "required": True}]}]})
             key_path = tmp_dir / "key.json"
@@ -450,7 +450,7 @@ class PushSigningUnitTest(unittest.TestCase):
             catalog_repo = tmp_dir / "catalog-repo"
             (catalog_repo / ".git").mkdir(parents=True)
             new_pack_path = tmp_dir / "widgets.json"
-            _write(new_pack_path, {"dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+            _write(new_pack_path, {"dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                                     "concepts": [{"name": "Widget", "fields": [
                                         {"name": "id", "type": "uuid", "id": True, "required": True}]}]})
             args = argparse.Namespace(catalog_repo=str(catalog_repo), remote="origin",
@@ -466,7 +466,7 @@ class PushSigningUnitTest(unittest.TestCase):
             tmp_dir = Path(tmp)
             old_pack = tmp_dir / "old.json"
             new_pack = tmp_dir / "new.json"
-            body = {"dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+            body = {"dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                     "concepts": [{"name": "Widget", "fields": [
                         {"name": "id", "type": "uuid", "id": True, "required": True}]}]}
             _write(old_pack, body)
@@ -540,9 +540,9 @@ class PackSigningRoundTripTest(unittest.TestCase):
         fields = [{"name": "id", "type": "uuid", "id": True, "required": True}]
         if extra_field:
             fields.append({"name": extra_field, "type": "string", "required": False})
-        _write(old_pack, {"dslVersion": "1.0.0", "pack": pack_id, "version": "0.0.1",
+        _write(old_pack, {"dslVersion": "3.0.0", "pack": pack_id, "version": "0.0.1",
                            "concepts": [{"name": "Thing", "fields": fields[:1]}]})
-        _write(new_pack, {"dslVersion": "1.0.0", "pack": pack_id, "version": version,
+        _write(new_pack, {"dslVersion": "3.0.0", "pack": pack_id, "version": version,
                            "concepts": [{"name": "Thing", "fields": fields}]})
         with redirect_stdout(io.StringIO()) as out:
             code = npdev_cli.run_pack_publish(
@@ -552,7 +552,7 @@ class PackSigningRoundTripTest(unittest.TestCase):
     def _consume(self, app_dir: Path, coordinate: str, *, allow_unsigned: bool,
                  trust_config: dict | None = None):
         model_path = app_dir / "model.json"
-        _write(model_path, {"namespace": f"npdev.throwaway.r87.{app_dir.name}", "dslVersion": "1.0.0",
+        _write(model_path, {"namespace": f"npdev.throwaway.r87.{app_dir.name}", "dslVersion": "3.0.0",
                              "version": "1.0", "packs": [{"from": coordinate}]})
         if trust_config is not None:
             _write(app_dir / npdev_cli.PACK_TRUST_FILE_NAME, trust_config)
@@ -582,7 +582,7 @@ class PackSigningRoundTripTest(unittest.TestCase):
         coordinate = self._coordinate_for("unsignedwidgets2", "v1.0.0")
         app_dir = self.tmp_dir / "consumer-unsigned2"
         model_path = app_dir / "model.json"
-        _write(model_path, {"namespace": "npdev.throwaway.r87.unsigned2", "dslVersion": "1.0.0",
+        _write(model_path, {"namespace": "npdev.throwaway.r87.unsigned2", "dslVersion": "3.0.0",
                              "version": "1.0", "packs": [{"from": coordinate}]})
         env = {"NPDEV_PACK_CACHE_ROOT": str(self.tmp_dir / "pack-cache-unsigned2")}
         add_args = argparse.Namespace(model=str(model_path), from_catalog=None, allow_unsigned=False)
@@ -608,7 +608,7 @@ class PackSigningRoundTripTest(unittest.TestCase):
         coordinate = self._coordinate_for("untrustedwidgets", "v1.0.0")
         app_dir = self.tmp_dir / "consumer-untrusted"
         model_path = app_dir / "model.json"
-        _write(model_path, {"namespace": "npdev.throwaway.r87.untrusted", "dslVersion": "1.0.0",
+        _write(model_path, {"namespace": "npdev.throwaway.r87.untrusted", "dslVersion": "3.0.0",
                              "version": "1.0", "packs": [{"from": coordinate}]})
         # Deliberately NO npdev-trust.json -- the default trustedKeys is empty, so even a real,
         # valid signature is from an "unknown" signer.
@@ -661,7 +661,7 @@ class PackSigningRoundTripTest(unittest.TestCase):
         coordinate = self._coordinate_for("honeypotwidgets", "v1.0.0")
         app_dir = self.tmp_dir / "consumer-tampered"
         model_path = app_dir / "model.json"
-        _write(model_path, {"namespace": "npdev.throwaway.r87.tampered", "dslVersion": "1.0.0",
+        _write(model_path, {"namespace": "npdev.throwaway.r87.tampered", "dslVersion": "3.0.0",
                              "version": "1.0", "packs": [{"from": coordinate}]})
         _write(app_dir / npdev_cli.PACK_TRUST_FILE_NAME,
                {"trustedKeys": {self.key_record["keyId"]: self.key_record["publicKey"]}})

@@ -183,6 +183,58 @@ class JdbcBusinessConceptStorePredicateV2Test {
         assertEquals(3L, ((Number) row.get("total")).longValue());
     }
 
+    /**
+     * FORM P3-T4: {@code withinKm} / {@code distanceKm} execute as a real, parameterized haversine on H2 and
+     * return the same rows the in-memory evaluation does -- including NULL semantics (a row with no
+     * coordinates is in neither a {@code withinKm} nor its negation) and bound parameters.
+     */
+    @Test
+    void withinKmRendersAGreatCircleExpressionAndBindsItsValues() {
+        JdbcBusinessConceptStore store = newStore();
+        saveCustomerAt(store, "Origin", 0, 0);
+        saveCustomerAt(store, "OneDegreeEast", 0, 1);   // 111.195 km from the origin
+        saveCustomerAt(store, "Far", 10, 10);
+        saveCustomerAt(store, "NoCoordinates", null, null);
+
+        assertEquals(List.of("OneDegreeEast", "Origin"), names(store, "withinKm(lat, lng, 0, 0, 112)"));
+        assertEquals(List.of("Origin"), names(store, "withinKm(lat, lng, 0, 0, 100)"));
+        assertEquals(List.of("Far", "OneDegreeEast"), names(store, "distanceKm(lat, lng, 0, 0) > 50"));
+        assertEquals(List.of("Far"), names(store, "!withinKm(lat, lng, 0, 0, 112)"),
+                "NOT withinKm excludes the row with no coordinates, exactly as SQL NULL does");
+        assertEquals(List.of("Far", "Origin"), names(store, "withinKm(lat, lng, 0, 0, 50) || name == 'Far'"));
+
+        // the origin and the radius arrive as bound parameters, never spliced
+        List<com.npdev.dsl.v1.compiled.CompiledProcedureParameter> parameters = List.of(
+                new com.npdev.dsl.v1.compiled.CompiledProcedureParameter("lat", "decimal", true, null, null),
+                new com.npdev.dsl.v1.compiled.CompiledProcedureParameter("lng", "decimal", true, null, null),
+                new com.npdev.dsl.v1.compiled.CompiledProcedureParameter("km", "decimal", true, null, null));
+        List<ConceptQuery.Filter> filters = com.npdev.kernel.concepts.ConceptQueryPredicateCompiler
+                .compileToConceptQueryFilters("withinKm(lat, lng, $params.lat, $params.lng, $params.km)", parameters,
+                        Map.of("lat", "0", "lng", "1", "km", "112"));
+        ConceptPage page = store.query(TENANT, "Customer",
+                new ConceptQuery(filters, List.of(ConceptQuery.Sort.asc("name")), 0, 50));
+        assertEquals(List.of("OneDegreeEast", "Origin"),
+                page.items().stream().map(r -> String.valueOf(r.data().get("name"))).toList(),
+                "centred on (0,1): both the origin and the point itself are within 112 km");
+    }
+
+    private static List<String> names(JdbcBusinessConceptStore store, String where) {
+        List<ConceptQuery.Filter> filters = com.npdev.kernel.concepts.ConceptQueryPredicateCompiler
+                .compileToConceptQueryFilters(where);
+        ConceptPage page = store.query(TENANT, "Customer",
+                new ConceptQuery(filters, List.of(ConceptQuery.Sort.asc("name")), 0, 50));
+        return page.items().stream().map(r -> String.valueOf(r.data().get("name"))).toList();
+    }
+
+    private static void saveCustomerAt(JdbcBusinessConceptStore store, String name, Integer lat, Integer lng) {
+        java.util.Map<String, Object> data = new java.util.LinkedHashMap<>();
+        data.put("name", name);
+        data.put("country", "XX");
+        data.put("lat", lat == null ? null : new java.math.BigDecimal(lat));
+        data.put("lng", lng == null ? null : new java.math.BigDecimal(lng));
+        store.save(new ConceptRecord("Customer", UUID.randomUUID().toString(), TENANT, data));
+    }
+
     // --- helpers -----------------------------------------------------------------------------
 
     private static String saveCustomer(JdbcBusinessConceptStore store, String name, String country) {
@@ -219,7 +271,9 @@ class JdbcBusinessConceptStorePredicateV2Test {
                 List.of(
                         new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
                         new CompiledField("name", "string", "String", false, true, false),
-                        new CompiledField("country", "string", "String", false, true, false)
+                        new CompiledField("country", "string", "String", false, true, false),
+                        new CompiledField("lat", "decimal", "java.math.BigDecimal", false, false, false),
+                        new CompiledField("lng", "decimal", "java.math.BigDecimal", false, false, false)
                 ));
         CompiledConcept order = new CompiledConcept(
                 "Order", "Order", "orders",
@@ -240,7 +294,8 @@ class JdbcBusinessConceptStorePredicateV2Test {
             DataSource dataSource = new SingleConnectionUrlDataSource(url);
             try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
                 statement.execute("CREATE TABLE customers (id UUID NOT NULL, name VARCHAR(255), "
-                        + "country VARCHAR(255), tenant_id VARCHAR(120) NOT NULL, PRIMARY KEY (id))");
+                        + "country VARCHAR(255), lat DECIMAL(10,6), lng DECIMAL(10,6), "
+                        + "tenant_id VARCHAR(120) NOT NULL, PRIMARY KEY (id))");
                 statement.execute("CREATE TABLE orders (id UUID NOT NULL, code VARCHAR(255), "
                         + "customer_id UUID, placed_on DATE, tenant_id VARCHAR(120) NOT NULL, PRIMARY KEY (id))");
             }

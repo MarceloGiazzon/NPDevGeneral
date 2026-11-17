@@ -122,13 +122,13 @@ public final class ConceptQueryPredicateCompiler {
         boolean declared = parameters.stream()
                 .anyMatch(parameter -> parameter.name() != null && parameter.name().equalsIgnoreCase(name));
         if (!declared) {
-            throw new UnsupportedPredicateException(where, clause.field() + " " + clause.operator().token() + " :" + name,
-                    "':" + name + "' is not declared in this query's parameters[] -- a bind placeholder "
+            throw new UnsupportedPredicateException(where, clause.field() + " " + clause.operator().token() + " $params." + name,
+                    "$params." + name + " is not declared in this query's parameters[] -- a bind placeholder "
                             + "must name a real declared parameter, not a typo or a procedure-state ref");
         }
         if (!boundParameters.containsKey(name)) {
-            throw new UnsupportedPredicateException(where, clause.field() + " " + clause.operator().token() + " :" + name,
-                    "parameter ':" + name + "' is declared but was not supplied a value for this query "
+            throw new UnsupportedPredicateException(where, clause.field() + " " + clause.operator().token() + " $params." + name,
+                    "parameter $params." + name + " is declared but was not supplied a value for this query "
                             + "invocation -- an unbound parameter is refused rather than defaulted to null "
                             + "or dropped from the filter (X0)");
         }
@@ -272,6 +272,10 @@ public final class ConceptQueryPredicateCompiler {
         if (clause.operator().isUnary()) {
             return new ResolvedClause(clause.path(), clause.operator(), null);
         }
+        if (clause.literal() instanceof PredicateLiteral.Distance distance) {
+            return new ResolvedClause(clause.path(), clause.operator(),
+                    resolveDistance(where, clause, distance, parameters, boundParameters, caller));
+        }
         Object value;
         if (clause.literal() instanceof PredicateLiteral.Values values) {
             List<Object> resolvedValues = new ArrayList<>();
@@ -291,6 +295,30 @@ public final class ConceptQueryPredicateCompiler {
             }
         }
         return new ResolvedClause(clause.path(), clause.operator(), value);
+    }
+
+    /** FORM P3-T4: a withinKm/distanceKm literal becomes a {@link ConceptQuery.Distance} with every value resolved. */
+    private static ConceptQuery.Distance resolveDistance(
+            String where, PredicateClause clause, PredicateLiteral.Distance distance,
+            List<CompiledProcedureParameter> parameters, Map<String, Object> boundParameters, ExecutionContext caller) {
+        return new ConceptQuery.Distance(
+                resolveDistanceOperand(where, clause, distance.lat1(), parameters, boundParameters, caller),
+                resolveDistanceOperand(where, clause, distance.lng1(), parameters, boundParameters, caller),
+                resolveDistanceOperand(where, clause, distance.lat2(), parameters, boundParameters, caller),
+                resolveDistanceOperand(where, clause, distance.lng2(), parameters, boundParameters, caller),
+                ConceptQuery.DistanceCmp.valueOf(distance.cmp().name()),
+                resolvePredicateLiteral(where, clause, distance.km(), parameters, boundParameters, caller));
+    }
+
+    private static ConceptQuery.DistanceOperand resolveDistanceOperand(
+            String where, PredicateClause clause, PredicateLiteral.DistanceOperand operand,
+            List<CompiledProcedureParameter> parameters, Map<String, Object> boundParameters, ExecutionContext caller) {
+        if (operand instanceof PredicateLiteral.DistanceOperand.Field field) {
+            return ConceptQuery.DistanceOperand.ofField(predicatePathText(field.target()));
+        }
+        PredicateLiteral literal = ((PredicateLiteral.DistanceOperand.Value) operand).literal();
+        return ConceptQuery.DistanceOperand.ofValue(
+                resolvePredicateLiteral(where, clause, literal, parameters, boundParameters, caller));
     }
 
     private static Object resolvePredicateLiteral(
@@ -313,17 +341,17 @@ public final class ConceptQueryPredicateCompiler {
             return caller.hasActor() ? caller.actorId() : null;
         }
         String name = ((PredicateLiteral.Placeholder) literal).name();
-        String describedClause = predicatePathText(clause.path()) + " " + clause.operator().token() + " :" + name;
+        String describedClause = predicatePathText(clause.path()) + " " + clause.operator().token() + " $params." + name;
         boolean declared = parameters.stream()
                 .anyMatch(parameter -> parameter.name() != null && parameter.name().equalsIgnoreCase(name));
         if (!declared) {
             throw new UnsupportedPredicateException(where, describedClause,
-                    "':" + name + "' is not declared in this query's parameters[] -- a bind placeholder "
+                    "$params." + name + " is not declared in this query's parameters[] -- a bind placeholder "
                             + "must name a real declared parameter, not a typo or a procedure-state ref");
         }
         if (!boundParameters.containsKey(name)) {
             throw new UnsupportedPredicateException(where, describedClause,
-                    "parameter ':" + name + "' is declared but was not supplied a value for this query "
+                    "parameter $params." + name + " is declared but was not supplied a value for this query "
                             + "invocation -- an unbound parameter is refused rather than defaulted to null "
                             + "or dropped from the filter (X0)");
         }
@@ -405,6 +433,7 @@ public final class ConceptQueryPredicateCompiler {
             case IN -> ConceptQuery.Operator.IN;
             case IS_NULL -> ConceptQuery.Operator.IS_NULL;
             case IS_NOT_NULL -> ConceptQuery.Operator.IS_NOT_NULL;
+            case DISTANCE_KM -> ConceptQuery.Operator.DISTANCE_KM;
         };
     }
 

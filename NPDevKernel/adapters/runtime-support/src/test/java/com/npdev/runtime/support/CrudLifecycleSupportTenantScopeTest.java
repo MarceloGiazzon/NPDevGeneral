@@ -60,7 +60,6 @@ class CrudLifecycleSupportTenantScopeTest {
                 + "tenant_id VARCHAR(64) NOT NULL)");
         support = new GeneratedCrudRuntimeSupport(CrudLifecycleSupportTenantScopeTest::model, kernelRunner(),
                 jdbcEntityManager(dataSource), null, null, null, new SystemRuntimeClock(),
-                new InMemoryOrchestrationExecutionRegistry(),
                 (uniqueValueLookup, conflictLookup) -> (entityName, payload) -> List.of());
         callAsTenant("tenant-a");
     }

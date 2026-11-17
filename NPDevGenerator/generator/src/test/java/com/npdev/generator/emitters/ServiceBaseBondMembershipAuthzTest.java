@@ -45,7 +45,7 @@ class ServiceBaseBondMembershipAuthzTest {
     private static final String MODEL_JSON = """
             {
               "namespace": "reg16resid.bonds",
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "version": "v1",
               "concepts": [
                 {

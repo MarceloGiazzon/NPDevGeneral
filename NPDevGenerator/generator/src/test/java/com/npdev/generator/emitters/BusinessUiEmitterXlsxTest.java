@@ -28,7 +28,7 @@ public class BusinessUiEmitterXlsxTest {
         Path modelPath = Files.createTempFile("npdev-xlsx-", ".json");
         Files.writeString(modelPath, """
                 {
-                  "namespace": "xlsx.demo", "dslVersion": "1.0.0", "version": "1.0",
+                  "namespace": "xlsx.demo", "dslVersion": "3.0.0", "version": "1.0",
                   "concepts": [
                     { "name": "Customer", "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true },

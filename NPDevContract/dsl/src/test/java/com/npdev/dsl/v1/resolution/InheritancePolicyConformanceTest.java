@@ -35,7 +35,7 @@ class InheritancePolicyConformanceTest {
     void conceptLifecycleSpecializationWinsElseBase() throws Exception {
         ModelAst ast = parseJson("""
                 {
-                  "namespace": "policy.lifecycle", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "policy.lifecycle", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [
                     { "name": "Order", "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -61,7 +61,7 @@ class InheritancePolicyConformanceTest {
     void conceptAccessSpecializationWinsElseBase() throws Exception {
         ModelAst ast = parseJson("""
                 {
-                  "namespace": "policy.access", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "policy.access", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [
                     { "name": "Order", "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -87,7 +87,7 @@ class InheritancePolicyConformanceTest {
     void conceptModuleSpecializationWinsElseBase() throws Exception {
         ModelAst ast = parseJson("""
                 {
-                  "namespace": "policy.module", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "policy.module", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [
                     { "name": "Invoice", "module": "billing", "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true } ] },
@@ -108,7 +108,7 @@ class InheritancePolicyConformanceTest {
     void conceptIndexesAreAdditiveAcrossSpecialization() throws Exception {
         ModelAst ast = parseJson("""
                 {
-                  "namespace": "policy.indexes", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "policy.indexes", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [
                     { "name": "Invoice", "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -133,7 +133,7 @@ class InheritancePolicyConformanceTest {
     void conceptSoftDeleteIsStickyTrueAcrossSpecialization() throws Exception {
         ModelAst ast = parseJson("""
                 {
-                  "namespace": "policy.softdelete", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "policy.softdelete", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [
                     { "name": "Durable", "softDelete": true, "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true } ] },
@@ -158,7 +158,7 @@ class InheritancePolicyConformanceTest {
     void conceptTemporalIsStickyTrueAcrossSpecialization() throws Exception {
         ModelAst ast = parseJson("""
                 {
-                  "namespace": "policy.temporal", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "policy.temporal", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [
                     { "name": "PriceHistory", "temporal": true, "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true } ] },
@@ -192,7 +192,7 @@ class InheritancePolicyConformanceTest {
     void conceptNestedEventsRejectDuplicateNameAcrossInheritance() throws Exception {
         ModelAst source = parseJson("""
                 {
-                  "namespace": "policy.events", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "policy.events", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [
                     { "name": "Base", "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true } ],
@@ -221,7 +221,7 @@ class InheritancePolicyConformanceTest {
     void conceptOriginFallsBackToBaseWhenSpecializationIsPackless(@TempDir Path temp) throws Exception {
         write(temp, "packs/base/pack.json", """
                 {
-                  "dslVersion": "1.0.0", "pack": "base", "version": "1.0.0",
+                  "dslVersion": "3.0.0", "pack": "base", "version": "1.0.0",
                   "namespace": "com.npdev.base",
                   "description": "P3.2 conformance fixture: origin fallback for a packless specialization.",
                   "concepts": [
@@ -233,7 +233,7 @@ class InheritancePolicyConformanceTest {
                 """);
         Path model = write(temp, "model.json", """
                 {
-                  "namespace": "policy.origin", "dslVersion": "1.0.0", "version": "1.0",
+                  "namespace": "policy.origin", "dslVersion": "3.0.0", "version": "1.0",
                   "packs": [ { "$ref": "packs/base/pack.json" } ],
                   "concepts": [
                     { "name": "CustomWidget", "specializes": "base::Widget",
@@ -263,7 +263,7 @@ class InheritancePolicyConformanceTest {
     void capabilityTypeCannotBeChangedBySpecialization() throws Exception {
         assertIllegalOverride("""
                 {
-                  "namespace": "policy.capability.type", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "policy.capability.type", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [ { "name": "Dummy", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
                   "capabilities": [
@@ -278,7 +278,7 @@ class InheritancePolicyConformanceTest {
     void capabilityOperationsAreAddOnlyAndRejectOverride() throws Exception {
         assertIllegalOverride("""
                 {
-                  "namespace": "policy.capability.ops", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "policy.capability.ops", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [ { "name": "Dummy", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
                   "capabilities": [
@@ -299,7 +299,7 @@ class InheritancePolicyConformanceTest {
     void eventConceptCannotBeChangedBySpecialization() throws Exception {
         assertIllegalOverride("""
                 {
-                  "namespace": "policy.event.concept", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "policy.event.concept", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [
                     { "name": "A", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ],
                       "events": [ { "name": "AEvent", "payload": [] } ] },
@@ -320,7 +320,7 @@ class InheritancePolicyConformanceTest {
     void eventTriggerModeSpecializationWinsElseBase() throws Exception {
         ModelAst ast = parseJson("""
                 {
-                  "namespace": "policy.event.mode", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "policy.event.mode", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [ { "name": "Dummy", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true } ],
                     "events": [
@@ -342,7 +342,7 @@ class InheritancePolicyConformanceTest {
     void flowCannotRedefineStepsWhenSpecializing() throws Exception {
         assertIllegalOverride("""
                 {
-                  "namespace": "policy.flow.steps", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "policy.flow.steps", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [ { "name": "Order", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
                   "flows": [
@@ -357,7 +357,7 @@ class InheritancePolicyConformanceTest {
     void flowHooksWithoutSpecializesIsRejected() throws Exception {
         assertIllegalOverride("""
                 {
-                  "namespace": "policy.flow.hooks", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "policy.flow.hooks", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [ { "name": "Order", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
                   "flows": [
@@ -382,7 +382,7 @@ class InheritancePolicyConformanceTest {
     void flowCannotOverrideConceptModeOrSchemas() throws Exception {
         assertIllegalOverride("""
                 {
-                  "namespace": "policy.flow.concept", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "policy.flow.concept", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [ { "name": "Order", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
                   "flows": [
@@ -394,7 +394,7 @@ class InheritancePolicyConformanceTest {
 
         assertIllegalOverride("""
                 {
-                  "namespace": "policy.flow.schema", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "policy.flow.schema", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [ { "name": "Order", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
                   "flows": [
@@ -409,7 +409,7 @@ class InheritancePolicyConformanceTest {
     void flowScheduleSpecializationWinsElseBase() throws Exception {
         ModelAst ast = parseJson("""
                 {
-                  "namespace": "policy.flow.schedule", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "policy.flow.schedule", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [ { "name": "Order", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
                   "flows": [
@@ -429,7 +429,7 @@ class InheritancePolicyConformanceTest {
     void flowStartEndpointIsStickyTrueAcrossSpecialization() throws Exception {
         ModelAst ast = parseJson("""
                 {
-                  "namespace": "policy.flow.entry", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "policy.flow.entry", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [ { "name": "Order", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
                   "flows": [
@@ -452,7 +452,7 @@ class InheritancePolicyConformanceTest {
     void flowActionFirstNonNullWinsElseBase() throws Exception {
         ModelAst ast = parseJson("""
                 {
-                  "namespace": "policy.flow.action", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "policy.flow.action", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [ { "name": "Order", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
                   "flows": [

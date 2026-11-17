@@ -55,7 +55,7 @@ def _export_args(**overrides) -> argparse.Namespace:
 def _source_model(tmp_dir: Path) -> Path:
     model_path = tmp_dir / "model.json"
     _write(model_path, {
-        "namespace": "test.pack.export", "dslVersion": "1.0.0", "version": "1.0",
+        "namespace": "test.pack.export", "dslVersion": "3.0.0", "version": "1.0",
         "concepts": [
             {
                 "name": "Project",
@@ -210,7 +210,7 @@ class PackExportRoundTripTest(unittest.TestCase):
             tmp_dir = Path(tmp)
             model_path = tmp_dir / "model.json"
             _write(model_path, {
-                "namespace": "test.pack.export.roundtrip", "dslVersion": "1.0.0", "version": "1.0",
+                "namespace": "test.pack.export.roundtrip", "dslVersion": "3.0.0", "version": "1.0",
                 "concepts": [
                     {
                         "name": "Project",
@@ -243,7 +243,7 @@ class PackExportRoundTripTest(unittest.TestCase):
 
             throwaway_model = tmp_dir / "throwaway-app-model.json"
             _write(throwaway_model, {
-                "namespace": "npdev.throwaway.pack.export.roundtrip", "dslVersion": "1.0.0",
+                "namespace": "npdev.throwaway.pack.export.roundtrip", "dslVersion": "3.0.0",
                 "version": "1.0",
                 "packs": [{"$ref": "out/rttestpack/pack.json"}],
             })

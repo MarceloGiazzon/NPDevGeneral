@@ -1,0 +1,49 @@
+{
+  "probes": [
+    {
+      "id": "etf-event-triggered-flow-runs-on-its-event",
+      "keywords": [
+        "flow.trigger"
+      ],
+      "description": "FORM P3-T5c: a flow declaring trigger {event, condition} runs when that event is published, with no HTTP call. Creating a ShelfLayout publishes ShelfLayoutRegistered; OneFlowOnShelfRegistered (condition $event.id != \"\") then shows up in the execution history as an OK run, while OneFlowOnShelfRegisteredNever (condition $event.id == \"no-such-shelf\") never runs. The orchestration rule FollowUpNewShelf listens on the same event and keeps working beside the flow (both fire, by design).",
+      "steps": [
+        {
+          "name": "register a shelf layout (publishes ShelfLayoutRegistered)",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": {
+            "name": "etf-${rand}",
+            "rows": 2,
+            "cols": 2
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "layoutId": "$.id"
+          }
+        },
+        {
+          "name": "the trigger flow whose condition holds ran, the other did not",
+          "method": "GET",
+          "path": "/api/executions/history",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.items[?flowName=OneFlowOnShelfRegistered].flowName": "OneFlowOnShelfRegistered",
+              "$.items[?flowName=OneFlowOnShelfRegisteredNever].flowName": {
+                "exists": false
+              }
+            }
+          }
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/shelf_layouts/${layoutId}",
+          "stopOnFail": false
+        }
+      ]
+    }
+  ]
+}

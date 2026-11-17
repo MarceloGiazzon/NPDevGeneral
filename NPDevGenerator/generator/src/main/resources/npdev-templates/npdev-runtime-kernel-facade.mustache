@@ -452,6 +452,23 @@ public class KernelFacade {
         }
     }
 
+    /**
+     * FORM P3-T5b: whether {@code flowName} may be started through the public REST routes. A flow declared
+     * {@code expose: ui} is started from a screen or panel action and {@code expose: internal} only by another
+     * flow's callFlow step; neither gets a public POST. An unknown name is "public" here so the kernel's own
+     * "Flow not found" answer is still what the caller sees.
+     */
+    public boolean isPubliclyStartable(String flowName) {
+        if (flowName == null) {
+            return true;
+        }
+        return modelHolder.get().getFlows().stream()
+                .filter(flow -> flowName.equalsIgnoreCase(flow.getName()))
+                .findFirst()
+                .map(flow -> flow.getExpose() == null || "api".equals(flow.getExpose()))
+                .orElse(true);
+    }
+
     public List<String> listFlowNames() {
         return modelHolder.get().getFlows().stream()
                 .map(flow -> flow.getName())

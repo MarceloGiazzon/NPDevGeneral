@@ -24,17 +24,19 @@ A model of only `concepts` + `fields` is a complete app: every concept gets REST
 checks of `required`, `unique`, `min`/`max`/`maxLength`, enum, reference, `lifecycle` and
 `invariants`. **Do not write:**
 - create/update/delete flows or `invariantCheck` steps that only save a record;
-- a `persistence` capability, or `persistence`/`eventBus` bindings (derived: a flow with
-  `createConcept`/`updateConcept` gets `persistence` bound to `repository` on its own, and
-  `repository` and `inproc` are the only values anyway);
+- a `persistence` capability, or a `persistence`/`eventBus` adapter (derived: a flow with
+  `createConcept`/`updateConcept` gets `persistence` bound to `repository` on its own, an app
+  with events or flows gets the in-process event bus, a `NotificationCapability` gets `notification-inproc`);
 - an invariant restating a field flag (`x != null && x != ''` → `required`; one-field unique →
   `unique: true`; `x >= 0` → `"min": 0`). Invariants are for cross-field rules;
 - `ui.label` equal to the humanized name (`dueDate` → "Due Date"). `missing_*_label` warnings
   are cosmetic.
 
-Write a flow only for work beyond saving: notify, call out, branch, wait for an event. Declare a
-capability + binding only for what a flow calls (e.g. `notification`→`notification-inproc`,
-`webhook`→`webhook-inproc`). To publish an event on save without a flow:
+Write a flow only for work beyond saving: notify, call out, branch, wait for an event. To notify,
+use the built-in step `{"type":"notify","to":"$saved.email","message":"New request"}` -- no
+capability needed (`to` and `message` are a literal or a `$ref`). Declare a capability only for
+what a flow calls beyond that (e.g. `webhook` with `"adapter": "webhook-inproc"`). To publish an
+event on save without a flow:
 `concepts[].events: [{"name":"XCreated","mode":"create"}]`.
 
 ## Non-negotiables
@@ -45,7 +47,7 @@ capability + binding only for what a flow calls (e.g. `notification`→`notifica
    `{"name":"id","type":"uuid","id":true,"required":true}`.
 3. **`reference.target` names a concept in the composed model** (own or from a pack/fragment).
 4. **Root uses `concepts`, not `entities`** (rejected legacy shape).
-5. Required root fields: `version`, `namespace` (or `model`), non-empty `concepts`. `dslVersion` is optional (omit it, or write `"1.0.0"`; any other value is an error).
+5. Required root fields: `version`, `namespace` (or `model`), non-empty `concepts`. `dslVersion` is optional (omit it, or write `"3.0.0"`; any other value is an error).
 
 ## Renaming: `renamedFrom` is mandatory
 
@@ -55,7 +57,19 @@ new one, which NPDev refuses as destructive. **User says "rename X to Y" → alw
 for a never-run model). Removing a field or concept is also destructive; never remove one because
 it "looks unused" -- ask.
 
-## Building blocks
+## Which block do I use?
+
+NPDev has twelve nouns. Ask the questions in order and stop at the first yes:
+
+1. Does the app **store** it (a kind of record)? -> **Concept**. Only a read over it? -> **Query**.
+2. Does the app **do** something, or react to something? -> **Flow** (steps, started by api / ui / event / schedule / webhook). A fact other flows react to -> **Event**. A pure calculation reused in expressions -> **Function** (today: write the expression inline).
+3. Does it reach **outside** the app (HTTP API, payment, mail, your own code)? -> **Capability**.
+4. Does it say **who may** do what? -> **Role**.
+5. Does it decide **what a user sees**? -> **Screen** (one page: list, detail, form, board, ...) inside an **Experience** (one role's home and navigation). Today: `panels[]`, `selectors[]`, `appShell`.
+6. Is it a **setting** changed without regenerating? -> **Property**.
+7. Is it **someone else's** library to reuse? -> **Pack**. A boundary inside your own project? -> **Module** (`modules[]`).
+
+Never invent a thirteenth block: if none fits, you are describing a field, a step or an expression of one of these.
 
 | Block | Root key | One-line |
 | --- | --- | --- |
@@ -63,9 +77,9 @@ it "looks unused" -- ask.
 | Field | `concepts[].fields[]` | One column: `name`, `type`, `required`, `unique`, `id`, `min`/`max`/`maxLength`, `enumValues`, `reference`. A calculated column is the field's `derivedExpression` (string, e.g. `"quantity * unitPrice"`); `computed` is NOT a field key (it belongs to queries, as `{name, expression}` output columns). |
 | Role | `roles[]` | `concepts: {"X": ["read","create","update","delete"]}`; `grants` only for platform permissions. |
 | Flow | `flows[]` | A non-CRUD action (`POST /api/flows/<Name>/execute`) made of `steps[]`. |
-| Capability | `capabilities[]` + `bindings[]` | A verb a flow calls (notification, webhook, http...), bound to an adapter. |
+| Capability | `capabilities[]` (+ its `adapter`) | A verb a flow calls (notification, webhook, http...), bound to an adapter. |
 | Event | `events[]` (or nested in a concept) | A broadcast fact; emitted by a flow step or a lifecycle transition. |
-| Orchestration | `orchestrations[]` | "when event X → do Y"; `trigger` + `actions[]`. |
+| Event-triggered flow | `flows[]` with `trigger` | "when event X → do Y": a flow whose `trigger` is `{"event":"X"}` (optional `condition`) runs by itself whenever X is published. |
 | Query / Panel / Procedure | `queries[]` / `panels[]` / `procedures[]` | A named filtered list; a hand-designed screen; server logic for a panel button. Only when the generic UI is not enough. |
 
 ## Totals, reports and reactions
@@ -85,16 +99,16 @@ Exact shapes (verified); copy them, do not invent keys.
 - **Status change through a flow** (only if the flow does more than the REST update; `updateConcept` takes the
   same `scope`/`input`/`output` as `createConcept`; the caller sends `{"id":...,"status":"CLOSED"}`):
   `"flows":[{"name":"CloseTicket","concept":"Ticket","input":{"concept":"Ticket","mode":"update"},"steps":[{"name":"save","type":"updateConcept","scope":"Ticket","input":"$input","output":"$saved"},{"name":"done","type":"return","value":"$saved"}]}]`.
-  Flows and procedures use DIFFERENT `steps[].type` vocabularies: flow = invariantCheck|capabilityCall|generatedAction|emitEvent|
-  scheduleEvent|return|branch|awaitEvent|createConcept|updateConcept|map|forEach|callProcedure; procedure = assign|condition|
-  conceptQuery|readConcept|conceptCreate|conceptUpdate|conceptDelete|callProcedure|capabilityCall|eventPublish|computeValue|return|... (full enum in the value reference).
+  Flows and procedures use OVERLAPPING `steps[].type` vocabularies: flow = invariantCheck|capabilityCall|generatedAction|emitEvent|
+  scheduleEvent|return|branch|awaitEvent|createConcept|updateConcept|map|forEach|set|readConcept|listConcepts|runQuery|deleteConcept|callFlow; procedure = assign|condition|
+  conceptQuery|readConcept|conceptCreate|conceptUpdate|conceptDelete|capabilityCall|eventPublish|computeValue|return|... (full enum in the value reference).
 - **Lifecycle** (on the concept): `"lifecycle":{"statusField":"status","states":[{"value":"OPEN","initial":true},{"value":"CLOSED","terminal":true}],
   "transitions":[{"from":"OPEN","to":"CLOSED","event":"TicketClosed"}]}` (`from`/`to` are single states; `initial`/`terminal` live on the state, `event` on the transition).
 - **Reaction to a status change:** the lifecycle transition names an `event`, `events[]` declares it with a
-  `payload`, and an orchestration creates a record from it:
-  `"orchestrations":[{"name":"LogReturn","trigger":{"type":"event","event":"LoanReturned"},"actions":[{"type":"create","concept":"ReturnLog","map":{"loan":"$event.id"}}]}]`.
+  `payload`, and a flow with an event trigger creates a record from it (the event payload arrives as `$input`):
+  `"flows":[{"name":"LogReturn","expose":"internal","runAs":"system","trigger":{"event":"LoanReturned"},"steps":[{"name":"build","type":"map","select":{"loan":"$input.id"},"output":"row"},{"name":"log","type":"createConcept","scope":"ReturnLog","input":"$row","output":"created"}]}]`.
 
-## Reuse and extend: packs, fragments, your own code, outside APIs
+## Reuse and extend: packs, file splits, your own code, outside APIs
 
 **A flow that saves needs nothing declared.** A `createConcept`/`updateConcept` step gets the
 `persistence` capability and its `repository` binding derived, with the operations the flows
@@ -110,13 +124,16 @@ roles your app must bind to its own: if unsure, ask instead of guessing. With no
 no pack that fits, model the concepts yourself (your own `User`, `Customer`...).
 No pack exists for payments or ride-hailing: model those yourself. Distances and "nearest" are built in (see `geo`).
 
-**Fragments: split a big model.** `"fragments":[{"$ref":"fragments/billing.json"}]` (relative `.json` path,
-no `..`). A fragment file is a JSON object holding any of the model's arrays (`concepts`, `flows`,
-`capabilities`, `bindings`, `roles`, `queries`, `procedures`...). Deliver each as its own file.
-**In a chat reply that must be ONE `model.json`, do not use fragments**: keep everything in the model.
+**Split a big model.** An entry of ANY array may be a `$ref`: `"concepts":[{"$ref":"concepts/billing.json"}]`
+(relative `.json` path, no `..`). If the file is a JSON object holding an array of that same name
+(`{"concepts":[...]}`) the whole array is spliced in at that place; otherwise the file is one entry.
+Deliver each as its own file. **In a chat reply that must be ONE `model.json`, do not split**: keep everything in the model.
 
-**Query rows, then run your logic on them.** A flow has no query step: use a procedure and `callProcedure` it.
-Procedure steps: `{"type":"runQuery","query":"AvailableDrivers","concept":"Driver","target":"free"}`,
+**Query rows, then run your logic on them.** A flow can read and query concepts itself: `{"type":"runQuery","query":"AvailableDrivers","params":{"who":"$input.id"},"output":"$free"}`,
+`{"type":"listConcepts","output":"$all"}`, `{"type":"readConcept","id":"$input.id","output":"$row"}`, `{"type":"deleteConcept","id":"$input.id"}`,
+`{"type":"set","value":"$input.name","output":"$wanted"}` and `{"type":"callFlow","flow":"Helper","input":"$input","output":"$answer"}` (the concept is the flow's own, or the step's `scope`).
+A flow may also say who may start it and as whom it runs: `"expose":"api|ui|internal"` (default `api`; `ui` and `internal` flows have no public POST, it answers 404; an `internal` flow is only started by a `callFlow`)
+and `"runAs":"caller|system"`. For multi-step logic put the steps in another flow and run it with a `callFlow` step. Procedure-style steps (still accepted in a flow where the vocabularies overlap): `{"type":"runQuery","query":"AvailableDrivers","concept":"Driver","target":"free"}`,
 `{"type":"mapList","items":"$free","as":"d","select":{"id":"$d.id","lat":"$d.lat"},"target":"rows"}`,
 `{"type":"capabilityCall","capability":"geo","operation":"closest","args":{"lat":"$input.pickupLat","lng":"$input.pickupLng","candidates":"$rows"},"target":"best"}`,
 `{"type":"if","condition":"$best.found","then":[...],"else":[...]}`,
@@ -138,16 +155,14 @@ onto the ride) declares `"runAs":"system"`: its steps, and the procedures it cal
 or another procedure may call it (not an action); check the state first with an `if` step.
 
 **Distances and nearest (built in, no code): the `geo` capability.** Declare
-`{"name":"geo","type":"GeoCapability","operations":["distanceKm","closest"]}` in `capabilities[]` and
-`{"capability":"geo","adapter":"geo-inproc"}` in `bindings[]`. Both calls take one object in `args`, plain numbers:
+`{"name":"geo","type":"GeoCapability","adapter":"geo-inproc","operations":["distanceKm","closest"]}` in `capabilities[]`. Both calls take one object in `args`, plain numbers:
 `distanceKm` `{"fromLat":..,"fromLng":..,"toLat":..,"toLng":..}` returns `{distanceKm}`;
 `closest` `{"lat":..,"lng":..,"candidates":[{"id":..,"lat":..,"lng":..}],"limit":3,"maxKm":10,"speedKmh":30}`
 (`limit`, `maxKm`, `speedKmh`, `excludeIds` optional; `excludeIds` = ids already tried) returns `{found, id, distanceKm, etaMinutes, withinCount, ranked:[{id,distanceKm,etaMinutes}]}`,
 nearest first; with no candidate `found` is false (never an error). Straight-line distance, not road distance.
 
 **Your own code (a custom capability).** For logic no built-in has (surge pricing, scoring):
-`"customCapabilities":[{"name":"surge","type":"SurgeCapability","operations":["multiplier"]}]` plus
-`"bindings":[{"capability":"surge","adapter":"plugin:java-source"}]`, and two files:
+`"customCapabilities":[{"name":"surge","type":"SurgeCapability","adapter":"plugin:java-source","operations":["multiplier"]}]`, and two files:
 `<app>/capabilities/surge/src/main/java/<pkg>/SurgeCapability.java` (a plain class with a public no-arg constructor;
 one public method per operation taking `Map`/`List` parameters named like the `args` keys and returning
 a `Map`; pure computation only: no files, network, threads, reflection) and
@@ -184,13 +199,13 @@ Only when asked for a PACK (a reusable, versioned set of definitions many apps i
 `pack.json`; concepts, fields, `access`, queries, roles, flows and the rest follow the same contract as `model.json`.
 - **In a pack:** concepts (with `access` and lifecycle), queries, roles, domain types, events, flows that use only the
   pack's own concepts, and `customCapabilities` as CONTRACTS (name, inputs, outputs, meaning).
-- **Never in a pack:** code; `bindings` to an adapter of one app; `signature`, `migrations`, `firstPublishedVersion`,
+- **Never in a pack:** code; an `adapter` of one app; `signature`, `migrations`, `firstPublishedVersion`,
   `forkedFrom` (NPDev fills them); keys, passwords, tokens, personal data; references to another app's concepts.
 - **Names:** `pack` is EXACTLY the id you were given (`Pack id:` line of the request) (lowercase letters, digits, `-`, `_`). Concept and field names are plain and
   NOT prefixed with the pack id. `version` is `MAJOR.MINOR.PATCH`: a new pack is `1.0.0`; for a new version of an existing
   pack, patch = fix, minor = something added, major = something removed, renamed or made stricter; never lower it.
-- **Skeleton:** `{"dslVersion":"1.0.0","pack":"ratings","version":"1.0.0","namespace":"com.example.ratings","description":"Star ratings with a comment.","category":"other","concepts":[{"name":"Rating","fields":[{"name":"id","type":"uuid","id":true,"required":true},{"name":"authorAccount","type":"string","required":true},{"name":"stars","type":"integer","required":true,"min":1,"max":5}],"access":{"read":"authorAccount == $user.id || $user.isSystem","write":"authorAccount == $user.id || $user.isSystem"}}],"queries":[{"name":"RatingsOfAuthor","concept":"Rating","where":"authorAccount == :author","parameters":[{"name":"author","type":"string","required":true}]}]}`
-  `category` is one of `security`, `web-ui`, `crypto`, `bots`, `ai-tools`, `finance`, `math`, `other`. A query `where` compares a field to a `:name` parameter, a quoted string or a number; a bare word that is not a field is an error.
+- **Skeleton:** `{"dslVersion":"3.0.0","pack":"ratings","version":"1.0.0","namespace":"com.example.ratings","description":"Star ratings with a comment.","category":"other","concepts":[{"name":"Rating","fields":[{"name":"id","type":"uuid","id":true,"required":true},{"name":"authorAccount","type":"string","required":true},{"name":"stars","type":"integer","required":true,"min":1,"max":5}],"access":{"read":"authorAccount == $user.id || $user.isSystem","write":"authorAccount == $user.id || $user.isSystem"}}],"queries":[{"name":"RatingsOfAuthor","concept":"Rating","where":"authorAccount == $params.author","parameters":[{"name":"author","type":"string","required":true}]}]}`
+  `category` is one of `security`, `web-ui`, `crypto`, `bots`, `ai-tools`, `finance`, `math`, `other`. A query `where` compares a field to a `$params.name` parameter, a quoted string or a number; a bare word that is not a field is an error.
 - **It must compose:** an app imports it with `"packs":[{"$ref":"packs/<id>/pack.json","as":"x"}]` and still validates.
 
 ## The loop

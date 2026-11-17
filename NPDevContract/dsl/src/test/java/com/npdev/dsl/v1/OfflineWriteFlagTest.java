@@ -24,7 +24,7 @@ class OfflineWriteFlagTest {
     private static ModelAst parse(String conceptUi, String fieldUi) throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "offline.write", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "offline.write", "version": "1.0",
               "concepts": [
                 { "name": "Visit", %s "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

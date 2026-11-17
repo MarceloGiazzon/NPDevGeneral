@@ -32,7 +32,7 @@ class UidThreadingTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "uid.threading.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -73,7 +73,7 @@ class UidThreadingTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "uid.threading.absent.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Gadget", "fields": [

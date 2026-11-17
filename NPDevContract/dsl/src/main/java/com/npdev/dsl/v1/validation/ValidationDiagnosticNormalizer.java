@@ -37,10 +37,6 @@ final class ValidationDiagnosticNormalizer {
             Pattern.compile("^Duplicate capability name:\\s*(.+)$");
     private static final Pattern DUPLICATE_EVENT_PATTERN =
             Pattern.compile("^Duplicate event name:\\s*(.+)$");
-    private static final Pattern BINDING_UNKNOWN_PATTERN =
-            Pattern.compile("^Binding references unknown capability:\\s*(.+)$");
-    private static final Pattern DUPLICATE_BINDING_PATTERN =
-            Pattern.compile("^Duplicate binding for capability:\\s*(.+)$");
 
     // B1, B13, B19: boundary-prefixed diagnostic codes. The validator embeds `B1:<code>:` at the
     // start of the message string; this map extracts the boundary id and strips the prefix so
@@ -345,46 +341,6 @@ final class ValidationDiagnosticNormalizer {
             );
         }
 
-        Matcher bindingUnknownMatcher = BINDING_UNKNOWN_PATTERN.matcher(safeMessage);
-        if (bindingUnknownMatcher.matches()) {
-            String capability = bindingUnknownMatcher.group(1).trim();
-            return new ValidationDiagnostic(
-                    ValidationLayer.SEMANTIC,
-                    severity,
-                    "unknown_binding_capability",
-                    safeMessage,
-                    SEMANTIC_SOURCE_MODULE,
-                    "bindings[capability=" + capability + "]",
-                    null,
-                    capability,
-                    "bindings",
-                    capability,
-                    "Declare the capability before binding it, or fix the binding capability name.",
-                    "validation.semantic.unknown_binding_capability",
-                    boundaryId
-            );
-        }
-
-        Matcher duplicateBindingMatcher = DUPLICATE_BINDING_PATTERN.matcher(safeMessage);
-        if (duplicateBindingMatcher.matches()) {
-            String capability = duplicateBindingMatcher.group(1).trim();
-            return new ValidationDiagnostic(
-                    ValidationLayer.SEMANTIC,
-                    severity,
-                    "duplicate_binding_capability",
-                    safeMessage,
-                    SEMANTIC_SOURCE_MODULE,
-                    "bindings[capability=" + capability + "]",
-                    null,
-                    capability,
-                    "bindings",
-                    capability,
-                    "Keep only one binding per capability in the model.",
-                    "validation.semantic.duplicate_binding_capability",
-                    boundaryId
-            );
-        }
-
         Matcher computeOperandMatcher = COMPUTE_VALUE_OPERAND_PATTERN.matcher(safeMessage);
         if (computeOperandMatcher.find()) {
             String procedure = computeOperandMatcher.group(1);
@@ -523,14 +479,8 @@ final class ValidationDiagnosticNormalizer {
         if (lower.contains("/capabilities")) {
             return "capabilities";
         }
-        if (lower.contains("/bindings")) {
-            return "bindings";
-        }
         if (lower.contains("/events")) {
             return "events";
-        }
-        if (lower.contains("/orchestrationrules")) {
-            return "orchestrationRules";
         }
         return "root";
     }

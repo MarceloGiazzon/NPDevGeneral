@@ -264,14 +264,31 @@ class QueryPredicateClauseTest(unittest.TestCase):
 
         self.assertEqual("name == 'x' && customer.title == 'y'", model["queries"][0]["where"])
 
+    def test_withinkm_coordinates_are_counted_in_written_order_and_the_function_name_is_not_a_path(self) -> None:
+        # withinKm(lat, lng, $params.a, $params.b, 5) || name == 'x': the written fields are lat, lng, name
+        model = self._model("withinKm(lat, lng, $params.a, $params.b, 5) || name == 'x'")
+
+        cascade.apply_cascade(model, [self._q_edge(2, "Order.name")], "name", "title")
+
+        self.assertEqual("withinKm(lat, lng, $params.a, $params.b, 5) || title == 'x'",
+                         model["queries"][0]["where"])
+
+    def test_a_double_quoted_literal_does_not_shift_the_clause_numbering(self) -> None:
+        # The expression lexer accepts "..." strings; "foo bar" must not be counted as two paths.
+        model = self._model('a == "foo bar" && name == 1')
+
+        cascade.apply_cascade(model, [self._q_edge(1, "Order.name")], "name", "title")
+
+        self.assertEqual('a == "foo bar" && title == 1', model["queries"][0]["where"])
+
     def test_literals_placeholders_user_refs_and_operator_words_are_never_clause_paths(self) -> None:
         model = self._model(
-            "name in ('name','b') && owner == :name && x is not null && customer.name contains $user.id")
+            "name in ['name','b'] && owner == $params.name && x != null && contains(customer.name, $user.id)")
 
         cascade.apply_cascade(model, [self._q_edge(0, "Order.name")], "name", "title")
 
         self.assertEqual(
-            "title in ('name','b') && owner == :name && x is not null && customer.name contains $user.id",
+            "title in ['name','b'] && owner == $params.name && x != null && contains(customer.name, $user.id)",
             model["queries"][0]["where"])
 
     def test_an_ambiguous_path_is_refused_not_guessed(self) -> None:

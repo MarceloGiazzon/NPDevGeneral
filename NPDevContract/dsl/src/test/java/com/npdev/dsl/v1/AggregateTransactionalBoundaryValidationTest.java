@@ -53,7 +53,7 @@ class AggregateTransactionalBoundaryValidationTest {
     void flowWritingTwoDifferentAggregateRootsFails() throws Exception {
         String json = """
                 {
-                  "namespace": "agg.boundary.demo", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "agg.boundary.demo", "dslVersion": "3.0.0", "version": "v1",
                   %s
                   "flows": [ {
                     "name": "BadFlow",
@@ -71,10 +71,39 @@ class AggregateTransactionalBoundaryValidationTest {
     }
 
     @Test
+    void crossAggregateReasonWaivesTheRuleForThatFlowOnly() throws Exception {
+        String json = """
+                {
+                  "namespace": "agg.boundary.demo", "dslVersion": "3.0.0", "version": "v1",
+                  %s
+                  "flows": [ {
+                    "name": "WaivedFlow",
+                    "crossAggregateReason": "migrated from a procedure that wrote both roots",
+                    "input": { "concept": "Order", "mode": "create" },
+                    "steps": [ %s, %s ]
+                  }, {
+                    "name": "StillBadFlow",
+                    "input": { "concept": "Order", "mode": "create" },
+                    "steps": [ %s, %s ]
+                  } ]
+                }
+                """.formatted(CONCEPTS,
+                flowStep("save-order", "Order"), flowStep("save-customer", "Customer"),
+                flowStep("save-order", "Order"), flowStep("save-customer", "Customer"));
+
+        List<String> errors = validate(json);
+
+        assertFalse(errors.stream().anyMatch(e -> e.contains("WaivedFlow") && e.contains("aggregates")),
+                "A flow with crossAggregateReason is exempt, got: " + errors);
+        assertTrue(errors.stream().anyMatch(e -> e.contains("StillBadFlow") && e.contains("aggregates")),
+                "The waiver is per flow: a flow without a reason still fails, got: " + errors);
+    }
+
+    @Test
     void flowWritingOnlyOneAggregatesConceptsPasses() throws Exception {
         String json = """
                 {
-                  "namespace": "agg.boundary.demo", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "agg.boundary.demo", "dslVersion": "3.0.0", "version": "v1",
                   %s
                   "flows": [ {
                     "name": "GoodFlow",
@@ -94,7 +123,7 @@ class AggregateTransactionalBoundaryValidationTest {
     void flowWritingAConceptNoAggregateOwnsIsUnaffected() throws Exception {
         String json = """
                 {
-                  "namespace": "agg.boundary.demo", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "agg.boundary.demo", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [
                     { "name": "Order", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true } ] },

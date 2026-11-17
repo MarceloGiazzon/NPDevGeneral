@@ -14,6 +14,10 @@ public final class CompiledFlow {
     private final CompiledActionMetadata action;
     private final boolean startEndpoint;
     private final CompiledFlowSchedule schedule;
+    private final CompiledFlowTrigger trigger;
+    private final String description;
+    private final String expose;
+    private final String runAs;
     private final CompiledOrigin origin;
 
     public CompiledFlow(String name, String concept, List<CompiledFlowStep> steps) {
@@ -87,6 +91,45 @@ public final class CompiledFlow {
             CompiledFlowSchedule schedule,
             CompiledOrigin origin
     ) {
+        this(name, concept, mode, steps, inputSchema, outputSchema, action, startEndpoint, schedule, origin, null, null, null);
+    }
+
+    /** FORM P3-T5a: canonical constructor, adding {@code trigger}, {@code expose} and {@code runAs}. */
+    /** Pre-P3-T5c constructor: {@code null} for every key the merged flow vocabulary added after it. */
+    public CompiledFlow(
+            String name,
+            String concept,
+            String mode,
+            List<CompiledFlowStep> steps,
+            CompiledSchema inputSchema,
+            CompiledSchema outputSchema,
+            CompiledActionMetadata action,
+            boolean startEndpoint,
+            CompiledFlowSchedule schedule,
+            CompiledOrigin origin,
+            CompiledFlowTrigger trigger,
+            String expose,
+            String runAs
+    ) {
+        this(name, concept, mode, steps, inputSchema, outputSchema, action, startEndpoint, schedule, origin, trigger, expose, runAs, null);
+    }
+
+    public CompiledFlow(
+            String name,
+            String concept,
+            String mode,
+            List<CompiledFlowStep> steps,
+            CompiledSchema inputSchema,
+            CompiledSchema outputSchema,
+            CompiledActionMetadata action,
+            boolean startEndpoint,
+            CompiledFlowSchedule schedule,
+            CompiledOrigin origin,
+            CompiledFlowTrigger trigger,
+            String expose,
+            String runAs,
+            String description
+    ) {
         this.name = name;
         this.concept = concept;
         this.mode = mode;
@@ -97,7 +140,14 @@ public final class CompiledFlow {
         this.startEndpoint = startEndpoint;
         this.schedule = schedule;
         this.origin = origin;
+        this.trigger = trigger;
+        this.expose = expose;
+        this.runAs = runAs;
+        this.description = description;
     }
+
+    /** FORM P3-T5c: what the flow is for (one or two sentences; null = none). */
+    public String getDescription() { return description; }
 
     public String getName() { return name; }
 
@@ -134,4 +184,10 @@ public final class CompiledFlow {
         return origin;
     }
 
+    /** FORM P3-T5a: compiled counterpart of {@code FlowAst#getTrigger()}; null means an API call. */
+    public CompiledFlowTrigger getTrigger() { return trigger; }
+
+    public String getExpose() { return expose; }
+
+    public String getRunAs() { return runAs; }
 }

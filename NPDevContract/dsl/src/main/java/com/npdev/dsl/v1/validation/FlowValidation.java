@@ -1,9 +1,9 @@
 package com.npdev.dsl.v1.validation;
 
 import com.npdev.dsl.v1.ast.CapabilityAst;
+import com.npdev.dsl.v1.ast.InboundDoorAst;
 import com.npdev.dsl.v1.compiled.CronSchedules;
 import com.npdev.dsl.v1.ast.ConceptAccessAst;
-import com.npdev.dsl.v1.ast.CapabilityBindingAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
 import com.npdev.dsl.v1.ast.DomainTypeAst;
 import com.npdev.dsl.v1.ast.CapabilityPolicyAst;
@@ -15,12 +15,10 @@ import com.npdev.dsl.v1.ast.EnumOptionAst;
 import com.npdev.dsl.v1.ast.FieldAst;
 import com.npdev.dsl.v1.ast.FlowAst;
 import com.npdev.dsl.v1.ast.FlowScheduleAst;
+import com.npdev.dsl.v1.ast.FlowTriggerAst;
 import com.npdev.dsl.v1.ast.InvariantAst;
 import com.npdev.dsl.v1.ast.LifecycleAst;
 import com.npdev.dsl.v1.ast.ModelAst;
-import com.npdev.dsl.v1.ast.OrchestrationActionAst;
-import com.npdev.dsl.v1.ast.OrchestrationAst;
-import com.npdev.dsl.v1.ast.OrchestrationTriggerAst;
 import com.npdev.dsl.v1.ast.AggregateAst;
 import com.npdev.dsl.v1.ast.AggregateCollectionAst;
 import com.npdev.dsl.v1.ast.AutoPanelAst;
@@ -36,12 +34,10 @@ import com.npdev.dsl.v1.ast.PanelActionAst;
 import com.npdev.dsl.v1.ast.PanelAst;
 import com.npdev.dsl.v1.ast.PanelDataSourceAst;
 import com.npdev.dsl.v1.ast.PresentationMetadataAst;
-import com.npdev.dsl.v1.ast.ProcedureAst;
 import com.npdev.dsl.v1.ast.ProcedureParameterAst;
 import com.npdev.dsl.v1.ast.ProcedureStepAst;
 import com.npdev.dsl.v1.ast.QueryAst;
 import com.npdev.dsl.v1.ast.ReferenceSemanticsAst;
-import com.npdev.dsl.v1.ast.RuleProfileAst;
 import com.npdev.dsl.v1.ast.TruthLevel;
 import com.npdev.dsl.v1.ast.SchemaAst;
 import com.npdev.dsl.v1.ast.StateMachineStateAst;
@@ -77,9 +73,8 @@ import static com.npdev.dsl.v1.validation.PackValidation.validateCapabilityPolic
 import static com.npdev.dsl.v1.validation.PackValidation.validateReferencedCapabilityBindings;
 
 /**
- * Semantic validation for events, flows (steps of every kind), and declarative orchestration rules
- * (event-triggered actions). Mirrors the {@code events} / {@code flows} / {@code orchestrationRules}
- * sections of {@code model.schema.json}, which sit adjacent to each other in that schema.
+ * Semantic validation for events and flows (steps of every kind, event-triggered flows included).
+ * Mirrors the {@code events} / {@code flows} sections of {@code model.schema.json}.
  *
  * <p>Split out of {@code SemanticValidator} (T1.15); see that class for the orchestration entry
  * point.
@@ -98,7 +93,9 @@ final class FlowValidation {
             "signaturecapability", Set.of("sign", "verify"),
             "eventbus", Set.of("publish", "subscribe", "unsubscribe"),
             "invariantengine", Set.of("evaluate"),
-            "notifycapability", Set.of("send")
+            "notifycapability", Set.of("send"),
+            // FORM P3-T8: a notify step lowers to notification.send; the compiler implies the capability + adapter
+            "notification", Set.of("send")
     );
 
     static void validateEvents(ModelAst modelAst, List<String> errors) {
@@ -157,6 +154,50 @@ final class FlowValidation {
         }
     }
 
+    /**
+     * FORM P3-T5a: {@code trigger.event} must name a declared event and its {@code condition} must parse in
+     * the one expression language; a {@code trigger.schedule} is validated as the flow's schedule (the parser
+     * folded it in); a {@code webhook} names a capability that declares {@code inbound}. The runtime starts event flows
+     * (FlowEventTriggerService) and webhook flows (WebhookInboundController); a schedule flow runs from its cron.
+     */
+    private static void validateFlowTrigger(
+            FlowAst flow, Set<String> eventNames, Set<String> webhookSources, List<String> errors) {
+        FlowTriggerAst trigger = flow.getTrigger();
+        if (trigger == null) {
+            return;
+        }
+        switch (trigger.kind()) {
+            case "event" -> {
+                if (!eventNames.contains(normalize(trigger.event()))) {
+                    errors.add("Flow " + flow.getName() + ": trigger.event references unknown event " + trigger.event());
+                }
+                if (trigger.condition() != null) {
+                    try {
+                        com.npdev.dsl.v1.expr.ComputedExpression.parse(trigger.condition());
+                    } catch (com.npdev.dsl.v1.expr.ComputedExpression.ExpressionException malformed) {
+                        errors.add("Flow " + flow.getName() + ": trigger.condition is not a valid expression: "
+                                + malformed.getMessage());
+                    }
+                }
+            }
+            case "schedule" -> {
+                if (flow.getSchedule() == null) {
+                    errors.add("Flow " + flow.getName() + ": trigger.schedule needs a cron -- suggestedFix: give trigger.schedule a cron such as 0 8 * * *");
+                }
+            }
+            case "webhook" -> {
+                if (trigger.webhook() == null || trigger.webhook().isBlank()) {
+                    errors.add("Flow " + flow.getName() + ": trigger.webhook must name a capability with an inbound door -- suggestedFix: set trigger.webhook to the name of a capability that declares inbound");
+                } else if (!webhookSources.contains(trigger.webhook().trim())) {
+                    errors.add("Flow " + flow.getName() + ": trigger.webhook references " + trigger.webhook()
+                            + ", which is not a capability with an inbound door -- suggestedFix: add inbound to that capability or use one of "
+                            + webhookSources);
+                }
+            }
+            default -> errors.add("Flow " + flow.getName() + ": unsupported trigger kind " + trigger.kind());
+        }
+    }
+
     static void validateFlows(
             ModelAst modelAst,
             Map<String, ConceptAst> entitiesByLower,
@@ -171,15 +212,13 @@ final class FlowValidation {
                 .map(EventAst::getName)
                 .map(SemanticValidator::normalize)
                 .collect(Collectors.toSet());
+        Set<String> webhookSources = InboundDoorAst.of(modelAst.getCapabilities()).stream()
+                .map(InboundDoorAst::capability)
+                .filter(java.util.Objects::nonNull)
+                .map(String::trim)
+                .collect(Collectors.toCollection(java.util.TreeSet::new));
         Set<String> referencedCapabilities = new HashSet<>();
         Map<String, String> ownedConceptToAggregate = AggregateValidation.ownedConceptToAggregate(modelAst);
-        // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): callProcedure needs to know which
-        // procedure names actually exist, same as a capability step already checks operationsByCapability.
-        Set<String> knownProcedureNames = modelAst.getProcedures().stream()
-                .map(ProcedureAst::name)
-                .map(SemanticValidator::normalize)
-                .collect(Collectors.toSet());
-
         for (FlowAst flow : modelAst.getFlows()) {
             String flowKey = normalize(flow.getName());
             if (!flowNames.add(flowKey)) {
@@ -191,21 +230,26 @@ final class FlowValidation {
             }
 
             validateFlowSchedule(flow, errors);
+            validateFlowTrigger(flow, eventNames, webhookSources, errors);
+            validateRunAsSystemIsNotPublic(flow, errors);
 
-            ConceptAst concept = entitiesByLower.get(normalize(flow.getConcept()));
-            if (concept == null) {
-                errors.add("Flow " + flow.getName() + ": references unknown concept " + flow.getConcept());
-                continue;
+            // FORM P3-T5c: the flow's concept is optional; without one the flow has no invariant references of its own.
+            Set<String> conceptInvariantRefs = new HashSet<>();
+            if (flow.getConcept() != null && !flow.getConcept().isBlank()) {
+                ConceptAst concept = entitiesByLower.get(normalize(flow.getConcept()));
+                if (concept == null) {
+                    errors.add("Flow " + flow.getName() + ": references unknown concept " + flow.getConcept());
+                    continue;
+                }
+                EffectiveEntity effectiveConcept = resolveEffective(
+                        concept,
+                        entitiesByLower,
+                        effectiveCache,
+                        new HashSet<>(),
+                        errors
+                );
+                conceptInvariantRefs = collectInvariantReferences(flow, concept, effectiveConcept);
             }
-
-            EffectiveEntity effectiveConcept = resolveEffective(
-                    concept,
-                    entitiesByLower,
-                    effectiveCache,
-                    new HashSet<>(),
-                    errors
-            );
-            Set<String> conceptInvariantRefs = collectInvariantReferences(flow, concept, effectiveConcept);
             validateFlowSteps(
                     flow,
                     flow.getSteps(),
@@ -213,7 +257,6 @@ final class FlowValidation {
                     eventNames,
                     conceptInvariantRefs,
                     referencedCapabilities,
-                    knownProcedureNames,
                     new HashSet<>(),
                     errors
             );
@@ -222,8 +265,58 @@ final class FlowValidation {
             warnOnFailureInsideParallelForEach(flow, flow.getSteps(), warnings);
         }
 
+        Set<String> declaredQueryNames = modelAst.getQueries().stream()
+                .map(QueryAst::name)
+                .map(SemanticValidator::normalize)
+                .collect(Collectors.toSet());
+        Set<String> declaredFlowNames = modelAst.getFlows().stream()
+                .map(FlowAst::getName)
+                .map(SemanticValidator::normalize)
+                .collect(Collectors.toSet());
+        for (FlowAst flow : modelAst.getFlows()) {
+            validateStepNameReferences(flow, flow.getSteps(), declaredQueryNames, declaredFlowNames, errors);
+        }
+
         if (!allowUnboundFlowCapabilities) {
             validateReferencedCapabilityBindings(modelAst, referencedCapabilities, errors);
+        }
+    }
+
+    /**
+     * FORM P3-T5b: a {@code runQuery} step must name a declared query and a {@code callFlow} step a declared flow,
+     * at any nesting depth. Without this a typo only surfaced as a runtime {@code QUERY_NOT_FOUND} / {@code
+     * CALL_FLOW_FAILED} on the first run. (A flow calling itself is left to the kernel's nesting limit.)
+     */
+    private static void validateStepNameReferences(
+            FlowAst flow,
+            List<StepAst> steps,
+            Set<String> queryNames,
+            Set<String> flowNames,
+            List<String> errors
+    ) {
+        if (steps == null) {
+            return;
+        }
+        for (StepAst step : steps) {
+            if (step == null) {
+                continue;
+            }
+            String type = normalize(step.getType());
+            if ("runquery".equals(type) && step.getQuery() != null && !step.getQuery().isBlank()
+                    && !queryNames.contains(normalize(step.getQuery()))) {
+                errors.add("Flow " + flow.getName() + " step " + step.getName()
+                        + ": runQuery names unknown query " + step.getQuery());
+            }
+            if ("callflow".equals(type) && step.getFlow() != null && !step.getFlow().isBlank()
+                    && !flowNames.contains(normalize(step.getFlow()))) {
+                errors.add("Flow " + flow.getName() + " step " + step.getName()
+                        + ": callFlow names unknown flow " + step.getFlow());
+            }
+            validateStepNameReferences(flow, step.getThenSteps(), queryNames, flowNames, errors);
+            validateStepNameReferences(flow, step.getElseSteps(), queryNames, flowNames, errors);
+            validateStepNameReferences(flow, step.getLoopSteps(), queryNames, flowNames, errors);
+            validateStepNameReferences(flow, step.getOnFailureSteps(), queryNames, flowNames, errors);
+            validateStepNameReferences(flow, step.getOnTimeoutSteps(), queryNames, flowNames, errors);
         }
     }
 
@@ -307,15 +400,6 @@ final class FlowValidation {
                     && ("save".equals(operation) || "delete".equals(operation))) {
                 return true;
             }
-            // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): a callProcedure step commonly
-            // invokes a procedure that persists (saveConcept/patchConcept) -- this heuristic can't
-            // see inside the named procedure's own steps, but treating callProcedure itself as
-            // persistence-implying (like the capability/persistence.save case above) avoids a false
-            // "does not imply persistence" warning on the one flow-step type invented specifically
-            // to reach patchConcept.
-            if ("callprocedure".equals(type)) {
-                return true;
-            }
             if (hasPersistenceSemantics(step.getThenSteps()) || hasPersistenceSemantics(step.getElseSteps())) {
                 return true;
             }
@@ -355,6 +439,10 @@ final class FlowValidation {
             }
         }
         if (aggregatesByTouchedConcepts.size() <= 1) {
+            return;
+        }
+        // FORM P3-T5c: an explicit, reasoned opt-out for one flow (a flow migrated from a multi-aggregate procedure).
+        if (flow.getCrossAggregateReason() != null && !flow.getCrossAggregateReason().isBlank()) {
             return;
         }
         String detail = aggregatesByTouchedConcepts.entrySet().stream()
@@ -397,7 +485,6 @@ final class FlowValidation {
             Set<String> eventNames,
             Set<String> conceptInvariantRefs,
             Set<String> referencedCapabilities,
-            Set<String> knownProcedureNames,
             Set<String> knownStepNames,
             List<String> errors
     ) {
@@ -408,6 +495,7 @@ final class FlowValidation {
             }
 
             String stepType = normalize(step.getType());
+            validateStepKeyPlacement(flow, step, stepType, errors);
             switch (stepType) {
                 case "invariant" -> validateInvariantStep(flow, step, conceptInvariantRefs, errors);
                 case "capability" -> validateCapabilityStep(
@@ -417,7 +505,14 @@ final class FlowValidation {
                         referencedCapabilities,
                         errors
                 );
-                case "createentity", "updateentity", "createconcept", "updateconcept" -> validatePersistenceMutationAliasStep(
+                case "updateconcept" -> {
+                    if (isRecordFormUpdate(step)) {
+                        validateRecordFormUpdate(flow, step, errors);
+                    } else {
+                        validatePersistenceMutationAliasStep(flow, step, operationsByCapability, referencedCapabilities, errors);
+                    }
+                }
+                case "createentity", "updateentity", "createconcept" -> validatePersistenceMutationAliasStep(
                         flow,
                         step,
                         operationsByCapability,
@@ -435,7 +530,6 @@ final class FlowValidation {
                         eventNames,
                         conceptInvariantRefs,
                         referencedCapabilities,
-                        knownProcedureNames,
                         knownStepNames,
                         errors
                 );
@@ -446,7 +540,6 @@ final class FlowValidation {
                         eventNames,
                         conceptInvariantRefs,
                         referencedCapabilities,
-                        knownProcedureNames,
                         knownStepNames,
                         errors
                 );
@@ -458,11 +551,43 @@ final class FlowValidation {
                         eventNames,
                         conceptInvariantRefs,
                         referencedCapabilities,
-                        knownProcedureNames,
                         knownStepNames,
                         errors
                 );
-                case "callprocedure" -> validateCallProcedureStep(flow, step, knownProcedureNames, errors);
+                // FORM P3-T5a/b: the merged step vocabulary's concept steps. Structural checks only here; the flow engine
+                // runs them by delegating to the procedure-step implementations (ProcedureFlowStep, CallFlowStep).
+                case "set" -> {
+                    requireStepKey(flow, step, "set", "value", step.getReturnValue(), errors);
+                    requireStepKey(flow, step, "set", "output", step.getOutput(), errors);
+                    // FORM P3-T5c: the value is ONE expression of the one expression language; a literal text is quoted
+                    if (step.getReturnValue() != null && !step.getReturnValue().isBlank()) {
+                        try {
+                            ComputedExpression.validate(step.getReturnValue());
+                        } catch (ComputedExpression.ExpressionException syntaxError) {
+                            errors.add("Flow " + flow.getName() + " step " + step.getName() + ": set value \""
+                                    + step.getReturnValue() + "\" is not a valid expression (" + syntaxError.getMessage()
+                                    + "); a text literal is quoted, e.g. 'text'");
+                        }
+                    }
+                }
+                case "readconcept" -> {
+                    requireScopeWithoutFlowConcept(flow, step, "readConcept", errors);
+                    requireStepKey(flow, step, "readConcept", "id", step.getId(), errors);
+                    requireStepKey(flow, step, "readConcept", "output", step.getOutput(), errors);
+                }
+                case "deleteconcept" -> {
+                    requireScopeWithoutFlowConcept(flow, step, "deleteConcept", errors);
+                    requireStepKey(flow, step, "deleteConcept", "id", step.getId(), errors);
+                }
+                case "listconcepts" -> {
+                    requireScopeWithoutFlowConcept(flow, step, "listConcepts", errors);
+                    requireStepKey(flow, step, "listConcepts", "output", step.getOutput(), errors);
+                }
+                case "runquery" -> {
+                    requireStepKey(flow, step, "runQuery", "query", step.getQuery(), errors);
+                    requireStepKey(flow, step, "runQuery", "output", step.getOutput(), errors);
+                }
+                case "callflow" -> requireStepKey(flow, step, "callFlow", "flow", step.getFlow(), errors);
                 default -> errors.add("Flow " + flow.getName() + " step " + step.getName()
                         + ": unsupported step type " + step.getType());
             }
@@ -522,7 +647,6 @@ final class FlowValidation {
             Set<String> eventNames,
             Set<String> conceptInvariantRefs,
             Set<String> referencedCapabilities,
-            Set<String> knownProcedureNames,
             Set<String> knownStepNames,
             List<String> errors
     ) {
@@ -606,7 +730,6 @@ final class FlowValidation {
                 eventNames,
                 conceptInvariantRefs,
                 referencedCapabilities,
-                knownProcedureNames,
                 knownStepNames,
                 errors
         );
@@ -767,10 +890,66 @@ final class FlowValidation {
         );
     }
 
+    /** FORM P3-T5c: {@code updateConcept} naming the row by {@code id} and the fields by {@code set}. */
+    private static boolean isRecordFormUpdate(StepAst step) {
+        return (step.getId() != null && !step.getId().isBlank()) || !step.getFieldValues().isEmpty();
+    }
+
+    private static void validateRecordFormUpdate(FlowAst flow, StepAst step, List<String> errors) {
+        String where = "Flow " + flow.getName() + " step " + step.getName() + ": updateConcept";
+        boolean flowHasConcept = flow.getConcept() != null && !flow.getConcept().isBlank();
+        if (!flowHasConcept && (step.getScope() == null || step.getScope().isBlank())) {
+            errors.add(where + " must define scope (the flow declares no concept to default to)");
+        }
+        if (step.getId() == null || step.getId().isBlank()) {
+            if (!Boolean.TRUE.equals(step.getCreateIfMissing())) {
+                errors.add(where + " must define id (or createIfMissing: true to create a new row)");
+            }
+        }
+        if (step.getFieldValues().isEmpty()) {
+            errors.add(where + " must define set (the fields to change)");
+        }
+        if (step.getOutput() == null || step.getOutput().isBlank()) {
+            errors.add(where + " must define output");
+        }
+        if (step.getInput() != null && !step.getInput().isBlank()) {
+            errors.add(where + " takes id + set OR input, not both -- suggestedFix: keep id and set, or keep input, and remove the other");
+        }
+    }
+
+    /** FORM P3-T5c: each of the new step keys belongs to one step type; anywhere else it would be silently ignored. */
+    private static void validateStepKeyPlacement(FlowAst flow, StepAst step, String stepType, List<String> errors) {
+        String where = "Flow " + flow.getName() + " step " + step.getName() + ": ";
+        if (step.getIfExists() != null) {
+            if (!"createconcept".equals(stepType)) {
+                errors.add(where + "ifExists applies to createConcept steps only -- suggestedFix: remove ifExists from this step or change the step type to createConcept");
+            } else if (!"skip".equals(step.getIfExists())) {
+                errors.add(where + "ifExists must be \"skip\"");
+            }
+        }
+        if (step.getDedupeKey() != null && !"scheduleevent".equals(stepType)) {
+            errors.add(where + "dedupeKey applies to scheduleEvent steps only -- suggestedFix: remove dedupeKey from this step or change the step type to scheduleEvent");
+        }
+        if (step.getCreateIfMissing() != null && !"updateconcept".equals(stepType)) {
+            errors.add(where + "createIfMissing applies to updateConcept steps only -- suggestedFix: remove createIfMissing from this step or change the step type to updateConcept");
+        }
+        if (step.getErrorTarget() != null && !"capability".equals(stepType)) {
+            errors.add(where + "errorTarget applies to capabilityCall steps only -- suggestedFix: remove errorTarget from this step or change the step type to capabilityCall");
+        }
+        if (!step.getFieldValues().isEmpty() && !"map".equals(stepType) && !"updateconcept".equals(stepType)) {
+            errors.add(where + "select/set apply to map and updateConcept steps only -- suggestedFix: use select on a map step and set on an updateConcept step");
+        }
+    }
+
     private static void validateMapStep(FlowAst flow, StepAst step, List<String> errors) {
         String inputRef = normalize(step.getInput());
         String outputRef = normalize(step.getOutput());
-        if (inputRef.isBlank()) {
+        // FORM P3-T5c: map{select} (one object) and map{collection,itemKey,select} (a list) need no input
+        boolean builds = !step.getFieldValues().isEmpty();
+        if (step.getCollectionRef() != null && !step.getCollectionRef().isBlank() && !builds) {
+            errors.add("Flow " + flow.getName() + " step " + step.getName() + ": map with collection must define select");
+        }
+        if (inputRef.isBlank() && !builds) {
             errors.add("Flow " + flow.getName() + " step " + step.getName()
                     + ": map/assign step must define input");
         }
@@ -824,25 +1003,34 @@ final class FlowValidation {
         }
     }
 
-    /** Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): callProcedure invokes a named
-     * procedure synchronously from a flow -- the referenced name must resolve to a real declared
-     * procedure, same cross-reference discipline as a capability step's operationsByCapability
-     * lookup. {@code procedure} being non-blank is already enforced by the JSON Schema. */
-    private static void validateCallProcedureStep(
-            FlowAst flow,
-            StepAst step,
-            Set<String> knownProcedureNames,
-            List<String> errors
-    ) {
-        String procedure = normalize(step.getProcedure());
-        if (procedure.isBlank()) {
-            errors.add("Flow " + flow.getName() + " step " + step.getName()
-                    + ": callProcedure step must define procedure");
-            return;
+    /**
+     * FORM P3-T5c: a flow that runs as the system principal skips the caller's own write rules, so a caller must never be
+     * able to start it directly -- it is {@code expose: internal} (reached by callFlow, where the caller's guards already
+     * ran) or started by an event, a schedule or a webhook (which have no caller to elevate). The procedure rule is the
+     * same one (PackValidation: a runAs "system" procedure cannot be exposed as an action).
+     */
+    private static void validateRunAsSystemIsNotPublic(FlowAst flow, List<String> errors) {
+        if ("system".equals(flow.getRunAs()) && flow.getTrigger() == null && !"internal".equals(flow.getExpose())) {
+            errors.add("Flow " + flow.getName() + ": a runAs \"system\" flow must be expose: internal (or started by an"
+                    + " event, schedule or webhook trigger): a caller who may start it directly would run the steps with"
+                    + " the system principal's rights. Put the elevated steps in an internal flow and call it with a"
+                    + " callFlow step from a flow the caller may start");
         }
-        if (!knownProcedureNames.contains(procedure)) {
-            errors.add("Flow " + flow.getName() + " step " + step.getName()
-                    + ": references unknown procedure " + step.getProcedure());
+    }
+
+    /** FORM P3-T5c: a flow without a concept has none to default a concept step to, so the step names its own {@code scope}. */
+    private static void requireScopeWithoutFlowConcept(FlowAst flow, StepAst step, String type, List<String> errors) {
+        boolean flowHasConcept = flow.getConcept() != null && !flow.getConcept().isBlank();
+        if (!flowHasConcept && (step.getScope() == null || step.getScope().isBlank())) {
+            errors.add("Flow " + flow.getName() + " step " + step.getName() + ": " + type
+                    + " step must define scope (the flow declares no concept to default to)");
+        }
+    }
+
+    private static void requireStepKey(
+            FlowAst flow, StepAst step, String type, String key, String value, List<String> errors) {
+        if (value == null || value.isBlank()) {
+            errors.add("Flow " + flow.getName() + " step " + step.getName() + ": " + type + " step must define " + key);
         }
     }
 
@@ -879,7 +1067,6 @@ final class FlowValidation {
             Set<String> eventNames,
             Set<String> conceptInvariantRefs,
             Set<String> referencedCapabilities,
-            Set<String> knownProcedureNames,
             Set<String> knownStepNames,
             List<String> errors
     ) {
@@ -909,11 +1096,11 @@ final class FlowValidation {
 
         if (!step.getThenSteps().isEmpty()) {
             validateFlowSteps(flow, step.getThenSteps(), operationsByCapability, eventNames,
-                    conceptInvariantRefs, referencedCapabilities, knownProcedureNames, knownStepNames, errors);
+                    conceptInvariantRefs, referencedCapabilities, knownStepNames, errors);
         }
         if (!step.getElseSteps().isEmpty()) {
             validateFlowSteps(flow, step.getElseSteps(), operationsByCapability, eventNames,
-                    conceptInvariantRefs, referencedCapabilities, knownProcedureNames, knownStepNames, errors);
+                    conceptInvariantRefs, referencedCapabilities, knownStepNames, errors);
         }
     }
 
@@ -924,7 +1111,6 @@ final class FlowValidation {
             Set<String> eventNames,
             Set<String> conceptInvariantRefs,
             Set<String> referencedCapabilities,
-            Set<String> knownProcedureNames,
             Set<String> knownStepNames,
             List<String> errors
     ) {
@@ -970,7 +1156,7 @@ final class FlowValidation {
         }
         if (!step.getOnTimeoutSteps().isEmpty()) {
             validateFlowSteps(flow, step.getOnTimeoutSteps(), operationsByCapability, eventNames,
-                    conceptInvariantRefs, referencedCapabilities, knownProcedureNames, knownStepNames, errors);
+                    conceptInvariantRefs, referencedCapabilities, knownStepNames, errors);
         }
     }
 

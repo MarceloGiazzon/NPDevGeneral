@@ -17,7 +17,7 @@ public final class ProcedureElevation {
         return ON_BEHALF_OF.get();
     }
 
-    static String swap(String actorId) {
+    public static String swap(String actorId) {
         String previous = ON_BEHALF_OF.get();
         if (actorId == null) {
             ON_BEHALF_OF.remove();

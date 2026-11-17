@@ -37,7 +37,7 @@ class AggregateRuntimeLookupQueryPermissionTest {
 
     private static final String MODEL = """
         {
-          "dslVersion": "1.0.0", "namespace": "t", "version": "1.0",
+          "dslVersion": "3.0.0", "namespace": "t", "version": "1.0",
           "concepts": [
             { "name": "Box", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
             { "name": "Slot", "fields": [

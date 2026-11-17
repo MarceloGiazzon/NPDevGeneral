@@ -1,6 +1,6 @@
 {
   "$schema": "../../../../../../NPDevContract/schemas/pack.schema.json",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "pack": "clinical",
   "version": "1.0.0",
   "namespace": "com.npdev.clinical",

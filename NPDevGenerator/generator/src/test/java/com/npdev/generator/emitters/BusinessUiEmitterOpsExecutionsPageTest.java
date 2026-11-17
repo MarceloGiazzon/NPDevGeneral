@@ -25,7 +25,7 @@ public class BusinessUiEmitterOpsExecutionsPageTest {
         Path modelPath = Files.createTempFile("npdev-ops-executions-", ".json");
         Files.writeString(modelPath, """
                 {
-                  "namespace": "opsexecutions.demo", "dslVersion": "1.0.0", "version": "1.0",
+                  "namespace": "opsexecutions.demo", "dslVersion": "3.0.0", "version": "1.0",
                   "concepts": [ { "name": "Customer", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "displayName", "type": "string", "required": true } ] } ]

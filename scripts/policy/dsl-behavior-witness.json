@@ -16,9 +16,6 @@
     "flowInput",
     "humanTask",
     "awaitMatch",
-    "orchestrationRule",
-    "orchestrationTrigger",
-    "orchestrationAction",
     "query",
     "queryLookup",
     "queryComputedColumn",
@@ -56,6 +53,17 @@
         "explicitFloatOptInAdoptsTheNewParentShapeInsteadOfRefusing"
       ],
       "reason": "Generation-time only: it opts a specialization out of the npdev.lock version pin of its pack base (PackDependencyGraphWalker version-drift check). It has no effect on a booted app, so no REST probe can witness it; these tests run the real pack-merge pipeline and assert the default refuses on drift while the opt-in adopts the new parent shape."
+    },
+    {
+      "keywords": [
+        "flow.crossAggregateReason"
+      ],
+      "category": "generationTest",
+      "testClass": "NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/AggregateTransactionalBoundaryValidationTest.java",
+      "methods": [
+        "crossAggregateReasonWaivesTheRuleForThatFlowOnly"
+      ],
+      "reason": "Validation-time only: it waives the one-aggregate-one-transaction check for one flow and does nothing in a booted app, so no REST probe can witness it; the test asserts the waived flow passes and an unwaived sibling still fails."
     }
   ]
 }

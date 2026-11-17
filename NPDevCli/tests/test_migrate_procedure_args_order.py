@@ -27,7 +27,7 @@ def _model(args: dict, nested_args: dict | None = None) -> dict:
         step = {"name": "guard", "type": "if", "condition": "$input", "then": [
             {"name": "inner", "type": "capabilityCall", "capability": "fiscal", "operation": "importar",
              "args": nested_args}]}
-    return {"namespace": "t", "dslVersion": "1.0.0", "version": "1.0",
+    return {"namespace": "t", "dslVersion": "3.0.0", "version": "1.0",
             "procedures": [{"name": "P", "steps": [step]}]}
 
 

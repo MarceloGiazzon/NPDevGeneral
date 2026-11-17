@@ -20,7 +20,7 @@ the first-run harness against Phase 5's own work, when build_rag_index.py's `imp
 `npdev setup` on a fresh install -- same fix applied here pre-emptively). docs/content/authoring-for-ai.json
 carries the identical data, stdlib-readable.
 
-Usage: python scripts/ai/build_core_context.py [--compact] [--out <dir>]
+Usage: python scripts/ai/build_core_context.py [--compact | --detail lean|standard|full] [--out <dir>]
 """
 
 from __future__ import annotations
@@ -146,12 +146,22 @@ def value_reference(schema: dict, path_prefixes: tuple = (), exclude: tuple = ()
             "A value not listed for its path is rejected.\n\n" + "\n".join(lines))
 
 
-def build_bundle(compact: bool = False) -> tuple[str, dict]:
+DETAIL_LEVELS = ("lean", "standard", "full")
+
+
+def build_bundle(compact: bool = False, detail: str | None = None) -> tuple[str, dict]:
     """compact=True is the F4a variant: the contract without the sections a one-shot external AI
     cannot use, and a value reference filtered to the paths the three bench tiers author. The
     filter lives in scripts/policy/core-context-compact.json; the full bundle never changes."""
     root = repo_root()
-    policy = json.loads(read_text(root / COMPACT_POLICY)) if compact else {}
+    if detail is None:
+        detail = "standard" if compact else "full"
+    if detail not in DETAIL_LEVELS:
+        raise ValueError(f"unknown detail level '{detail}' (use {', '.join(DETAIL_LEVELS)})")
+    policy = {} if detail == "full" else json.loads(read_text(root / COMPACT_POLICY))
+    if detail == "lean":
+        policy = policy["lean"]
+    golden = tuple(policy.get("goldenSamples", GOLDEN_SAMPLES))
     sections: list[str] = []
     manifest_sources: list[dict] = []
 
@@ -180,7 +190,7 @@ def build_bundle(compact: bool = False) -> tuple[str, dict]:
                         tuple(policy.get("valueReferencePathPrefixes", ())),
                         tuple(policy.get("valueReferenceExcludeSubstrings", ()))), fence="text")
 
-    for sample in GOLDEN_SAMPLES:
+    for sample in golden:
         model_path = root / "NPDevSamples" / sample / "Input" / "model.json"
         if model_path.exists():
             add(f"Golden example: {sample}", model_path, read_text(model_path), fence="json",
@@ -199,8 +209,9 @@ def build_bundle(compact: bool = False) -> tuple[str, dict]:
 
 
 def main(argv: list[str]) -> int:
-    compact = "--compact" in argv
-    bundle, manifest = build_bundle(compact)
+    detail = argv[argv.index("--detail") + 1] if "--detail" in argv else ("standard" if "--compact" in argv else "full")
+    compact = detail != "full"
+    bundle, manifest = build_bundle(detail=detail)
     if "--out" in argv:
         # Scratch builds (benchmarks read the default dir; never overwrite it while one runs).
         out_dir = Path(argv[argv.index("--out") + 1])
@@ -210,10 +221,11 @@ def main(argv: list[str]) -> int:
     if compact:
         # Written BESIDE the full bundle, never over it: bundle.json stays what the MCP tool and
         # the bench serve by default. Feed this one to run_bench.py --knowledge-file.
-        (out_dir / "bundle-compact.md").write_bytes(bundle.encode("utf-8"))
-        (out_dir / "bundle-compact.json").write_text(
+        stem = "bundle-compact" if detail == "standard" else f"bundle-{detail}"
+        (out_dir / f"{stem}.md").write_bytes(bundle.encode("utf-8"))
+        (out_dir / f"{stem}.json").write_text(
             json.dumps({**manifest, "markdown": bundle}, indent=2) + "\n", encoding="utf-8")
-        print(json.dumps({"output": str(out_dir / "bundle-compact.json"), "bytes": manifest["bytes"],
+        print(json.dumps({"output": str(out_dir / f"{stem}.json"), "bytes": manifest["bytes"],
                           "sections": [{"title": x["title"], "bytes": x["bytes"]} for x in manifest["sections"]]},
                          indent=2))
         return 0

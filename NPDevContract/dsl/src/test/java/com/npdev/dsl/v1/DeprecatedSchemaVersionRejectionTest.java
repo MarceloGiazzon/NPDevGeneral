@@ -23,7 +23,7 @@ class DeprecatedSchemaVersionRejectionTest {
                   "$schema": "../../NPDevContract/schemas/archive/%s",
                   "schemaVersion": "1.0.0",
                   "namespace": "demo.deprecated",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {

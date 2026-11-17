@@ -38,7 +38,7 @@ class CellGridRegionTest {
     private static String model(String regionsJson) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "cellgrid.test", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "cellgrid.test", "version": "1.0",
               "concepts": [
                 { "name": "Board", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

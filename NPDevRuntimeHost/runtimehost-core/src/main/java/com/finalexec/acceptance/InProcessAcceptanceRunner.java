@@ -154,11 +154,9 @@ public final class InProcessAcceptanceRunner {
 
         Map<String, Object> input = (Map<String, Object>) when.getOrDefault("input", Map.of());
         Map<String, Object> observed = new LinkedHashMap<>();
+        ProcedureRunner runner = new ProcedureRunner(model, gateway, dispatcher, null);
+        KernelRunner kernel = attachKernel(runner, model, store, gateway, dispatcher);
         if (when.containsKey("flow")) {
-            ReloadableInvariantEngine invariants = new ReloadableInvariantEngine(model,
-                    (tenantId, conceptName) -> CelInvariantEngine.Lookups.fromConceptStore(store, tenantId));
-            KernelRunner kernel = ModelBackedKernelRuntimeFactory.createKernelRunner(
-                    model, new InProcEventBus(), invariants, dispatcher, ExecutionTracer.NOOP);
             ExecutionResult result = kernel.execute(String.valueOf(when.get("flow")), new HashMap<>(input), ctx);
             observed.put("ok", result.getStatus() == ExecutionStatus.OK);
             observed.put("status", result.getStatus().name());
@@ -166,7 +164,6 @@ public final class InProcessAcceptanceRunner {
             observed.put("failureMessage", result.getError());
             observed.put("result", result.getOutput());
         } else {
-            ProcedureRunner runner = new ProcedureRunner(model, gateway, dispatcher, null);
             String procedure = String.valueOf(when.get("procedure"));
             ProcedureExecutionResult result = runner.execute(procedure, new HashMap<>(input), ctx);
             observed.put("ok", result.ok());
@@ -190,6 +187,29 @@ public final class InProcessAcceptanceRunner {
         });
         observed.put("concepts", concepts);
         return observed;
+    }
+
+    /**
+     * The in-process wiring the app does: one kernel runner over {@code model}, its concept steps executing through
+     * {@code runner}, and {@code runner} executing a name as the flow of that name. Public so a test can run an
+     * aggregate hook or a workbench action (which run a flow by name) without a Spring context.
+     */
+    public static KernelRunner attachKernel(
+            ProcedureRunner runner, CompiledModel model, com.npdev.kernel.ports.ConceptStore store,
+            ConceptGateway gateway, CapabilityDispatcher dispatcher) {
+        ReloadableInvariantEngine invariants = new ReloadableInvariantEngine(model,
+                (tenantId, conceptName) -> store == null
+                        ? CelInvariantEngine.Lookups.unavailable("no concept store wired")
+                        : CelInvariantEngine.Lookups.fromConceptStore(store, tenantId));
+        CapabilityDispatcher effectiveDispatcher = dispatcher != null ? dispatcher
+                : (call, state) -> CapabilityResult.failure("CAPABILITY_UNAVAILABLE",
+                        "no capability dispatcher wired for " + (call == null ? "" : call.capability()),
+                        CapabilityErrorKind.PERMANENT, Map.of());
+        KernelRunner kernel = ModelBackedKernelRuntimeFactory.createKernelRunner(
+                model, new InProcEventBus(), invariants, effectiveDispatcher, ExecutionTracer.NOOP)
+                .withConceptGateway(gateway);
+        runner.attach(kernel);
+        return kernel;
     }
 
     private static Map<String, String> parseArgs(String[] args) {

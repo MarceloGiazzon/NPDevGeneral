@@ -1,14 +1,42 @@
-# NPDev Concepts Deep Dive — the 8 building blocks, explained in detail
+# NPDev Concepts Deep Dive — the twelve nouns, explained in detail
 
-> **Companion to** [`NPDEV_USER_MANUAL.md`](NPDEV_USER_MANUAL.md). That manual introduced these
-> eight words at a glance. This document goes one level deeper into each — what it's *for*,
+> **Companion to** [`NPDEV_USER_MANUAL.md`](NPDEV_USER_MANUAL.md). That manual introduced the
+> building blocks at a glance. This document goes one level deeper into each — what it's *for*,
 > exactly what you're allowed to write, and a real example pulled from an app that has
 > actually been generated and run in this workspace. Read the manual first if you haven't;
 > this document assumes you already know the three-folder layout and the build/run commands.
 
-Every one of the eight blocks below is just a JSON object inside your `model.json`. None of
-them require you to write Java or HTML — except the one custom capability example at the end,
-which is deliberately the smallest possible Java a person can write.
+## The twelve nouns
+
+Everything in a `model.json` is one of twelve nouns. The sections below walk through the ones you
+meet first; the full fate of every top-level key lives in `scripts/policy/concept-map.json`
+(decision: [ADR-0013](adr/ADR-0013-twelve-nouns.md)).
+
+| Layer | Noun | It is |
+| --- | --- | --- |
+| Data | **Concept** | A kind of record the app stores: fields, lifecycle, invariants. |
+| Data | **Query** | A named, permission-aware read over one concept. |
+| Behaviour | **Flow** | Something the app *does*: steps started by a trigger. |
+| Behaviour | **Event** | A named fact that happened; flows emit it, flows react to it. |
+| Behaviour | **Function** | A pure, typed computation callable from any expression. *(New; not in the DSL yet.)* |
+| Integration | **Capability** | A door to the outside world: outbound operations or inbound webhooks. |
+| Identity | **Role** | A kind of user, and what it may do. |
+| Presentation | **Experience** | What one or more roles see: home, navigation, device. *(New; today `appShell`.)* |
+| Presentation | **Screen** | One page of an experience, of a closed archetype. *(Today `panels[]`, `selectors[]`.)* |
+| Composition | **Pack** | A versioned library of the nouns above, installed from elsewhere. |
+| Composition | **Module** | A boundary inside one project. *(`modules[]`.)* |
+| Configuration | **Property** | A runtime setting resolved through scopes, changeable without regenerating. |
+
+**Which one do I use?** Ask in order and stop at the first yes: does the app *store* it
+(Concept; only a read, Query)? *do* something or react (Flow; a fact others react to, Event; a pure
+calculation, Function)? reach *outside* (Capability)? say *who may* (Role)? decide *what a user sees*
+(Screen inside an Experience)? is it a *setting* (Property)? is it *someone else's library* (Pack) or a
+*boundary of your own* (Module)? If nothing fits, it is a field, a step or an expression of one of
+these — never a thirteenth block.
+
+Not every key you can still write today has its own section below: `procedures`,
+`aggregates` and a few more are being merged into Flow, Screen and Concept. The sections that follow
+describe the DSL as it is now and say where a block is on its way out.
 
 ---
 
@@ -154,6 +182,13 @@ flow is public API automatically; there's no extra wiring to expose it.
 | `forEach` | Bounded iteration over a collection (`collection`, `itemKey`, `steps`, `maxLoopIterations`); `parallelAwait: true` lets every iteration wait on its own event at once. |
 | `callProcedure` | Calls a declared procedure (§8) and stores its result in flow state. |
 | `generatedAction` | Invokes a specific generated action by name. |
+| `set` | Writes a value (a literal or a `$ref`, in `value`) to a flow-state variable (`output`). |
+| `readConcept` / `listConcepts` | Reads one record by `id`, or lists the concept's records, into `output`. |
+| `runQuery` | Runs a declared query (`query`, bind parameters in `params`) and binds its rows to `output`. |
+| `deleteConcept` | Deletes the record named by `id`. |
+| `callFlow` | Synchronously starts another flow (`flow`, `input`, `output`). A flow with `expose: internal` can only be started this way. |
+
+A flow also takes `expose` (`api`, the default, `ui` or `internal`: only `api` flows get a public `POST /api/flows/<Name>/execute`; the others answer 404) and `runAs` (`caller` or `system`: every step runs as the tenant's system principal, the caller kept for audit).
 | `return` | Ends the flow, producing `value` as the result. |
 
 Any step can also carry `onFailure: [...]`: compensation steps that run in reverse order if a
@@ -219,8 +254,11 @@ Declaring a capability's *interface* (what operations it offers):
 Wiring it to a real implementation (an **adapter**):
 
 ```jsonc
-{ "capability": "persistence", "adapter": "repository" }
+{ "name": "persistence", "type": "PersistenceCapability", "adapter": "repository", "operations": ["save"] }
 ```
+
+The three everyday adapters below are generated for you (persistence, the event bus, notifications), so
+you only write `adapter` on a capability whose implementation is not one of them.
 
 **Common built-in adapters** you'll see in real apps: `repository` (persistence to the
 app's own database), `inproc` (an in-process event bus for `eventBus`), `notification-inproc`
@@ -230,10 +268,8 @@ app's own database), `inproc` (an in-process event bus for `eventBus`), `notific
 
 ```jsonc
 "customCapabilities": [
-  { "name": "triageAssistant", "type": "TriageAssistantCapability", "operations": ["score"] }
-],
-"bindings": [
-  { "capability": "triageAssistant", "adapter": "plugin:java-source" }
+  { "name": "triageAssistant", "type": "TriageAssistantCapability",
+    "adapter": "plugin:java-source", "operations": ["score"] }
 ]
 ```
 
@@ -388,7 +424,7 @@ The sibling `InvoiceConsolePanel` above binds its button to a **flow** instead, 
 
 An Event is a fact that something happened, broadcast for anyone interested to react to.
 Nobody "calls" an event the way you call a flow — a flow **emits** it, and zero or more
-**orchestration rules** (§6) or paused **flows** (`awaitEvent`, §2) may be listening.
+**event-triggered flows** (§6) or paused **flows** (`awaitEvent`, §2) may be listening.
 
 ### Anatomy
 
@@ -409,10 +445,10 @@ A flow step broadcasts one with:
 ### Real examples
 
 - `UserCreated` (`simple-user-registry-inmemory`) — fired right after a user is saved; nothing
-  currently listens to it in that sample, but it's there for future orchestration or for
+  currently listens to it in that sample, but it's there for a future event-triggered flow or for
   auditing/trace purposes (every event is recorded).
 - `InvoiceIssued` (`invoice-bonds-demo`) — fired by the `IssueInvoice` flow, and consumed by
-  the `NotifyOnInvoiceIssued` orchestration rule (§6).
+  the `NotifyOnInvoiceIssued` event-triggered flow (§6).
 - `TicketResolved` (`Claude` Support Desk) — fired independently, hours after a ticket was
   submitted, and it's what wakes up the `SubmitTicket` flow's `awaitEvent` step (§2; nested in
   the `escalation-gate` branch, so only High-priority tickets park there), matched by
@@ -427,50 +463,64 @@ A flow step broadcasts one with:
 
 ---
 
-## 6. Orchestration rule — automation with no explicit caller
+## 6. Event-triggered flow — automation with no explicit caller
 
 ### What it is
 
-An Orchestration rule says: *"whenever event X happens, automatically do Y."* Nobody has to
+An event-triggered flow says: *"whenever event X happens, automatically do Y."* Nobody has to
 remember to trigger it — it's not called, it *reacts*. This is how you model "and then also
 notify someone" or "and then also create a follow-up record" without cluttering the original
 flow with unrelated concerns.
 
-Contrast with a Flow: a Flow is something a *client* decides to call. An Orchestration rule is
-something the *platform* decides to run, because a condition (an event) became true.
+It is an ordinary Flow (§2) whose `trigger` names an event instead of waiting for a caller. A
+flow with the default `api` trigger is something a *client* decides to call; a flow with an
+event trigger is something the *platform* decides to run, because a condition (an event) became
+true. The event's payload arrives as the flow's `$input`.
 
 ### Anatomy
 
 ```jsonc
 {
   "name": "NotifyOnInvoiceIssued",
-  "trigger": { "type": "event", "event": "InvoiceIssued" },
-  "actions": [                                  // REQUIRED, at least 1; run in order
-    {
-      "type": "create",                         // create | callCapability | scheduleEvent
-      "concept": "InvoiceNotification",
-      "map": { "invoiceId": "id", "message": "invoiceNumber" }   // target field -> source event field
-    }
-  ]
+  "expose": "internal",                         // nobody calls it over REST
+  "runAs": "system",                            // runs as the platform, not as a user
+  "trigger": {
+    "event": "InvoiceIssued",                   // REQUIRED: the event that starts the flow
+    "condition": "$event.invoiceNumber != \"\""   // optional: expression over $event; the flow runs only when true
+  },
+  "steps": [ ... ]                              // run in order, like any flow
 }
 ```
 
-Each entry in `actions` has a `type`, which can be:
-- `create` — make a new record of some concept, populated from the event's payload via `map`.
-- `callCapability` — call a capability operation in reaction to the event.
+The `steps` do what a reaction needs, with the same step types as any flow:
+- `createConcept` — make a new record of some concept, populated from the event's payload
+  (`$input`), usually shaped first by a `map` step.
+- `capabilityCall` — call a capability operation in reaction to the event.
 - `scheduleEvent` — chain into emitting a further (possibly delayed) event.
+
+A `trigger` can also be a `schedule` (a cron) or a `webhook`; the default is `"api"`.
 
 ### Real example (from `invoice-bonds-demo`)
 
 ```json
 {
   "name": "NotifyOnInvoiceIssued",
-  "trigger": { "type": "event", "event": "InvoiceIssued" },
-  "actions": [
+  "expose": "internal",
+  "runAs": "system",
+  "trigger": { "event": "InvoiceIssued" },
+  "steps": [
     {
-      "type": "create",
-      "concept": "InvoiceNotification",
-      "map": { "invoiceId": "id", "message": "invoiceNumber" }
+      "name": "build-notification",
+      "type": "map",
+      "select": { "invoiceId": "$input.id", "message": "$input.invoiceNumber" },
+      "output": "row"
+    },
+    {
+      "name": "create-notification",
+      "type": "createConcept",
+      "scope": "InvoiceNotification",
+      "input": "$row",
+      "output": "created"
     }
   ]
 }
@@ -479,13 +529,13 @@ Each entry in `actions` has a `type`, which can be:
 The `IssueInvoice` flow (§2) only knows how to mark an invoice issued and emit `InvoiceIssued`
 — it has **no idea** a notification record gets created afterwards. That's deliberate: the
 flow's job stays small and focused, and the "and also notify" behavior lives entirely in this
-one rule. Delete the rule, and `IssueInvoice` keeps working exactly the same, just without the
+one flow. Delete that flow, and `IssueInvoice` keeps working exactly the same, just without the
 side effect.
 
 ### Gotchas
 
-- One event can have any number of orchestration rules reacting to it — they all fire.
-- Because reactions are implicit, it's worth keeping orchestration rule names very
+- One event can have any number of event-triggered flows reacting to it — they all fire.
+- Because reactions are implicit, it's worth keeping event-triggered flow names very
   descriptive (`NotifyOnInvoiceIssued`, not `Rule1`) — they're the only place this behavior is
   documented.
 
@@ -680,7 +730,7 @@ just a button that runs this logic.
 These three all take content out of one `model.json` and put it somewhere else, and until now
 nothing said how they differ. They are not interchangeable:
 
-| | `packs[]` | `contexts[]` | `fragments[]` |
+| | `packs[]` | `modules[]` | a `$ref` entry |
 |---|---|---|---|
 | What it is | a distributable **Library** | an in-project **Module** | a file split |
 | Namespaced | yes (`pack::X`, or an `as` alias) | yes (`context::X`) | no — flat merge |
@@ -689,7 +739,7 @@ nothing said how they differ. They are not interchangeable:
 | Boundary enforcement | `requires` / `provides` | `imports[]`, acyclic, **compile error** | none |
 | Physical DB isolation | no | `physicallyIsolate` | no |
 
-**If you are organising ONE project, you want `contexts[]`.** It is the module mechanism, and
+**If you are organising ONE project, you want `modules[]`.** It is the module mechanism, and
 the reason is the `imports[]` column: a context may only reference another context it has
 declared, the import graph must be acyclic, and a violation is a compile error rather than a
 convention. That is what makes a boundary a boundary. `physicallyIsolate` additionally gives a
@@ -698,9 +748,10 @@ context's tables context-qualified, mangled names (`::` becomes `_`) in the same
 **If you are shipping something for OTHER projects to install, you want `packs[]`.** A pack is
 versioned, resolvable from a remote coordinate, and declares what it `requires` and `provides`.
 
-**`fragments[]` is not a boundary at all** — it is a file split. Its content merges flat into
-the model with no namespace and no rules about who may reference what. Reach for it when one
-`model.json` has simply become inconvenient to scroll, not when you want separation.
+**A `{"$ref": "file.json"}` entry in any array is not a boundary at all** — it is a file split. Its
+content is spliced flat into the model with no namespace and no rules about who may reference
+what. Reach for it when one `model.json` has simply become inconvenient to scroll, not when you
+want separation.
 
 A pack or context contributes its members under a qualifier, and references *inside* the
 contribution are rewritten to match: a pack-contributed panel naming `Label` gets
@@ -709,21 +760,23 @@ contribution are rewritten to match: a pack-contributed panel naming `Label` get
 ## How the pieces fit together
 
 ```
-Concept   — the data (a table + its fields + its rules)
+Concept     — the data (a table + its fields + its rules)        Query — a named read over it
    │
-   ├── Reference/bond  — links one Concept's field to another Concept
+   ├── Reference/bond  — links one Concept's field to another
    │
-Flow       — a public action a client calls, made of steps
+Flow         — an action: steps started by an api call, a screen, an event, a schedule or a webhook
    │
-   ├── Capability (capabilityCall step) — a verb the flow delegates to
+   ├── Capability (capabilityCall step) — a door to the outside the flow delegates to
    │
-   └── Event (emitEvent step) — a broadcast the flow makes, with no idea who's listening
+   └── Event (emitEvent step) — a fact the flow announces, with no idea who's listening
              │
-             └── Orchestration rule — reacts to the event, runs its own action automatically
+             └── Flow (event trigger) — reacts to the event (`trigger.event`)
 
-Panel     — a declared screen; its buttons call either a Flow or a Procedure
-Procedure — server-side logic for a Panel button, a flow step (callProcedure) or another
-            Procedure to call, not its own public REST endpoint
+Role         — who may read/write which Concept and run which Flow
+Experience   — what a Role sees: home + navigation (today: appShell)
+   └── Screen — one page (today: panel); its buttons call a Flow (or, today, a Procedure)
+Property     — a setting any of the above can read, changed without regenerating
+Pack / Module — how you split and reuse all of the above (a Module is today's context)
 Hand-made page — web/*.html beside the model, for any screen no declaration fits
 ```
 

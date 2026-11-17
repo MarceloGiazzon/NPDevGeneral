@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * two submissions touching different concepts land as disjoint touched-sets; two submissions
  * touching the SAME element intersect and name it; a bare version-only change (nothing else
  * touched) collapses to {@code wholeDocument} rather than reporting "no changes"; and an
- * unattributable array (no usable {@code name}, e.g. {@code bindings[]}) collapses the same way.
+ * unattributable array (no usable {@code name}, e.g. {@code conversions[]}) collapses the same way.
  */
 class ElementDifferTest {
 
@@ -26,7 +26,7 @@ class ElementDifferTest {
     }
 
     private static final String BASE = """
-        { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.0",
+        { "dslVersion": "3.0.0", "namespace": "s5.test", "version": "1.0",
           "concepts": [
             { "name": "Order", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
           ] }
@@ -40,14 +40,14 @@ class ElementDifferTest {
         // merge's version bumps are stripped by AuthoringMergeGate before it calls this differ.
         JsonNode base = json(BASE);
         JsonNode submission1 = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.0",
+            { "dslVersion": "3.0.0", "namespace": "s5.test", "version": "1.0",
               "concepts": [
                 { "name": "Order", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
                 { "name": "Shipment", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
               ] }
             """);
         JsonNode submission2 = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.0",
+            { "dslVersion": "3.0.0", "namespace": "s5.test", "version": "1.0",
               "concepts": [
                 { "name": "Order", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
                 { "name": "Gadget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
@@ -71,14 +71,14 @@ class ElementDifferTest {
     void twoSubmissionsTouchingTheSameConceptCollideAndNameIt() throws Exception {
         JsonNode base = json(BASE);
         JsonNode submission1 = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.1",
+            { "dslVersion": "3.0.0", "namespace": "s5.test", "version": "1.1",
               "concepts": [
                 { "name": "Order", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "notes", "type": "string" } ] } ] }
             """);
         JsonNode submission2 = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.1",
+            { "dslVersion": "3.0.0", "namespace": "s5.test", "version": "1.1",
               "concepts": [
                 { "name": "Order", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -109,7 +109,7 @@ class ElementDifferTest {
     void anAddedConceptIsClassifiedAdded() throws Exception {
         JsonNode base = json(BASE);
         JsonNode withNewConcept = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.0",
+            { "dslVersion": "3.0.0", "namespace": "s5.test", "version": "1.0",
               "concepts": [
                 { "name": "Order", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
                 { "name": "Invoice", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
@@ -127,7 +127,7 @@ class ElementDifferTest {
     @Test
     void aRemovedConceptIsClassifiedRemoved() throws Exception {
         JsonNode base = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.0",
+            { "dslVersion": "3.0.0", "namespace": "s5.test", "version": "1.0",
               "concepts": [
                 { "name": "Order", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
                 { "name": "Invoice", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
@@ -144,42 +144,123 @@ class ElementDifferTest {
     }
 
     @Test
-    void unnamedArrayElementsCollapseToWholeDocument_bindings() throws Exception {
+    void unnamedArrayElementsCollapseToWholeDocument_conversions() throws Exception {
         JsonNode base = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.0",
-              "concepts": [ { "name": "Order", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
-              "bindings": [ { "capability": "storage", "adapter": "inproc" } ] }
+            {
+              "dslVersion": "3.0.0",
+              "namespace": "s5.test",
+              "version": "1.0",
+              "concepts": [
+                {
+                  "name": "Order",
+                  "fields": [
+                    {
+                      "name": "id",
+                      "type": "uuid",
+                      "id": true,
+                      "required": true
+                    }
+                  ]
+                }
+              ],
+              "conversions": [
+                { "id": "c1", "from": "inproc" }
+              ]
+            }
             """);
         JsonNode changedBinding = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.0",
-              "concepts": [ { "name": "Order", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
-              "bindings": [ { "capability": "storage", "adapter": "postgres" } ] }
+            {
+              "dslVersion": "3.0.0",
+              "namespace": "s5.test",
+              "version": "1.0",
+              "concepts": [
+                {
+                  "name": "Order",
+                  "fields": [
+                    {
+                      "name": "id",
+                      "type": "uuid",
+                      "id": true,
+                      "required": true
+                    }
+                  ]
+                }
+              ],
+              "conversions": [
+                { "id": "c1", "from": "postgres" }
+              ]
+            }
             """);
 
         ElementDiffer.DiffResult diff = ElementDiffer.diff(base, changedBinding);
 
-        assertTrue(diff.wholeDocument(), "bindings[] has no 'name' field -- must be unattributable, not guessed");
+        assertTrue(diff.wholeDocument(), "conversions[] has no 'name' field -- must be unattributable, not guessed");
     }
 
     @Test
     void unnamedArrayElementsThatDidNotChangeDoNotTriggerWholeDocument() throws Exception {
-        // Regression: an unnamed array (bindings[]) present and IDENTICAL on both sides must not
+        // Regression: an unnamed array (conversions[]) present and IDENTICAL on both sides must not
         // poison an otherwise-clean diff just because it CAN'T be named -- only an actual change
-        // to it is unattributable. Real corpus models declare static bindings[] on every submission.
+        // to it is unattributable. Real corpus models declare static conversions[] on every submission.
         JsonNode base = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.0",
-              "concepts": [ { "name": "Order", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
-              "bindings": [ { "capability": "storage", "adapter": "inproc" } ] }
-            """);
-        JsonNode withNewConceptSameBindings = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.0",
+            {
+              "dslVersion": "3.0.0",
+              "namespace": "s5.test",
+              "version": "1.0",
               "concepts": [
-                { "name": "Order", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
-                { "name": "Invoice", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
-              "bindings": [ { "capability": "storage", "adapter": "inproc" } ] }
+                {
+                  "name": "Order",
+                  "fields": [
+                    {
+                      "name": "id",
+                      "type": "uuid",
+                      "id": true,
+                      "required": true
+                    }
+                  ]
+                }
+              ],
+              "conversions": [
+                { "id": "c1", "from": "inproc" }
+              ]
+            }
+            """);
+        JsonNode withNewConceptSameConversions = json("""
+            {
+              "dslVersion": "3.0.0",
+              "namespace": "s5.test",
+              "version": "1.0",
+              "concepts": [
+                {
+                  "name": "Order",
+                  "fields": [
+                    {
+                      "name": "id",
+                      "type": "uuid",
+                      "id": true,
+                      "required": true
+                    }
+                  ]
+                },
+                {
+                  "name": "Invoice",
+                  "fields": [
+                    {
+                      "name": "id",
+                      "type": "uuid",
+                      "id": true,
+                      "required": true
+                    }
+                  ]
+                }
+              ],
+              "conversions": [
+                { "id": "c1", "from": "inproc" }
+              ]
+            }
             """);
 
-        ElementDiffer.DiffResult diff = ElementDiffer.diff(base, withNewConceptSameBindings);
+        ElementDiffer.DiffResult diff = ElementDiffer.diff(base, withNewConceptSameConversions);
 
         assertFalse(diff.wholeDocument(), diff.wholeDocumentReasons().toString());
         assertEquals(Set.of(new ElementDiffer.ElementKey("concepts", "Invoice")), diff.touchedKeys());

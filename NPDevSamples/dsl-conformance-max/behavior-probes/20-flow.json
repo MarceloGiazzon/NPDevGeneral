@@ -3391,11 +3391,11 @@
       "keywords": [
         "flowStep.type",
         "flowStep.value",
-        "flowStep.procedure",
+        "flowStep.flow",
         "flowStep.input",
         "flowStep.output"
       ],
-      "description": "return step yields exactly $input (nested structure preserved); callProcedure resolves the procedure's own return (RenameOrderStatusProcedure returns the client-supplied newStatus) and a missing procedure input fails the flow with REF_UNRESOLVABLE naming newStatus.",
+      "description": "return step yields exactly $input (nested structure preserved); callFlow resolves the called flow's own return (RenameOrderStatusProcedure returns the client-supplied newStatus) and a missing procedure input fails the flow with REF_UNRESOLVABLE naming newStatus.",
       "steps": [
         {
           "name": "return $input",
@@ -3424,7 +3424,7 @@
           }
         },
         {
-          "name": "callProcedure result",
+          "name": "callFlow result",
           "method": "POST",
           "path": "/api/flows/RenameOrderStatusViaFlow/execute",
           "body": {
@@ -3449,7 +3449,7 @@
             "json": {
               "$.status": "FAILED",
               "$.error": {
-                "matches": "REF_UNRESOLVABLE.*[$]newStatus"
+                "matches": "REF_UNRESOLVABLE.*[$]input[.]newStatus"
               }
             }
           }
@@ -3776,16 +3776,11 @@
       ]
     },
     {
-      "id": "fl-orchestration-rule-fires-on-flow-emitted-event",
+      "id": "fl-trigger-flow-runs-on-flow-emitted-event",
       "keywords": [
-        "orchestrationRule.name",
-        "orchestrationRule.trigger",
-        "orchestrationTrigger.type",
-        "orchestrationTrigger.event",
-        "orchestrationRule.actions",
-        "orchestrationAction.type"
+        "flow.trigger"
       ],
-      "description": "orchestrationRule PushNewOrdersToErp (trigger event WidgetOrderPlaced) starts when a FLOW emits WidgetOrderPlaced: an OrchestrationStarted event whose payload.sourceEventId is that exact event appears. PlaceWidgetOrderAudited emits WidgetOrderPlaced twice (the hook's emitEvent, then the parent's announce-order-placed), so the two newest OrchestrationStarted events name those two events (in either order: both start within the same millisecond, so 'newest first' does not order them). A flow event with another name (WidgetOrderLineRecorded) starts no orchestration. (The rule's webhook action targets 127.0.0.1:9099 which is not served here, so its action outcome is deliberately not asserted.) Relies on probes running sequentially: the OrchestrationStarted list is read newest-first.",
+      "description": "FORM P3-T5c: the flow PushNewOrdersToErp (trigger event WidgetOrderPlaced, runAs system; formerly an orchestration rule) runs when a FLOW emits WidgetOrderPlaced: PlaceWidgetOrderAudited emits it twice (the hook's emitEvent, then the parent's announce-order-placed) and the execution monitor lists PushNewOrdersToErp. (The flow's webhook call targets 127.0.0.1:9099 which is not served here, so its outcome is deliberately not asserted.)",
       "steps": [
         {
           "name": "control event of a different name",
@@ -3832,51 +3827,18 @@
           }
         },
         {
-          "name": "orchestration started for the emitted event",
+          "name": "the trigger flow ran for the emitted event",
           "method": "GET",
-          "path": "/api/events/by-name/OrchestrationStarted?limit=2",
+          "path": "/api/executions/history",
           "expect": {
             "status": 200,
             "json": {
-              "$[0].payload.orchestration": "PushNewOrdersToErp",
-              "$[0].payload.sourceEvent": "WidgetOrderPlaced",
-              "$[1].payload.orchestration": "PushNewOrdersToErp",
-              "$[1].payload.sourceEvent": "WidgetOrderPlaced"
-            },
-            "text": [
-              "\"sourceEventId\":\"${firstEventId}\"",
-              "\"sourceEventId\":\"${srcEventId}\""
-            ]
-          }
-        },
-        {
-          "name": "emit a non-matching event again",
-          "method": "POST",
-          "path": "/api/flows/RecordOrderLines/execute",
-          "body": {
-            "widgetOrderId": "${uuid}",
-            "sku": "OR2-${rand}",
-            "quantity": 1,
-            "unitPrice": 1
+              "$.items[?flowName=PushNewOrdersToErp].flowName": "PushNewOrdersToErp"
+            }
           },
-          "expect": {
-            "status": 200
-          }
-        },
-        {
-          "name": "no new orchestration for a non-matching event",
-          "method": "GET",
-          "path": "/api/events/by-name/OrchestrationStarted?limit=2",
-          "expect": {
-            "status": 200,
-            "json": {
-              "$[0].payload.orchestration": "PushNewOrdersToErp",
-              "$[1].payload.orchestration": "PushNewOrdersToErp"
-            },
-            "text": [
-              "\"sourceEventId\":\"${firstEventId}\"",
-              "\"sourceEventId\":\"${srcEventId}\""
-            ]
+          "retry": {
+            "attempts": 5,
+            "delaySeconds": 1
           }
         }
       ]

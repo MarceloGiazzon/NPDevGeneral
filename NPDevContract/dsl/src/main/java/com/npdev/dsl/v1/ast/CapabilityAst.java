@@ -14,6 +14,8 @@ public final class CapabilityAst {
     private final OriginAst origin;
     private final String uid;
     private final Map<String, Object> http;
+    private final Map<String, Object> inbound;
+    private final String adapter;
 
     public CapabilityAst(String name, List<CapabilityOperationAst> operations) {
         this(name, null, null, operations);
@@ -66,6 +68,36 @@ public final class CapabilityAst {
             String uid,
             Map<String, Object> http
     ) {
+        this(name, type, specializesName, operations, origin, uid, http, Map.of());
+    }
+
+    /** FORM P3-T10: the capability's inbound webhook door ({@code null} = none; an empty map is a door with every
+     *  default) -- see getInbound. */
+    public CapabilityAst(
+            String name,
+            String type,
+            String specializesName,
+            List<CapabilityOperationAst> operations,
+            OriginAst origin,
+            String uid,
+            Map<String, Object> http,
+            Map<String, Object> inbound
+    ) {
+        this(name, type, specializesName, operations, origin, uid, http, inbound, null);
+    }
+
+    /** FORM P3-T9 (D15): the adapter this capability is bound to when that is NOT a deployment default -- see getAdapter. */
+    public CapabilityAst(
+            String name,
+            String type,
+            String specializesName,
+            List<CapabilityOperationAst> operations,
+            OriginAst origin,
+            String uid,
+            Map<String, Object> http,
+            Map<String, Object> inbound,
+            String adapter
+    ) {
         this.name = name;
         this.type = type;
         this.specializesName = specializesName;
@@ -73,6 +105,8 @@ public final class CapabilityAst {
         this.origin = origin;
         this.uid = uid;
         this.http = http == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(http));
+        this.adapter = adapter == null || adapter.isBlank() ? null : adapter.trim();
+        this.inbound = inbound == null ? null : Collections.unmodifiableMap(new LinkedHashMap<>(inbound));
     }
 
     public String getName() { return name; }
@@ -98,6 +132,27 @@ public final class CapabilityAst {
      *  (empty if none); shape validated by the schema and HttpConnectorValidation. */
     public Map<String, Object> getHttp() {
         return http;
+    }
+
+    /** FORM P3-T10: the opaque {@code inbound} block (path, hmacSecretEnvVar, signature, idempotencyKey,
+     *  fieldMapping, eventName) that makes this capability an inbound webhook door -- empty if none or all-default.
+     *  Shape validated by the schema and {@code WebhookValidation}; compiled into the internal webhook
+     *  list by {@code ModelCompiler}. */
+    public Map<String, Object> getInbound() {
+        return inbound == null ? Map.of() : inbound;
+    }
+
+    /** FORM P3-T9 (D15): the adapter id this capability is bound to ({@code plugin:java-source}, {@code http-connector},
+     *  {@code externalAi}, ...), or null. The three deployment defaults (persistence -> repository, eventBus -> inproc,
+     *  a NotificationCapability -> notification-inproc) are derived by the compiler and need no declaration;
+     *  {@code config.json adapters} may override them. Replaces the removed root {@code bindings[]}. */
+    public String getAdapter() {
+        return adapter;
+    }
+
+    /** Whether this capability declares an inbound door at all -- {@code "inbound": {}} does (every default). */
+    public boolean hasInbound() {
+        return inbound != null;
     }
 
     public List<CapabilityOperationAst> getOperations() {

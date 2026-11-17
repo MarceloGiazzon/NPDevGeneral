@@ -22,30 +22,6 @@
       "note": "field = the stored field on THIS concept that holds the result; from = the child concept; via = the child's reference field pointing back here; of = the child field aggregated (omit for count)."
     },
     {
-      "id": "orchestrationTrigger",
-      "label": "orchestration trigger",
-      "path": "$.orchestrations[].trigger",
-      "canonicalKeys": ["type", "event"],
-      "defaults": { "type": "event" },
-      "example": { "type": "event", "event": "OrderShipped" },
-      "note": "type is always \"event\"."
-    },
-    {
-      "id": "orchestrationAction",
-      "label": "orchestration action",
-      "path": "$.orchestrations[].actions[]",
-      "canonicalKeys": ["type", "concept", "capability", "operation", "event", "delaySeconds", "delayMs", "delayMinutes", "action", "map"],
-      "keyAliases": {
-        "data": "map",
-        "input": "map",
-        "values": "map",
-        "fields": "map",
-        "set": "map"
-      },
-      "example": { "type": "create", "concept": "ReturnLogEntry", "map": { "bookTitle": "$event.bookTitle" } },
-      "note": "map holds the values to write, keyed by target field."
-    },
-    {
       "id": "fieldType",
       "label": "field type",
       "path": "$.concepts[].fields[].type",
@@ -85,9 +61,13 @@
         "saveconcept": "createConcept",
         "conceptcreate": "createConcept",
         "conceptupdate": "updateConcept",
-        "patchconcept": "updateConcept"
+        "patchconcept": "updateConcept",
+        "notification": "notify",
+        "sendnotification": "notify",
+        "sendnotice": "notify",
+        "callprocedure": "callFlow"
       },
-      "note": "Allowed: createConcept, updateConcept, capabilityCall, emitEvent, branch, forEach, map, return, ..."
+      "note": "Allowed: createConcept, updateConcept, notify, capabilityCall, emitEvent, branch, forEach, map, return, ..."
     },
     {
       "id": "flowStep",

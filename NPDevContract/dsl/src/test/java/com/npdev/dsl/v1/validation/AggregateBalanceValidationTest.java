@@ -28,7 +28,7 @@ class AggregateBalanceValidationTest {
             String lookupQuery, String actionProcedure, String actionCheckBalances) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.balance.test", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.balance.test", "version": "1.0",
               "concepts": [
                 { "name": "StockTransfer", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] },
@@ -162,7 +162,7 @@ class AggregateBalanceValidationTest {
     void duplicateBalanceNameWithinAnAggregateIsRejected() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.balance.duptest", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.balance.duptest", "version": "1.0",
               "concepts": [
                 { "name": "StockTransfer", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] },

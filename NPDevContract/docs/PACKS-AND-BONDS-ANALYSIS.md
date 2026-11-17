@@ -56,7 +56,7 @@ A **pack** is a named, versioned JSON file that groups concepts, domain types, c
   "$schema": "NPDevContract/schemas/pack.schema.json",
   "pack": "catalog",
   "version": "1.0",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "concepts": [
     {
       "name": "Product",
@@ -84,7 +84,7 @@ A **pack** is a named, versioned JSON file that groups concepts, domain types, c
 ```json
 {
   "namespace": "my-app",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "version": "1.0",
   "packs": [
     { "$ref": "packs/catalog.json" },
@@ -112,7 +112,7 @@ After resolution, the model contains concepts `catalog::Product`, `catalog::Vari
 
 | Required fields | Optional arrays | Notes |
 |---|---|---|
-| `dslVersion` (const `"1.0.0"`) | `concepts`, `domainTypes`, `capabilities`, `customCapabilities` | `pack` field is the namespace identifier |
+| `dslVersion` (const `"3.0.0"`) | `concepts`, `domainTypes`, `capabilities`, `customCapabilities` | `pack` field is the namespace identifier |
 | `pack` (lowercase, no spaces) | `bindings`, `events`, `flows`, `orchestrationRules`, `orchestrations` | Validates with regex `^[a-z][a-z0-9_-]*$` |
 | `version` | `queries`, `ruleProfiles`, `procedures`, `panels` | |
 | | `metadata`, `fragments` | `fragments` is declared but **not resolved** — see Gap #1 |
@@ -206,7 +206,7 @@ The pack schema declares `fragments` as a valid property, suggesting that pack a
 {
   "pack": "catalog",
   "version": "1.0",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "concepts": [...],
   "fragments": [{ "$ref": "sub-concepts.json" }]
 }

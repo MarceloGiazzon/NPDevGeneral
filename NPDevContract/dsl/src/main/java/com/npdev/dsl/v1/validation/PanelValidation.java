@@ -4,7 +4,6 @@ import com.npdev.dsl.v1.ast.AppShellAst;
 import com.npdev.dsl.v1.ast.AppShellNavItemAst;
 import com.npdev.dsl.v1.ast.CapabilityAst;
 import com.npdev.dsl.v1.ast.ConceptAccessAst;
-import com.npdev.dsl.v1.ast.CapabilityBindingAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
 import com.npdev.dsl.v1.ast.DomainTypeAst;
 import com.npdev.dsl.v1.ast.CapabilityPolicyAst;
@@ -19,9 +18,6 @@ import com.npdev.dsl.v1.ast.FlowScheduleAst;
 import com.npdev.dsl.v1.ast.InvariantAst;
 import com.npdev.dsl.v1.ast.LifecycleAst;
 import com.npdev.dsl.v1.ast.ModelAst;
-import com.npdev.dsl.v1.ast.OrchestrationActionAst;
-import com.npdev.dsl.v1.ast.OrchestrationAst;
-import com.npdev.dsl.v1.ast.OrchestrationTriggerAst;
 import com.npdev.dsl.v1.ast.AggregateAst;
 import com.npdev.dsl.v1.ast.DerivedFieldAst;
 import com.npdev.dsl.v1.ast.AggregateBalanceAst;
@@ -53,7 +49,6 @@ import com.npdev.dsl.v1.ast.ProcedureStepAst;
 import com.npdev.dsl.v1.query.PickerFilterGrammar;
 import com.npdev.dsl.v1.ast.QueryAst;
 import com.npdev.dsl.v1.ast.ReferenceSemanticsAst;
-import com.npdev.dsl.v1.ast.RuleProfileAst;
 import com.npdev.dsl.v1.ast.TruthLevel;
 import com.npdev.dsl.v1.ast.UiStateControlAst;
 import com.npdev.dsl.v1.ast.SchemaAst;
@@ -190,8 +185,10 @@ final class PanelValidation {
         Map<String, AggregateAst> aggregatesByNormalizedName = modelAst.getAggregates().stream()
                 .collect(Collectors.toMap(a -> normalize(a.name()), a -> a, (first, second) -> first));
         Set<String> aggregateNames = aggregatesByNormalizedName.keySet();
-        Set<String> procedureNames = modelAst.getProcedures().stream()
-                .map(ProcedureAst::name)
+        // FORM P3-T5c: a screen names a procedure OR the flow that replaced it (the callers run either)
+        Set<String> procedureNames = java.util.stream.Stream.concat(
+                        modelAst.getProcedures().stream().map(ProcedureAst::name),
+                        modelAst.getFlows().stream().map(com.npdev.dsl.v1.ast.FlowAst::getName))
                 .map(SemanticValidator::normalize)
                 .collect(Collectors.toSet());
         Set<String> autoPanelNames = new HashSet<>();
@@ -1130,8 +1127,10 @@ final class PanelValidation {
                 .map(QueryAst::name)
                 .map(SemanticValidator::normalize)
                 .collect(Collectors.toSet());
-        Set<String> procedureNames = modelAst.getProcedures().stream()
-                .map(ProcedureAst::name)
+        // FORM P3-T5c: a screen names a procedure OR the flow that replaced it (the callers run either)
+        Set<String> procedureNames = java.util.stream.Stream.concat(
+                        modelAst.getProcedures().stream().map(ProcedureAst::name),
+                        modelAst.getFlows().stream().map(com.npdev.dsl.v1.ast.FlowAst::getName))
                 .map(SemanticValidator::normalize)
                 .collect(Collectors.toSet());
         Set<String> flowNames = modelAst.getFlows().stream()

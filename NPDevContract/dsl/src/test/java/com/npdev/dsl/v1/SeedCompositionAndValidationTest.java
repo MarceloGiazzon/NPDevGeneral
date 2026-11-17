@@ -40,7 +40,7 @@ class SeedCompositionAndValidationTest {
 
     private static final String PACK_WITH_OWNED_SEED = """
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "widgets",
               "version": "1.0.0",
               "concepts": [
@@ -57,7 +57,7 @@ class SeedCompositionAndValidationTest {
 
     private static final String PACK_WITH_UNOWNED_SEED = """
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "widgets",
               "version": "1.0.0",
               "concepts": [
@@ -77,7 +77,7 @@ class SeedCompositionAndValidationTest {
         Path model = write("model.json", """
                 {
                   "namespace": "r88.owned.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [
                     { "$ref": "packs/widgets/pack.json" }
@@ -115,7 +115,7 @@ class SeedCompositionAndValidationTest {
         Path model = write("model.json", """
                 {
                   "namespace": "r88.unowned.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [
                     { "$ref": "packs/widgets/pack.json" }
@@ -147,7 +147,7 @@ class SeedCompositionAndValidationTest {
         Path model = write("model.json", """
                 {
                   "namespace": "r88.rootunknown.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Widget", "fields": [
@@ -173,7 +173,7 @@ class SeedCompositionAndValidationTest {
         Path model = write("model.json", """
                 {
                   "namespace": "r88.dupalias.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Widget", "fields": [

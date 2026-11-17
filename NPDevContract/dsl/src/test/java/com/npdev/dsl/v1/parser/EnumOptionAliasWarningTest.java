@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class EnumOptionAliasWarningTest {
 
     private static ModelAst parse(String options) throws Exception {
-        String model = "{\"dslVersion\":\"1.0.0\",\"namespace\":\"alias.test\",\"version\":\"1.0\","
+        String model = "{\"dslVersion\":\"3.0.0\",\"namespace\":\"alias.test\",\"version\":\"1.0\","
                 + "\"concepts\":[{\"name\":\"Thing\",\"fields\":["
                 + "{\"name\":\"id\",\"type\":\"string\",\"id\":true,\"required\":true},"
                 + "{\"name\":\"state\",\"type\":\"enum\",\"enumValues\":" + options + "}]}]}";

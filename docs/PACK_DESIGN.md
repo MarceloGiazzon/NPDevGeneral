@@ -19,6 +19,13 @@ generated: `python scripts/pack-repo/build-pack-catalog-view.py` merges the hand
 files (versions, concepts, dependencies, satellites) and writes `<BuildRoot>/reports/pack-catalog-view/`; `--out
 NPDevContract/pack-catalog` refreshes the repo snapshot, `--check` only validates.
 
+The catalog an AI reads is a second, smaller view of the same packs. `python scripts/pack-repo/build-ai-catalog.py` writes
+`<BuildRoot>/npr-catalog/catalog/`: `l0.txt` (one `id|kind|area|trust|need|requires:...` line per pack, at most 40 tokens
+a line) and `cards/<id>.json` (an L1 card of at most 350 tokens: key fields, states, roles to bind, flows, events, screens,
+the exact `packs[]` line to consume it, and its main limit). It reads the built-in packs (trust `verified`) and the
+PackWorkshop (trust from the latest verdict: `probed` is `verified`, `reviewed` is `certified`, anything lower is `draft`;
+a rejected or untested pack is left out). A card that cannot fit its budget fails the build by name instead of going over.
+
 ## Public surface vs `private` vs `extensionPoints`
 
 Every member a pack declares (concept, capability, procedure, event, domain type, …) is **public by
@@ -74,18 +81,14 @@ separately and wired by name, exactly like an interface and its injected impleme
   "capabilities": [
     { "name": "persistence", "type": "PersistenceCapability", "operations": ["save", "findById"] },
     { "name": "notification", "type": "NotificationCapability", "operations": ["send"] }
-  ],
-  "bindings": [
-    { "capability": "persistence", "adapter": "repository" },
-    { "capability": "notification", "adapter": "notification-inproc" }
   ]
 }
 ```
 
 (real, live example: `NPDevSamples/dsl-conformance-max/Input/model.json`.)
 
-A pack should normally declare **capabilities, not bindings** — a pack that ships its own binding has
-baked in one specific adapter (e.g. always `notification-inproc`) for every app that imports it, which
+A pack should normally declare **capabilities, not adapters** — a pack that ships its own `adapter` has
+baked in one specific adapter (e.g. always `plugin:java-source`) for every app that imports it, which
 defeats the point of separating the contract from the implementation. Let the composing app supply the
 binding via `requires.capabilities` (what the pack needs from its host) and its own `bindings` array;
 the kernel's `CapabilityDispatcher` resolves the binding at runtime, so swapping an adapter — in-proc

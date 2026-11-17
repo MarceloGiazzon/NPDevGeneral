@@ -355,6 +355,27 @@ class WebhookInboundControllerTest {
     }
 
     @Test
+    void stripeDoorThatDeclaresNoHeaderReadsStripeSignatureNotTheNpdevHeader() throws Exception {
+        // FORM P3-T10: capabilities[].inbound.signature carries only {scheme, toleranceSeconds} for stripe-v1
+        when(kernelRunner.execute(eq("RecordStripePayment"), any(), any()))
+                .thenReturn(ExecutionResult.ok("RecordStripePayment", Map.of(), List.of()));
+        CompiledWebhook door = new CompiledWebhook(SOURCE, SECRET_ENV_VAR, "",
+                Map.of("orderId", "data.object.metadata.orderId"), "RecordStripePayment", "id",
+                Map.of("scheme", "stripe-v1", "toleranceSeconds", 300));
+        MockMvc mvc = providerMvc(door);
+
+        mvc.perform(post("/api/hooks/" + SOURCE)
+                        .header("Stripe-Signature", stripeHeader(NOW.getEpochSecond() - 5, STRIPE_BODY))
+                        .contentType("application/json").content(STRIPE_BODY))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true));
+
+        mvc.perform(post("/api/hooks/" + SOURCE).contentType("application/json").content(STRIPE_BODY))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("missing Stripe-Signature header"));
+    }
+
+    @Test
     void aFailedFlowIs500AndTheDeliveryStaysRetryable() throws Exception {
         when(kernelRunner.execute(eq("RecordStripePayment"), any(), any()))
                 .thenReturn(ExecutionResult.failed("RecordStripePayment", List.of(), List.of(), "boom"))
@@ -391,7 +412,7 @@ class WebhookInboundControllerTest {
     }
 
     @Test
-    void eventDoorAlsoPublishesOnTheEventBusSoOrchestrationRulesFire() throws Exception {
+    void eventDoorAlsoPublishesOnTheEventBusSoTriggerFlowsFire() throws Exception {
         CompiledWebhook hexDoor = new CompiledWebhook(SOURCE, SECRET_ENV_VAR, EVENT_NAME, Map.of(),
                 "", "$header.X-Delivery-Id",
                 Map.of("scheme", "hmac-sha256-hex", "header", "X-Hub-Signature-256", "prefix", "sha256="));
@@ -437,5 +458,56 @@ class WebhookInboundControllerTest {
         verify(eventStore).append(stored.capture());
         assertEquals("orders/paid", stored.getValue().payload().get("topic"));
         assertEquals("demo.myshopify.com", stored.getValue().payload().get("shop"));
+    }
+
+    // ---- FORM P3-T5c: flows triggered by a webhook source ----
+
+    private static com.npdev.dsl.v1.compiled.CompiledFlow webhookTriggeredFlow(String name, String source) {
+        return new com.npdev.dsl.v1.compiled.CompiledFlow(
+                name, "Order", "sync",
+                List.of(new com.npdev.dsl.v1.compiled.CompiledFlowStep(
+                        "return", "return", null, null, List.of(), null, null, "$input", null)),
+                null, null, null, false, null, null,
+                new com.npdev.dsl.v1.compiled.CompiledFlowTrigger("webhook", null, null, source),
+                "internal", "system");
+    }
+
+    @Test
+    void aWebhookTriggeredFlowStartsWithTheMappedPayloadAsTheHomeTenantSystem() throws Exception {
+        when(compiledModel.getFlows()).thenReturn(List.of(
+                webhookTriggeredFlow("OnStripe", SOURCE), webhookTriggeredFlow("OnOther", "other-source")));
+        when(kernelRunner.execute(eq("OnStripe"), any(), any()))
+                .thenReturn(ExecutionResult.ok("OnStripe", Map.of(), List.of()));
+        MockMvc mvc = providerMvc(stripeDoor("", ""));
+        String header = stripeHeader(NOW.getEpochSecond(), STRIPE_BODY);
+
+        mvc.perform(post("/api/hooks/" + SOURCE).header("Stripe-Signature", header)
+                        .contentType("application/json").content(STRIPE_BODY))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.triggeredFlows[0]").value("OnStripe"));
+
+        ArgumentCaptor<Object> input = ArgumentCaptor.forClass(Object.class);
+        verify(kernelRunner).execute(eq("OnStripe"), input.capture(), any());
+        assertEquals(Map.of("orderId", "o-1"), input.getValue());
+        verify(kernelRunner, never()).execute(eq("OnOther"), any(), any());
+    }
+
+    @Test
+    void aFailedTriggerFlowIs500AndTheDeliveryStaysRetryable() throws Exception {
+        when(compiledModel.getFlows()).thenReturn(List.of(webhookTriggeredFlow("OnStripe", SOURCE)));
+        when(kernelRunner.execute(eq("OnStripe"), any(), any()))
+                .thenReturn(ExecutionResult.failed("OnStripe", List.of(), List.of(), "boom"))
+                .thenReturn(ExecutionResult.ok("OnStripe", Map.of(), List.of()));
+        MockMvc mvc = providerMvc(stripeDoor("", ""));
+        String header = stripeHeader(NOW.getEpochSecond(), STRIPE_BODY);
+
+        mvc.perform(post("/api/hooks/" + SOURCE).header("Stripe-Signature", header)
+                        .contentType("application/json").content(STRIPE_BODY))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("WEBHOOK_FLOW_FAILED"));
+        mvc.perform(post("/api/hooks/" + SOURCE).header("Stripe-Signature", header)
+                        .contentType("application/json").content(STRIPE_BODY))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.triggeredFlows[0]").value("OnStripe"));
     }
 }

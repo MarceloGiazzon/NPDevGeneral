@@ -56,37 +56,58 @@ final class ScheduledReportEndToEndTest {
     private static final String MODEL_JSON = """
             {
               "namespace": "demo",
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "version": "v1",
               "concepts": [
                 {
                   "name": "Report",
-                  "ui": { "label": "Report" },
+                  "ui": {
+                    "label": "Report"
+                  },
                   "fields": [
-                    { "name": "id", "type": "uuid", "id": true, "required": true }
+                    {
+                      "name": "id",
+                      "type": "uuid",
+                      "id": true,
+                      "required": true
+                    }
                   ]
                 }
               ],
               "capabilities": [
-                { "name": "documentRender", "type": "DocumentRenderCapability", "operations": ["render"] },
-                { "name": "mail", "type": "EmailCapability", "operations": ["send"] }
-              ],
-              "bindings": [
-                { "capability": "documentRender", "adapter": "document-render-inproc" },
-                { "capability": "mail", "adapter": "mail-smtp" }
+                {
+                  "name": "documentRender",
+                  "type": "DocumentRenderCapability",
+                  "operations": [
+                    "render"
+                  ],
+                  "adapter": "document-render-inproc"
+                },
+                {
+                  "name": "mail",
+                  "type": "EmailCapability",
+                  "operations": [
+                    "send"
+                  ],
+                  "adapter": "mail-smtp"
+                }
               ],
               "flows": [
                 {
                   "name": "NightlyReportEmail",
                   "concept": "Report",
-                  "schedule": { "cron": "0 0 3 * * *" },
+                  "schedule": {
+                    "cron": "0 0 3 * * *"
+                  },
                   "steps": [
                     {
                       "name": "render-report",
                       "type": "capabilityCall",
                       "capability": "documentRender",
                       "operation": "render",
-                      "args": [ "$input.html" ],
+                      "args": [
+                        "$input.html"
+                      ],
                       "output": "$rendered"
                     },
                     {

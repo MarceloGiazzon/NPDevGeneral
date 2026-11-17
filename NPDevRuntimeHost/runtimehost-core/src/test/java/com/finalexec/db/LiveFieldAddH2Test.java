@@ -65,7 +65,7 @@ class LiveFieldAddH2Test {
     }
 
     private static CompiledModel compile(String extraFields) throws Exception {
-        String json = "{ \"namespace\": \"live1.test\", \"dslVersion\": \"1.0.0\", \"version\": \"1.0\", \"concepts\": ["
+        String json = "{ \"namespace\": \"live1.test\", \"dslVersion\": \"3.0.0\", \"version\": \"1.0\", \"concepts\": ["
                 + "{ \"name\": \"Widget\", \"fields\": ["
                 + "{ \"name\": \"id\", \"type\": \"uuid\", \"id\": true, \"required\": true },"
                 + "{ \"name\": \"name\", \"type\": \"string\" }" + extraFields + "] } ] }";

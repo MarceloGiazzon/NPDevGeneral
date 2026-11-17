@@ -61,7 +61,7 @@ class GeneratorMainPackExtensionCompositionTest {
 
     private static final String CLINICBASE_PACK_JSON = """
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "clinicbase",
               "version": "1.0.0",
               "concepts": [
@@ -75,7 +75,7 @@ class GeneratorMainPackExtensionCompositionTest {
 
     private static final String CLINICEXT_PACK_JSON = """
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "clinicext",
               "version": "1.0.0",
               "metadata": { "extends": { "pack": "clinicbase", "concept": "Patient" } },
@@ -141,7 +141,7 @@ class GeneratorMainPackExtensionCompositionTest {
         Path baseFile = writePack(packsDir, "clinicbase", CLINICBASE_PACK_JSON);
         writePack(packsDir, "clinicext", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "clinicext",
                   "version": "1.0.0",
                   "metadata": { "extends": { "pack": "clinicbase", "concept": "Patient" } },

@@ -67,7 +67,7 @@ class ModelResolverSpecializationTest {
                 """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
@@ -87,7 +87,7 @@ class ModelResolverSpecializationTest {
                 """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
@@ -114,7 +114,7 @@ class ModelResolverSpecializationTest {
                 """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
@@ -174,21 +174,34 @@ class ModelResolverSpecializationTest {
         return """
                 {
                   "namespace": "determinism",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v2",
                   "concepts": [
                     {
                       "name": "Invoice",
                       "fields": [
-                        { "name": "id", "type": "uuid", "id": true, "required": true },
-                        { "name": "code", "type": "string", "required": true }
+                        {
+                          "name": "id",
+                          "type": "uuid",
+                          "id": true,
+                          "required": true
+                        },
+                        {
+                          "name": "code",
+                          "type": "string",
+                          "required": true
+                        }
                       ]
                     },
                     {
                       "name": "MedicalInvoice",
                       "specializes": "Invoice",
                       "fields": [
-                        { "name": "doctorId", "type": "uuid", "required": true }
+                        {
+                          "name": "doctorId",
+                          "type": "uuid",
+                          "required": true
+                        }
                       ]
                     }
                   ],
@@ -197,27 +210,80 @@ class ModelResolverSpecializationTest {
                       "name": "persistence",
                       "type": "PersistenceCapability",
                       "operations": [
-                        { "name": "save", "input": { "type": "object", "properties": { "entity": { "type": "object", "properties": {} } }, "required": ["entity"] }, "output": { "type": "object", "properties": { "entity": { "type": "object", "properties": {} } }, "required": ["entity"] } }
-                      ]
+                        {
+                          "name": "save",
+                          "input": {
+                            "type": "object",
+                            "properties": {
+                              "entity": {
+                                "type": "object",
+                                "properties": {}
+                              }
+                            },
+                            "required": [
+                              "entity"
+                            ]
+                          },
+                          "output": {
+                            "type": "object",
+                            "properties": {
+                              "entity": {
+                                "type": "object",
+                                "properties": {}
+                              }
+                            },
+                            "required": [
+                              "entity"
+                            ]
+                          }
+                        }
+                      ],
+                      "adapter": "inproc"
                     },
                     {
                       "name": "medicalPersistence",
                       "specializes": "persistence",
                       "operations": [
-                        { "name": "saveMedical", "input": { "type": "object", "properties": { "entity": { "type": "object", "properties": {} } }, "required": ["entity"] }, "output": { "type": "object", "properties": { "entity": { "type": "object", "properties": {} } }, "required": ["entity"] } }
-                      ]
+                        {
+                          "name": "saveMedical",
+                          "input": {
+                            "type": "object",
+                            "properties": {
+                              "entity": {
+                                "type": "object",
+                                "properties": {}
+                              }
+                            },
+                            "required": [
+                              "entity"
+                            ]
+                          },
+                          "output": {
+                            "type": "object",
+                            "properties": {
+                              "entity": {
+                                "type": "object",
+                                "properties": {}
+                              }
+                            },
+                            "required": [
+                              "entity"
+                            ]
+                          }
+                        }
+                      ],
+                      "adapter": "inproc"
                     }
-                  ],
-                  "bindings": [
-                    { "capability": "medicalPersistence", "adapter": "inproc" },
-                    { "capability": "persistence", "adapter": "inproc" }
                   ],
                   "events": [
                     {
                       "name": "InvoiceCreated",
                       "version": "1.0",
                       "payload": [
-                        { "name": "code", "type": "string" }
+                        {
+                          "name": "code",
+                          "type": "string"
+                        }
                       ]
                     },
                     {
@@ -225,8 +291,14 @@ class ModelResolverSpecializationTest {
                       "specializes": "InvoiceCreated",
                       "version": "2.0",
                       "payload": [
-                        { "name": "code", "type": "string" },
-                        { "name": "doctorId", "type": "uuid" }
+                        {
+                          "name": "code",
+                          "type": "string"
+                        },
+                        {
+                          "name": "doctorId",
+                          "type": "uuid"
+                        }
                       ]
                     }
                   ],
@@ -235,8 +307,16 @@ class ModelResolverSpecializationTest {
                       "name": "SubmitInvoice",
                       "concept": "Invoice",
                       "steps": [
-                        { "name": "pre-check", "type": "invariantCheck", "scope": "Invoice" },
-                        { "name": "return-base", "type": "return", "value": "$input" }
+                        {
+                          "name": "pre-check",
+                          "type": "invariantCheck",
+                          "scope": "Invoice"
+                        },
+                        {
+                          "name": "return-base",
+                          "type": "return",
+                          "value": "$input"
+                        }
                       ]
                     },
                     {
@@ -266,7 +346,7 @@ class ModelResolverSpecializationTest {
         return """
                 {
                   "namespace": "determinism",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v2",
                   "flows": [
                     {
@@ -291,8 +371,16 @@ class ModelResolverSpecializationTest {
                       "name": "SubmitInvoice",
                       "concept": "Invoice",
                       "steps": [
-                        { "name": "pre-check", "type": "invariantCheck", "scope": "Invoice" },
-                        { "name": "return-base", "type": "return", "value": "$input" }
+                        {
+                          "name": "pre-check",
+                          "type": "invariantCheck",
+                          "scope": "Invoice"
+                        },
+                        {
+                          "name": "return-base",
+                          "type": "return",
+                          "value": "$input"
+                        }
                       ]
                     }
                   ],
@@ -302,36 +390,95 @@ class ModelResolverSpecializationTest {
                       "specializes": "InvoiceCreated",
                       "version": "2.0",
                       "payload": [
-                        { "name": "doctorId", "type": "uuid" },
-                        { "name": "code", "type": "string" }
+                        {
+                          "name": "doctorId",
+                          "type": "uuid"
+                        },
+                        {
+                          "name": "code",
+                          "type": "string"
+                        }
                       ]
                     },
                     {
                       "name": "InvoiceCreated",
                       "version": "1.0",
                       "payload": [
-                        { "name": "code", "type": "string" }
+                        {
+                          "name": "code",
+                          "type": "string"
+                        }
                       ]
                     }
-                  ],
-                  "bindings": [
-                    { "capability": "persistence", "adapter": "inproc" },
-                    { "capability": "medicalPersistence", "adapter": "inproc" }
                   ],
                   "capabilities": [
                     {
                       "name": "medicalPersistence",
                       "specializes": "persistence",
                       "operations": [
-                        { "name": "saveMedical", "input": { "type": "object", "properties": { "entity": { "type": "object", "properties": {} } }, "required": ["entity"] }, "output": { "type": "object", "properties": { "entity": { "type": "object", "properties": {} } }, "required": ["entity"] } }
-                      ]
+                        {
+                          "name": "saveMedical",
+                          "input": {
+                            "type": "object",
+                            "properties": {
+                              "entity": {
+                                "type": "object",
+                                "properties": {}
+                              }
+                            },
+                            "required": [
+                              "entity"
+                            ]
+                          },
+                          "output": {
+                            "type": "object",
+                            "properties": {
+                              "entity": {
+                                "type": "object",
+                                "properties": {}
+                              }
+                            },
+                            "required": [
+                              "entity"
+                            ]
+                          }
+                        }
+                      ],
+                      "adapter": "inproc"
                     },
                     {
                       "name": "persistence",
                       "type": "PersistenceCapability",
                       "operations": [
-                        { "name": "save", "input": { "type": "object", "properties": { "entity": { "type": "object", "properties": {} } }, "required": ["entity"] }, "output": { "type": "object", "properties": { "entity": { "type": "object", "properties": {} } }, "required": ["entity"] } }
-                      ]
+                        {
+                          "name": "save",
+                          "input": {
+                            "type": "object",
+                            "properties": {
+                              "entity": {
+                                "type": "object",
+                                "properties": {}
+                              }
+                            },
+                            "required": [
+                              "entity"
+                            ]
+                          },
+                          "output": {
+                            "type": "object",
+                            "properties": {
+                              "entity": {
+                                "type": "object",
+                                "properties": {}
+                              }
+                            },
+                            "required": [
+                              "entity"
+                            ]
+                          }
+                        }
+                      ],
+                      "adapter": "inproc"
                     }
                   ],
                   "concepts": [
@@ -339,14 +486,27 @@ class ModelResolverSpecializationTest {
                       "name": "MedicalInvoice",
                       "specializes": "Invoice",
                       "fields": [
-                        { "name": "doctorId", "type": "uuid", "required": true }
+                        {
+                          "name": "doctorId",
+                          "type": "uuid",
+                          "required": true
+                        }
                       ]
                     },
                     {
                       "name": "Invoice",
                       "fields": [
-                        { "name": "code", "type": "string", "required": true },
-                        { "name": "id", "type": "uuid", "id": true, "required": true }
+                        {
+                          "name": "code",
+                          "type": "string",
+                          "required": true
+                        },
+                        {
+                          "name": "id",
+                          "type": "uuid",
+                          "id": true,
+                          "required": true
+                        }
                       ]
                     }
                   ]

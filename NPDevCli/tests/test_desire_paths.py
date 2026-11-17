@@ -220,27 +220,6 @@ class RollupTests(unittest.TestCase):
         self.assertEqual((item, fixes), (rollup, []))
 
 
-class OrchestrationTests(unittest.TestCase):
-    def test_trigger_type_and_action_aliases(self):
-        model = _model(orchestrations=[{"name": "O", "trigger": {"event": "LoanReturned"}, "actions": [
-            {"concept": "ReturnLogEntry", "data": {"a": "$event.a"}},
-            {"concept": "OutgoingMessage", "input": {"b": 1}},
-            {"type": "callCapability", "capability": "mail", "map": {}}]}])
-        fixed, fixes = dp.fix_model(model)
-        orch = fixed["orchestrations"][0]
-        self.assertEqual(orch["trigger"], {"event": "LoanReturned", "type": "event"})
-        self.assertEqual(orch["actions"][0], {"concept": "ReturnLogEntry", "map": {"a": "$event.a"}, "type": "create"})
-        self.assertEqual(orch["actions"][1]["map"], {"b": 1})
-        self.assertEqual(orch["actions"][2], model["orchestrations"][0]["actions"][2])
-        self.assertEqual(sorted(set(_rules(fixes))), ["orchestration-action-map-alias", "orchestration-action-type",
-                                                      "orchestration-trigger-type"])
-
-    def test_canonical_orchestration_is_untouched(self):
-        model = _model(orchestrations=[{"name": "O", "trigger": {"type": "event", "event": "E"},
-                                        "actions": [{"type": "create", "concept": "Customer", "map": {}}]}])
-        self.assertEqual(dp.fix_model(model)[1], [])
-
-
 class FieldTypeTests(unittest.TestCase):
     def test_aliases_become_canonical_and_allowed_types_stay(self):
         model = {"concepts": [{"name": "A", "fields": [{"name": "a", "type": "text"}, {"name": "b", "type": "Bool"},
@@ -297,6 +276,63 @@ class FlowStepTests(unittest.TestCase):
         fixed, fixes = dp.fix_model(model)
         self.assertEqual(fixes, [])
         self.assertEqual(fixed, model)
+
+
+class RemovedRootKeyTests(unittest.TestCase):
+    """FORM P3-T9/T11/T12: root keys the DSL dropped are rewritten when there is one clear reading."""
+
+    def test_model_becomes_namespace_and_contexts_becomes_modules(self):
+        fixed, fixes = dp.fix_model({"model": "t.shop", "contexts": [{"name": "billing"}]})
+        self.assertEqual(fixed, {"namespace": "t.shop", "modules": [{"name": "billing"}]})
+        self.assertEqual(_rules(fixes), ["root-model-to-namespace", "root-contexts-to-modules"])
+
+    def test_an_old_dsl_version_is_dropped_and_the_current_one_kept(self):
+        fixed, fixes = dp.fix_model(_model(dslVersion="1.0.0"))
+        self.assertNotIn("dslVersion", fixed)
+        self.assertEqual(_rules(fixes), ["root-old-dsl-version-dropped"])
+        fixed, fixes = dp.fix_model(_model(dslVersion="3.0.0"))
+        self.assertEqual((fixed["dslVersion"], fixes), ("3.0.0", []))
+
+    def test_rule_profiles_are_removed(self):
+        fixed, fixes = dp.fix_model(_model(ruleProfiles=[{"name": "always"}]))
+        self.assertNotIn("ruleProfiles", fixed)
+        self.assertEqual(_rules(fixes), ["root-rule-profiles-removed"])
+
+    def test_default_bindings_vanish_and_others_land_on_the_capability(self):
+        fixed, fixes = dp.fix_model(_model(
+            capabilities=[{"name": "persistence", "type": "PersistenceCapability"},
+                          {"name": "notify", "type": "NotificationCapability"},
+                          {"name": "mailer", "type": "EmailCapability"}],
+            bindings=[{"capability": "persistence", "adapter": "repository"},
+                      {"capability": "eventBus", "adapter": "inproc"},
+                      {"capability": "notify", "adapter": "notification-inproc"},
+                      {"capability": "mailer", "adapter": "mail-smtp"},
+                      {"capability": "geo", "adapter": "geo-inproc"}]))
+        self.assertNotIn("bindings", fixed)
+        by_name = {c["name"]: c for c in fixed["capabilities"]}
+        self.assertNotIn("adapter", by_name["persistence"])
+        self.assertNotIn("adapter", by_name["notify"])
+        self.assertEqual(by_name["mailer"]["adapter"], "mail-smtp")
+        self.assertEqual(by_name["geo"], {"name": "geo", "adapter": "geo-inproc"})
+        self.assertEqual(_rules(fixes).count("binding-default-dropped"), 3)
+        self.assertEqual(_rules(fixes).count("binding-to-capability-adapter"), 2)
+
+    def test_conflicting_adapters_are_left_for_the_parser_to_refuse(self):
+        fixed, _ = dp.fix_model(_model(
+            capabilities=[{"name": "mailer", "adapter": "mail-smtp"}],
+            bindings=[{"capability": "mailer", "adapter": "mail-inproc"}]))
+        self.assertEqual(fixed["bindings"], [{"capability": "mailer", "adapter": "mail-inproc"}])
+
+    def test_call_procedure_becomes_call_flow(self):
+        fixed, fixes = dp.fix_model(_model(flows=[{"name": "F", "steps": [
+            {"type": "callProcedure", "procedure": "Price", "output": "$p"}]}]))
+        self.assertEqual(fixed["flows"][0]["steps"][0], {"type": "callFlow", "flow": "Price", "output": "$p"})
+        self.assertEqual(_rules(fixes), ["flow-step-type-alias", "flow-step-procedure-to-flow"])
+
+    def test_notification_step_spellings_become_notify(self):
+        fixed, _ = dp.fix_model(_model(flows=[{"name": "F", "steps": [
+            {"type": "sendNotification", "to": "$input.email", "message": "hi"}]}]))
+        self.assertEqual(fixed["flows"][0]["steps"][0]["type"], "notify")
 
 
 if __name__ == "__main__":

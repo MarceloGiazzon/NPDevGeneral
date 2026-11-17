@@ -41,7 +41,9 @@ public record FlowInstance(
             throw new IllegalArgumentException("currentStepIndex must be >= 0");
         }
         status = Objects.requireNonNull(status, "status");
-        state = state == null ? Map.of() : Map.copyOf(new LinkedHashMap<>(state));
+        // FORM P3-T5c: a step may legitimately leave a null value in the state (a `set` expression that evaluates to null,
+        // `createConcept ifExists: skip`), which Map.copyOf refuses; an unmodifiable LinkedHashMap also keeps the insertion order.
+        state = state == null ? Map.of() : java.util.Collections.unmodifiableMap(new LinkedHashMap<>(state));
         if (status == FlowInstanceStatus.WAITING_EVENT) {
             waitingForEventName = requireNonBlank(waitingForEventName, "waitingForEventName");
         } else {

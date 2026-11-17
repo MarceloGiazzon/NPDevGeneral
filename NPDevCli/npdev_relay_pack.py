@@ -105,7 +105,7 @@ def version_errors(new_pack: dict, base_text: str, work: Path, cli) -> tuple[lis
 
 def probe_model(pack_id: str) -> dict:
     """The smallest application that imports the pack by the same local `$ref` a consumer uses."""
-    return {"namespace": "relay.probe", "dslVersion": "1.0.0", "version": "1.0",
+    return {"namespace": "relay.probe", "dslVersion": "3.0.0", "version": "1.0",
             "packs": [{"$ref": f"packs/{pack_id}/pack.json", "as": PROBE_ALIAS}],
             "concepts": [{"name": "Probe", "fields": [{"name": "id", "type": "uuid", "id": True, "required": True}]}]}
 

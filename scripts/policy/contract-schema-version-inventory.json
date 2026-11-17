@@ -97,7 +97,6 @@
       "path": "NPDevContract\\dsl\\src\\test\\java\\com\\npdev\\dsl\\v1\\ContractSurfaceSupportTest.java",
       "requiredTokens": [
         "queries",
-        "ruleProfiles",
         "procedures",
         "panels"
       ]

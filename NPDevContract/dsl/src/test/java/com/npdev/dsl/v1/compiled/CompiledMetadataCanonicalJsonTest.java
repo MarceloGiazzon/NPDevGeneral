@@ -99,10 +99,9 @@ class CompiledMetadataCanonicalJsonTest {
                 "Expected scheduled reminder flow-step metadata for CreateAppointment.");
         assertTrue(findActionMetadata(actions, "flowStep", "save-appointment", "Persist appointment", "appointments.create", "appointment-create"),
                 "Expected flow-step action metadata for save-appointment.");
-        assertTrue(findAction(actions, "orchestrationAction", "CompleteAppointmentFlow#2"),
-                "Expected orchestration action entry for notification send.");
-        assertTrue(findActionMetadata(actions, "orchestrationAction", "CompleteAppointmentFlow#2", "Send completion notification", "notifications.send", "appointment-completion-notification"),
-                "Expected orchestration action metadata for notification send.");
+        // FORM P3-T5c: the orchestration rule is the event-trigger flow CompleteAppointmentFlow
+        assertTrue(findAction(actions, "flow", "CompleteAppointmentFlow"),
+                "Expected flow catalog entry for the former orchestration rule.");
         assertTrue(findTransition(transitions, "Appointment", "Scheduled", "CheckedIn"),
                 "Expected Appointment Scheduled->CheckedIn transition metadata.");
         assertTrue(findTransitionActionMetadata(transitions, "Appointment", "Scheduled", "Cancelled", "Cancel appointment", "high", "appointments.cancel"),
@@ -138,7 +137,7 @@ class CompiledMetadataCanonicalJsonTest {
         assertTrue(invocations.isArray(), "Expected invocations catalog array.");
         // 4 concepts x (list + pagedQuery + exportCsv + read + create/update/delete) = 4x7 = 28,
         // plus 1 flow (CreateAppointment) -- canonical-demo declares no file fields/panels/aggregates.
-        assertEquals(29, invocations.size(), "Expected 29 invocation entries for canonical-demo.");
+        assertEquals(30, invocations.size(), "Expected 30 invocation entries for canonical-demo.");
 
         JsonNode flowEntry = findBy(invocations, "id", "flow:CreateAppointment");
         assertTrue(flowEntry != null, "Expected a flow:CreateAppointment invocation entry.");

@@ -26,7 +26,7 @@ public class BusinessUiCommentsViewTest {
         Path modelPath = Files.createTempFile("npdev-comments-", ".json");
         Files.writeString(modelPath, """
                 {
-                  "namespace": "comments.demo", "dslVersion": "1.0.0", "version": "1.0",
+                  "namespace": "comments.demo", "dslVersion": "3.0.0", "version": "1.0",
                   "concepts": [
                     { "name": "Mosaic", "collaboration": { "comments": true, "attachments": false },
                       "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true },

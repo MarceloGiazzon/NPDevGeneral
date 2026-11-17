@@ -1,0 +1,197 @@
+{
+  "probes": [
+    {
+      "id": "of-concept-steps-run-in-a-flow",
+      "keywords": [
+        "flowStep.id",
+        "flowStep.query",
+        "flowStep.params"
+      ],
+      "description": "FORM P3-T5b: the merged step vocabulary runs in the FLOW engine. OneFlowFindLayout chains set -> runQuery (a declared query with a bind parameter taken from the set value) -> listConcepts and returns the query rows; OneFlowReadLayout runs readConcept by id. Both delegate to the procedure step implementations, so the rows come back as plain records.",
+      "steps": [
+        {
+          "name": "make a layout to find",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": {
+            "name": "of-${rand}",
+            "rows": 1,
+            "cols": 1
+          },
+          "expect": {
+            "status": 201
+          },
+          "save": {
+            "layoutName": "$.name",
+            "layoutId": "$.id"
+          }
+        },
+        {
+          "name": "set + runQuery + listConcepts find exactly that layout",
+          "method": "POST",
+          "path": "/api/flows/OneFlowFindLayout/execute",
+          "body": {
+            "name": "${layoutName}"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK",
+              "$.output": {
+                "len": 1
+              },
+              "$.output[0].data.name": "${layoutName}"
+            }
+          }
+        },
+        {
+          "name": "readConcept returns the record by id",
+          "method": "POST",
+          "path": "/api/flows/OneFlowReadLayout/execute",
+          "body": {
+            "layoutId": "${layoutId}"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK",
+              "$.output.data.name": "${layoutName}"
+            }
+          }
+        },
+        {
+          "name": "readConcept of an id that does not exist fails the flow with the procedure's code",
+          "method": "POST",
+          "path": "/api/flows/OneFlowReadLayout/execute",
+          "body": {
+            "layoutId": "no-such-layout"
+          },
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.status": "FAILED",
+              "$.error": {
+                "contains": "CONCEPT_NOT_FOUND"
+              }
+            }
+          }
+        },
+        {
+          "name": "cleanup",
+          "method": "DELETE",
+          "path": "/api/shelf_layouts/${layoutId}",
+          "stopOnFail": false
+        }
+      ]
+    },
+    {
+      "id": "of-expose-and-call-flow",
+      "keywords": [
+        "flow.expose",
+        "flowStep.flow"
+      ],
+      "description": "FORM P3-T5b: a flow declared expose internal (or ui) gets no public POST -- the route answers 404 as if the flow did not exist -- yet another flow can start it with a callFlow step and gets its output.",
+      "steps": [
+        {
+          "name": "an internal flow has no public route",
+          "method": "POST",
+          "path": "/api/flows/OneFlowInternalHelper/execute",
+          "body": {},
+          "expect": {
+            "status": 404
+          }
+        },
+        {
+          "name": "a ui-only flow has no public route either",
+          "method": "POST",
+          "path": "/api/flows/OneFlowUiOnly/execute",
+          "body": {},
+          "expect": {
+            "status": 404
+          }
+        },
+        {
+          "name": "an api flow calls the internal one with callFlow and gets its answer",
+          "method": "POST",
+          "path": "/api/flows/OneFlowCallsHelper/execute",
+          "body": {},
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK",
+              "$.output": "helper-says-hi"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "of-flow-runas-system-deletes-what-the-caller-may-not",
+      "keywords": [
+        "flow.runAs"
+      ],
+      "description": "FORM P3-T5b: a flow declared runAs \"system\" runs its steps as the platform's system principal. WidgetOrder.write is customerEmail == $user.id || $user.isSystem, so alice cannot delete bob's order through REST, but alice may START OneFlowDeleteOrderViaSystemFlow, whose callFlow reaches the internal runAs-system flow OneFlowDeleteOrderAsSystem, whose deleteConcept step then removes it (a runAs system flow cannot be exposed itself). The caller is still checked for flow.execute; only what the steps may touch is elevated.",
+      "steps": [
+        {
+          "name": "bob places an order",
+          "apiKey": "${key_bob}",
+          "method": "POST",
+          "path": "/api/concepts/widget_orders",
+          "body": {
+            "customerEmail": "rep1probe-bob",
+            "status": "OFRA-${rand}",
+            "lineCount": 1
+          },
+          "expect": {
+            "status": 200
+          },
+          "save": {
+            "orderId": "$.id",
+            "orderStatus": "$.status"
+          }
+        },
+        {
+          "name": "alice cannot delete it directly",
+          "apiKey": "${key_alice}",
+          "method": "DELETE",
+          "path": "/api/widget_orders/${orderId}",
+          "expect": {
+            "status": [
+              403,
+              404
+            ]
+          }
+        },
+        {
+          "name": "alice deletes it through the elevated flow",
+          "apiKey": "${key_alice}",
+          "method": "POST",
+          "path": "/api/flows/OneFlowDeleteOrderViaSystemFlow/execute",
+          "body": {
+            "orderId": "${orderId}"
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "OK"
+            }
+          }
+        },
+        {
+          "name": "bob no longer sees it",
+          "apiKey": "${key_bob}",
+          "method": "GET",
+          "path": "/api/concepts/widget_orders?where=status:eq:${orderStatus}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.content": {
+                "len": 0
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

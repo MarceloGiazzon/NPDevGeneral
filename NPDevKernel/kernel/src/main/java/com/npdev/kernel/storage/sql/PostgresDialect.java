@@ -544,4 +544,10 @@ public final class PostgresDialect implements SqlDialect {
                     + "own ResultSet.");
         }
     }
+
+    /** Postgres has no {@code ROUND(double precision, integer)}; the distance is rounded as NUMERIC. */
+    @Override
+    public String roundToMetres(String kilometres) {
+        return "ROUND(CAST(" + kilometres + " AS NUMERIC), 3)";
+    }
 }

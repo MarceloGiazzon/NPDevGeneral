@@ -194,7 +194,7 @@ class PackSignatureTest {
         Files.createDirectories(packTree);
         Files.writeString(packTree.resolve("pack.json"),
                 """
-                { "dslVersion": "1.0.0", "pack": "test", "version": "1.0.0",
+                { "dslVersion": "3.0.0", "pack": "test", "version": "1.0.0",
                   "concepts": [ { "name": "Widget", "fields": [] } ] }
                 """);
 

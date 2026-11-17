@@ -31,7 +31,7 @@ class BusinessUiEmitterSelectionToolsTest {
         Path modelPath = Files.createTempFile("npdev-selection-tools-", ".json");
         Files.writeString(modelPath, """
                 {
-                  "namespace": "selectiontools.demo", "dslVersion": "1.0.0", "version": "1.0",
+                  "namespace": "selectiontools.demo", "dslVersion": "3.0.0", "version": "1.0",
                   "concepts": [
                     { "name": "Visit", "ui": { "selectionTools": false }, "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true },

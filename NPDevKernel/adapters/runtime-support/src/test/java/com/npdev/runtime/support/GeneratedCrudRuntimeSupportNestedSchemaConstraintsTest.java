@@ -74,7 +74,7 @@ class GeneratedCrudRuntimeSupportNestedSchemaConstraintsTest {
         CompiledDomainType shortCode = new CompiledDomainType("ShortCode", "string", "String", shortCodeSchema(),
                 List.of("trim", "uppercase"), null, List.of(), null);
         CompiledModel model = new CompiledModel("demo", "1.0.0", "v1", Map.of("Thing", thing), List.of(shortCode),
-                List.of(), List.of(), List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of());
         InvariantEngine noInvariants = new InvariantEngine() {
             @Override
             public List<String> evaluate(String entityName, Object payload) {
@@ -89,7 +89,6 @@ class GeneratedCrudRuntimeSupportNestedSchemaConstraintsTest {
                 null,
                 null,
                 new SystemRuntimeClock(),
-                new InMemoryOrchestrationExecutionRegistry(),
                 new RuntimeInvariantEngineFactory() {
                     @Override
                     public InvariantEngine create(UniqueValueLookup uniqueValueLookup, ConflictLookup conflictLookup) {

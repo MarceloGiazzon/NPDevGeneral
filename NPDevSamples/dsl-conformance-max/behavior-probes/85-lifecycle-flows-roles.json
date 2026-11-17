@@ -1372,33 +1372,12 @@
       ]
     },
     {
-      "id": "orch-condition-gates-rule-and-capability-action-fires",
+      "id": "trigger-flow-condition-gates-run",
       "keywords": [
-        "orchestrationRule.condition",
-        "orchestrationAction.capability",
-        "orchestrationAction.operation"
+        "flow.trigger"
       ],
-      "description": "Rule AuditSubmittedReview triggers on WidgetReviewSubmitted with condition reviewer == 'auditor' and one callCapability action (capability webhook, operation post). Publishing the event with reviewer auditor starts the rule and the action runs (the webhook target is not served in the probe environment, so the runtime records OrchestrationCapabilityFailed naming capability webhook and operation post for that source event); the same event with reviewer bob is skipped with OrchestrationConditionSkipped (reason condition_false) and neither starts the rule nor runs the action.",
+      "description": "FORM P3-T5c: flow AuditSubmittedReview (formerly an orchestration rule) triggers on WidgetReviewSubmitted with condition reviewer == 'auditor'. An event with reviewer bob leaves no execution; the same event with reviewer auditor runs the flow (its webhook target is not served here, so its outcome is not asserted).",
       "steps": [
-        {
-          "name": "publish auditor event",
-          "method": "POST",
-          "path": "/api/events/publish",
-          "body": {
-            "eventName": "WidgetReviewSubmitted",
-            "correlationId": "orch-${rand}",
-            "payload": {
-              "id": "${uuid}",
-              "reviewer": "auditor"
-            }
-          },
-          "expect": {
-            "status": 202
-          },
-          "save": {
-            "eidA": "$.eventId"
-          }
-        },
         {
           "name": "publish bob event",
           "method": "POST",
@@ -1413,56 +1392,46 @@
           },
           "expect": {
             "status": 202
-          },
-          "save": {
-            "eidB": "$.eventId"
           }
         },
         {
-          "name": "rule started for auditor only",
+          "name": "condition false: no execution",
           "method": "GET",
-          "path": "/api/events/by-name/OrchestrationStarted?limit=20",
+          "path": "/api/executions/history",
           "expect": {
             "status": 200,
-            "text": [
-              "\"sourceEventId\":\"${eidA}\""
-            ],
-            "notText": "${eidB}"
-          },
-          "retry": {
-            "attempts": 5,
-            "delaySeconds": 1
+            "json": {
+              "$.items[?flowName=AuditSubmittedReview].flowName": {
+                "exists": false
+              }
+            }
           }
         },
         {
-          "name": "condition skipped for bob only",
-          "method": "GET",
-          "path": "/api/events/by-name/OrchestrationConditionSkipped?limit=20",
-          "expect": {
-            "status": 200,
-            "text": [
-              "\"sourceEventId\":\"${eidB}\"",
-              "condition_false"
-            ],
-            "notText": "${eidA}"
+          "name": "publish auditor event",
+          "method": "POST",
+          "path": "/api/events/publish",
+          "body": {
+            "eventName": "WidgetReviewSubmitted",
+            "correlationId": "orch-${rand}",
+            "payload": {
+              "id": "${uuid}",
+              "reviewer": "auditor"
+            }
           },
-          "retry": {
-            "attempts": 5,
-            "delaySeconds": 1
+          "expect": {
+            "status": 202
           }
         },
         {
-          "name": "action evidence names capability and operation",
+          "name": "condition true: the flow ran",
           "method": "GET",
-          "path": "/api/events/by-name/OrchestrationCapabilityFailed?limit=20",
+          "path": "/api/executions/history",
           "expect": {
             "status": 200,
-            "text": [
-              "\"sourceEventId\":\"${eidA}\"",
-              "\"capability\":\"webhook\"",
-              "\"operation\":\"post\""
-            ],
-            "notText": "${eidB}"
+            "json": {
+              "$.items[?flowName=AuditSubmittedReview].flowName": "AuditSubmittedReview"
+            }
           },
           "retry": {
             "attempts": 5,

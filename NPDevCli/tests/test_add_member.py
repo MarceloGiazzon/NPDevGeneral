@@ -53,7 +53,7 @@ def _bare_model(tmp_dir: Path) -> Path:
     every model whether or not capabilities[] is declared)."""
     model_path = tmp_dir / "model.json"
     _write_model(model_path, {
-        "namespace": "test.add.member", "dslVersion": "1.0.0", "version": "1.0",
+        "namespace": "test.add.member", "dslVersion": "3.0.0", "version": "1.0",
         "concepts": [
             {
                 "name": "Widget",

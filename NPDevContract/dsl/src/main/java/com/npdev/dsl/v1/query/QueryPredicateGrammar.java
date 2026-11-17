@@ -1,36 +1,22 @@
 package com.npdev.dsl.v1.query;
 
+import com.npdev.dsl.v1.expr.ComputedExpression;
+
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
- * Move 12 P1.4 (item 2 / REG-101, fix shape (c)): the grammar half of
- * {@code ConceptQueryPredicateCompiler} (kernel), lifted into {@code NPDevContract/dsl} so it is
- * usable from BOTH sides of the dependency edge -- the kernel already depends on this module
- * ({@code NPDevKernel/kernel} includes {@code project(':dsl')}), but the DSL validator cannot depend
- * on the kernel, so a grammar that only existed in kernel code could never be reused for
- * authoring-time validation. {@code ConceptQueryPredicateCompiler.compile} now delegates here and
- * maps the result onto {@code ConceptQuery.Filter}/{@code Sort} (kernel-only types this class does
- * not know about); {@code PackValidation.validateQueries} calls this directly.
+ * The predicate grammar of a query {@code where} and a row {@code access.read} rule, FORM P3-T4: not a
+ * grammar of its own any more. The text is an expression of the one expression language
+ * ({@link ComputedExpression}); this class LOWERS the shared AST to the clause records the SQL and
+ * in-memory filter builders consume, and refuses, naming it, anything that cannot be pushed down.
+ * Usable from both sides of the dependency edge: the kernel depends on this module, the DSL validator
+ * cannot depend on the kernel.
  *
- * <p>Same grammar {@code ConceptQueryPredicateCompiler} has always enforced --
- * "AND-combined single-field comparisons":
- *
- * <pre>
- *   where   := clause ( "&amp;&amp;" clause )*
- *   clause  := field op literal
- *   op      := "==" | "!=" | "&gt;=" | "&lt;=" | "&gt;" | "&lt;"
- *   literal := "'" text "'" | number | true | false | ":" name
- * </pre>
- *
- * <p><b>New in this move:</b> a literal spelled {@code :name} parses as a {@link Literal.Placeholder}
- * rather than failing -- REG-101's fix. Before this, {@code :storeId} fell into the same bucket as
- * any other unparseable literal and was refused outright, which is why the ledger item's own
- * corpus witness ({@code pack-sample}'s {@code SalesByStore}) needed an allowlist entry: the grammar
- * had no way to accept a bind placeholder even provisionally. A caller that has actual bound values
- * (the kernel, once REG-101's substitution half runs) resolves a {@code Placeholder} to a real value;
- * a caller that only has the model in hand (the DSL validator) checks the placeholder's name against
- * the query's own declared {@code parameters[]} -- see {@code PackValidation.validateQueries}.
+ * <p>A bind parameter is written {@code $params.name} (it was {@code :name}); the caller that has the
+ * bound values (the kernel) resolves a {@link PredicateLiteral.Placeholder}, a caller that only has the
+ * model (the validator) checks the name against the query's declared {@code parameters[]}.
  */
 public final class QueryPredicateGrammar {
 
@@ -76,11 +62,11 @@ public final class QueryPredicateGrammar {
         public UnsupportedPredicateException(String where, String clause, String reason) {
             super("cannot compile query predicate " + quote(where)
                     + (clause == null ? "" : " at clause " + quote(clause)) + " -- " + reason
-                    + ". Supported: clauses combined with && and || (no parentheses), each one of "
-                    + "field (== | != | > | >= | < | <= | contains | startsWith) literal, "
-                    + "field in ('a', 'b'), field is null, field is not null (or == null / != null); "
-                    + "field may be a reference path (customerId.name); literal being 'text', a number, "
-                    + "true, false, or a ':name' bind placeholder. A predicate that cannot be "
+                    + ". Supported: conditions combined with && and || (and ! and parentheses), each one of "
+                    + "field (== | != | > | >= | < | <=) literal, field in ['a', 'b'], field == null, "
+                    + "contains(field, 'x'), startsWith(field, 'x'), or a bare boolean field; "
+                    + "field may be a reference path (customerId.name); the other side being 'text', a number, "
+                    + "true, false, $params.name (a bind parameter) or $user.id. A predicate that cannot be "
                     + "compiled is refused rather than applied partially: an unenforced filter "
                     + "returns rows the author asked to exclude, with no error anywhere.");
             this.where = where;
@@ -101,81 +87,429 @@ public final class QueryPredicateGrammar {
     }
 
     /**
+     * v1 view of {@link #parseGroups}: the AND-combined, plain-field comparisons the first grammar
+     * carried. FORM P3-T4: no parser of its own any more -- it lowers through {@link #parseGroups} and
+     * refuses anything that is not one AND group of {@code field op literal} clauses.
+     *
      * @return the AND-combined clauses for {@code where}; an empty list when {@code where} is
      *         null/blank (no predicate declared is not the same as a predicate that failed).
      * @throws UnsupportedPredicateException when any part of {@code where} is outside the grammar
      */
     public static List<Clause> parse(String where) {
-        if (where == null || where.isBlank()) {
+        List<List<PredicateClause>> groups = parseGroups(where);
+        if (groups.isEmpty()) {
             return List.of();
         }
-        String trimmed = where.trim();
-        if (trimmed.contains("||")) {
+        if (groups.size() > 1) {
             throw new UnsupportedPredicateException(where, null,
-                    "'||' (OR) is not supported -- ConceptQuery filters are AND-combined by contract, "
+                    "'||' (OR) is not supported here -- ConceptQuery filters are AND-combined by contract, "
                             + "and silently treating an OR as an AND would return the wrong rows");
         }
         List<Clause> clauses = new ArrayList<>();
-        for (String raw : splitOnAnd(trimmed)) {
-            String candidate = raw.trim();
-            if (candidate.isEmpty()) {
-                throw new UnsupportedPredicateException(where, null, "empty clause between '&&' operators");
+        for (PredicateClause clause : groups.get(0)) {
+            if (!(clause.path() instanceof GroupByJoinGrammar.Target.Direct direct)) {
+                throw new UnsupportedPredicateException(where, null,
+                        "a reference path is not supported here -- only a plain field name on the left of a comparison");
             }
-            clauses.add(parseClause(where, candidate));
-        }
-        if (clauses.isEmpty()) {
-            throw new UnsupportedPredicateException(where, null, "no clause found");
+            Operator operator = switch (clause.operator()) {
+                case EQ -> Operator.EQ;
+                case NEQ -> Operator.NEQ;
+                case GTE -> Operator.GTE;
+                case LTE -> Operator.LTE;
+                case GT -> Operator.GT;
+                case LT -> Operator.LT;
+                default -> throw new UnsupportedPredicateException(where, null,
+                        "'" + clause.operator().token() + "' is not supported here -- only == != > >= < <=");
+            };
+            Literal literal;
+            if (clause.literal() instanceof PredicateLiteral.Value value) {
+                literal = new Literal.Value(value.value());
+            } else if (clause.literal() instanceof PredicateLiteral.Placeholder placeholder) {
+                literal = new Literal.Placeholder(placeholder.name());
+            } else {
+                throw new UnsupportedPredicateException(where, null,
+                        "only a literal or a $params.name placeholder is supported on the right of a comparison here");
+            }
+            clauses.add(new Clause(direct.field(), operator, literal));
         }
         return List.copyOf(clauses);
     }
 
+    /** Upper bound on the OR-groups a {@code where} may expand to (De Morgan / distribution of {@code &&} over {@code ||}). */
+    public static final int MAX_GROUPS = 64;
+
     /**
-     * Splits on {@code &&} that is NOT inside a quoted literal, so a literal containing the token
-     * (e.g. {@code note == 'a && b'}) is not torn in half.
+     * FORM P3-T4: a query {@code where} is an expression of the one expression language
+     * ({@link ComputedExpression}); this method no longer parses anything. It lowers the shared AST to
+     * disjunctive normal form -- an OR of AND-combined {@link PredicateClause}s -- the shape the SQL and
+     * in-memory filter builders already consume.
+     *
+     * <p>Pushable: {@code && || !} and parentheses, {@code == != < <= > >=} between a field (or a
+     * reference path, {@code customerId.name}, bounded by {@link GroupByJoinGrammar#MAX_JOIN_HOPS}) and a
+     * literal, {@code $params.name} or {@code $user.id|actorId|tenantId}; {@code field == null} /
+     * {@code != null}; {@code field in ['a','b']} and {@code not in}; {@code contains(field,'x')} and
+     * {@code startsWith(field,'x')}; a bare boolean field. Anything else (arithmetic, {@code ?:},
+     * {@code ??}, any other function) is refused, naming it: a predicate that cannot be pushed down is
+     * never applied partially.
+     *
+     * @return the OR-of-AND clause groups for {@code where}; an empty list when {@code where} is
+     *         null/blank
+     * @throws UnsupportedPredicateException when any part of {@code where} is outside this grammar
      */
-    private static List<String> splitOnAnd(String where) {
-        List<String> parts = new ArrayList<>();
+    public static List<List<PredicateClause>> parseGroups(String where) {
+        if (where == null || where.isBlank()) {
+            return List.of();
+        }
+        Map<String, Object> tree;
+        try {
+            tree = ComputedExpression.toPortableTree(where.trim());
+        } catch (ComputedExpression.ExpressionException syntax) {
+            throw new UnsupportedPredicateException(where, null, syntaxReason(where, syntax));
+        }
+        List<List<PredicateClause>> groups = lower(where, tree, false);
+        if (groups.isEmpty()) {
+            throw new UnsupportedPredicateException(where, null, "no clause found");
+        }
+        List<List<PredicateClause>> frozen = new ArrayList<>();
+        for (List<PredicateClause> group : groups) {
+            frozen.add(List.copyOf(group));
+        }
+        return List.copyOf(frozen);
+    }
+
+    /**
+     * The field paths a {@code where} names, one per occurrence, in TEXTUAL order -- the numbering the
+     * reference index and {@code npdev migrate rename} share ({@code #N} is "the Nth field written"), which
+     * lowering to OR-groups can reorder or multiply ({@code x not in [a, b]} is one field, two clauses).
+     * $-names ({@code $params.x}, {@code $user.id}) are not fields and are skipped.
+     *
+     * @throws UnsupportedPredicateException when {@code where} is not a pushable predicate
+     */
+    public static List<GroupByJoinGrammar.Target> referencedPaths(String where) {
+        if (where == null || where.isBlank()) {
+            return List.of();
+        }
+        parseGroups(where);
+        List<GroupByJoinGrammar.Target> out = new ArrayList<>();
+        collectPaths(where, ComputedExpression.toPortableTree(where.trim()), out);
+        return List.copyOf(out);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void collectPaths(String where, Map<String, Object> node, List<GroupByJoinGrammar.Target> out) {
+        switch (String.valueOf(node.get("k"))) {
+            case "var": {
+                String name = String.valueOf(node.get("name"));
+                if (!name.startsWith("$")) {
+                    out.add(pathTarget(where, name));
+                }
+                return;
+            }
+            case "un":
+                collectPaths(where, child(node, "a"), out);
+                return;
+            case "bin":
+                collectPaths(where, child(node, "l"), out);
+                collectPaths(where, child(node, "r"), out);
+                return;
+            case "call":
+                for (Map<String, Object> arg : args(node)) {
+                    collectPaths(where, arg, out);
+                }
+                return;
+            case "list":
+                for (Object item : (List<?>) node.get("items")) {
+                    collectPaths(where, (Map<String, Object>) item, out);
+                }
+                return;
+            default:
+                return;
+        }
+    }
+
+    private static String syntaxReason(String where, ComputedExpression.ExpressionException syntax) {
+        boolean bindColon = false;
         boolean inQuote = false;
-        int start = 0;
-        for (int index = 0; index < where.length(); index++) {
-            char current = where.charAt(index);
-            if (current == '\'') {
+        for (int i = 0; i + 1 < where.length(); i++) {
+            char c = where.charAt(i);
+            if (c == '\'') {
                 inQuote = !inQuote;
-            } else if (!inQuote && current == '&' && index + 1 < where.length() && where.charAt(index + 1) == '&') {
-                parts.add(where.substring(start, index));
-                index++;
-                start = index + 1;
+            } else if (!inQuote && c == ':' && (Character.isLetter(where.charAt(i + 1)) || where.charAt(i + 1) == '_')) {
+                bindColon = true;
             }
         }
-        parts.add(where.substring(start));
-        return parts;
+        return syntax.getMessage() + (bindColon
+                ? " -- a query bind placeholder is written $params.name (the ':name' spelling is gone)"
+                : "");
     }
 
-    private static Clause parseClause(String where, String clause) {
-        for (Operator operator : OPERATORS_LONGEST_FIRST) {
-            int at = indexOfOperatorOutsideQuotes(clause, operator.token());
-            if (at < 0) {
-                continue;
+    // ---- lowering ---------------------------------------------------------------------------------
+
+    private static List<List<PredicateClause>> lower(String where, Map<String, Object> node, boolean negated) {
+        String kind = String.valueOf(node.get("k"));
+        switch (kind) {
+            case "un": {
+                if ("!".equals(node.get("op"))) {
+                    return lower(where, child(node, "a"), !negated);
+                }
+                throw refuse(where, "a unary '" + node.get("op") + "' is not a condition");
             }
-            String field = clause.substring(0, at).trim();
-            String literalText = clause.substring(at + operator.token().length()).trim();
-            if (field.isEmpty()) {
-                throw new UnsupportedPredicateException(where, clause, "no field name before '" + operator.token() + "'");
+            case "bin": {
+                String op = String.valueOf(node.get("op"));
+                switch (op) {
+                    case "&&":
+                        return negated
+                                ? union(where, lower(where, child(node, "l"), true), lower(where, child(node, "r"), true))
+                                : cross(where, lower(where, child(node, "l"), false), lower(where, child(node, "r"), false));
+                    case "||":
+                        return negated
+                                ? cross(where, lower(where, child(node, "l"), true), lower(where, child(node, "r"), true))
+                                : union(where, lower(where, child(node, "l"), false), lower(where, child(node, "r"), false));
+                    case "==": case "!=": case "<": case "<=": case ">": case ">=":
+                        return List.of(List.of(comparison(where, op, child(node, "l"), child(node, "r"), negated)));
+                    case "in": case "not in":
+                        return membership(where, "not in".equals(op) != negated, child(node, "l"), child(node, "r"));
+                    default:
+                        throw refuse(where, "'" + op + "' cannot be pushed down into a query where -- only && || ! "
+                                + "== != < <= > >= in, contains(...) and startsWith(...) are lowered to a filter");
+                }
             }
-            if (!isPlainName(field)) {
-                throw new UnsupportedPredicateException(where, clause,
-                        "'" + field + "' is not a plain field name -- nested paths, functions and "
-                                + "expressions on the left of a comparison are not supported");
+            case "call": {
+                String name = String.valueOf(node.get("name"));
+                if (("contains".equals(name) || "startsWith".equals(name)) && args(node).size() == 2) {
+                    if (negated) {
+                        throw refuse(where, "a negated " + name + "(...) cannot be pushed down; "
+                                + "state the condition positively");
+                    }
+                    Operand field = operand(where, args(node).get(0));
+                    Operand value = operand(where, args(node).get(1));
+                    if (!(field instanceof Operand.Field fieldOperand) || !(value instanceof Operand.Lit literal)) {
+                        throw refuse(where, name + "(field, literal): the first argument must be a field and the second a literal");
+                    }
+                    return List.of(List.of(new PredicateClause(fieldOperand.target(),
+                            "contains".equals(name) ? PredicateOperator.CONTAINS : PredicateOperator.STARTS_WITH,
+                            literal.literal())));
+                }
+                if ("withinKm".equals(name)) {
+                    if (args(node).size() != 5) {
+                        throw refuse(where, "withinKm takes 5 arguments: (lat1, lng1, lat2, lng2, km)");
+                    }
+                    return List.of(List.of(distanceClause(where, args(node).subList(0, 4), args(node).get(4),
+                            negated ? PredicateLiteral.DistanceCmp.GT : PredicateLiteral.DistanceCmp.LTE)));
+                }
+                throw refuse(where, "function '" + name + "' cannot be pushed down into a query where"
+                        + " (pushable: contains, startsWith, withinKm, distanceKm compared with < <= > >=)");
             }
-            if (literalText.isEmpty()) {
-                throw new UnsupportedPredicateException(where, clause, "no literal after '" + operator.token() + "'");
+            case "var": {
+                Operand operand = operand(where, node);
+                if (operand instanceof Operand.Field field) {
+                    return List.of(List.of(new PredicateClause(field.target(), PredicateOperator.EQ,
+                            new PredicateLiteral.Value(!negated))));
+                }
+                throw refuse(where, "'" + node.get("name") + "' is not a field and cannot stand alone as a condition");
             }
-            return new Clause(field, operator, parseLiteral(where, clause, literalText));
+            default:
+                throw refuse(where, "a " + kindName(kind) + " cannot be pushed down into a query where");
         }
-        throw new UnsupportedPredicateException(where, clause, "no supported comparison operator found in this clause");
     }
 
-    /** True for {@code [A-Za-z_][A-Za-z0-9_]*} -- deliberately no dots: a nested path is not compilable to SQL here. */
+    private static PredicateClause comparison(
+            String where, String op, Map<String, Object> leftNode, Map<String, Object> rightNode, boolean negated) {
+        boolean leftDistance = isCall(leftNode, "distanceKm");
+        boolean rightDistance = isCall(rightNode, "distanceKm");
+        if (leftDistance || rightDistance) {
+            if (leftDistance && rightDistance) {
+                throw refuse(where, "distanceKm(...) must be compared with a number, $params.name or $user.* value");
+            }
+            Map<String, Object> call = leftDistance ? leftNode : rightNode;
+            if (args(call).size() != 4) {
+                throw refuse(where, "distanceKm takes 4 arguments: (lat1, lng1, lat2, lng2)");
+            }
+            String normalized = leftDistance ? op : flip(op);
+            String effectiveCmp = negated ? negate(normalized) : normalized;
+            PredicateLiteral.DistanceCmp cmp = switch (effectiveCmp) {
+                case "<" -> PredicateLiteral.DistanceCmp.LT;
+                case "<=" -> PredicateLiteral.DistanceCmp.LTE;
+                case ">" -> PredicateLiteral.DistanceCmp.GT;
+                case ">=" -> PredicateLiteral.DistanceCmp.GTE;
+                default -> throw refuse(where, "distanceKm(...) can only be compared with < <= > >= "
+                        + "(a distance is never exactly equal; use a range or withinKm)");
+            };
+            return distanceClause(where, args(call), leftDistance ? rightNode : leftNode, cmp);
+        }
+        Operand left = operand(where, leftNode);
+        Operand right = operand(where, rightNode);
+        if (left instanceof Operand.Field && !(right instanceof Operand.Field)) {
+            // field on the left: as written
+        } else if (right instanceof Operand.Field && !(left instanceof Operand.Field)) {
+            Operand swap = left;
+            left = right;
+            right = swap;
+            op = flip(op);
+        } else {
+            throw refuse(where, "a comparison must have a field on one side and a literal, $params.name or $user.* "
+                    + "on the other");
+        }
+        String effective = negated ? negate(op) : op;
+        GroupByJoinGrammar.Target target = ((Operand.Field) left).target();
+        if (right instanceof Operand.NullLit) {
+            if ("==".equals(effective)) {
+                return new PredicateClause(target, PredicateOperator.IS_NULL, PredicateLiteral.None.INSTANCE);
+            }
+            if ("!=".equals(effective)) {
+                return new PredicateClause(target, PredicateOperator.IS_NOT_NULL, PredicateLiteral.None.INSTANCE);
+            }
+            throw refuse(where, "null can only be compared with == or !=");
+        }
+        return new PredicateClause(target, predicateOperator(effective), ((Operand.Lit) right).literal());
+    }
+
+    /** The path of a clause whose four coordinates are all values: it names no field of its own. */
+    public static final String DISTANCE_SENTINEL_FIELD = "__distance__";
+
+    private static boolean isCall(Map<String, Object> node, String name) {
+        return "call".equals(node.get("k")) && name.equals(String.valueOf(node.get("name")));
+    }
+
+    private static PredicateClause distanceClause(
+            String where, List<Map<String, Object>> coordinates, Map<String, Object> kmNode,
+            PredicateLiteral.DistanceCmp cmp) {
+        PredicateLiteral.DistanceOperand[] operands = new PredicateLiteral.DistanceOperand[4];
+        GroupByJoinGrammar.Target path = null;
+        for (int i = 0; i < 4; i++) {
+            Operand operand = operand(where, coordinates.get(i));
+            if (operand instanceof Operand.Field field) {
+                operands[i] = new PredicateLiteral.DistanceOperand.Field(field.target());
+                if (path == null) {
+                    path = field.target();
+                }
+            } else if (operand instanceof Operand.Lit literal) {
+                operands[i] = new PredicateLiteral.DistanceOperand.Value(literal.literal());
+            } else {
+                throw refuse(where, "a distance coordinate cannot be null");
+            }
+        }
+        Operand km = operand(where, kmNode);
+        if (!(km instanceof Operand.Lit radius)) {
+            throw refuse(where, "the distance to compare with must be a number, $params.name or $user.* value");
+        }
+        return new PredicateClause(path == null ? new GroupByJoinGrammar.Target.Direct(DISTANCE_SENTINEL_FIELD) : path,
+                PredicateOperator.DISTANCE_KM,
+                new PredicateLiteral.Distance(operands[0], operands[1], operands[2], operands[3], cmp, radius.literal()));
+    }
+
+    /** {@code field in [..]} (a single IN clause) or its negation (an AND of {@code !=} clauses). */
+    private static List<List<PredicateClause>> membership(
+            String where, boolean notIn, Map<String, Object> fieldNode, Map<String, Object> listNode) {
+        Operand field = operand(where, fieldNode);
+        if (!(field instanceof Operand.Field fieldOperand)) {
+            throw refuse(where, "the left side of 'in' must be a field");
+        }
+        if (!"list".equals(listNode.get("k"))) {
+            throw refuse(where, "the right side of 'in' must be a list literal, e.g. status in ['A', 'B']");
+        }
+        List<PredicateLiteral> values = new ArrayList<>();
+        for (Object item : (List<?>) listNode.get("items")) {
+            @SuppressWarnings("unchecked")
+            Operand value = operand(where, (Map<String, Object>) item);
+            if (!(value instanceof Operand.Lit literal)) {
+                throw refuse(where, "an 'in' list may only hold literals, $params.name or $user.* values");
+            }
+            values.add(literal.literal());
+        }
+        if (values.isEmpty()) {
+            throw refuse(where, "an 'in' list must name at least one value");
+        }
+        if (!notIn) {
+            return List.of(List.of(new PredicateClause(fieldOperand.target(), PredicateOperator.IN,
+                    new PredicateLiteral.Values(values))));
+        }
+        List<PredicateClause> all = new ArrayList<>();
+        for (PredicateLiteral value : values) {
+            all.add(new PredicateClause(fieldOperand.target(), PredicateOperator.NEQ, value));
+        }
+        return List.of(all);
+    }
+
+    private sealed interface Operand {
+        record Field(GroupByJoinGrammar.Target target) implements Operand {
+        }
+
+        record Lit(PredicateLiteral literal) implements Operand {
+        }
+
+        record NullLit() implements Operand {
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Operand operand(String where, Map<String, Object> node) {
+        String kind = String.valueOf(node.get("k"));
+        switch (kind) {
+            case "var": {
+                String name = String.valueOf(node.get("name"));
+                if (name.startsWith("$")) {
+                    if (name.startsWith("$params.") && isPlainName(name.substring("$params.".length()))) {
+                        return new Operand.Lit(new PredicateLiteral.Placeholder(name.substring("$params.".length())));
+                    }
+                    if (USER_REFERENCES.contains(name)) {
+                        return new Operand.Lit(new PredicateLiteral.UserRef(name));
+                    }
+                    throw refuse(where, "'" + name + "' is not available in a query where (available: $params.<name>, "
+                            + USER_REFERENCES + ")");
+                }
+                return new Operand.Field(pathTarget(where, name));
+            }
+            case "lit": {
+                String type = String.valueOf(node.get("t"));
+                Object value = node.get("v");
+                return switch (type) {
+                    case "null" -> new Operand.NullLit();
+                    case "bool" -> new Operand.Lit(new PredicateLiteral.Value(value));
+                    case "str" -> new Operand.Lit(new PredicateLiteral.Value(value));
+                    default -> new Operand.Lit(new PredicateLiteral.Value(number(String.valueOf(value))));
+                };
+            }
+            case "un": {
+                Map<String, Object> inner = child(node, "a");
+                if ("-".equals(node.get("op")) && "lit".equals(inner.get("k")) && "num".equals(inner.get("t"))) {
+                    return new Operand.Lit(new PredicateLiteral.Value(number("-" + inner.get("v"))));
+                }
+                throw refuse(where, "an expression cannot be pushed down into a query where");
+            }
+            case "call":
+                throw refuse(where, "function '" + node.get("name") + "' cannot be pushed down into a query where");
+            default:
+                throw refuse(where, "a " + kindName(kind) + " cannot be pushed down into a query where");
+        }
+    }
+
+    /**
+     * Integers stay {@code Long}; anything with a fraction stays {@code Double} (the existing bound-parameter
+     * typing). An integer too large for a {@code Long} stays exact as a {@code BigDecimal} rather than failing.
+     */
+    private static Object number(String plain) {
+        if (plain.indexOf('.') >= 0) {
+            return Double.parseDouble(plain);
+        }
+        try {
+            return Long.parseLong(plain);
+        } catch (NumberFormatException tooLarge) {
+            return new java.math.BigDecimal(plain);
+        }
+    }
+
+    /** A field name, or a {@code referenceField.targetField} path -- resolved by {@link GroupByJoinGrammar}. */
+    private static GroupByJoinGrammar.Target pathTarget(String where, String pathText) {
+        try {
+            return GroupByJoinGrammar.parse(pathText);
+        } catch (GroupByJoinGrammar.UnsupportedGroupByPathException hopFailure) {
+            throw refuse(where, "predicate path \"" + pathText + "\" -- " + hopFailure.reason()
+                    + " (a path is a field name, or referenceField.targetField up to "
+                    + GroupByJoinGrammar.MAX_JOIN_HOPS + " hops)");
+        }
+    }
+
     private static boolean isPlainName(String name) {
         if (name.isEmpty() || (!Character.isLetter(name.charAt(0)) && name.charAt(0) != '_')) {
             return false;
@@ -189,103 +523,87 @@ public final class QueryPredicateGrammar {
         return true;
     }
 
-    private static int indexOfOperatorOutsideQuotes(String clause, String token) {
-        boolean inQuote = false;
-        for (int index = 0; index + token.length() <= clause.length(); index++) {
-            char current = clause.charAt(index);
-            if (current == '\'') {
-                inQuote = !inQuote;
-                continue;
-            }
-            if (!inQuote && clause.startsWith(token, index)) {
-                return index;
-            }
+    private static List<List<PredicateClause>> union(
+            String where, List<List<PredicateClause>> a, List<List<PredicateClause>> b) {
+        if ((long) a.size() + b.size() > MAX_GROUPS) {
+            throw refuse(where, "it expands to more than " + MAX_GROUPS + " OR-groups; simplify the condition");
         }
-        return -1;
+        List<List<PredicateClause>> out = new ArrayList<>(a);
+        out.addAll(b);
+        return out;
     }
 
-    private static Literal parseLiteral(String where, String clause, String text) {
-        if (text.length() >= 2 && text.charAt(0) == '\'' && text.charAt(text.length() - 1) == '\'') {
-            String inner = text.substring(1, text.length() - 1);
-            if (inner.indexOf('\'') >= 0) {
-                throw new UnsupportedPredicateException(where, clause,
-                        "unbalanced quotes in literal " + text + " -- this is the shape that made the "
-                                + "previous engine read an entire multi-clause expression as one literal");
+    private static List<List<PredicateClause>> cross(
+            String where, List<List<PredicateClause>> a, List<List<PredicateClause>> b) {
+        if ((long) a.size() * b.size() > MAX_GROUPS) {
+            throw refuse(where, "it expands to more than " + MAX_GROUPS + " OR-groups; simplify the condition");
+        }
+        List<List<PredicateClause>> out = new ArrayList<>();
+        for (List<PredicateClause> left : a) {
+            for (List<PredicateClause> right : b) {
+                List<PredicateClause> joined = new ArrayList<>(left);
+                joined.addAll(right);
+                out.add(joined);
             }
-            return new Literal.Value(inner);
         }
-        if ("true".equalsIgnoreCase(text)) {
-            return new Literal.Value(Boolean.TRUE);
-        }
-        if ("false".equalsIgnoreCase(text)) {
-            return new Literal.Value(Boolean.FALSE);
-        }
-        if (text.length() >= 2 && text.charAt(0) == ':' && isPlainName(text.substring(1))) {
-            return new Literal.Placeholder(text.substring(1));
-        }
-        try {
-            if (text.indexOf('.') >= 0) {
-                return new Literal.Value(Double.parseDouble(text));
-            }
-            return new Literal.Value(Long.parseLong(text));
-        } catch (NumberFormatException ignored) {
-            throw new UnsupportedPredicateException(where, clause,
-                    "literal " + quoteForMessage(text) + " is neither a quoted string, a number, a boolean, "
-                            + "nor a ':name' bind placeholder"
-                            + (text.startsWith("$")
-                            ? " -- a $-reference (context/parameter substitution) is not resolved here; "
-                              + "substitute it before compiling the predicate. A query bind placeholder "
-                              + "uses this grammar's own convention instead: ':name'"
-                            : ""));
-        }
+        return out;
     }
 
-    private static String quoteForMessage(String text) {
-        return "\"" + text + "\"";
+    private static String flip(String op) {
+        return switch (op) {
+            case "<" -> ">";
+            case "<=" -> ">=";
+            case ">" -> "<";
+            case ">=" -> "<=";
+            default -> op;
+        };
     }
 
-    // ============================================================================================
-    // R4.3 (Roadmap Wave 1): PREDICATE GRAMMAR V2 -- OR-groups, IN, contains/startsWith, is-null,
-    // and a reference-path left side, bounded at GroupByJoinGrammar.MAX_JOIN_HOPS hops.
-    // ============================================================================================
-    /*
-     * Deliberately a SEPARATE entry point (parseGroups/PredicateOperator/PredicateLiteral/
-     * PredicateClause below), not a change to parse()/Operator/Literal/Clause above -- not one
-     * extra line of the v1 grammar's code is touched by this section.
-     *
-     * Why: parse() above is called by BOTH PackValidation.validateQueryWhereCompiles (authoring
-     * time) and ConceptQueryPredicateCompiler.compile() (the SQL-pushdown path
-     * DefaultProcedureExecutor's runQuery step uses, all the way down to a real JDBC WHERE clause
-     * in JdbcBusinessConceptStore). That JDBC builder
-     * (NPDevRuntimeHost/runtimehost-core/.../db/JdbcBusinessConceptStore.java) has an EXHAUSTIVE
-     * switch over ConceptQuery.Operator with no `default` arm (its private sqlOperator(), ~line
-     * 729) -- adding an operator ConceptQuery does not already have is a compile break there, and
-     * ConceptQuery itself is constructed positionally by generated code and RuntimeHost/Generator
-     * call sites this module does not own. Wiring OR/IN/contains/startsWith/is-null/reference-path
-     * joins all the way to a live SQL WHERE clause needs changes in NPDevRuntimeHost (the WHERE/JOIN
-     * builder, mirroring its own registerJoinChain's groupBy-join pattern for the FROM/JOIN side)
-     * and possibly NPDevKernel/adapters/runtime-support -- both out of this change's owned surface.
-     *
-     * So parseGroups() below is the COMPLETE, tested grammar -- proven correct in isolation
-     * (QueryPredicateGrammarTest) and reusing GroupByJoinGrammar's own hop-bounded join resolution
-     * for a reference-path left side, exactly as the roadmap item asks. It is deliberately NOT wired
-     * into PackValidation or ConceptQueryPredicateCompiler.compile() yet: doing so would let a model
-     * author declare a queries[].where that validates cleanly at authoring time and then throws at
-     * runtime the moment a runQuery step tries to push it to SQL -- the exact "validated but does
-     * not run" trap parse()'s own javadoc (REG-101's fix, "one grammar, not two drifting copies")
-     * was written to prevent. Wiring this in for real needs, in this order: (1) the JDBC WHERE/JOIN
-     * builder understanding OR-groups, IN, is-null and reference-path joins; (2)
-     * GeneratedCrudRuntimeSupport if generated CRUD also builds predicate SQL; (3) only then can
-     * ConceptQueryPredicateCompiler.compile() / PackValidation.validateQueryWhereCompiles safely
-     * accept it. See SqlDialect#containsPattern / #startsWithPattern / #inPlaceholders (NPDevKernel)
-     * -- the escaping/binding primitives that step (1) needs are already built and tested
-     * (DialectConformanceTierATest), specifically so that work does not start from zero.
-     *
-     * ConceptQueryPredicateCompiler#compilePredicate / ConceptQueryFilterSupport#applyPredicate
-     * (NPDevKernel) DO evaluate this v2 grammar end-to-end, correctly, in memory -- proven by real
-     * tests -- but that in-memory evaluator is not on any live request path in a generated app
-     * today (production concepts run npdev.storage.mode=jdbc). See those classes' own javadoc.
-     */
+    private static String negate(String op) {
+        return switch (op) {
+            case "==" -> "!=";
+            case "!=" -> "==";
+            case "<" -> ">=";
+            case "<=" -> ">";
+            case ">" -> "<=";
+            default -> "<";
+        };
+    }
+
+    private static PredicateOperator predicateOperator(String op) {
+        return switch (op) {
+            case "==" -> PredicateOperator.EQ;
+            case "!=" -> PredicateOperator.NEQ;
+            case "<" -> PredicateOperator.LT;
+            case "<=" -> PredicateOperator.LTE;
+            case ">" -> PredicateOperator.GT;
+            default -> PredicateOperator.GTE;
+        };
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> child(Map<String, Object> node, String key) {
+        return (Map<String, Object>) node.get(key);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> args(Map<String, Object> node) {
+        return (List<Map<String, Object>>) node.get("args");
+    }
+
+    private static String kindName(String kind) {
+        return switch (kind) {
+            case "tern" -> "?: conditional";
+            case "lit" -> "bare literal";
+            case "list" -> "list";
+            case "lambda" -> "lambda";
+            default -> kind;
+        };
+    }
+
+    private static UnsupportedPredicateException refuse(String where, String reason) {
+        return new UnsupportedPredicateException(where, null, reason);
+    }
 
     /** field/path (== | != | > | >= | < | <= | contains | startsWith) literal
      *  | field/path "in" "(" literal ("," literal)* ")"
@@ -299,7 +617,14 @@ public final class QueryPredicateGrammar {
         /** {@code field in (lit, lit, ...)} -- {@link PredicateLiteral.Values} carries the list. */
         IN("in"),
         IS_NULL("is null"),
-        IS_NOT_NULL("is not null");
+        IS_NOT_NULL("is not null"),
+        /**
+         * FORM P3-T4: {@code withinKm(lat1, lng1, lat2, lng2, km)} and {@code distanceKm(lat1, lng1, lat2, lng2) <op> km}.
+         * {@link PredicateLiteral.Distance} carries the four coordinates and the radius; the clause's
+         * {@code path} is the first field operand, or the sentinel {@link #DISTANCE_SENTINEL_FIELD} when all
+         * four are values.
+         */
+        DISTANCE_KM("distanceKm");
 
         private final String token;
 
@@ -343,6 +668,25 @@ public final class QueryPredicateGrammar {
             }
         }
 
+        /** One coordinate of a {@link Distance}: a field (or reference path) or a value / bind parameter / caller value. */
+        sealed interface DistanceOperand {
+            record Field(GroupByJoinGrammar.Target target) implements DistanceOperand {
+            }
+
+            record Value(PredicateLiteral literal) implements DistanceOperand {
+            }
+        }
+
+        /** {@code withinKm} is {@code LTE}; {@code distanceKm(...) <op> km} maps to the matching comparison. */
+        enum DistanceCmp {
+            LT, LTE, GT, GTE
+        }
+
+        /** The right-hand side of a {@link PredicateOperator#DISTANCE_KM} clause. */
+        record Distance(DistanceOperand lat1, DistanceOperand lng1, DistanceOperand lat2, DistanceOperand lng2,
+                        DistanceCmp cmp, PredicateLiteral km) implements PredicateLiteral {
+        }
+
         /** The (non-)literal carried by {@link PredicateOperator#IS_NULL}/{@link PredicateOperator#IS_NOT_NULL}. */
         enum None implements PredicateLiteral {
             INSTANCE
@@ -356,291 +700,6 @@ public final class QueryPredicateGrammar {
      * left side is bounded by the exact same, already-proven cap {@code groupBy} join paths are.
      */
     public record PredicateClause(GroupByJoinGrammar.Target path, PredicateOperator operator, PredicateLiteral literal) {
-    }
-
-    /**
-     * @return the OR-of-AND-combined clause groups for {@code where} (top-level {@code ||}
-     *         separates groups; {@code &&} combines clauses within a group -- {@code &&} binds
-     *         tighter, so no parentheses are needed for plain DNF); an empty list when
-     *         {@code where} is null/blank
-     * @throws UnsupportedPredicateException when any part of {@code where} is outside this
-     *         grammar, including a reference path exceeding {@link GroupByJoinGrammar#MAX_JOIN_HOPS}
-     *         hops (named by {@link GroupByJoinGrammar}'s own message, wrapped here rather than
-     *         re-derived)
-     */
-    public static List<List<PredicateClause>> parseGroups(String where) {
-        if (where == null || where.isBlank()) {
-            return List.of();
-        }
-        String trimmed = where.trim();
-        List<List<PredicateClause>> groups = new ArrayList<>();
-        for (String orPart : splitOutsideQuotes(trimmed, "||")) {
-            String orGroup = orPart.trim();
-            if (orGroup.isEmpty()) {
-                throw new UnsupportedPredicateException(where, null, "empty group between '||' operators");
-            }
-            List<PredicateClause> clauses = new ArrayList<>();
-            for (String andPart : splitOutsideQuotes(orGroup, "&&")) {
-                String candidate = andPart.trim();
-                if (candidate.isEmpty()) {
-                    throw new UnsupportedPredicateException(where, null, "empty clause between '&&' operators");
-                }
-                clauses.add(parsePredicateClause(where, candidate));
-            }
-            groups.add(List.copyOf(clauses));
-        }
-        if (groups.isEmpty()) {
-            throw new UnsupportedPredicateException(where, null, "no clause found");
-        }
-        return List.copyOf(groups);
-    }
-
-    /** Same quote-aware split {@link #splitOnAnd} performs, generalised to any 2-char token
-     *  ({@code "&&"} or {@code "||"}) so one method serves both grouping levels. */
-    private static List<String> splitOutsideQuotes(String text, String token) {
-        List<String> parts = new ArrayList<>();
-        boolean inQuote = false;
-        int start = 0;
-        for (int index = 0; index < text.length(); index++) {
-            char current = text.charAt(index);
-            if (current == '\'') {
-                inQuote = !inQuote;
-            } else if (!inQuote && text.startsWith(token, index)) {
-                parts.add(text.substring(start, index));
-                index += token.length() - 1;
-                start = index + 1;
-            }
-        }
-        parts.add(text.substring(start));
-        return parts;
-    }
-
-    private static PredicateClause parsePredicateClause(String where, String clauseText) {
-        String isNotNullPath = suffixOutsideQuotes(clauseText, "is not null");
-        if (isNotNullPath != null) {
-            return buildUnaryClause(where, clauseText, isNotNullPath, PredicateOperator.IS_NOT_NULL);
-        }
-        String isNullPath = suffixOutsideQuotes(clauseText, "is null");
-        if (isNullPath != null) {
-            return buildUnaryClause(where, clauseText, isNullPath, PredicateOperator.IS_NULL);
-        }
-
-        int inAt = indexOfKeywordOutsideQuotes(clauseText, "in");
-        if (inAt >= 0) {
-            String pathText = clauseText.substring(0, inAt).trim();
-            String rest = clauseText.substring(inAt + "in".length()).trim();
-            if (!rest.startsWith("(") || !rest.endsWith(")")) {
-                throw new UnsupportedPredicateException(where, clauseText,
-                        "'in' must be followed by a parenthesized, comma-separated literal list: "
-                                + "field in ('a', 'b')");
-            }
-            if (pathText.isEmpty()) {
-                throw new UnsupportedPredicateException(where, clauseText, "no field/path before 'in'");
-            }
-            String inner = rest.substring(1, rest.length() - 1).trim();
-            if (inner.isEmpty()) {
-                throw new UnsupportedPredicateException(where, clauseText, "an 'in' list must name at least one value");
-            }
-            List<PredicateLiteral> values = new ArrayList<>();
-            for (String rawValue : splitOutsideQuotesOnComma(inner)) {
-                values.add(parsePredicateLiteral(where, clauseText, rawValue.trim()));
-            }
-            return new PredicateClause(pathTarget(where, clauseText, pathText), PredicateOperator.IN,
-                    new PredicateLiteral.Values(values));
-        }
-
-        for (PredicateOperator keywordOp : List.of(PredicateOperator.CONTAINS, PredicateOperator.STARTS_WITH)) {
-            int at = indexOfKeywordOutsideQuotes(clauseText, keywordOp.token());
-            if (at < 0) {
-                continue;
-            }
-            String pathText = clauseText.substring(0, at).trim();
-            String literalText = clauseText.substring(at + keywordOp.token().length()).trim();
-            if (pathText.isEmpty()) {
-                throw new UnsupportedPredicateException(where, clauseText, "no field/path before '" + keywordOp.token() + "'");
-            }
-            if (literalText.isEmpty()) {
-                throw new UnsupportedPredicateException(where, clauseText, "no literal after '" + keywordOp.token() + "'");
-            }
-            return new PredicateClause(pathTarget(where, clauseText, pathText), keywordOp,
-                    parsePredicateLiteral(where, clauseText, literalText));
-        }
-
-        for (PredicateOperator operator : List.of(PredicateOperator.EQ, PredicateOperator.NEQ,
-                PredicateOperator.GTE, PredicateOperator.LTE, PredicateOperator.GT, PredicateOperator.LT)) {
-            int at = indexOfOperatorOutsideQuotes(clauseText, operator.token());
-            if (at < 0) {
-                continue;
-            }
-            String pathText = clauseText.substring(0, at).trim();
-            String literalText = clauseText.substring(at + operator.token().length()).trim();
-            if (pathText.isEmpty()) {
-                throw new UnsupportedPredicateException(where, clauseText, "no field name before '" + operator.token() + "'");
-            }
-            if (literalText.isEmpty()) {
-                throw new UnsupportedPredicateException(where, clauseText, "no literal after '" + operator.token() + "'");
-            }
-            // "field == null" / "field != null" -- the spelling every author tries first -- is the
-            // same clause as "field is null" / "field is not null" (SQL's = NULL would match nothing).
-            if ("null".equalsIgnoreCase(literalText)
-                    && (operator == PredicateOperator.EQ || operator == PredicateOperator.NEQ)) {
-                return buildUnaryClause(where, clauseText, pathText,
-                        operator == PredicateOperator.EQ ? PredicateOperator.IS_NULL : PredicateOperator.IS_NOT_NULL);
-            }
-            return new PredicateClause(pathTarget(where, clauseText, pathText), operator,
-                    parsePredicateLiteral(where, clauseText, literalText));
-        }
-        throw new UnsupportedPredicateException(where, clauseText, "no supported comparison/keyword operator found in this clause");
-    }
-
-    private static PredicateClause buildUnaryClause(
-            String where, String clauseText, String pathText, PredicateOperator operator) {
-        if (pathText.isEmpty()) {
-            throw new UnsupportedPredicateException(where, clauseText, "no field/path before '" + operator.token() + "'");
-        }
-        return new PredicateClause(pathTarget(where, clauseText, pathText), operator, PredicateLiteral.None.INSTANCE);
-    }
-
-    /** Resolves a clause's left side through {@link GroupByJoinGrammar#parse} -- the SAME
-     *  hop-bounded (max {@link GroupByJoinGrammar#MAX_JOIN_HOPS}) resolution {@code groupBy} join
-     *  paths already use, reused rather than re-derived (this method's whole reason to exist). */
-    private static GroupByJoinGrammar.Target pathTarget(String where, String clauseText, String pathText) {
-        // REG-315: `(a || b) && c` splits into clauses whose "path" starts with '('. Say what is wrong
-        // (parentheses are not part of this grammar) and how to rewrite it, instead of the groupBy
-        // grammar's own "cannot parse groupBy field" on a query that has no groupBy.
-        if (pathText.indexOf('(') >= 0 || pathText.indexOf(')') >= 0) {
-            throw new UnsupportedPredicateException(where, clauseText,
-                    "parentheses are not supported in a query where (found in " + quoteForMessage(pathText)
-                            + "). '&&' binds tighter than '||', so write (a || b) && c as a && c || b && c");
-        }
-        try {
-            return GroupByJoinGrammar.parse(pathText);
-        } catch (GroupByJoinGrammar.UnsupportedGroupByPathException hopFailure) {
-            throw new UnsupportedPredicateException(where, clauseText,
-                    "predicate path " + quoteForMessage(pathText) + " -- " + hopFailure.reason()
-                            + " (a path is a field name, or referenceField.targetField up to "
-                            + GroupByJoinGrammar.MAX_JOIN_HOPS + " hops)");
-        }
-    }
-
-    /**
-     * True when {@code clauseText} ends (outside a quoted literal) with {@code suffixKeyword}
-     * preceded by whitespace; returns the trimmed text BEFORE that suffix, or null when it does
-     * not match. Used for {@code "is null"}/{@code "is not null"}, which unlike every other
-     * operator here have nothing on their right.
-     */
-    private static String suffixOutsideQuotes(String clauseText, String suffixKeyword) {
-        String trimmed = clauseText.stripTrailing();
-        if (trimmed.length() < suffixKeyword.length() + 1) {
-            return null;
-        }
-        int start = trimmed.length() - suffixKeyword.length();
-        if (!trimmed.regionMatches(start, suffixKeyword, 0, suffixKeyword.length())) {
-            return null;
-        }
-        if (!Character.isWhitespace(trimmed.charAt(start - 1))) {
-            return null;
-        }
-        if (isInsideQuoteAt(clauseText, start)) {
-            return null;
-        }
-        return trimmed.substring(0, start).trim();
-    }
-
-    private static boolean isInsideQuoteAt(String text, int index) {
-        boolean inQuote = false;
-        for (int i = 0; i < index; i++) {
-            if (text.charAt(i) == '\'') {
-                inQuote = !inQuote;
-            }
-        }
-        return inQuote;
-    }
-
-    /** Finds {@code keyword} outside quotes, at a clean word boundary on both sides (so
-     *  {@code "domain in (...)"} does not false-match the {@code "in"} inside {@code "domain"}). */
-    private static int indexOfKeywordOutsideQuotes(String clause, String keyword) {
-        boolean inQuote = false;
-        for (int index = 0; index + keyword.length() <= clause.length(); index++) {
-            char current = clause.charAt(index);
-            if (current == '\'') {
-                inQuote = !inQuote;
-                continue;
-            }
-            if (inQuote) {
-                continue;
-            }
-            if (clause.regionMatches(index, keyword, 0, keyword.length())) {
-                boolean leftOk = index == 0 || !isIdentChar(clause.charAt(index - 1));
-                int after = index + keyword.length();
-                boolean rightOk = after == clause.length() || !isIdentChar(clause.charAt(after));
-                if (leftOk && rightOk) {
-                    return index;
-                }
-            }
-        }
-        return -1;
-    }
-
-    private static boolean isIdentChar(char character) {
-        return Character.isLetterOrDigit(character) || character == '_';
-    }
-
-    /** Same quote-aware split {@code splitOnAnd} performs, for comma-separated {@code in (...)} values. */
-    private static List<String> splitOutsideQuotesOnComma(String text) {
-        List<String> parts = new ArrayList<>();
-        boolean inQuote = false;
-        int start = 0;
-        for (int index = 0; index < text.length(); index++) {
-            char current = text.charAt(index);
-            if (current == '\'') {
-                inQuote = !inQuote;
-            } else if (!inQuote && current == ',') {
-                parts.add(text.substring(start, index));
-                start = index + 1;
-            }
-        }
-        parts.add(text.substring(start));
-        return parts;
-    }
-
-    /** Same literal grammar {@link #parseLiteral} accepts, kept as a separate copy so the v1
-     *  method above is never touched by this section (see this section's own header comment). */
-    private static PredicateLiteral parsePredicateLiteral(String where, String clauseText, String text) {
-        if (text.length() >= 2 && text.charAt(0) == '\'' && text.charAt(text.length() - 1) == '\'') {
-            String inner = text.substring(1, text.length() - 1);
-            if (inner.indexOf('\'') >= 0) {
-                throw new UnsupportedPredicateException(where, clauseText,
-                        "unbalanced quotes in literal " + text);
-            }
-            return new PredicateLiteral.Value(inner);
-        }
-        if ("true".equalsIgnoreCase(text)) {
-            return new PredicateLiteral.Value(Boolean.TRUE);
-        }
-        if ("false".equalsIgnoreCase(text)) {
-            return new PredicateLiteral.Value(Boolean.FALSE);
-        }
-        if (text.length() >= 2 && text.charAt(0) == ':' && isPlainName(text.substring(1))) {
-            return new PredicateLiteral.Placeholder(text.substring(1));
-        }
-        if (USER_REFERENCES.contains(text)) {
-            return new PredicateLiteral.UserRef(text);
-        }
-        try {
-            if (text.indexOf('.') >= 0) {
-                return new PredicateLiteral.Value(Double.parseDouble(text));
-            }
-            return new PredicateLiteral.Value(Long.parseLong(text));
-        } catch (NumberFormatException ignored) {
-            throw new UnsupportedPredicateException(where, clauseText,
-                    "literal " + quoteForMessage(text) + " is neither a quoted string, a number, a boolean, "
-                            + "a ':name' bind placeholder, nor one of " + USER_REFERENCES
-                            + (text.startsWith("$")
-                            ? " -- no other $-reference is resolved in a where; declare a parameter and "
-                              + "bind it as ':name' instead"
-                            : ""));
-        }
     }
 
     /** The caller values a v2 {@code where} may name on the right-hand side ({@link PredicateLiteral.UserRef}). */

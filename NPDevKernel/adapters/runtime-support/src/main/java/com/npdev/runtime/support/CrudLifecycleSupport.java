@@ -17,9 +17,6 @@ import java.util.UUID;
 
 import static com.npdev.runtime.support.GeneratedCrudRuntimeSupport.normalize;
 import static com.npdev.runtime.support.crud.bonds.BondNamingSupport.normalizeTenantForBondCheck;
-import static com.npdev.runtime.support.crud.condition.ConditionValueSupport.asBoolean;
-import static com.npdev.runtime.support.crud.condition.ConditionValueSupport.resolveStateMachineGuardValue;
-import static com.npdev.runtime.support.crud.condition.ConditionValueSupport.valuesEqual;
 import static com.npdev.runtime.support.crud.executioncontext.PayloadClaimsSupport.extractCurrentId;
 import static com.npdev.runtime.support.crud.reflection.ObjectFieldSupport.isLifecycleMissing;
 import static com.npdev.runtime.support.crud.reflection.ObjectFieldSupport.readLifecycleToken;
@@ -123,7 +120,7 @@ final class CrudLifecycleSupport {
 
         if (matchingTransition.getGuard() != null
                 && !matchingTransition.getGuard().isBlank()
-                && !evaluateStateMachineGuard(matchingTransition.getGuard(), payload, previousStatus, nextStatus)) {
+                && !evaluateStateMachineGuard(matchingTransition.getGuard(), payload)) {
             violations.add(new InvariantViolationDetail(
                     "invariant_failed",
                     entityName,
@@ -136,12 +133,7 @@ final class CrudLifecycleSupport {
         }
     }
 
-    private boolean evaluateStateMachineGuard(
-            String rawCondition,
-            Map<String, Object> payload,
-            String previousStatus,
-            String nextStatus
-    ) {
+    private boolean evaluateStateMachineGuard(String rawCondition, Map<String, Object> payload) {
         if (rawCondition == null || rawCondition.isBlank()) {
             return true;
         }
@@ -152,27 +144,10 @@ final class CrudLifecycleSupport {
         if ("false".equalsIgnoreCase(condition)) {
             return false;
         }
-        // A guard naming the acting user ($user.roles.contains('Curator')) goes through the same
-        // evaluator the concept gateway and row access use, never the legacy matcher below.
-        if (UserScopedExpressions.referencesUser(condition)) {
-            return UserScopedExpressions.evaluate(condition, payload, resolveCurrentExecutionContext());
-        }
-
-        int equalsIndex = condition.indexOf("==");
-        if (equalsIndex >= 0) {
-            Object left = resolveStateMachineGuardValue(condition.substring(0, equalsIndex), payload, previousStatus, nextStatus);
-            Object right = resolveStateMachineGuardValue(condition.substring(equalsIndex + 2), payload, previousStatus, nextStatus);
-            return valuesEqual(left, right);
-        }
-
-        int notEqualsIndex = condition.indexOf("!=");
-        if (notEqualsIndex >= 0) {
-            Object left = resolveStateMachineGuardValue(condition.substring(0, notEqualsIndex), payload, previousStatus, nextStatus);
-            Object right = resolveStateMachineGuardValue(condition.substring(notEqualsIndex + 2), payload, previousStatus, nextStatus);
-            return !valuesEqual(left, right);
-        }
-
-        return asBoolean(resolveStateMachineGuardValue(condition, payload, previousStatus, nextStatus));
+        // FORM P3-T3: every guard -- with or without $user -- goes through the one expression language
+        // the concept gateway and row access use (was a second ==/!= token matcher). Row fields and
+        // $user are in scope; a guard that does not decide to a boolean fails closed.
+        return UserScopedExpressions.evaluate(condition, payload, resolveCurrentExecutionContext());
     }
 
     CompiledStateTransition findLifecycleTransition(

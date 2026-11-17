@@ -46,9 +46,9 @@ class KernelRunnerBranchAwaitTest {
 
     @Test
     void procedureOutputHoldingAConceptRecordResolvesLikeItsPersistedJsonShape() {
-        // A callProcedure output is flow state; a branch on $m1.data.status must see the same Map shape
+        // A procedure-step output is flow state; a branch on $m1.data.status must see the same Map shape
         // before and after the flow parks and reloads (it only did after).
-        Object plain = CallProcedureStep.plainTree(Map.of("ride", new com.npdev.kernel.concepts.ConceptRecord(
+        Object plain = FlowStepSupport.plainTree(Map.of("ride", new com.npdev.kernel.concepts.ConceptRecord(
                 "Ride", "r1", "dev", Map.of("status", "ASSIGNED"))));
         Map<String, Object> state = new java.util.HashMap<>();
         state.put("m1", ((Map<?, ?>) plain).get("ride"));

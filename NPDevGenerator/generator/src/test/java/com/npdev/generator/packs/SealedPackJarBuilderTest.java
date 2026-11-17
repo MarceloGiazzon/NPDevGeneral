@@ -85,7 +85,7 @@ class SealedPackJarBuilderTest {
         Path unsealedPackFile = tempDir.resolve("unsealed-pack.json");
         Files.writeString(unsealedPackFile, """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "orders",
                   "version": "1.0.0",
                   "concepts": [

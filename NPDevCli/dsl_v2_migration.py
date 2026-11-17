@@ -16,32 +16,19 @@ DESIGN PRINCIPLES (all load-bearing, don't relax any of them)
        canonical name -- an unrecognized type is not silently passed through or dropped.
      - both an alias field and its canonical replacement are present with DIFFERENT values (if
        they hold the same value, the alias is simply redundant and gets dropped without comment).
-     - `orchestrationRule` has both `action` and `actions` present -- which one is authoritative
-       is not something this tool decides.
 3. Structural, not a blind key-value replace. `type`/`cap`/`op`/`out`/etc. are common short names
-   that collide across unrelated schema contexts (`orchestrationAction.type`'s own enum values
-   `create`/`callCapability`/`scheduleEvent` are NOT flowStep-type aliases; a metadata manifest's
-   own `targetConcept` field is unrelated to `orchestrationAction.targetConcept`). This module only
-   ever touches fields inside recognized `flowStep`/`flowHook`/`orchestrationAction` shapes reached
-   by walking `flows[].steps[]` (recursively into `then`/`else`/`steps`/`onFailure`), `flows[].hooks[]`,
-   and `orchestrationRules[].action`/`.actions[]` -- never a global search-and-replace.
+   that collide across unrelated schema contexts. This module only ever touches fields inside
+   recognized `flowStep`/`flowHook` shapes reached by walking `flows[].steps[]` (recursively into
+   `then`/`else`/`steps`/`onFailure`) and `flows[].hooks[]` -- never a global search-and-replace.
 4. Refuses compiled-model fixtures. A handful of test fixtures (found: 2026-07-27, e.g.
    `NPDevRuntimeHost/src/test/resources/npdev/async-wait-resume-compiled-model.json`) are
    serialized *compiled* `CompiledFlowStep` records, not raw authored models -- despite having the
-   same top-level `flows`/`orchestrationRules` keys, their step objects carry compiled-only field
+   same top-level `flows` key, their step objects carry compiled-only field
    names (`capabilityCall` as a nested object, `awaitEventName`, `mapFromRef`/`mapToRef`,
    `returnValueRef`, `eventDataRefs`, `argsRefs`, `awaitPayloadMatch`) that look superficially
    similar to raw field names but mean something entirely different and must never be rewritten.
    Any step carrying one of these markers causes the WHOLE DOCUMENT to be classified `is_compiled`
    and left completely untouched (see `COMPILED_STEP_MARKER_FIELDS`).
-
-5. Also renames the top-level `orchestrations` key to `orchestrationRules` (found: 2026-07-29,
-   docs/CORPUS_INTEGRITY_PLAN.md C2, migrating `AppGen/apps/invoice-bonds-demo` for real -- this
-   repo's schema history has never accepted any spelling but `orchestrationRules`, so this predates
-   even this repo's own baseline commit rather than being a DSL-2.0-era rename; it was invisible to
-   the original 2.A.6 corpus scan because that scan never covered `AppGen/apps`, the one tree where
-   it turns up). Same ambiguity discipline as every other alias here: if both keys are present, left
-   untouched and reported, never silently merged.
 """
 
 from __future__ import annotations
@@ -123,6 +110,15 @@ STEP_TYPE_CANONICAL = {
     "map": "map",
     "foreach": "forEach",
     "loop": "forEach",
+    # canonical names the table lacked: callProcedure, and the FORM P3-T5 concept steps (each maps to itself)
+    "callprocedure": "callProcedure",
+    "set": "set",
+    "readconcept": "readConcept",
+    "listconcepts": "listConcepts",
+    "runquery": "runQuery",
+    "deleteconcept": "deleteConcept",
+    "callflow": "callFlow",
+    "notify": "notify",
 }
 
 # (alias_field, canonical_field) pairs rewritten on every flowStep object.
@@ -137,15 +133,6 @@ FLOW_STEP_FIELD_ALIASES = (
 FLOW_HOOK_FIELD_ALIASES = (
     ("at", "position"),
     ("target", "targetStep"),
-)
-
-# (alias_field, canonical_field) pairs rewritten on every orchestrationAction object.
-ORCHESTRATION_ACTION_FIELD_ALIASES = (
-    ("targetConcept", "concept"),
-    ("capabilityName", "capability"),
-    ("eventName", "event"),
-    ("op", "operation"),
-    ("fieldMap", "map"),
 )
 
 
@@ -179,7 +166,39 @@ def _rewrite_field_aliases(obj: dict, pairs, where: str, result: MigrationResult
         result.changes.append(f"{where}: renamed '{alias}' -> '{canonical}'")
 
 
-def _migrate_step(step: dict, where: str, result: MigrationResult) -> None:
+def _migrate_persistence_save(step: dict, flow_input, where: str, result: MigrationResult) -> None:
+    """FORM P3-T8: `capabilityCall persistence.save` with one arg is the old spelling of createConcept/updateConcept.
+
+    The concept comes from the step's own `scope` or the flow's `input.concept`; create vs update from
+    `input.mode`. A flow with no concept, or a mode that is neither create nor update, is left alone and
+    reported: a raw save is an upsert and only the author knows which half was meant.
+    """
+    if step.get("type") != "capabilityCall":
+        return
+    if str(step.get("capability", "")).strip().lower() != "persistence" or str(step.get("operation", "")).strip().lower() != "save":
+        return
+    args = step.get("args")
+    if not (isinstance(args, list) and len(args) == 1 and isinstance(args[0], str)):
+        result.ambiguities.append(f"{where}: persistence.save without exactly one string arg -- left untouched")
+        return
+    fi = flow_input if isinstance(flow_input, dict) else {}
+    concept = step.get("scope") or fi.get("concept")
+    mode = str(fi.get("mode", "")).strip().lower()
+    if not concept or mode not in ("create", "update"):
+        result.ambiguities.append(
+            f"{where}: persistence.save -- cannot tell createConcept from updateConcept (flow input.concept="
+            f"{fi.get('concept')!r}, input.mode={fi.get('mode')!r}) -- left untouched, rewrite by hand")
+        return
+    new_type = "createConcept" if mode == "create" else "updateConcept"
+    step["type"] = new_type
+    step["scope"] = concept
+    step["input"] = args[0]
+    del step["capability"], step["operation"], step["args"]
+    result.changed = True
+    result.changes.append(f"{where}: capabilityCall persistence.save -> {new_type} (scope '{concept}')")
+
+
+def _migrate_step(step: dict, where: str, result: MigrationResult, flow_input=None) -> None:
     if not isinstance(step, dict):
         return
     step_type = step.get("type")
@@ -194,52 +213,12 @@ def _migrate_step(step: dict, where: str, result: MigrationResult) -> None:
             result.changed = True
             result.changes.append(f"{where}: type '{step_type}' -> '{canonical}'")
     _rewrite_field_aliases(step, FLOW_STEP_FIELD_ALIASES, where, result)
+    _migrate_persistence_save(step, flow_input, where, result)
     for nested_key in ("then", "else", "steps", "onFailure"):
         nested = step.get(nested_key)
         if isinstance(nested, list):
             for i, nested_step in enumerate(nested):
-                _migrate_step(nested_step, f"{where}.{nested_key}[{i}]", result)
-
-
-def _migrate_orchestration_action(action: dict, where: str, result: MigrationResult) -> None:
-    if not isinstance(action, dict):
-        return
-    _rewrite_field_aliases(action, ORCHESTRATION_ACTION_FIELD_ALIASES, where, result)
-
-
-def _migrate_orchestrations_key(doc: dict, result: MigrationResult) -> None:
-    """Renames the top-level `orchestrations` key to `orchestrationRules` -- see design principle 5
-    in the module docstring. Must run before the `orchestrationRules[]` walk below so the renamed
-    entries get the per-rule scalar-action normalization in the same pass."""
-    if "orchestrations" not in doc:
-        return
-    if doc.get("orchestrationRules") is not None:
-        result.ambiguities.append(
-            "$: both top-level 'orchestrations' and 'orchestrationRules' present -- left untouched, "
-            "resolve by hand which one is authoritative"
-        )
-        return
-    doc["orchestrationRules"] = doc.pop("orchestrations")
-    result.changed = True
-    result.changes.append("$: renamed top-level 'orchestrations' -> 'orchestrationRules'")
-
-
-def _migrate_orchestration_rule(rule: dict, where: str, result: MigrationResult) -> None:
-    if not isinstance(rule, dict):
-        return
-    has_action = "action" in rule and rule["action"] is not None
-    has_actions = "actions" in rule and rule["actions"] is not None
-    if has_action and has_actions:
-        result.ambiguities.append(
-            f"{where}: both scalar 'action' and list 'actions' present -- left untouched, "
-            f"resolve by hand which one is authoritative"
-        )
-    elif has_action:
-        rule["actions"] = [rule.pop("action")]
-        result.changed = True
-        result.changes.append(f"{where}: normalized scalar 'action' to single-element 'actions'")
-    for i, action in enumerate(rule.get("actions", None) or []):
-        _migrate_orchestration_action(action, f"{where}.actions[{i}]", result)
+                _migrate_step(nested_step, f"{where}.{nested_key}[{i}]", result, flow_input)
 
 
 def _migrate_transaction_recompute(transaction: dict, where: str, result: MigrationResult) -> None:
@@ -842,7 +821,6 @@ def migrate_document(doc: dict) -> MigrationResult:
         result.is_compiled = True
         return result
 
-    _migrate_orchestrations_key(doc, result)
     _migrate_terminal_states_with_exits(doc.get("concepts", None) or [], "concepts", result)
 
     for i, flow in enumerate(doc.get("flows", None) or []):
@@ -850,17 +828,14 @@ def migrate_document(doc: dict) -> MigrationResult:
             continue
         where = f"flows[{i}] ({flow.get('name', '?')})"
         for j, step in enumerate(flow.get("steps", None) or []):
-            _migrate_step(step, f"{where}.steps[{j}]", result)
+            _migrate_step(step, f"{where}.steps[{j}]", result, flow.get("input"))
         for j, hook in enumerate(flow.get("hooks", None) or []):
             if not isinstance(hook, dict):
                 continue
             hook_where = f"{where}.hooks[{j}]"
             _rewrite_field_aliases(hook, FLOW_HOOK_FIELD_ALIASES, hook_where, result)
             for k, step in enumerate(hook.get("steps", None) or []):
-                _migrate_step(step, f"{hook_where}.steps[{k}]", result)
-
-    for i, rule in enumerate(doc.get("orchestrationRules", None) or []):
-        _migrate_orchestration_rule(rule, f"orchestrationRules[{i}] ({rule.get('name', '?')})", result)
+                _migrate_step(step, f"{hook_where}.steps[{k}]", result, flow.get("input"))
 
     for i, autopanel in enumerate(doc.get("autoPanels", None) or []):
         _migrate_autopanel(autopanel, f"autoPanels[{i}] ({autopanel.get('name') or autopanel.get('aggregate') or '?'})", result)

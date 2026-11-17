@@ -751,4 +751,21 @@ public final class SqlServerDialect implements SqlDialect {
                     + "and use inlineClause(...) -- note OUTPUT goes BEFORE VALUES, unlike RETURNING.");
         }
     }
+
+    /** T-SQL's floating type is FLOAT (a 53-bit double). */
+    @Override
+    public String doublePrecisionType() {
+        return "FLOAT";
+    }
+
+    /** T-SQL has no LEAST before SQL Server 2022, so clamp with CASE (which repeats the expression). */
+    @Override
+    public String clampToOne(String expression) {
+        return "CASE WHEN " + expression + " > 1 THEN 1 ELSE " + expression + " END";
+    }
+
+    @Override
+    public int leastOneUses() {
+        return 2;
+    }
 }

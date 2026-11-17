@@ -16,7 +16,7 @@ class InvariantTemporalComparisonValidationTest {
     private static List<String> validate(String expression) throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "hr.leave", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "hr.leave", "version": "1.0",
               "concepts": [
                 { "name": "Request", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

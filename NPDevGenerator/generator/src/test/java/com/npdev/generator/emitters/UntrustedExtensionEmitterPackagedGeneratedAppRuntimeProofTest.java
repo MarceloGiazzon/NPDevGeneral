@@ -639,8 +639,6 @@ final class UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest {
                 List.of(),
                 List.of(flow, waitingFlow),
                 List.of(),
-                List.of(),
-                List.of(),
                 List.of(procedure),
                 List.of(panel)
         );
@@ -722,7 +720,7 @@ final class UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest {
         Files.writeString(modelSource, """
                 {
                   "namespace": "item12.packaged.proof",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0.0",
                   "concepts": [
                     {

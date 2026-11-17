@@ -18,7 +18,7 @@ class QueryLookupCanonicalJsonTest {
 
     private static final String MODEL = """
         {
-          "dslVersion": "1.0.0", "namespace": "mosaic.lookup", "version": "1.0",
+          "dslVersion": "3.0.0", "namespace": "mosaic.lookup", "version": "1.0",
           "concepts": [
             { "name": "Cell", "fields": [
               { "name": "id", "type": "uuid", "id": true, "required": true },

@@ -17,7 +17,7 @@ class ProcedureCapabilityCallValidationTest {
     private static String modelJson(String capabilityJson, String argsJson) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.qcap", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.qcap", "version": "1.0",
               "concepts": [
                 { "name": "Order", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

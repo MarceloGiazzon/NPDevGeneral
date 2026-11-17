@@ -271,7 +271,7 @@ class LabelLocaleMapTest {
     void objectFormLabelWithoutDefaultFailsSchemaValidation() {
         String json = """
                 {
-                  "dslVersion": "1.0.0", "namespace": "wms.label.neg", "version": "1.0",
+                  "dslVersion": "3.0.0", "namespace": "wms.label.neg", "version": "1.0",
                   "concepts": [
                     { "name": "Widget", "ui": { "label": { "pt-BR": "Dispositivo" } },
                       "fields": [
@@ -292,7 +292,7 @@ class LabelLocaleMapTest {
         // untouched -- this predates R5.6 and must not have regressed.
         String json = """
                 {
-                  "dslVersion": "1.0.0", "namespace": "wms.label.neg2", "version": "1.0",
+                  "dslVersion": "3.0.0", "namespace": "wms.label.neg2", "version": "1.0",
                   "concepts": [
                     { "name": "Widget", "ui": { "label": "" },
                       "fields": [
@@ -427,7 +427,7 @@ class LabelLocaleMapTest {
 
         return """
                 {
-                  "dslVersion": "1.0.0", "namespace": "wms.labelmap", "version": "1.0",
+                  "dslVersion": "3.0.0", "namespace": "wms.labelmap", "version": "1.0",
                   "propertyScopes": [ { "name": "tenant" } ],
                   "properties": [
                     { "name": "pageRows", "type": "int", "default": 25, "settableAt": ["tenant"],

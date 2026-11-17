@@ -63,26 +63,4 @@ class DefaultProcedureExecutorRunAsTest {
         assertEquals("rider1", seen.get(0).get("actorId"));
         assertNull(seen.get(0).get("onBehalfOf"));
     }
-
-    @Test
-    void aNestedCallStaysElevatedAndANestedElevatedCallFromANormalOneIsElevatedToo() {
-        ProcedureDefinition inner = new ProcedureDefinition("Inner", List.of(probe("inner")));
-        ProcedureDefinition outer = new ProcedureDefinition("Outer", List.of(
-                ProcedureStep.callProcedure("call-inner", "Inner", null, "x")), true);
-        executor(Map.of("Inner", inner)).execute(outer, Map.of(), RIDER);
-        assertEquals(ExecutionContext.system("tenant-a").actorId(), seen.get(0).get("actorId"));
-        assertEquals("rider1", seen.get(0).get("onBehalfOf"));
-
-        seen.clear();
-        ProcedureDefinition normalOuter = new ProcedureDefinition("NormalOuter", List.of(
-                probe("before"),
-                ProcedureStep.callProcedure("call-elevated", "Elevated", null, "x"),
-                probe("after")));
-        ProcedureDefinition elevated = new ProcedureDefinition("Elevated", List.of(probe("inside")), true);
-        executor(Map.of("Elevated", elevated)).execute(normalOuter, Map.of(), RIDER);
-        assertEquals("rider1", seen.get(0).get("actorId"));
-        assertEquals(ExecutionContext.system("tenant-a").actorId(), seen.get(1).get("actorId"));
-        assertEquals("rider1", seen.get(2).get("actorId"), "the caller's own steps after the call are not elevated");
-        assertNull(seen.get(2).get("onBehalfOf"));
-    }
 }

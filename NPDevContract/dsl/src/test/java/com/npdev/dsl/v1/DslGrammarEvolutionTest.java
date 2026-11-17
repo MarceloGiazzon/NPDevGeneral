@@ -25,8 +25,8 @@ class DslGrammarEvolutionTest {
     void parsesAndCompilesCapabilitiesEventsAndFlows() throws Exception {
         String json = """
                 {
-                  "model": "SalesDomain",
-                  "dslVersion": "1.0.0",
+                  "namespace": "SalesDomain",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -48,10 +48,6 @@ class DslGrammarEvolutionTest {
                         { "name": "send", "input": { "type": "object", "properties": { "email": { "type": "string" }, "template": { "type": "string" } }, "required": ["email", "template"] }, "output": { "type": "object", "properties": { "status": { "type": "string" } }, "required": ["status"] } }
                       ]
                     }
-                  ],
-                  "bindings": [
-                    { "capability": "eventBus", "adapter": "inproc" },
-                    { "capability": "persistence", "adapter": "repository" }
                   ],
                   "events": [
                     { "name": "UserCreated", "payload": ["userId"] }
@@ -77,7 +73,6 @@ class DslGrammarEvolutionTest {
 
         assertEquals("SalesDomain", ast.getNamespace());
         assertEquals(1, ast.getCapabilities().size());
-        assertEquals(2, ast.getBindings().size());
         assertEquals(1, ast.getEvents().size());
         assertEquals(1, ast.getFlows().size());
 
@@ -86,7 +81,7 @@ class DslGrammarEvolutionTest {
 
         CompiledModel compiled = new ModelCompiler().compile(ast);
         assertEquals(1, compiled.getCapabilities().size());
-        assertEquals(2, compiled.getBindings().size());
+        assertEquals(1, compiled.getBindings().size());
         assertEquals(1, compiled.getEvents().size());
         assertEquals(1, compiled.getFlows().size());
         assertEquals(1, compiled.findConcept("User").orElseThrow().getExpressionInvariants().size());
@@ -97,7 +92,7 @@ class DslGrammarEvolutionTest {
         String json = """
                 {
                   "namespace": "clinic",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
@@ -170,7 +165,7 @@ class DslGrammarEvolutionTest {
         String json = """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -203,392 +198,49 @@ class DslGrammarEvolutionTest {
     }
 
     @Test
-    void parsesAndCompilesOrchestrationRulesV1() throws Exception {
-        String json = """
-                {
-                  "namespace": "clinic",
-                  "dslVersion": "1.0.0",
-                  "version": "v1",
-                  "concepts": [
-                    {
-                      "name": "Appointment",
-                      "fields": [
-                        { "name": "id", "type": "uuid", "id": true, "required": true }
-                      ]
-                    },
-                    {
-                      "name": "InsuranceClaim",
-                      "fields": [
-                        { "name": "id", "type": "uuid", "id": true, "required": true },
-                        { "name": "appointmentId", "type": "reference", "ref": "Appointment", "required": true },
-                        { "name": "status", "type": "enum", "enumValues": ["Draft", "Submitted"] }
-                      ]
-                    }
-                  ],
-                  "events": [
-                    {
-                      "name": "AppointmentCompleted",
-                      "payload": [
-                        { "name": "appointmentId", "type": "uuid" }
-                      ]
-                    }
-                  ],
-                  "orchestrationRules": [
-                    {
-                      "name": "CreateDraftClaim",
-                      "trigger": { "type": "event", "event": "AppointmentCompleted" },
-                      "actions": [
-                        {
-                          "type": "create",
-                          "concept": "InsuranceClaim",
-                          "map": {
-                            "appointmentId": "$event.appointmentId",
-                            "status": "Draft"
-                          }
-                        }
-                      ]
-                    }
-                  ]
-                }
-                """;
-
-        Path modelFile = Files.createTempFile("npdev-grammar-orchestration-", ".json");
-        Files.writeString(modelFile, json, StandardCharsets.UTF_8);
-
-        ModelAst ast = new JsonModelParser().parse(modelFile);
-        assertEquals(1, ast.getOrchestrationRules().size());
-
-        ValidationResult validation = new SemanticValidator().validateWithWarnings(ast);
-        assertTrue(validation.getErrors().isEmpty(), "Expected no semantic errors, got: " + validation.getErrors());
-
-        CompiledModel compiled = new ModelCompiler().compile(ast);
-        assertEquals(1, compiled.getOrchestrationRules().size());
-        var orchestration = compiled.getOrchestrationRules().get(0);
-        assertEquals("AppointmentCompleted", orchestration.getTrigger().getEvent());
-        assertEquals("InsuranceClaim", orchestration.getAction().getConcept());
-        assertEquals("Draft", orchestration.getAction().getMap().get("status"));
-        assertFalse(orchestration.getAction().getMap().isEmpty());
-    }
-
-    @Test
-    void parsesAndCompilesCallCapabilityOrchestrationRule() throws Exception {
-        String json = """
-                {
-                  "namespace": "clinic",
-                  "dslVersion": "1.0.0",
-                  "version": "v1",
-                  "concepts": [
-                    {
-                      "name": "Appointment",
-                      "fields": [
-                        { "name": "id", "type": "uuid", "id": true, "required": true }
-                      ]
-                    }
-                  ],
-                  "capabilities": [
-                    {
-                      "name": "AuditNotifier",
-                      "type": "NotificationCapability",
-                      "operations": [
-                        { "name": "send", "input": { "type": "object", "properties": { "appointmentId": { "type": "string" }, "status": { "type": "string" } }, "required": ["appointmentId", "status"] } }
-                      ]
-                    }
-                  ],
-                  "bindings": [
-                    { "capability": "AuditNotifier", "adapter": "notification-inproc" }
-                  ],
-                  "events": [
-                    {
-                      "name": "AppointmentCompleted",
-                      "payload": [
-                        { "name": "appointmentId", "type": "uuid" },
-                        { "name": "status", "type": "string" }
-                      ]
-                    }
-                  ],
-                  "orchestrationRules": [
-                    {
-                      "name": "NotifyOnAppointmentCompleted",
-                      "trigger": { "type": "event", "event": "AppointmentCompleted" },
-                      "condition": "$event.status == \\"Completed\\"",
-                      "actions": [
-                        {
-                          "type": "callCapability",
-                          "capability": "AuditNotifier",
-                          "operation": "send",
-                          "map": {
-                            "appointmentId": "$event.appointmentId",
-                            "status": "$event.status"
-                          }
-                        }
-                      ]
-                    }
-                  ]
-                }
-                """;
-
-        Path modelFile = Files.createTempFile("npdev-grammar-orchestration-capability-", ".json");
-        Files.writeString(modelFile, json, StandardCharsets.UTF_8);
-
-        ModelAst ast = new JsonModelParser().parse(modelFile);
-        ValidationResult validation = new SemanticValidator().validateWithWarnings(ast);
-        assertTrue(validation.getErrors().isEmpty(), "Expected no semantic errors, got: " + validation.getErrors());
-
-        CompiledModel compiled = new ModelCompiler().compile(ast);
-        assertEquals(1, compiled.getOrchestrationRules().size());
-        var orchestration = compiled.getOrchestrationRules().get(0);
-        assertEquals("callCapability", orchestration.getAction().getType());
-        assertEquals("AuditNotifier", orchestration.getAction().getCapability());
-        assertEquals("send", orchestration.getAction().getOperation());
-        assertEquals("$event.status == \"Completed\"", orchestration.getCondition());
-    }
-
-    @Test
-    void parsesAndCompilesMultiActionOrchestrationRule() throws Exception {
-        String json = """
-                {
-                  "namespace": "clinic",
-                  "dslVersion": "1.0.0",
-                  "version": "v1",
-                  "concepts": [
-                    {
-                      "name": "Appointment",
-                      "fields": [
-                        { "name": "id", "type": "uuid", "id": true, "required": true }
-                      ]
-                    },
-                    {
-                      "name": "InsuranceClaim",
-                      "fields": [
-                        { "name": "id", "type": "uuid", "id": true, "required": true },
-                        { "name": "appointmentId", "type": "reference", "ref": "Appointment", "required": true },
-                        { "name": "status", "type": "enum", "enumValues": ["Draft", "Submitted"] }
-                      ]
-                    }
-                  ],
-                  "capabilities": [
-                    {
-                      "name": "notification",
-                      "type": "NotificationCapability",
-                      "operations": [
-                        { "name": "send", "input": { "type": "object", "properties": { "appointmentId": { "type": "string" }, "status": { "type": "string" } }, "required": ["appointmentId", "status"] } }
-                      ]
-                    }
-                  ],
-                  "bindings": [
-                    { "capability": "notification", "adapter": "notification-inproc" }
-                  ],
-                  "events": [
-                    {
-                      "name": "AppointmentCompleted",
-                      "payload": [
-                        { "name": "appointmentId", "type": "uuid" },
-                        { "name": "status", "type": "string" }
-                      ]
-                    }
-                  ],
-                  "orchestrationRules": [
-                    {
-                      "name": "CompleteAppointmentFlow",
-                      "trigger": { "type": "event", "event": "AppointmentCompleted" },
-                      "condition": "$event.status == \\"Completed\\"",
-                      "actions": [
-                        {
-                          "type": "create",
-                          "concept": "InsuranceClaim",
-                          "map": {
-                            "appointmentId": "$event.appointmentId",
-                            "status": "Draft"
-                          }
-                        },
-                        {
-                          "type": "callCapability",
-                          "capability": "notification",
-                          "operation": "send",
-                          "map": {
-                            "appointmentId": "$event.appointmentId",
-                            "status": "$event.status"
-                          }
-                        }
-                      ]
-                    }
-                  ]
-                }
-                """;
-
-        Path modelFile = Files.createTempFile("npdev-grammar-orchestration-multiaction-", ".json");
-        Files.writeString(modelFile, json, StandardCharsets.UTF_8);
-
-        ModelAst ast = new JsonModelParser().parse(modelFile);
-        ValidationResult validation = new SemanticValidator().validateWithWarnings(ast);
-        assertTrue(validation.getErrors().isEmpty(), "Expected no semantic errors, got: " + validation.getErrors());
-
-        CompiledModel compiled = new ModelCompiler().compile(ast);
-        assertEquals(1, compiled.getOrchestrationRules().size());
-        var orchestration = compiled.getOrchestrationRules().get(0);
-        assertEquals("AppointmentCompleted", orchestration.getTrigger().getEvent());
-        assertEquals(2, orchestration.getActions().size());
-        assertEquals("create", orchestration.getActions().get(0).getType());
-        assertEquals("InsuranceClaim", orchestration.getActions().get(0).getConcept());
-        assertEquals("callCapability", orchestration.getActions().get(1).getType());
-        assertEquals("notification", orchestration.getActions().get(1).getCapability());
-    }
-
-    @Test
-    void orchestrationConditionMustReferenceKnownEventField() throws Exception {
-        String json = """
-                {
-                  "namespace": "clinic",
-                  "dslVersion": "1.0.0",
-                  "version": "v1",
-                  "concepts": [
-                    {
-                      "name": "Appointment",
-                      "fields": [
-                        { "name": "id", "type": "uuid", "id": true, "required": true }
-                      ]
-                    },
-                    {
-                      "name": "InsuranceClaim",
-                      "fields": [
-                        { "name": "id", "type": "uuid", "id": true, "required": true },
-                        { "name": "appointmentId", "type": "reference", "ref": "Appointment", "required": true },
-                        { "name": "status", "type": "enum", "enumValues": ["Draft", "Submitted"] }
-                      ]
-                    }
-                  ],
-                  "events": [
-                    {
-                      "name": "AppointmentCompleted",
-                      "payload": [
-                        { "name": "appointmentId", "type": "uuid" },
-                        { "name": "status", "type": "string" }
-                      ]
-                    }
-                  ],
-                  "orchestrationRules": [
-                    {
-                      "name": "CreateDraftClaim",
-                      "trigger": { "type": "event", "event": "AppointmentCompleted" },
-                      "condition": "$event.nonExisting == \\"Completed\\"",
-                      "actions": [
-                        {
-                          "type": "create",
-                          "concept": "InsuranceClaim",
-                          "map": {
-                            "appointmentId": "$event.appointmentId",
-                            "status": "Draft"
-                          }
-                        }
-                      ]
-                    }
-                  ]
-                }
-                """;
-
-        Path modelFile = Files.createTempFile("npdev-grammar-orchestration-condition-invalid-", ".json");
-        Files.writeString(modelFile, json, StandardCharsets.UTF_8);
-
-        ModelAst ast = new JsonModelParser().parse(modelFile);
-        ValidationResult validation = new SemanticValidator().validateWithWarnings(ast);
-        assertFalse(validation.getErrors().isEmpty(), "Expected semantic error for invalid condition field");
-        assertTrue(validation.getErrors().stream().anyMatch(error ->
-                        error.contains("condition references unknown event payload field")),
-                "Expected condition field validation error, got: " + validation.getErrors());
-    }
-
-    @Test
-    void parsesAndCompilesScheduleEventOrchestrationAction() throws Exception {
-        String json = """
-                {
-                  "namespace": "clinic",
-                  "dslVersion": "1.0.0",
-                  "version": "v1",
-                  "concepts": [
-                    {
-                      "name": "Appointment",
-                      "fields": [
-                        { "name": "id", "type": "uuid", "id": true, "required": true }
-                      ]
-                    }
-                  ],
-                  "events": [
-                    {
-                      "name": "AppointmentCompleted",
-                      "payload": [
-                        { "name": "appointmentId", "type": "uuid" },
-                        { "name": "status", "type": "string" }
-                      ]
-                    },
-                    {
-                      "name": "InsuranceClaimFollowUpDue",
-                      "payload": [
-                        { "name": "appointmentId", "type": "uuid" },
-                        { "name": "status", "type": "string" }
-                      ]
-                    }
-                  ],
-                  "orchestrationRules": [
-                    {
-                      "name": "ScheduleFollowUp",
-                      "trigger": { "type": "event", "event": "AppointmentCompleted" },
-                      "actions": [
-                        {
-                          "type": "scheduleEvent",
-                          "event": "InsuranceClaimFollowUpDue",
-                          "delaySeconds": 60,
-                          "map": {
-                            "appointmentId": "$event.appointmentId",
-                            "status": "FollowUpDue"
-                          }
-                        }
-                      ]
-                    }
-                  ]
-                }
-                """;
-
-        Path modelFile = Files.createTempFile("npdev-grammar-orchestration-schedule-", ".json");
-        Files.writeString(modelFile, json, StandardCharsets.UTF_8);
-
-        ModelAst ast = new JsonModelParser().parse(modelFile);
-        ValidationResult validation = new SemanticValidator().validateWithWarnings(ast);
-        assertTrue(validation.getErrors().isEmpty(), "Expected no semantic errors, got: " + validation.getErrors());
-
-        CompiledModel compiled = new ModelCompiler().compile(ast);
-        assertEquals(1, compiled.getOrchestrationRules().size());
-        var action = compiled.getOrchestrationRules().get(0).getActions().get(0);
-        assertEquals("scheduleEvent", action.getType());
-        assertEquals("InsuranceClaimFollowUpDue", action.getEvent());
-        assertEquals(60L, action.getDelaySeconds());
-    }
-
-    @Test
     void semanticValidatorFlagsDuplicateCapabilityAndInvalidBinding() throws Exception {
         String json = """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
                       "name": "User",
                       "fields": [
-                        { "name": "id", "type": "uuid", "id": true, "required": true },
-                        { "name": "email", "type": "string", "required": true }
+                        {
+                          "name": "id",
+                          "type": "uuid",
+                          "id": true,
+                          "required": true
+                        },
+                        {
+                          "name": "email",
+                          "type": "string",
+                          "required": true
+                        }
                       ],
                       "invariants": [
-                        { "type": "unique", "fields": ["email"] }
+                        {
+                          "type": "unique",
+                          "fields": [
+                            "email"
+                          ]
+                        }
                       ]
                     }
                   ],
                   "capabilities": [
-                    { "name": "Persistence" },
-                    { "name": "Persistence" }
-                  ],
-                  "bindings": [
-                    { "capability": "unknown", "adapter": "x" },
-                    { "capability": "unknown", "adapter": "y" }
+                    {
+                      "name": "Persistence"
+                    },
+                    {
+                      "name": "Persistence"
+                    },
+                    {
+                      "name": "unknown",
+                      "adapter": "y"
+                    }
                   ]
                 }
                 """;
@@ -628,7 +280,7 @@ class DslGrammarEvolutionTest {
         Path modelFile = Files.createTempFile("npdev-grammar-missing-dsl-version-", ".json");
         Files.writeString(modelFile, json, StandardCharsets.UTF_8);
 
-        assertEquals("1.0.0", new JsonModelParser().parse(modelFile).getDslVersion());
+        assertEquals("3.0.0", new JsonModelParser().parse(modelFile).getDslVersion());
     }
 
     @Test
@@ -679,7 +331,7 @@ class DslGrammarEvolutionTest {
         String json = """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "unexpectedRootKey": "boom",
                   "concepts": [

@@ -26,7 +26,7 @@ SCHEMA = Path(__file__).resolve().parents[2] / "NPDevContract" / "schemas" / "mo
 class RootKeysMatchSchemaTest(unittest.TestCase):
     def test_whitelist_equals_schema_top_level_properties(self):
         schema_keys = set(json.loads(SCHEMA.read_text(encoding="utf-8"))["properties"])
-        cli_keys = npdev_cli.ROOT_SCALAR_KEYS | npdev_cli.MODEL_ARRAY_KEYS | {"metadata", "fragments"}
+        cli_keys = npdev_cli.ROOT_SCALAR_KEYS | npdev_cli.MODEL_ARRAY_KEYS | {"metadata"}
         self.assertEqual(set(), schema_keys - cli_keys, "schema keys the CLI refuses")
         self.assertEqual(set(), cli_keys - schema_keys, "CLI keys the schema does not define")
 

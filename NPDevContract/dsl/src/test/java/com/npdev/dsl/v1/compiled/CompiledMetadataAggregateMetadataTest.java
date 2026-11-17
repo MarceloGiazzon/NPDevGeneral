@@ -15,7 +15,7 @@ class CompiledMetadataAggregateMetadataTest {
 
     @Test
     void aggregateMetadataIsServedOnEveryAggregateInvocation() throws Exception {
-        JsonNode model = MAPPER.readTree("{\"dslVersion\":\"1.0.0\",\"namespace\":\"aggmeta.test\",\"version\":\"1.0\","
+        JsonNode model = MAPPER.readTree("{\"dslVersion\":\"3.0.0\",\"namespace\":\"aggmeta.test\",\"version\":\"1.0\","
                 + "\"concepts\":[{\"name\":\"Order\",\"fields\":[{\"name\":\"id\",\"type\":\"uuid\",\"id\":true,\"required\":true}]}],"
                 + "\"aggregates\":[{\"name\":\"OrderAggregate\",\"root\":\"Order\","
                 + "\"metadata\":{\"purpose\":\"one order tree\"}}]}");

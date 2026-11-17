@@ -59,16 +59,23 @@ class ProcedureConditionComparisonTest {
     }
 
     @Test
-    @DisplayName("this is what the OLD grammar did with that predicate: truthy for every state, so the guard was impossible")
-    void bareRefIsStillTruthinessOnly_theShapeThatForcedJava() {
-        // A bare ref keeps its pre-REG-96 meaning exactly -- this is an extension, not a rewrite,
-        // which is why no model needs migrating. It is also, verbatim, the reason the guard could
-        // not be written: all four of Movimento's states are truthy.
-        for (String state : new String[]{"Concluido", "Pendente", "Suspenso", "Cancelado"}) {
-            assertEquals("then", branchTaken("$input.situacao", Map.of("situacao", state)),
-                    "a bare ref is truthy for '" + state + "' -- which is why == was needed");
-        }
-        assertEquals("else", branchTaken("$input.situacao", Map.of("situacao", "")));
+    @DisplayName("FORM P3-T3: a condition is a BOOLEAN expression -- a bare ref is fine for a boolean, refused for a string")
+    void bareRefMustBeBoolean() {
+        // The old grammar tested any bare ref for truthiness: a non-empty string was "true" for all four
+        // of Movimento's states, which is why == was needed (REG-96). Now the condition is the one
+        // expression language, strict and boolean: a bare boolean ref is a legal condition, anything
+        // else is written as a comparison.
+        assertEquals("then", branchTaken("$input.found", Map.of("found", true)));
+        assertEquals("else", branchTaken("$input.found", Map.of("found", false)));
+        assertEquals("then", branchTaken("$input.situacao != null", Map.of("situacao", "Concluido")));
+        assertEquals("else", branchTaken("length($input.situacao) > 0", Map.of("situacao", "")));
+        ProcedureDefinition definition = new ProcedureDefinition("Branch", List.of(
+                ProcedureStep.ifThenElse("branch", "$input.situacao",
+                        List.of(ProcedureStep.mapValue("t", "then", "taken")),
+                        List.of(ProcedureStep.mapValue("e", "else", "taken")))));
+        ProcedureExecutionResult result = executor().execute(definition, Map.of("situacao", "Concluido"), CTX);
+        assertFalse(result.ok(), "a string is not a boolean condition");
+        assertEquals("CONDITION_UNSUPPORTED", result.failureCode());
     }
 
     @Test
@@ -108,7 +115,8 @@ class ProcedureConditionComparisonTest {
             ProcedureExecutionResult result = executor().execute(definition, Map.of("situacao", "X"), CTX);
             assertFalse(result.ok(), "must refuse rather than branch: " + condition);
             assertEquals("CONDITION_UNSUPPORTED", result.failureCode());
-            // ProcedureStep normalizes (trims) conditionRef on construction, so compare trimmed.`r`n            assertTrue(result.failureMessage().contains(condition.trim()), result.failureMessage());
+            // ProcedureStep normalizes (trims) conditionRef on construction, so compare trimmed.
+            assertTrue(result.failureMessage().contains(condition.trim()), result.failureMessage());
         }
     }
 

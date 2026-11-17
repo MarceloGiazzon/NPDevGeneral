@@ -34,24 +34,85 @@ class RuntimeApiEmitterRoleConceptGrantsTest {
     private static final String MODEL_JSON = """
             {
               "namespace": "roleconcepts",
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "version": "v1",
               "concepts": [
-                { "name": "Widget", "access": { "read": "true", "write": "true" }, "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] },
-                { "name": "Orphan", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] },
-                { "name": "Mosaic", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
+                {
+                  "name": "Widget",
+                  "access": {
+                    "read": "true",
+                    "write": "true"
+                  },
+                  "fields": [
+                    {
+                      "name": "id",
+                      "type": "uuid",
+                      "id": true,
+                      "required": true
+                    }
+                  ]
+                },
+                {
+                  "name": "Orphan",
+                  "fields": [
+                    {
+                      "name": "id",
+                      "type": "uuid",
+                      "id": true,
+                      "required": true
+                    }
+                  ]
+                },
+                {
+                  "name": "Mosaic",
+                  "fields": [
+                    {
+                      "name": "id",
+                      "type": "uuid",
+                      "id": true,
+                      "required": true
+                    }
+                  ]
+                }
               ],
               "capabilities": [
-                { "name": "persistence", "type": "PersistenceCapability", "operations": ["save", "findById"] }
-              ],
-              "bindings": [
-                { "capability": "persistence", "adapter": "repository" },
-                { "capability": "eventBus", "adapter": "inproc" }
+                {
+                  "name": "persistence",
+                  "type": "PersistenceCapability",
+                  "operations": [
+                    "save",
+                    "findById"
+                  ]
+                }
               ],
               "roles": [
-                { "name": "Member", "grants": ["EXECUTE_FLOW"], "concepts": { "Mosaic": ["read", "create", "update"] } },
-                { "name": "Visitor", "concepts": { "Mosaic": ["read"] } },
-                { "name": "Auditor", "grants": ["READ_EXECUTIONS"] }
+                {
+                  "name": "Member",
+                  "grants": [
+                    "EXECUTE_FLOW"
+                  ],
+                  "concepts": {
+                    "Mosaic": [
+                      "read",
+                      "create",
+                      "update"
+                    ]
+                  }
+                },
+                {
+                  "name": "Visitor",
+                  "concepts": {
+                    "Mosaic": [
+                      "read"
+                    ]
+                  }
+                },
+                {
+                  "name": "Auditor",
+                  "grants": [
+                    "READ_EXECUTIONS"
+                  ]
+                }
               ]
             }
             """;

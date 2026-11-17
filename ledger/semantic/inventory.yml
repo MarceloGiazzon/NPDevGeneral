@@ -34,11 +34,6 @@ keys:
     mechanism: "AutoPanelAst -- panel scaffolding derived from a concept without a hand-authored panel."
     status: shipped
 
-  - key: bindings
-    mechanism: "BindingAst; config.schema.json runtime.binder seam (P0.6, this plan) scopes springProfile/gradleTask to the one binder that exists today."
-    status: partial
-    notes: "Technology neutrality is constitutional but only one binder (Spring) is implemented; the seam makes that testable instead of assumed."
-
   - key: capabilities
     mechanism: "CapabilityAst + CapabilityDispatcher (NPDevKernel/kernel)."
     status: shipped
@@ -48,8 +43,8 @@ keys:
     status: duplicated
     notes: "Four sites walk the specializes/extends edge and disagree (field-override refusal vs. silent win, and whether specializes is honoured at all). See duplicate-lanes.yml lanes 1-4; Phase 3 (P3.1) collapses them."
 
-  - key: contexts
-    mechanism: "ContextAst (B20, S2 wave) -- bounded-context declarations, each $ref'ing a fragment file via the pack/fragment $ref machinery."
+  - key: modules
+    mechanism: "ContextAst (B20, S2 wave) -- bounded-context declarations (root key renamed from contexts, FORM P3-T11), each $ref'ing a file via the array-entry $ref machinery."
     status: shipped
 
   - key: conversions
@@ -84,10 +79,6 @@ keys:
     mechanism: "FlowAst + durable FlowEngine port hosted in KernelRunner (docs/FLOWS.md)."
     status: shipped
 
-  - key: fragments
-    mechanism: "localModelRef; ModelSourceResolver composes fragment files into the resolved model via MODEL_ARRAY_KEYS."
-    status: shipped
-
   - key: guidePages
     mechanism: "GuidePageAst -- authored in-app documentation pages."
     status: shipped
@@ -96,20 +87,8 @@ keys:
     mechanism: "Free-form app metadata object; passthrough, no dedicated AST node."
     status: shipped
 
-  - key: model
-    mechanism: "Root model identifier (string) -- the app's own name/id."
-    status: shipped
-
   - key: namespace
     mechanism: "Root namespace string used to qualify unqualified names across the resolved model."
-    status: shipped
-
-  - key: orchestrationRules
-    mechanism: "OrchestrationRuleAst."
-    status: shipped
-
-  - key: orchestrations
-    mechanism: "OrchestrationAst."
     status: shipped
 
   - key: packs
@@ -145,10 +124,6 @@ keys:
     mechanism: "RoleAst (Move 13 / REG-108: threaded through MODEL_ARRAY_KEYS, pack.schema.json, ModelResolver, canonical JSON r/w)."
     status: shipped
 
-  - key: ruleProfiles
-    mechanism: "RuleProfileAst."
-    status: shipped
-
   - key: schemaVersion
     mechanism: "Model-level schema version pin, distinct from dslVersion."
     status: shipped
@@ -171,10 +146,6 @@ keys:
 
   - key: version
     mechanism: "App/model version string."
-    status: shipped
-
-  - key: webhooks
-    mechanism: "WebhookAst + WebhookValidation (R6.2); source field carries a wire-visible identity requiring global uniqueness."
     status: shipped
 
 concepts:

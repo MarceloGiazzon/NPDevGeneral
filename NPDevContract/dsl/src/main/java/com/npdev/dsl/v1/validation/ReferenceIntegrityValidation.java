@@ -100,10 +100,6 @@ final class ReferenceIntegrityValidation {
             ReferenceIndex.SITE_PROCEDURE_STEP_QUERY,
             ReferenceIndex.SITE_PROCEDURE_STEP_PROCEDURE,
             ReferenceIndex.SITE_PROCEDURE_STEP_CAPABILITY,
-            // OrchestrationValidation -> a scheduleEvent action's event ("schedule event not
-            // found"), the same reference ReferenceIndex now also indexes (P2.3 follow-up) so
-            // SemanticGraphValidation's producer query can see it.
-            ReferenceIndex.SITE_ORCHESTRATION_ACTION_EVENT,
             // ConversionValidation.validateConversions -> concept, field and lookup-match concept,
             // as coded conversion_* diagnostics with a conversions[i].<role> path.
             ReferenceIndex.SITE_CONVERSION_CONCEPT,

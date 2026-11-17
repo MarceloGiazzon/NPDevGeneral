@@ -58,7 +58,6 @@ class GeneratedCrudRuntimeSupportFieldConstraintsTest {
                 null,
                 null,
                 new SystemRuntimeClock(),
-                new InMemoryOrchestrationExecutionRegistry(),
                 new RuntimeInvariantEngineFactory() {
                     @Override
                     public InvariantEngine create(UniqueValueLookup uniqueValueLookup, ConflictLookup conflictLookup) {

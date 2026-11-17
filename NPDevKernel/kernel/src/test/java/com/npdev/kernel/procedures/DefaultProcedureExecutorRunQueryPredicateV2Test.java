@@ -101,7 +101,7 @@ class DefaultProcedureExecutorRunQueryPredicateV2Test {
     @Test
     void inOperatorExecutesCorrectlyThroughARealInMemoryStore() {
         ProcedureExecutionResult result = runNamedQuery(
-                seededOrders(), "cliente in ('acme', 'third')", List.of());
+                seededOrders(), "cliente in ['acme', 'third']", List.of());
         assertTrue(result.ok(), result.failureMessage());
         assertEquals(List.of("ACME-1", "THI-3"), codigos(result));
     }
@@ -109,12 +109,12 @@ class DefaultProcedureExecutorRunQueryPredicateV2Test {
     @Test
     void containsAndStartsWithExecuteCorrectlyThroughARealInMemoryStore() {
         ProcedureExecutionResult contains = runNamedQuery(
-                seededOrders(), "nota contains 'urgent'", List.of());
+                seededOrders(), "contains(nota, 'urgent')", List.of());
         assertTrue(contains.ok(), contains.failureMessage());
         assertEquals(List.of("ACME-1", "THI-3"), codigos(contains));
 
         ProcedureExecutionResult startsWith = runNamedQuery(
-                seededOrders(), "nota startsWith 'urgent-'", List.of());
+                seededOrders(), "startsWith(nota, 'urgent-')", List.of());
         assertTrue(startsWith.ok(), startsWith.failureMessage());
         assertEquals(List.of("THI-3"), codigos(startsWith));
     }
@@ -125,11 +125,11 @@ class DefaultProcedureExecutorRunQueryPredicateV2Test {
         gateway.save(new ConceptWriteRequest("Order", "o-4", null,
                 Map.of("id", "o-4", "cliente", "fourth", "total", 5, "codigo", "FOU-4")), ExecutionContext.of("dev", "operator"));
 
-        ProcedureExecutionResult withNota = runNamedQuery(gateway, "nota is not null", List.of());
+        ProcedureExecutionResult withNota = runNamedQuery(gateway, "nota != null", List.of());
         assertTrue(withNota.ok(), withNota.failureMessage());
         assertEquals(List.of("ACME-1", "OTH-2", "THI-3"), codigos(withNota));
 
-        ProcedureExecutionResult withoutNota = runNamedQuery(gateway, "nota is null", List.of());
+        ProcedureExecutionResult withoutNota = runNamedQuery(gateway, "nota == null", List.of());
         assertTrue(withoutNota.ok(), withoutNota.failureMessage());
         assertEquals(List.of("FOU-4"), codigos(withoutNota));
     }

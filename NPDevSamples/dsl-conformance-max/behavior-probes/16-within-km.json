@@ -1,0 +1,27 @@
+{
+  "probes": [
+    {
+      "id": "cf-query-withinkm-and-distancekm-filter-by-radius",
+      "keywords": ["query.where", "query.parameters"],
+      "description": "FORM P3-T4: GeoPlacesWithinKm (withinKm) and GeoPlacesCloserThanKm (distanceKm < km) filter by great-circle distance. Rows at (0,0), (0,1) (about 111.19 km away), (10,10) and one with no coordinates: radius 112 around (0,0) returns the first two; radius 100 returns only (0,0); the far row and the coordinate-less row never match.",
+      "steps": [
+        { "name": "origin", "method": "POST", "path": "/api/geo_places", "body": { "name": "gk-${rand}-o", "lat": "0", "lng": "0" }, "expect": { "status": [200, 201] }, "save": { "oId": "$.id", "oName": "$.name" } },
+        { "name": "near", "method": "POST", "path": "/api/geo_places", "body": { "name": "gk-${rand}-n", "lat": "0", "lng": "1" }, "expect": { "status": [200, 201] }, "save": { "nId": "$.id", "nName": "$.name" } },
+        { "name": "far", "method": "POST", "path": "/api/geo_places", "body": { "name": "gk-${rand}-f", "lat": "10", "lng": "10" }, "expect": { "status": [200, 201] }, "save": { "fId": "$.id", "fName": "$.name" } },
+        { "name": "no coordinates", "method": "POST", "path": "/api/geo_places", "body": { "name": "gk-${rand}-x" }, "expect": { "status": [200, 201] }, "save": { "xId": "$.id", "xName": "$.name" } },
+        { "name": "withinKm 112: origin and near", "method": "GET", "path": "/api/queries/GeoPlacesWithinKm?lat=0&lng=0&km=112&limit=500",
+          "expect": { "status": 200, "text": ["${oName}", "${nName}"], "notText": ["${fName}", "${xName}"] } },
+        { "name": "withinKm 100: origin only", "method": "GET", "path": "/api/queries/GeoPlacesWithinKm?lat=0&lng=0&km=100&limit=500",
+          "expect": { "status": 200, "text": ["${oName}"], "notText": ["${nName}", "${fName}", "${xName}"] } },
+        { "name": "distanceKm < 112: origin and near", "method": "GET", "path": "/api/queries/GeoPlacesCloserThanKm?lat=0&lng=0&km=112&limit=500",
+          "expect": { "status": 200, "text": ["${oName}", "${nName}"], "notText": ["${fName}", "${xName}"] } },
+        { "name": "distanceKm < 100: origin only", "method": "GET", "path": "/api/queries/GeoPlacesCloserThanKm?lat=0&lng=0&km=100&limit=500",
+          "expect": { "status": 200, "text": ["${oName}"], "notText": ["${nName}", "${fName}", "${xName}"] } },
+        { "name": "cleanup 1", "always": true, "method": "DELETE", "path": "/api/geo_places/${oId}" },
+        { "name": "cleanup 2", "always": true, "method": "DELETE", "path": "/api/geo_places/${nId}" },
+        { "name": "cleanup 3", "always": true, "method": "DELETE", "path": "/api/geo_places/${fId}" },
+        { "name": "cleanup 4", "always": true, "method": "DELETE", "path": "/api/geo_places/${xId}" }
+      ]
+    }
+  ]
+}

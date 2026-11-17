@@ -9,5 +9,10 @@
     "excepting any of them (they are the DSL's only volume regression corpus). Add an entry here only",
     "for a genuine, reviewed exception with a REG id -- never pre-clear speculatively."
   ],
-  "cleared": {}
+  "cleared": {
+    "AppGen/apps/_experiments/WmsOfficePackTest": {
+      "why": "The live corpus witness for packs[].from (PACK-8). It consumes the remote NPR pack user@v1.0.0, whose user::User concept carries passwordHash; since the identity pack owns the password store (REG-339, P0-T0..T2) the validator refuses that concept. The remote pack is outside this repo and cannot be edited here; dropping it would remove the only packs[].from witness. Remove this entry when NPR publishes a user pack without passwordHash (or the experiment is retired).",
+      "reg": "REG-339"
+    }
+  }
 }

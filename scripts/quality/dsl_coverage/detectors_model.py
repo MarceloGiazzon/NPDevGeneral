@@ -402,7 +402,8 @@ def _has_query_where_v2(model: dict) -> bool:
             continue
         if "||" in where:
             return True
-        for keyword in (" in (", " contains ", " startsWith ", " is null", " is not null"):
+        for keyword in (" in (", " contains ", " startsWith ", " is null", " is not null",
+                        " in [", " not in [", "contains(", "startsWith(", "withinKm(", "distanceKm("):
             if keyword in where:
                 return True
     return False

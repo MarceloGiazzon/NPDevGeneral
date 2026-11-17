@@ -21,7 +21,7 @@ class AutoPanelSelectionDataSourceValidationTest {
     private static List<String> validate(String selectionJson) throws Exception {
         String modelJson = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.d3.validation", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.d3.validation", "version": "1.0",
               "concepts": [
                 { "name": "Cliente", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }

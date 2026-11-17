@@ -21,7 +21,7 @@ def _flow_model(steps: list[dict], extra_flow_keys: dict | None = None) -> dict:
     flow = {"name": "DemoFlow", "input": {"concept": "Widget", "mode": "create"}, "steps": steps}
     if extra_flow_keys:
         flow.update(extra_flow_keys)
-    return {"namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": [], "flows": [flow]}
+    return {"namespace": "test", "dslVersion": "3.0.0", "version": "1.0", "concepts": [], "flows": [flow]}
 
 
 class StepTypeMigrationTest(unittest.TestCase):
@@ -36,6 +36,41 @@ class StepTypeMigrationTest(unittest.TestCase):
             doc = _flow_model([{"name": "s1", "type": alias, "cap": "persistence", "op": "save"}])
             migrate_document(doc)
             self.assertEqual("capabilityCall", doc["flows"][0]["steps"][0]["type"], msg=f"alias={alias}")
+
+    def test_persistence_save_becomes_create_concept(self):
+        doc = _flow_model([{"name": "s1", "type": "capabilityCall", "capability": "persistence", "operation": "save",
+                            "args": ["$input"], "output": "$saved"}])
+        result = migrate_document(doc)
+        self.assertTrue(result.changed)
+        self.assertEqual({"name": "s1", "type": "createConcept", "scope": "Widget", "input": "$input", "output": "$saved"},
+                         doc["flows"][0]["steps"][0])
+
+    def test_persistence_save_in_an_update_flow_becomes_update_concept(self):
+        doc = _flow_model([{"name": "s1", "type": "capabilityCall", "cap": "persistence", "op": "save", "args": ["$input"]}])
+        doc["flows"][0]["input"]["mode"] = "update"
+        migrate_document(doc)
+        step = doc["flows"][0]["steps"][0]
+        self.assertEqual(("updateConcept", "Widget", "$input"), (step["type"], step["scope"], step["input"]))
+
+    def test_persistence_save_without_a_known_mode_is_reported_not_guessed(self):
+        doc = _flow_model([{"name": "s1", "type": "capabilityCall", "capability": "persistence", "operation": "save",
+                            "args": ["$input"]}])
+        del doc["flows"][0]["input"]["mode"]
+        result = migrate_document(doc)
+        self.assertEqual("capabilityCall", doc["flows"][0]["steps"][0]["type"])
+        self.assertTrue(any("persistence.save" in a for a in result.ambiguities), result.ambiguities)
+
+    def test_persistence_save_inside_a_branch_is_migrated_too(self):
+        doc = _flow_model([{"name": "b", "type": "branch", "condition": "true", "then": [
+            {"name": "s1", "type": "capabilityCall", "capability": "persistence", "operation": "save", "args": ["$input"]}]}])
+        migrate_document(doc)
+        self.assertEqual("createConcept", doc["flows"][0]["steps"][0]["then"][0]["type"])
+
+    def test_notify_is_a_canonical_step_type(self):
+        doc = _flow_model([{"name": "n", "type": "notify", "to": "$input.email", "message": "hi"}])
+        result = migrate_document(doc)
+        self.assertFalse(result.changed)
+        self.assertEqual([], result.ambiguities)
 
     def test_cap_op_out_field_aliases_renamed(self):
         doc = _flow_model([{
@@ -127,111 +162,12 @@ class FlowHookMigrationTest(unittest.TestCase):
         self.assertTrue(result.changed)
 
 
-class OrchestrationRuleMigrationTest(unittest.TestCase):
-    def test_scalar_action_normalized_to_actions_list(self):
-        doc = {
-            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": [], "flows": [],
-            "orchestrationRules": [{
-                "name": "Rule1",
-                "trigger": {"type": "event", "event": "X"},
-                "action": {"type": "create", "targetConcept": "Y", "map": {"a": "$event.a"}},
-            }],
-        }
-        result = migrate_document(doc)
-        rule = doc["orchestrationRules"][0]
-        self.assertNotIn("action", rule)
-        self.assertEqual(1, len(rule["actions"]))
-        self.assertEqual("Y", rule["actions"][0]["concept"])
-        self.assertNotIn("targetConcept", rule["actions"][0])
-        self.assertTrue(result.changed)
-
-    def test_both_action_and_actions_present_is_ambiguous(self):
-        doc = {
-            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": [], "flows": [],
-            "orchestrationRules": [{
-                "name": "Rule1",
-                "trigger": {"type": "event", "event": "X"},
-                "action": {"type": "create", "concept": "Y", "map": {"a": "1"}},
-                "actions": [{"type": "create", "concept": "Z", "map": {"a": "2"}}],
-            }],
-        }
-        result = migrate_document(doc)
-        rule = doc["orchestrationRules"][0]
-        self.assertIn("action", rule)
-        self.assertIn("actions", rule)
-        self.assertEqual(1, len(result.ambiguities))
-
-    def test_top_level_orchestrations_key_renamed(self):
-        # Found migrating AppGen/apps/invoice-bonds-demo for real (docs/CORPUS_INTEGRITY_PLAN.md
-        # C2): this repo's schema has never accepted any spelling but 'orchestrationRules', but the
-        # 2.A.6 corpus scan never covered AppGen/apps, so this alias was invisible to it.
-        doc = {
-            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": [], "flows": [],
-            "orchestrations": [{
-                "name": "Rule1",
-                "trigger": {"type": "event", "event": "X"},
-                "action": {"type": "create", "concept": "Y", "map": {"a": "1"}},
-            }],
-        }
-        result = migrate_document(doc)
-        self.assertNotIn("orchestrations", doc)
-        self.assertIn("orchestrationRules", doc)
-        rule = doc["orchestrationRules"][0]
-        self.assertNotIn("action", rule)  # scalar-action normalization ran in the same pass
-        self.assertEqual(1, len(rule["actions"]))
-        self.assertTrue(result.changed)
-
-    def test_both_orchestrations_and_orchestrationRules_present_is_ambiguous(self):
-        doc = {
-            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": [], "flows": [],
-            "orchestrations": [{"name": "Old", "trigger": {"type": "event", "event": "X"},
-                                 "action": {"type": "create", "concept": "Y", "map": {}}}],
-            "orchestrationRules": [{"name": "New", "trigger": {"type": "event", "event": "Z"},
-                                     "actions": [{"type": "create", "concept": "W", "map": {}}]}],
-        }
-        result = migrate_document(doc)
-        self.assertIn("orchestrations", doc)
-        self.assertIn("orchestrationRules", doc)
-        self.assertEqual(1, len(result.ambiguities))
-
-    def test_orchestrations_key_rename_is_idempotent(self):
-        doc = {
-            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": [], "flows": [],
-            "orchestrations": [{"name": "Rule1", "trigger": {"type": "event", "event": "X"},
-                                 "actions": [{"type": "create", "concept": "Y", "map": {}}]}],
-        }
-        first = migrate_document(doc)
-        self.assertTrue(first.changed)
-        before = copy.deepcopy(doc)
-        second = migrate_document(doc)
-        self.assertFalse(second.changed)
-        self.assertEqual(before, doc)
-
-    def test_orchestration_action_type_enum_value_never_rewritten(self):
-        # orchestrationAction.type's own canonical values (create/callCapability/scheduleEvent) must
-        # NEVER be touched by the flowStep.type alias table, even though "callCapability" and
-        # "scheduleEvent" are also flowStep aliases in a completely different context.
-        doc = {
-            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": [], "flows": [],
-            "orchestrationRules": [{
-                "name": "Rule1",
-                "trigger": {"type": "event", "event": "X"},
-                "actions": [{"type": "callCapability", "capabilityName": "notification", "op": "send", "map": {}}],
-            }],
-        }
-        migrate_document(doc)
-        action = doc["orchestrationRules"][0]["actions"][0]
-        self.assertEqual("callCapability", action["type"])
-        self.assertEqual("notification", action["capability"])
-        self.assertEqual("send", action["operation"])
-
-
 class AutoPanelTransactionHooksMigrationTest(unittest.TestCase):
     """Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.4/§B.5)."""
 
     def _model_with_autopanel(self, transaction: dict) -> dict:
         return {
-            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": [],
+            "namespace": "test", "dslVersion": "3.0.0", "version": "1.0", "concepts": [],
             "autoPanels": [{"aggregate": "Movimento", "transaction": transaction}],
         }
 
@@ -337,7 +273,7 @@ class AutoPanelTransactionHooksMigrationTest(unittest.TestCase):
 
     def test_concept_bound_autopanel_with_no_transaction_is_a_no_op(self):
         doc = {
-            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": [],
+            "namespace": "test", "dslVersion": "3.0.0", "version": "1.0", "concepts": [],
             "autoPanels": [{"concept": "Widget"}],
         }
         before = copy.deepcopy(doc)
@@ -351,7 +287,7 @@ class WorkbenchTypedSurfaceMigrationTest(unittest.TestCase):
 
     def _model_with_autopanel(self, transaction: dict) -> dict:
         return {
-            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": [],
+            "namespace": "test", "dslVersion": "3.0.0", "version": "1.0", "concepts": [],
             "autoPanels": [{"aggregate": "Movimento", "transaction": transaction}],
         }
 
@@ -505,7 +441,7 @@ class WorkbenchTypedSurfaceMigrationTest(unittest.TestCase):
 class CompiledModelDetectionTest(unittest.TestCase):
     def test_compiled_step_shape_is_detected_and_left_untouched(self):
         doc = {
-            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": [],
+            "namespace": "test", "dslVersion": "3.0.0", "version": "1.0", "concepts": [],
             "flows": [{
                 "name": "AsyncFlow",
                 "steps": [{
@@ -524,7 +460,7 @@ class CompiledModelDetectionTest(unittest.TestCase):
 
     def test_reference_manifest_shape_without_flows_key_is_a_no_op(self):
         # A generator metadata manifest (e.g. references.manifest.json) has its own unrelated
-        # "targetConcept" field and no "flows"/"orchestrationRules" -- must be a complete no-op.
+        # "targetConcept" field and no "flows" -- must be a complete no-op.
         doc = {
             "metadataManifestVersion": "1.0.0",
             "items": [{"concept": "Appointment", "fieldPath": "patientId", "targetConcept": "Patient"}],
@@ -543,7 +479,7 @@ class QueryProcedureAuditPolicyMigrationTest(unittest.TestCase):
 
     def _doc(self, queries=None, procedures=None) -> dict:
         return {
-            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": [], "flows": [],
+            "namespace": "test", "dslVersion": "3.0.0", "version": "1.0", "concepts": [], "flows": [],
             "queries": queries or [], "procedures": procedures or [],
         }
 
@@ -607,7 +543,7 @@ class TracePolicyRetirementTest(unittest.TestCase):
 
     def _doc(self, queries=None, procedures=None) -> dict:
         return {
-            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": [], "flows": [],
+            "namespace": "test", "dslVersion": "3.0.0", "version": "1.0", "concepts": [], "flows": [],
             "queries": queries or [], "procedures": procedures or [],
         }
 
@@ -640,7 +576,7 @@ class AggregateCollectionViaRetirementTest(unittest.TestCase):
 
     def _doc(self) -> dict:
         return {
-            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "flows": [],
+            "namespace": "test", "dslVersion": "3.0.0", "version": "1.0", "flows": [],
             "concepts": [{"name": "Order", "fields": [],
                           "rollups": [{"field": "lineCount", "from": "Line", "via": "orderId", "fn": "count"}]}],
             "aggregates": [{"name": "OrderAggregate", "root": "Order", "collections": [
@@ -674,7 +610,7 @@ class AggregateCollectionMetadataRetirementTest(unittest.TestCase):
 
     def _doc(self) -> dict:
         return {
-            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "flows": [],
+            "namespace": "test", "dslVersion": "3.0.0", "version": "1.0", "flows": [],
             "concepts": [{"name": "Order", "fields": []}],
             "aggregates": [{"name": "OrderAggregate", "root": "Order", "metadata": {"purpose": "kept"}, "collections": [
                 {"name": "lines", "concept": "Line", "childField": "orderId", "metadata": {"note": "x"},
@@ -707,7 +643,7 @@ class NamedItemUidRetirementTest(unittest.TestCase):
 
     def _doc(self) -> dict:
         return {
-            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0",
+            "namespace": "test", "dslVersion": "3.0.0", "version": "1.0",
             "concepts": [{"name": "Order", "uid": "c1", "fields": [{"name": "id", "type": "uuid", "uid": "f1"}]}],
             "flows": [{"name": "Place", "uid": "fl1", "steps": []}],
             "queries": [{"name": "Open", "uid": "q1", "concept": "Order"}],
@@ -760,7 +696,7 @@ class MisplacedPickerMigrationTest(unittest.TestCase):
 
     def _doc(self) -> dict:
         return {
-            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "flows": [],
+            "namespace": "test", "dslVersion": "3.0.0", "version": "1.0", "flows": [],
             "concepts": [{"name": "Line", "fields": [
                 {"name": "orderId", "type": "uuid", "picker": {"filter": "status == 'Open'"}},
                 {"name": "catalogId", "type": "reference", "ref": "Catalog", "picker": {"selectorRef": "S"}},
@@ -794,7 +730,7 @@ class UntrustedExtensionEntrypointMigrationTest(unittest.TestCase):
 
     def _doc(self, panels=None, procedures=None) -> dict:
         return {
-            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": [], "flows": [],
+            "namespace": "test", "dslVersion": "3.0.0", "version": "1.0", "concepts": [], "flows": [],
             "panels": panels or [], "procedures": procedures or [],
         }
 
@@ -884,13 +820,13 @@ class UntrustedExtensionManifestMigrationTest(unittest.TestCase):
 
     def test_an_ordinary_model_document_does_not_match(self):
         from dsl_v2_migration import looks_like_untrusted_extension_manifest
-        doc = {"namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": []}
+        doc = {"namespace": "test", "dslVersion": "3.0.0", "version": "1.0", "concepts": []}
         self.assertFalse(looks_like_untrusted_extension_manifest(doc))
 
 
 class PanelLayoutTypeMigrationTest(unittest.TestCase):
     def _model(self, layout: dict) -> dict:
-        return {"namespace": "test", "dslVersion": "1.0.0", "version": "1.0",
+        return {"namespace": "test", "dslVersion": "3.0.0", "version": "1.0",
                 "panels": [{"name": "P", "route": "/p", "layout": layout}]}
 
     def test_retired_types_become_table_including_children(self):
@@ -921,7 +857,7 @@ class TerminalStateWithExitMigrationTest(unittest.TestCase):
                        {"value": "Approved", "terminal": True}],
             "transitions": transitions,
         }
-        return {"namespace": "test", "dslVersion": "1.0.0", "version": "1.0",
+        return {"namespace": "test", "dslVersion": "3.0.0", "version": "1.0",
                 "concepts": [{"name": "Review", "lifecycle": lifecycle}]}
 
     def test_terminal_with_exit_loses_the_flag(self):

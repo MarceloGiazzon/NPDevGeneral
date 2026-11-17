@@ -93,7 +93,7 @@
     {
       "id": "cf-query-parameter-default-expression-binds-when-omitted",
       "keywords": ["query.parameters"],
-      "description": "REG-313 (b): ShelfLayoutsReviewDue (where reviewBy <= :asOf) declares asOf with defaultExpression addDays(today(), 30). Omitting ?asOf= binds that default instead of the 400 a parameter without one gets, so a row whose reviewBy was defaulted (today + 7) and a row long overdue are returned while a row due in year 2999 is not; supplying ?asOf= wins over the default in both directions. Built relative to today, so it holds on any day.",
+      "description": "REG-313 (b): ShelfLayoutsReviewDue (where reviewBy <= $params.asOf) declares asOf with defaultExpression addDays(today(), 30). Omitting ?asOf= binds that default instead of the 400 a parameter without one gets, so a row whose reviewBy was defaulted (today + 7) and a row long overdue are returned while a row due in year 2999 is not; supplying ?asOf= wins over the default in both directions. Built relative to today, so it holds on any day.",
       "steps": [
         {
           "name": "a row with the defaulted reviewBy (today + 7)",
@@ -141,8 +141,8 @@
     },
     {
       "id": "cf-procedure-date-operations-place-a-review-window",
-      "keywords": ["flowStep.procedure"],
-      "description": "REG-313 (b): PlanShelfReviewProcedure uses computeValue's date operations. From startDate 2026-10-01 and offsetDays 84 it computes target 2026-12-24 (addDays), a window of 2026-12-17 .. 2026-12-31 (addDays -7 / +7), its length 14 (daysBetween, stored as rows) and today (stamped as reviewBy), then creates the ShelfLayout; PlanShelfReviewFlow returns that record (its fields under output.data). A non-date start fails the flow with COMPUTE_VALUE_INVALID_OPERAND rather than a number-shaped nonsense value.",
+      "keywords": ["flowStep.flow"],
+      "description": "REG-313 (b): PlanShelfReviewProcedure uses computeValue's date operations. From startDate 2026-10-01 and offsetDays 84 it computes target 2026-12-24 (addDays), a window of 2026-12-17 .. 2026-12-31 (addDays -7 / +7), its length 14 (daysBetween, stored as rows) and today (stamped as reviewBy), then creates the ShelfLayout; PlanShelfReviewFlow returns that record (its fields under output.data). A non-date start fails the flow with EXPRESSION_INVALID rather than a number-shaped nonsense value.",
       "steps": [
         {
           "name": "the window is placed relative to the start date",
@@ -165,7 +165,7 @@
           "method": "POST",
           "path": "/api/flows/PlanShelfReviewFlow/execute",
           "body": { "id": "${uuid}", "name": "pn-${rand}", "startDate": "next tuesday", "offsetDays": 84 },
-          "expect": { "status": 422, "json": { "$.status": "FAILED", "$.error": { "matches": "COMPUTE_VALUE_INVALID_OPERAND" } } }
+          "expect": { "status": 422, "json": { "$.status": "FAILED", "$.error": { "matches": "EXPRESSION_INVALID.*not a date" } } }
         }
       ]
     }

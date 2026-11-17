@@ -55,15 +55,28 @@ final class ServiceBaseDeleteFlowRowLevelAuthzBehaviorTest {
     private static final String MODEL_JSON = """
             {
               "namespace": "reg49residual",
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "version": "v1",
               "concepts": [
                 {
                   "name": "Widget",
                   "fields": [
-                    { "name": "id", "type": "uuid", "id": true, "required": true },
-                    { "name": "ownerId", "type": "string", "required": true },
-                    { "name": "label", "type": "string", "required": true }
+                    {
+                      "name": "id",
+                      "type": "uuid",
+                      "id": true,
+                      "required": true
+                    },
+                    {
+                      "name": "ownerId",
+                      "type": "string",
+                      "required": true
+                    },
+                    {
+                      "name": "label",
+                      "type": "string",
+                      "required": true
+                    }
                   ],
                   "access": {
                     "write": "ownerId == $user.id"
@@ -71,18 +84,29 @@ final class ServiceBaseDeleteFlowRowLevelAuthzBehaviorTest {
                 }
               ],
               "capabilities": [
-                { "name": "persistence", "type": "PersistenceCapability", "operations": ["save", "unique", "findById"] }
-              ],
-              "bindings": [
-                { "capability": "persistence", "adapter": "repository" },
-                { "capability": "eventBus", "adapter": "inproc" }
+                {
+                  "name": "persistence",
+                  "type": "PersistenceCapability",
+                  "operations": [
+                    "save",
+                    "unique",
+                    "findById"
+                  ]
+                }
               ],
               "flows": [
                 {
                   "name": "RetireWidget",
-                  "input": { "concept": "Widget", "mode": "delete" },
+                  "input": {
+                    "concept": "Widget",
+                    "mode": "delete"
+                  },
                   "steps": [
-                    { "name": "return-ok", "type": "return", "value": "true" }
+                    {
+                      "name": "return-ok",
+                      "type": "return",
+                      "value": "true"
+                    }
                   ]
                 }
               ]

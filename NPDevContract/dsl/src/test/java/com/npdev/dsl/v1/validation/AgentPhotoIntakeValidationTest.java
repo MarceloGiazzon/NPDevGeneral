@@ -32,7 +32,7 @@ class AgentPhotoIntakeValidationTest {
     private static String model(String channels, String intake, String aggregates) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "demo.photo", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "demo.photo", "version": "1.0",
               "concepts": [
                 { "name": "Cap", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

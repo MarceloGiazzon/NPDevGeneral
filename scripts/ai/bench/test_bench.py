@@ -892,6 +892,37 @@ class CompactCoreContextTests(unittest.TestCase):
         self.assertLess(len(author.slim_knowledge(self.compact)), len(self.compact))
 
 
+class DetailLevelTests(unittest.TestCase):
+    """npdev ai context --detail: three levels, each a strict slimming of the next, the lean one still able to author a CRUD app."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        import build_core_context
+        cls.bc = build_core_context
+        cls.lean, _ = build_core_context.build_bundle(detail="lean")
+        cls.standard, _ = build_core_context.build_bundle(detail="standard")
+        cls.full, _ = build_core_context.build_bundle(detail="full")
+
+    def test_levels_only_shrink(self):
+        self.assertLess(len(self.lean), len(self.standard) * 0.5)
+        self.assertLess(len(self.standard), len(self.full))
+
+    def test_standard_is_what_compact_always_was(self):
+        self.assertEqual(self.standard, self.bc.build_bundle(compact=True)[0])
+        self.assertEqual(self.full, self.bc.build_bundle()[0])
+
+    def test_lean_keeps_the_floor_a_crud_app_needs(self):
+        for kept in ("## Non-negotiables", "## The minimal model", "## Gotchas", "$.concepts[]", "Golden example: golden-contact-intake"):
+            self.assertIn(kept, self.lean)
+        for gone in ("## Reuse and extend", "## Totals, reports and reactions", "Golden example: golden-expense-approval"):
+            self.assertNotIn(gone, self.lean)
+
+    def test_an_unknown_level_is_refused(self):
+        with self.assertRaises(ValueError):
+            self.bc.build_bundle(detail="tiny")
+
+
 class OpenApiCatalogTests(unittest.TestCase):
     """BENCH-2: an app with no NPDev metadata endpoint is judged by the SAME probes, with the catalog derived
     from its OpenAPI document."""
@@ -1281,7 +1312,7 @@ class RelayPackCaseTests(unittest.TestCase):
     pack rules), the answer read in the pack phase, the pack checks and a probe validation in place of the app stages."""
 
     PROMPT = {"id": "bench-901", "tier": "pack", "intent": "pack", "packId": "ratings", "title": "t", "prompt": "ratings of a ride"}
-    PACK = {"dslVersion": "1.0.0", "pack": "ratings", "version": "1.0.0", "namespace": "com.example.ratings",
+    PACK = {"dslVersion": "3.0.0", "pack": "ratings", "version": "1.0.0", "namespace": "com.example.ratings",
             "concepts": [{"name": "Rating", "fields": [{"name": "id", "type": "uuid", "id": True, "required": True}]}]}
 
     @staticmethod

@@ -55,7 +55,7 @@ class PackExtensionComposerTest {
 
     private static final String CLINICBASE_PACK_JSON = """
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "clinicbase",
               "version": "1.0.0",
               "concepts": [
@@ -69,7 +69,7 @@ class PackExtensionComposerTest {
 
     private static final String CLINICEXT_PACK_JSON = """
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "clinicext",
               "version": "1.0.0",
               "metadata": { "extends": { "pack": "clinicbase", "concept": "Patient" } },
@@ -98,7 +98,7 @@ class PackExtensionComposerTest {
     void readsExtensionTargetFromFirstClassExtendsKeyword() throws Exception {
         String firstClassExtends = """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "clinicext",
                   "version": "1.0.0",
                   "extends": { "pack": "clinicbase", "concept": "Patient" },
@@ -122,7 +122,7 @@ class PackExtensionComposerTest {
     void firstClassExtendsTakesPrecedenceOverMetadataExtends() throws Exception {
         String bothExtends = """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "clinicext",
                   "version": "1.0.0",
                   "extends": { "pack": "firstclass", "concept": "Alpha" },
@@ -227,7 +227,7 @@ class PackExtensionComposerTest {
         Path baseFile = writePack(tempDir, "clinicbase-pack.json", CLINICBASE_PACK_JSON);
         Path extFile = writePack(tempDir, "clinicext-conflict-pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "clinicext",
                   "version": "1.0.0",
                   "metadata": { "extends": { "pack": "clinicbase", "concept": "Patient" } },
@@ -258,7 +258,7 @@ class PackExtensionComposerTest {
         Path baseFile = writePack(tempDir, "clinicbase-pack.json", CLINICBASE_PACK_JSON);
         Path extFile = writePack(tempDir, "clinicext-required-pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "clinicext",
                   "version": "1.0.0",
                   "metadata": { "extends": { "pack": "clinicbase", "concept": "Patient" } },
@@ -294,7 +294,7 @@ class PackExtensionComposerTest {
 
         JsonNode clinicalPackJson = MAPPER.readTree("""
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "clinical",
                   "version": "1.0.0",
                   "metadata": { "extends": { "pack": "identity", "concept": "User" } },

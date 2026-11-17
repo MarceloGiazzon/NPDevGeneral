@@ -367,6 +367,9 @@ public final class OpenApiDocumentBuilder {
     // ------------------------------------------------------------------ flows
 
     private static void addFlow(CompiledFlow flow, Map<String, Object> paths) {
+        if (flow.getExpose() != null && !"api".equals(flow.getExpose())) {
+            return; // FORM P3-T5b: expose ui / internal flows have no public route to document
+        }
         Object body = flow.getInputSchema() != null
                 ? toJsonSchema(flow.getInputSchema())
                 : new LinkedHashMap<String, Object>(Map.of("type", "object"));

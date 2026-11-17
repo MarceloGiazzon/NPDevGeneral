@@ -141,12 +141,16 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     @Override
     public Optional<ConceptRecord> findById(String tenantId, String conceptName, String id) {
         ConceptShape shape = shape(conceptName);
+        Object boundId = coerceId(id);
+        if (cannotMatchIdColumn(shape, boundId)) {
+            return Optional.empty();
+        }
         Connection connection = openConnection();
         try {
             String sql = "SELECT " + selectListSql(connection, shape) + " FROM " + sqlId(shape.tableName())
                     + " WHERE " + sqlId(shape.idColumn()) + " = ? AND tenant_id = ?" + deletedAtFilter(shape);
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
-                bindObject(statement, 1, coerceId(id));
+                bindObject(statement, 1, boundId);
                 bindObject(statement, 2, tenantId);
                 try (ResultSet resultSet = statement.executeQuery()) {
                     if (!resultSet.next()) {
@@ -175,13 +179,17 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     @Override
     public Optional<ConceptRecord> findByIdForUpdate(String tenantId, String conceptName, String id) {
         ConceptShape shape = shape(conceptName);
+        Object boundId = coerceId(id);
+        if (cannotMatchIdColumn(shape, boundId)) {
+            return Optional.empty();
+        }
         Connection connection = openConnection();
         try {
             String sql = dialect.selectForUpdate(
                     selectListSql(connection, shape), sqlId(shape.tableName()),
                     sqlId(shape.idColumn()) + " = ? AND tenant_id = ?" + deletedAtFilter(shape));
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
-                bindObject(statement, 1, coerceId(id));
+                bindObject(statement, 1, boundId);
                 bindObject(statement, 2, tenantId);
                 try (ResultSet resultSet = statement.executeQuery()) {
                     if (!resultSet.next()) {
@@ -805,6 +813,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             case IN -> throw new IllegalStateException("IN is compiled to IN (...), not a binary operator");
             case IS_NULL -> throw new IllegalStateException("IS_NULL is compiled to a unary null-check, not a binary operator");
             case IS_NOT_NULL -> throw new IllegalStateException("IS_NOT_NULL is compiled to a unary null-check, not a binary operator");
+            case DISTANCE_KM -> throw new IllegalStateException("DISTANCE_KM is compiled to a great-circle expression, not a binary operator");
             case OR_GROUPS -> throw new IllegalStateException("OR_GROUPS is a marker filter (nested groups), not a binary operator");
         };
     }
@@ -871,30 +880,16 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             ConceptShape baseShape, String baseAlias, ConceptQuery.Filter clause,
             Map<String, JoinPlan> joinsByChainKey, List<String> joinClauses, List<Object> joinParams,
             List<Object> whereParams, String tenantId) {
-        String rawField = clause.field();
-        ConceptShape targetShape;
-        String rawColumn;
-        String columnRef;
-        if (rawField != null && (rawField.indexOf('.') >= 0 || rawField.contains("::"))) {
-            GroupByJoinGrammar.Target target = GroupByJoinGrammar.parse(rawField);
-            if (target instanceof GroupByJoinGrammar.Target.Join join) {
-                JoinPlan plan = registerJoinChain(baseShape, join.referenceFields(), baseAlias,
-                        joinsByChainKey, joinClauses, joinParams, tenantId);
-                targetShape = plan.targetShape();
-                rawColumn = requireColumn(targetShape, join.targetField());
-                columnRef = plan.alias() + "." + sqlId(rawColumn);
-            } else {
-                // Unreachable in practice (a dot/"::" always parses to a Join), kept as a safe
-                // fallback rather than an assertion so a future grammar change degrades gracefully.
-                targetShape = baseShape;
-                rawColumn = requireColumn(baseShape, ((GroupByJoinGrammar.Target.Direct) target).field());
-                columnRef = baseAlias + "." + sqlId(rawColumn);
-            }
-        } else {
-            targetShape = baseShape;
-            rawColumn = requireColumn(baseShape, rawField);
-            columnRef = baseAlias + "." + sqlId(rawColumn);
+        if (clause.operator() == ConceptQuery.Operator.DISTANCE_KM) {
+            return renderDistanceClause(baseShape, baseAlias, clause,
+                    joinsByChainKey, joinClauses, joinParams, whereParams, tenantId);
         }
+        String rawField = clause.field();
+        FilterColumn resolved = resolveFilterColumn(
+                baseShape, baseAlias, rawField, joinsByChainKey, joinClauses, joinParams, tenantId);
+        ConceptShape targetShape = resolved.targetShape();
+        String rawColumn = resolved.rawColumn();
+        String columnRef = resolved.columnRef();
         String dslType = targetShape.dslTypeByColumn().get(rawColumn.toLowerCase(Locale.ROOT));
         return switch (clause.operator()) {
             case EQ, NEQ, LT, LTE, GT, GTE -> {
@@ -946,9 +941,95 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             }
             case IS_NULL -> columnRef + " IS NULL";
             case IS_NOT_NULL -> columnRef + " IS NOT NULL";
+            case DISTANCE_KM -> throw new IllegalStateException("DISTANCE_KM is rendered before column resolution");
             case OR_GROUPS -> throw new IllegalArgumentException(
                     "OR_GROUPS may only appear as the sole top-level filter, not nested inside a clause group");
         };
+    }
+
+    /** A filter field resolved to the shape that owns it, its column, and the SQL reference to it. */
+    private record FilterColumn(ConceptShape targetShape, String rawColumn, String columnRef) {
+    }
+
+    /**
+     * {@code rawField} is resolved via {@link GroupByJoinGrammar#parse} ONLY when it looks like a reference
+     * path (contains {@code .} or {@code ::}); a plain field name takes the exact {@link #requireColumn}
+     * path this class has always used (so an injection attempt spelled as a plain field still fails at the
+     * whitelist with the same {@link IllegalArgumentException}).
+     */
+    private FilterColumn resolveFilterColumn(
+            ConceptShape baseShape, String baseAlias, String rawField,
+            Map<String, JoinPlan> joinsByChainKey, List<String> joinClauses, List<Object> joinParams,
+            String tenantId) {
+        if (rawField != null && (rawField.indexOf('.') >= 0 || rawField.contains("::"))) {
+            GroupByJoinGrammar.Target target = GroupByJoinGrammar.parse(rawField);
+            if (target instanceof GroupByJoinGrammar.Target.Join join) {
+                JoinPlan plan = registerJoinChain(baseShape, join.referenceFields(), baseAlias,
+                        joinsByChainKey, joinClauses, joinParams, tenantId);
+                ConceptShape targetShape = plan.targetShape();
+                String rawColumn = requireColumn(targetShape, join.targetField());
+                return new FilterColumn(targetShape, rawColumn, plan.alias() + "." + sqlId(rawColumn));
+            }
+            // Unreachable in practice (a dot/"::" always parses to a Join), kept as a safe
+            // fallback rather than an assertion so a future grammar change degrades gracefully.
+            String rawColumn = requireColumn(baseShape, ((GroupByJoinGrammar.Target.Direct) target).field());
+            return new FilterColumn(baseShape, rawColumn, baseAlias + "." + sqlId(rawColumn));
+        }
+        String rawColumn = requireColumn(baseShape, rawField);
+        return new FilterColumn(baseShape, rawColumn, baseAlias + "." + sqlId(rawColumn));
+    }
+
+    /**
+     * FORM P3-T4: {@code withinKm}/{@code distanceKm}. The great-circle expression is the dialect's to
+     * spell ({@link SqlDialect#greatCircleKm}); this method only resolves each field coordinate to a column
+     * (through the same join machinery as any other clause) and binds each value coordinate once per
+     * occurrence in that expression. Every value is a bind parameter, never spliced into the SQL.
+     */
+    private String renderDistanceClause(
+            ConceptShape baseShape, String baseAlias, ConceptQuery.Filter clause,
+            Map<String, JoinPlan> joinsByChainKey, List<String> joinClauses, List<Object> joinParams,
+            List<Object> whereParams, String tenantId) {
+        if (!(clause.value() instanceof ConceptQuery.Distance distance)) {
+            throw new IllegalArgumentException("a distanceKm filter carries a ConceptQuery.Distance, got " + clause.value());
+        }
+        List<ConceptQuery.DistanceOperand> operands = distance.coordinates();
+        String[] fragments = new String[4];
+        for (int index = 0; index < 4; index++) {
+            ConceptQuery.DistanceOperand operand = operands.get(index);
+            fragments[index] = operand.isField()
+                    ? resolveFilterColumn(baseShape, baseAlias, operand.field(),
+                            joinsByChainKey, joinClauses, joinParams, tenantId).columnRef()
+                    : "?";
+        }
+        SqlDialect.GreatCircleSql great = dialect.greatCircleKm(fragments[0], fragments[1], fragments[2], fragments[3]);
+        for (int index : great.operandOrder()) {
+            if (!operands.get(index).isField()) {
+                whereParams.add(distanceNumber(operands.get(index).value(), "coordinate"));
+            }
+        }
+        whereParams.add(distanceNumber(distance.km(), "distance"));
+        String comparison = switch (distance.cmp()) {
+            case LT -> "<";
+            case LTE -> "<=";
+            case GT -> ">";
+            case GTE -> ">=";
+        };
+        return great.sql() + " " + comparison + " ?";
+    }
+
+    /** A coordinate or radius as an exact number; null stays null (the comparison is then NULL, i.e. false). */
+    private static java.math.BigDecimal distanceNumber(Object value, String what) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof java.math.BigDecimal exact) {
+            return exact;
+        }
+        try {
+            return new java.math.BigDecimal(String.valueOf(value).trim());
+        } catch (NumberFormatException notANumber) {
+            throw new IllegalArgumentException("a distance " + what + " must be a number, got '" + value + "'");
+        }
     }
 
     private int bindParams(PreparedStatement statement, List<Object> params, int startIndex) throws SQLException {
@@ -1193,7 +1274,10 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     public void deleteById(String tenantId, String conceptName, String id, Long expectedRowVersion) {
         ConceptShape shape = shape(conceptName);
         int affected;
-        if (shape.softDelete()) {
+        if (cannotMatchIdColumn(shape, coerceId(id))) {
+            // nothing can carry a malformed id: a no-op, like a missing row (the CAS variant reports the lost race below)
+            affected = 0;
+        } else if (shape.softDelete()) {
             String sql = "UPDATE " + sqlId(shape.tableName()) + " SET deleted_at = ? WHERE "
                     + sqlId(shape.idColumn()) + " = ? AND tenant_id = ? AND deleted_at IS NULL"
                     + rowVersionGuard(expectedRowVersion);
@@ -1255,7 +1339,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     @Override
     public boolean restore(String tenantId, String conceptName, String id) {
         ConceptShape shape = shape(conceptName);
-        if (!shape.softDelete()) {
+        if (!shape.softDelete() || cannotMatchIdColumn(shape, coerceId(id))) {
             return false;
         }
         String sql = "UPDATE " + sqlId(shape.tableName()) + " SET deleted_at = NULL WHERE "
@@ -1683,6 +1767,19 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         } catch (Exception ignored) {
             return String.valueOf(value);
         }
+    }
+
+    /**
+     * A malformed id can never match a UUID id column (an implicit id is a uuid; a {@code string}, {@code long} or
+     * {@code int} id is not): the answer is "not found" / "nothing to change", not a driver conversion error
+     * (readConcept of a made-up id must say CONCEPT_NOT_FOUND on JDBC exactly as it does in memory). Every
+     * by-id lookup or write shares this guard.
+     */
+    private static boolean cannotMatchIdColumn(ConceptShape shape, Object boundId) {
+        String idDslType = shape.dslTypeByColumn().get(shape.idColumn().toLowerCase(Locale.ROOT));
+        boolean uuidTypedId = idDslType == null || idDslType.isBlank()
+                || "uuid".equalsIgnoreCase(idDslType.trim()) || "reference".equalsIgnoreCase(idDslType.trim());
+        return !(boundId instanceof UUID) && uuidTypedId && isUuidColumn(shape.idColumn());
     }
 
     private static boolean isUuidColumn(String column) {

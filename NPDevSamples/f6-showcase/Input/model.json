@@ -1,7 +1,7 @@
 {
   "$schema": "..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
   "namespace": "sample.f6showcase",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "version": "1.0",
   "metadata": {
     "purpose": "F6 showcase: one small app demonstrating every frontend coverage feature, one section per feature."
@@ -170,16 +170,6 @@
         "save",
         "findById"
       ]
-    }
-  ],
-  "bindings": [
-    {
-      "capability": "persistence",
-      "adapter": "repository"
-    },
-    {
-      "capability": "eventBus",
-      "adapter": "inproc"
     }
   ],
   "seeds": [

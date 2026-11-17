@@ -15,7 +15,7 @@
     },
     "dslVersion": {
       "type": "string",
-      "const": "1.0.0"
+      "const": "3.0.0"
     },
     "pack": {
       "type": "string",
@@ -130,15 +130,6 @@
         ]
       }
     },
-    "bindings": {
-      "type": "array",
-      "items": {
-        "oneOf": [
-          { "$ref": "model.schema.json#/$defs/binding" },
-          { "$ref": "model.schema.json#/$defs/localModelRef" }
-        ]
-      }
-    },
     "events": {
       "type": "array",
       "items": {
@@ -157,38 +148,11 @@
         ]
       }
     },
-    "orchestrationRules": {
-      "type": "array",
-      "items": {
-        "oneOf": [
-          { "$ref": "model.schema.json#/$defs/orchestrationRule" },
-          { "$ref": "model.schema.json#/$defs/localModelRef" }
-        ]
-      }
-    },
-    "orchestrations": {
-      "type": "array",
-      "items": {
-        "oneOf": [
-          { "$ref": "model.schema.json#/$defs/orchestrationRule" },
-          { "$ref": "model.schema.json#/$defs/localModelRef" }
-        ]
-      }
-    },
     "queries": {
       "type": "array",
       "items": {
         "oneOf": [
           { "$ref": "model.schema.json#/$defs/query" },
-          { "$ref": "model.schema.json#/$defs/localModelRef" }
-        ]
-      }
-    },
-    "ruleProfiles": {
-      "type": "array",
-      "items": {
-        "oneOf": [
-          { "$ref": "model.schema.json#/$defs/ruleProfile" },
           { "$ref": "model.schema.json#/$defs/localModelRef" }
         ]
       }
@@ -273,16 +237,6 @@
           { "$ref": "model.schema.json#/$defs/localModelRef" }
         ]
       }
-    },
-    "webhooks": {
-      "type": "array",
-      "items": {
-        "oneOf": [
-          { "$ref": "model.schema.json#/$defs/webhook" },
-          { "$ref": "model.schema.json#/$defs/localModelRef" }
-        ]
-      },
-      "description": "R6.2: a pack may declare inbound webhook doors alongside its other members. `source` is never namespace-qualified by pack composition (see model.schema.json's webhook $def)."
     },
     "sequences": {
       "type": "array",

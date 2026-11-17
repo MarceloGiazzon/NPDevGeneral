@@ -56,7 +56,7 @@ class GeneratedConceptCrudControllerLiveConceptTest {
     private DataSource dataSource;
 
     private static final String EMPTY_MODEL = """
-            { "namespace": "reg244.phase4c.controller", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
+            { "namespace": "reg244.phase4c.controller", "dslVersion": "3.0.0", "version": "1.0", "concepts": [
               { "name": "Placeholder", "fields": [
                 { "name": "id", "type": "uuid", "id": true, "required": true }
               ] }
@@ -64,7 +64,7 @@ class GeneratedConceptCrudControllerLiveConceptTest {
             """;
 
     private static final String MODEL_WITH_WIDGET = """
-            { "namespace": "reg244.phase4c.controller", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
+            { "namespace": "reg244.phase4c.controller", "dslVersion": "3.0.0", "version": "1.0", "concepts": [
               { "name": "Placeholder", "fields": [
                 { "name": "id", "type": "uuid", "id": true, "required": true }
               ] },

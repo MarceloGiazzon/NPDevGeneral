@@ -66,11 +66,11 @@ FEATURE_DETECTORS = {
     "autoPanels": lambda m: _nonempty(m, "autoPanels"),
     "documents": lambda m: _nonempty(m, "documents"),
     "guidePages": lambda m: _nonempty(m, "guidePages"),
-    # R6.2 (Roadmap Collection 2026-08-18): model-declared inbound webhook doors -- a new top-level
-    # array sibling of roles/aggregates above, generating POST /api/hooks/{source}.
-    "webhooks": lambda m: _nonempty(m, "webhooks"),
+    # R6.2 / FORM P3-T10: an inbound webhook door is declared on the capability it serves
+    # (capabilities[].inbound), generating POST /api/hooks/{path}.
+    "capability.inbound": lambda m: any(isinstance(c, dict) and "inbound" in c for c in (m.get("capabilities", None) or [])),
     # R5.3 (Roadmap Collection 2026-08-18): model-declared document-numbering counters -- a new
-    # top-level array sibling of webhooks above, allocated by field.defaultExpression: nextNumber('name').
+    # top-level array, allocated by field.defaultExpression: nextNumber('name').
     "sequences": lambda m: _nonempty(m, "sequences"),
     "queries": lambda m: _nonempty(m, "queries"),
     # Move 10 B1 (LC-B1, MOVE10_AI_LOWCODE_PLAN Part B): query.groupBy/aggregates/having --
@@ -97,8 +97,6 @@ FEATURE_DETECTORS = {
     "query.where.user": _has_query_where_user,
     "procedures": lambda m: _nonempty(m, "procedures"),
     "panels": lambda m: _nonempty(m, "panels"),
-    "ruleProfiles": lambda m: _nonempty(m, "ruleProfiles"),
-    "fragments": lambda m: _nonempty(m, "fragments"),
     "packs": lambda m: _nonempty(m, "packs"),
     # PACK-8 (PACK-ROADMAP card PK-5): a remote pack import via packs[].from -- an OCI/git+...
     # coordinate (PackCoordinate/OciCoordinate/GitCoordinate). The plain "packs" detector above is
@@ -127,10 +125,10 @@ FEATURE_DETECTORS = {
     # instead -- see that file.
     # B20 (S2, ADR-0011): bounded-context declarations -- a new top-level array sibling of
     # packs/fragments, composed the same way.
-    "contexts": lambda m: _nonempty(m, "contexts"),
+    "modules": lambda m: _nonempty(m, "modules"),
     # S6 (drift A2): a context fragment's own imports[] -- D3's cross-context import gate
     # (ModelSourceResolver's QualifiedReferenceValidator, ratified in S2's own §0 gate) had NO
-    # coverage protection: "contexts" above only proves a context EXISTS, not that any context
+    # coverage protection: "modules" above only proves a context EXISTS, not that any context
     # declares imports[]. _merge_context_fragments already surfaces a fragment's own list-typed
     # keys (imports included) into the merged dict this detector sees, so no new plumbing is
     # needed -- just the missing detector entry. Losing dsl-conformance-max's one
@@ -138,13 +136,13 @@ FEATURE_DETECTORS = {
     # while this gate stayed green.
     "imports": lambda m: _nonempty(m, "imports"),
     # S8 Wave 4 (ADR-0011 D4's v2 opt-in): a context declaring physicallyIsolate:true -- distinct
-    # from the plain "contexts" detector above (which a context with NO physicallyIsolate at all
+    # from the plain "modules" detector above (which a context with NO physicallyIsolate at all
     # already satisfies). Read directly off the top-level contexts[] array (the property lives on
     # the context DECLARATION itself, not inside the fragment file, so no fragment-merge plumbing
     # is needed the way "imports" above required).
     "contexts.physicallyIsolate": lambda m: any(
         isinstance(c, dict) and c.get("physicallyIsolate") is True
-        for c in (m.get("contexts", None) or [])
+        for c in (m.get("modules", None) or [])
     ),
     "flow.schedule": lambda m: any("schedule" in f for f in _flows(m)),
     "flow.specializes": lambda m: any("specializes" in f for f in _flows(m)),

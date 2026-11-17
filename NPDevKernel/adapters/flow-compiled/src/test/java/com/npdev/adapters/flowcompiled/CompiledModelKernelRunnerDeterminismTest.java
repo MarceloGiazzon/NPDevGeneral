@@ -29,51 +29,94 @@ class CompiledModelKernelRunnerDeterminismTest {
     void runningTwiceWithSameInputProducesIdenticalCanonicalTrace() throws Exception {
         CompiledModel compiledModel = compileModel("""
                 {
-                  "namespace":"demo",
-                  "dslVersion":"1.0.0",
-                  "version":"v1",
-                  "concepts":[
+                  "namespace": "demo",
+                  "dslVersion": "3.0.0",
+                  "version": "v1",
+                  "concepts": [
                     {
-                      "name":"User",
-                      "fields":[
-                        {"name":"id","type":"uuid","id":true},
-                        {"name":"email","type":"string","required":true}
+                      "name": "User",
+                      "fields": [
+                        {
+                          "name": "id",
+                          "type": "uuid",
+                          "id": true
+                        },
+                        {
+                          "name": "email",
+                          "type": "string",
+                          "required": true
+                        }
                       ],
-                      "invariants":[
-                        {"name":"EmailRequired","expr":"email != null"}
+                      "invariants": [
+                        {
+                          "name": "EmailRequired",
+                          "expr": "email != null"
+                        }
                       ]
                     }
                   ],
-                  "capabilities":[
+                  "capabilities": [
                     {
-                      "name":"persistence",
-                      "type":"PersistenceCapability",
-                      "operations":["save"]
+                      "name": "persistence",
+                      "type": "PersistenceCapability",
+                      "operations": [
+                        "save"
+                      ],
+                      "adapter": "inmemory"
                     }
                   ],
-                  "bindings":[
-                    {"capability":"persistence","adapter":"inmemory"}
-                  ],
-                  "events":[
-                    {"name":"UserCreated","payload":[{"name":"id","type":"string"}]},
-                    {"name":"UserAudited","payload":[{"name":"id","type":"string"}]}
-                  ],
-                  "flows":[
+                  "events": [
                     {
-                      "name":"CreateUser",
-                      "concept":"User",
-                      "steps":[
+                      "name": "UserCreated",
+                      "payload": [
                         {
-                          "name":"save",
-                          "type":"capabilityCall",
-                          "capability":"persistence",
-                          "operation":"save",
-                          "args":["$input"],
-                          "output":"$saved"
+                          "name": "id",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "UserAudited",
+                      "payload": [
+                        {
+                          "name": "id",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  ],
+                  "flows": [
+                    {
+                      "name": "CreateUser",
+                      "concept": "User",
+                      "steps": [
+                        {
+                          "name": "save",
+                          "type": "capabilityCall",
+                          "capability": "persistence",
+                          "operation": "save",
+                          "args": [
+                            "$input"
+                          ],
+                          "output": "$saved"
                         },
-                        {"name":"emit-created","type":"emitEvent","event":"UserCreated","payload":"$saved"},
-                        {"name":"emit-audited","type":"emitEvent","event":"UserAudited","payload":"$saved"},
-                        {"name":"return-saved","type":"return","value":"$saved"}
+                        {
+                          "name": "emit-created",
+                          "type": "emitEvent",
+                          "event": "UserCreated",
+                          "payload": "$saved"
+                        },
+                        {
+                          "name": "emit-audited",
+                          "type": "emitEvent",
+                          "event": "UserAudited",
+                          "payload": "$saved"
+                        },
+                        {
+                          "name": "return-saved",
+                          "type": "return",
+                          "value": "$saved"
+                        }
                       ]
                     }
                   ]
@@ -108,13 +151,13 @@ class CompiledModelKernelRunnerDeterminismTest {
     }
 
     /** The runtime guard behind the validator: SemanticValidator refuses an unbound capability and
-     *  ModelCompiler derives persistence's binding, so only an unvalidated model reaches this path. */
+     *  ModelCompiler derives persistence's, the event bus's and a NotificationCapability's binding, so only an unvalidated model with a capability of any other type and no adapter reaches this path. */
     @Test
     void missingCapabilityBindingReturnsTypedFailure() throws Exception {
         CompiledModel compiledModel = compileUnvalidated("""
                 {
                   "namespace":"demo",
-                  "dslVersion":"1.0.0",
+                  "dslVersion":"3.0.0",
                   "version":"v1",
                   "concepts":[
                     {
@@ -125,7 +168,7 @@ class CompiledModelKernelRunnerDeterminismTest {
                     }
                   ],
                   "capabilities":[
-                    {"name":"notification","type":"NotificationCapability","operations":["send"]}
+                    {"name":"notification","type":"CustomCapability","operations":["send"]}
                   ],
                   "flows":[
                     {
@@ -155,7 +198,7 @@ class CompiledModelKernelRunnerDeterminismTest {
         CompiledModel compiledModel = compileModel("""
                 {
                   "namespace":"demo",
-                  "dslVersion":"1.0.0",
+                  "dslVersion":"3.0.0",
                   "version":"v1",
                   "concepts":[
                     {

@@ -34,7 +34,7 @@ class PackMigrationChainResolutionTest {
 
     private static final String IDENTITY_V3_WITH_CHAIN = """
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "identity",
               "version": "3.0.0",
               "migrations": {
@@ -58,7 +58,7 @@ class PackMigrationChainResolutionTest {
     private static final String MODEL_IMPORTING_IDENTITY = """
             {
               "namespace": "migration.test",
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "version": "1.0",
               "packs": [ { "$ref": "packs/identity/pack.json" } ]
             }
@@ -102,7 +102,7 @@ class PackMigrationChainResolutionTest {
     void missingHopInTheChainRefusesRatherThanSilentlyDropping() throws Exception {
         write("packs/identity/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "identity",
                   "version": "3.0.0",
                   "migrations": {
@@ -129,7 +129,7 @@ class PackMigrationChainResolutionTest {
         // control the card's own proof section demands.
         write("packs/identity/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "identity",
                   "version": "3.0.0",
                   "migrations": {
@@ -164,7 +164,7 @@ class PackMigrationChainResolutionTest {
         // composition correctly looks for a hop starting at 1.0.0, finds none, and refuses.
         write("packs/identity/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "identity",
                   "version": "3.0.0",
                   "firstPublishedVersion": "1.0.0",
@@ -208,7 +208,7 @@ class PackMigrationChainResolutionTest {
     void aPackWithNoMigrationsObjectAtAllIsCompletelyUntouched() throws Exception {
         write("packs/identity/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "identity",
                   "version": "1.0.0",
                   "concepts": [

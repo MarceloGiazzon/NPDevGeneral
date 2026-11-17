@@ -4,7 +4,6 @@ import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.compiler.ModelCompiler;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledModel;
-import com.npdev.dsl.v1.compiled.CompiledOrchestration;
 import com.npdev.dsl.v1.compiled.CompiledStateTransition;
 import com.npdev.dsl.v1.parser.JsonModelParser;
 import com.npdev.dsl.v1.validation.SemanticValidator;
@@ -21,12 +20,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ActionMetadataSupportTest {
 
     @Test
-    void compilerCarriesActionMetadataAcrossFlowsTransitionsAndOrchestration() throws Exception {
+    void compilerCarriesActionMetadataAcrossFlowsAndTransitions() throws Exception {
         Path modelPath = Files.createTempFile("npdev-action-metadata-", ".json");
         Files.writeString(modelPath, """
                 {
                   "namespace": "action.metadata.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "concepts": [
                     {
@@ -65,29 +64,6 @@ class ActionMetadataSupportTest {
                       "payload": [
                         { "name": "appointmentId", "type": "uuid" },
                         { "name": "status", "type": "string" }
-                      ]
-                    }
-                  ],
-                  "orchestrationRules": [
-                    {
-                      "name": "NotifyCheckIn",
-                      "trigger": { "type": "event", "event": "AppointmentCheckedIn" },
-                      "actions": [
-                        {
-                          "type": "scheduleEvent",
-                          "event": "AppointmentCheckedIn",
-                          "delayMinutes": 5,
-                          "action": {
-                            "label": "Queue check-in follow-up",
-                            "successMessage": "Follow-up queued.",
-                            "dangerLevel": "low",
-                            "permissionHint": "notifications.send",
-                            "inputFormHint": "follow-up-send"
-                          },
-                          "map": {
-                            "appointmentId": "$event.appointmentId"
-                          }
-                        }
                       ]
                     }
                   ],
@@ -148,11 +124,6 @@ class ActionMetadataSupportTest {
         assertNotNull(transition.getAction());
         assertEquals("Check in patient", transition.getAction().getLabel());
         assertEquals("appointments.checkin", transition.getAction().getPermissionHint());
-
-        CompiledOrchestration orchestration = compiled.getOrchestrationRules().get(0);
-        assertEquals(1, orchestration.getActions().size());
-        assertNotNull(orchestration.getActions().get(0).getAction());
-        assertEquals("Queue check-in follow-up", orchestration.getActions().get(0).getAction().getLabel());
     }
 }
 

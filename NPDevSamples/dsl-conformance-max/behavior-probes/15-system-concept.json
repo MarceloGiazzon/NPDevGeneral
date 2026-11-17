@@ -1,0 +1,38 @@
+{
+  "probes": [
+    {
+      "id": "cf-system-concept-has-no-generated-rest-route",
+      "knownFailure": "REG-339",
+      "keywords": [
+        "concept.system"
+      ],
+      "description": "A concept declared system:true gets no generated REST route (no menu, export, agent tool or catalog entry either). SystemVaultProbe is system:true, so GET /api/system_vault_probes is not served; the control reads an ordinary concept the same way and is served (200), and ConversionDemoProduct (same shape, not system) has the route /api/conversion_demo_products, which fixes the naming rule the first request relies on.",
+      "steps": [
+        {
+          "name": "system concept list is not served",
+          "method": "GET",
+          "path": "/api/system_vault_probes",
+          "expect": {
+            "status": 404
+          }
+        },
+        {
+          "name": "control: an ordinary concept is served",
+          "method": "GET",
+          "path": "/api/widget_orders",
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "name": "control: the same-shaped non-system concept has its snake_plural route",
+          "method": "GET",
+          "path": "/api/conversion_demo_products",
+          "expect": {
+            "status": 200
+          }
+        }
+      ]
+    }
+  ]
+}

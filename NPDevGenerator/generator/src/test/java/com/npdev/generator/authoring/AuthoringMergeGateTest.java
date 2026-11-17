@@ -39,7 +39,7 @@ class AuthoringMergeGateTest {
     }
 
     private static final String BASE = """
-        { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.0",
+        { "dslVersion": "3.0.0", "namespace": "s5.test", "version": "1.0",
           "concepts": [
             { "name": "Order", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
           ] }
@@ -53,14 +53,14 @@ class AuthoringMergeGateTest {
     void twoDisjointSubmissionsBothLand() throws Exception {
         JsonNode base = json(BASE);
         JsonNode ours = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.1",
+            { "dslVersion": "3.0.0", "namespace": "s5.test", "version": "1.1",
               "concepts": [
                 { "name": "Order", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
                 { "name": "Shipment", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
               ] }
             """);
         JsonNode theirs = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.1",
+            { "dslVersion": "3.0.0", "namespace": "s5.test", "version": "1.1",
               "concepts": [
                 { "name": "Order", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
                 { "name": "Gadget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
@@ -82,14 +82,14 @@ class AuthoringMergeGateTest {
     void overlappingSubmissionsAreRefusedNamingTheCollidingElement() throws Exception {
         JsonNode base = json(BASE);
         JsonNode ours = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.1",
+            { "dslVersion": "3.0.0", "namespace": "s5.test", "version": "1.1",
               "concepts": [
                 { "name": "Order", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "notes", "type": "string" } ] } ] }
             """);
         JsonNode theirs = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.1",
+            { "dslVersion": "3.0.0", "namespace": "s5.test", "version": "1.1",
               "concepts": [
                 { "name": "Order", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -110,14 +110,14 @@ class AuthoringMergeGateTest {
     void mergedModelRoundTripsCanonically() throws Exception {
         JsonNode base = json(BASE);
         JsonNode ours = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.1",
+            { "dslVersion": "3.0.0", "namespace": "s5.test", "version": "1.1",
               "concepts": [
                 { "name": "Order", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
                 { "name": "Shipment", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
               ] }
             """);
         JsonNode theirs = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.1",
+            { "dslVersion": "3.0.0", "namespace": "s5.test", "version": "1.1",
               "concepts": [
                 { "name": "Order", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
                 { "name": "Gadget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
@@ -143,7 +143,7 @@ class AuthoringMergeGateTest {
     @Test
     void elementDisjointButSemanticallyInvalidIsRejectedNamingTheDanglingReference() throws Exception {
         JsonNode base = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.0",
+            { "dslVersion": "3.0.0", "namespace": "s5.test", "version": "1.0",
               "concepts": [
                 { "name": "Anchor", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
                 { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
@@ -151,7 +151,7 @@ class AuthoringMergeGateTest {
             """);
         // OURS: adds a flow referencing Widget (Widget itself untouched by OURS).
         JsonNode ours = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.1",
+            { "dslVersion": "3.0.0", "namespace": "s5.test", "version": "1.1",
               "concepts": [
                 { "name": "Anchor", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
                 { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
@@ -163,7 +163,7 @@ class AuthoringMergeGateTest {
             """);
         // THEIRS: removes Widget entirely (unaware OURS' flow will come to depend on it).
         JsonNode theirs = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.1",
+            { "dslVersion": "3.0.0", "namespace": "s5.test", "version": "1.1",
               "concepts": [
                 { "name": "Anchor", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
               ] }
@@ -196,18 +196,18 @@ class AuthoringMergeGateTest {
     @Test
     void aMergeThatWidensAccessCannotProceedUnattended() throws Exception {
         JsonNode base = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.0",
+            { "dslVersion": "3.0.0", "namespace": "s5.test", "version": "1.0",
               "concepts": [ %s ] }
             """.formatted(INVOICE_WITH_ACCESS));
         // OURS: adds an unrelated concept, Invoice itself untouched.
         JsonNode ours = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.1",
+            { "dslVersion": "3.0.0", "namespace": "s5.test", "version": "1.1",
               "concepts": [ %s,
                 { "name": "Shipment", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ] }
             """.formatted(INVOICE_WITH_ACCESS));
         // THEIRS: widens Invoice's write access, undeclared.
         JsonNode theirs = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.1",
+            { "dslVersion": "3.0.0", "namespace": "s5.test", "version": "1.1",
               "concepts": [
                 { "name": "Invoice",
                   "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -226,16 +226,16 @@ class AuthoringMergeGateTest {
     @Test
     void aMergeThatWidensAccessPassesWhenDeclaredByEitherSide() throws Exception {
         JsonNode base = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.0",
+            { "dslVersion": "3.0.0", "namespace": "s5.test", "version": "1.0",
               "concepts": [ %s ] }
             """.formatted(INVOICE_WITH_ACCESS));
         JsonNode ours = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.1",
+            { "dslVersion": "3.0.0", "namespace": "s5.test", "version": "1.1",
               "concepts": [ %s,
                 { "name": "Shipment", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ] }
             """.formatted(INVOICE_WITH_ACCESS));
         JsonNode theirs = json("""
-            { "dslVersion": "1.0.0", "namespace": "s5.test", "version": "1.1",
+            { "dslVersion": "3.0.0", "namespace": "s5.test", "version": "1.1",
               "concepts": [
                 { "name": "Invoice",
                   "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -267,7 +267,7 @@ class AuthoringMergeGateTest {
                 Path.of("..", "..", "..", "NPDevSamples", "simple-user-registry", "Input", "model.json")
         ));
         JsonNode base = MAPPER.readTree(Files.readString(modelPath));
-        assertFalse(base.has("contexts"), "this fixture is only meaningful if the corpus model has no contexts");
+        assertFalse(base.has("modules"), "this fixture is only meaningful if the corpus model has no contexts");
 
         ObjectNode ours = base.deepCopy();
         ours.put("version", bumpedVersion(base));

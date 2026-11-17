@@ -11,7 +11,6 @@
     "NPDevKernel/adapters/runtime-support/src/main/java/**/*Evaluator.java",
     "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/*Engine.java",
     "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/schemaexpr/*.java",
-    "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/CrudOrchestrationSupport.java",
     "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/UserScopedExpressions.java",
     "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ValueExpressionEvaluator.java",
     "NPDevKernel/kernel/src/main/java/com/npdev/kernel/KernelRunner.java"
@@ -36,12 +35,12 @@
     },
     {
       "id": "X0-3",
-      "class": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/ProcedureConditionEvaluator.java",
+      "class": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/DefaultProcedureExecutor.java",
       "verdict": "FIXED",
       "fixedBy": "REG-96",
       "test": "NPDevKernel/kernel/src/test/java/com/npdev/kernel/procedures/ProcedureConditionComparisonTest.java",
       "testMarker": "malformedConditionFailsTheStep",
-      "note": "REG-96: ProcedureConditionEvaluator supports <ref> (== | != | > | >= | < | <=) <literal|ref>, and an unparseable condition throws UnsupportedConditionException instead of taking the else-path. An absent operand compares as null (absentOperandIsFalseNotAnError) by design. Registry corrected 2026-10-23: the entry still said OPEN long after the fix landed. Original finding: truthiness-only; '== X' is inexpressible. Tracked by REG-96, not required to pass a must-error test yet."
+      "note": "REG-96, reshaped by FORM P3-T3 (2026-11-15): ProcedureConditionEvaluator is deleted; DefaultProcedureExecutor.ifThenElse now evaluates the condition with ComputedExpression.evaluateBooleanStrict over a ResolverScope, and a condition that does not parse, names an undeclared (non-$) name or does not decide to a boolean fails the step CONDITION_UNSUPPORTED instead of taking the else-path. An absent operand compares as null (absentOperandIsFalseNotAnError) by design. Registry corrected 2026-10-23: the entry still said OPEN long after the fix landed. Original finding: truthiness-only; '== X' is inexpressible. Tracked by REG-96, not required to pass a must-error test yet."
     },
     {
       "id": "X0-4",
@@ -106,7 +105,7 @@
       "class": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/CelInvariantEngine.java",
       "verdict": "FIXED",
       "fixedBy": "REG-283",
-      "note": "REG-282 audit (2026-10-23) of the runtime-support expression engine; this entry used to claim the whole runtime-support directory with verdict NOT_AUDITED, which also satisfied the glob check for every file in it. Syntax side fails closed and is not the defect: an expression neither ComputedExpression nor the legacy matcher understands is a violation ('unsupported expression format'), never a pass; an unknown invariant ref is INVARIANT_UNKNOWN_REF. The defect is the lookup side: NO_UNIQUE_CHECKER / NO_COMPOUND_UNIQUE_CHECKER / NO_CONFLICT_CHECKER / NO_SCOPE_CHECKER all return false, so an engine built without a lookup answers 'no duplicate' / 'no conflict' / 'not found' instead of saying it cannot check -- live in the flow engine's invariantEngine bean (no lookups) and for compound unique in CRUD (the RuntimeHost factory drops the lookup). Also evaluate(entityName, payload) returns no violations for an unknown entity. See REG-283. REG-283 (2026-10-23): the four no-lookup defaults throw LookupUnavailableException, which evaluateRule and both aggregate loops report as INVARIANT_UNCHECKABLE naming the missing lookup; evaluate(entityName, payload) reports an unknown entity like the request overload.",
+      "note": "REG-282 audit (2026-10-23) of the runtime-support expression engine; this entry used to claim the whole runtime-support directory with verdict NOT_AUDITED, which also satisfied the glob check for every file in it. Syntax side fails closed and is not the defect: an expression ComputedExpression does not understand is a violation ('unsupported expression format'), never a pass (the legacy regex matcher behind it was deleted by FORM P3-T4 after its fallback counter stayed at 0 across the dsl/kernel/runtime-support/RuntimeHost tests, the behaviour probes, ride-hailing and the journeys); an unknown invariant ref is INVARIANT_UNKNOWN_REF. The defect is the lookup side: NO_UNIQUE_CHECKER / NO_COMPOUND_UNIQUE_CHECKER / NO_CONFLICT_CHECKER / NO_SCOPE_CHECKER all return false, so an engine built without a lookup answers 'no duplicate' / 'no conflict' / 'not found' instead of saying it cannot check -- live in the flow engine's invariantEngine bean (no lookups) and for compound unique in CRUD (the RuntimeHost factory drops the lookup). Also evaluate(entityName, payload) returns no violations for an unknown entity. See REG-283. REG-283 (2026-10-23): the four no-lookup defaults throw LookupUnavailableException, which evaluateRule and both aggregate loops report as INVARIANT_UNCHECKABLE naming the missing lookup; evaluate(entityName, payload) reports an unknown entity like the request overload.",
       "test": "NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/CelInvariantEngineUncheckableLookupTest.java",
       "testMarker": "uniqueRuleWithNoLookupIsUncheckableNotAPass"
     },
@@ -124,7 +123,7 @@
       "class": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/schemaexpr/SchemaExpressionSupport.java",
       "verdict": "FIXED",
       "fixedBy": "REG-284",
-      "note": "REG-282 audit (2026-10-23) found: evaluateSchemaExpression returned null for anything it could not evaluate, and a null derived value removes the field, so a typo'd function in a derivedExpression erased it on every save. REG-284 (2026-10-23): an expression neither ComputedExpression nor the legacy literal/call forms can evaluate rethrows the ExpressionException; a genuinely null result (coalesce of nulls) stays null. FieldValueValidation refuses the functions a model could name (ValueBehaviorFunctions), pinned by DefaultsAndDerivedFieldsSupportTest.aFunctionTheRuntimeDoesNotProvideIsRefused.",
+      "note": "REG-282 audit (2026-10-23) found: evaluateSchemaExpression returned null for anything it could not evaluate, and a null derived value removes the field, so a typo'd function in a derivedExpression erased it on every save. REG-284 (2026-10-23): an expression ComputedExpression cannot evaluate rethrows the ExpressionException (FORM P3-T4 deleted the legacy literal/identifier/call evaluator behind it; now()/uuid() became registered functions, so the one counted gap closed); a genuinely null result (coalesce of nulls) stays null. FieldValueValidation refuses the functions a model could name (ValueBehaviorFunctions), pinned by DefaultsAndDerivedFieldsSupportTest.aFunctionTheRuntimeDoesNotProvideIsRefused.",
       "test": "NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/crud/schemaexpr/SchemaExpressionSupportTest.java",
       "testMarker": "unknownFunctionThrowsInsteadOfYieldingNull"
     },
@@ -145,15 +144,6 @@
       "note": "REG-282 audit (2026-10-23) found: a MALFORMED access rule / $user guard fails closed, but an unbound $user.<name> resolved to null and validation let any $-name through, so `ownerId == $user.idd` granted every unowned row. REG-285 (2026-10-23): com.npdev.dsl.v1.expr.UserReferences.BOUND is the one set of names the evaluator binds; ConceptValidation (concept + field access) and LifecycleValidation ($user guards) refuse anything else, and UserScopedExpressions denies a rule naming an unbound $-value instead of evaluating it. Validation side pinned by ConceptAccessValidationTest.unboundUserReferenceInAccessRuleIsRefused and StateMachineSupportTest.semanticValidationRejectsAGuardNamingAnUnboundUserValue.",
       "test": "NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/UserScopedExpressionsUnboundTest.java",
       "testMarker": "unboundUserReferenceIsDeniedNotEvaluatedAsNull"
-    },
-    {
-      "id": "X0-17",
-      "class": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/CrudOrchestrationSupport.java",
-      "verdict": "FIXED",
-      "fixedBy": "REG-286",
-      "note": "REG-282 audit (2026-10-23): toRuntimeOrchestration returns null -- and registerOrchestrationSubscribers skips the rule with no log -- when any one action cannot be built (unknown type/concept, missing entityManager/dataSource/dispatcher, blank fields), discarding the rule's buildable actions too. evaluateOrchestrationCondition falls back to a legacy ==/!= substring matcher on a condition that does not parse. See REG-286. REG-286 (2026-10-23): an unbuildable rule is reported at SEVERE naming the rule and the missing piece (still not registered: a partial rule would be a different rule); a condition that does not parse refuses the rule at registration, and one that does not decide to a boolean is reported (OrchestrationConditionSkipped status=failed + SEVERE) instead of the removed legacy matcher's guess.",
-      "test": "NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportOrchestrationReloadTest.java",
-      "testMarker": "aRuleWithAnUnbuildableActionIsReportedNotSilentlyDropped"
     },
     {
       "id": "X0-18",

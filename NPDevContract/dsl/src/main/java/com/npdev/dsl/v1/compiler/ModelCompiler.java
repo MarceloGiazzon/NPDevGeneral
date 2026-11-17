@@ -23,7 +23,6 @@ import com.npdev.dsl.v1.ast.FieldPickerAst;
 import com.npdev.dsl.v1.ast.FileMetadataAst;
 import com.npdev.dsl.v1.ast.InvariantAst;
 import com.npdev.dsl.v1.ast.ModelAst;
-import com.npdev.dsl.v1.ast.OrchestrationAst;
 import com.npdev.dsl.v1.ast.SettingsAst;
 import com.npdev.dsl.v1.ast.TransactionHooksAst;
 import com.npdev.dsl.v1.ast.DerivedFieldAst;
@@ -35,7 +34,6 @@ import com.npdev.dsl.v1.ast.WorkbenchActionApplyToAst;
 import com.npdev.dsl.v1.ast.WorkbenchBandPickerAst;
 import com.npdev.dsl.v1.ast.DomainTypeAst;
 import com.npdev.dsl.v1.ast.CapabilityAst;
-import com.npdev.dsl.v1.ast.CapabilityBindingAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationErrorAst;
 import com.npdev.dsl.v1.ast.CapabilityAuthAst;
@@ -47,6 +45,7 @@ import com.npdev.dsl.v1.ast.EventPayloadAst;
 import com.npdev.dsl.v1.ast.EnumOptionAst;
 import com.npdev.dsl.v1.ast.FlowAst;
 import com.npdev.dsl.v1.ast.FlowScheduleAst;
+import com.npdev.dsl.v1.ast.FlowTriggerAst;
 import com.npdev.dsl.v1.ast.GeneratedActionDescriptorAst;
 import com.npdev.dsl.v1.ast.AggregateAst;
 import com.npdev.dsl.v1.ast.AggregateInvariantAst;
@@ -65,10 +64,8 @@ import com.npdev.dsl.v1.ast.GuidePageRegionsAst;
 import com.npdev.dsl.v1.ast.GuidePageThemeAst;
 import com.npdev.dsl.v1.ast.IndexAst;
 import com.npdev.dsl.v1.ast.LifecycleAst;
-import com.npdev.dsl.v1.ast.OrchestrationActionAst;
 import com.npdev.dsl.v1.ast.OriginAst;
 import com.npdev.dsl.v1.ast.SchemaAst;
-import com.npdev.dsl.v1.ast.OrchestrationTriggerAst;
 import com.npdev.dsl.v1.ast.PanelActionAst;
 import com.npdev.dsl.v1.ast.PanelAst;
 import com.npdev.dsl.v1.ast.PanelDataSourceAst;
@@ -83,7 +80,6 @@ import com.npdev.dsl.v1.ast.ProcedureStepAst;
 import com.npdev.dsl.v1.ast.ProcedureVariableAst;
 import com.npdev.dsl.v1.ast.QueryAst;
 import com.npdev.dsl.v1.ast.ReferenceSemanticsAst;
-import com.npdev.dsl.v1.ast.RuleProfileAst;
 import com.npdev.dsl.v1.ast.StateMachineStateAst;
 import com.npdev.dsl.v1.ast.StateTransitionAst;
 import com.npdev.dsl.v1.ast.HumanTaskAst;
@@ -120,6 +116,7 @@ import com.npdev.dsl.v1.compiled.CompiledFieldAccess;
 import com.npdev.dsl.v1.compiled.CompiledFieldPicker;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledFlowSchedule;
+import com.npdev.dsl.v1.compiled.CompiledFlowTrigger;
 import com.npdev.dsl.v1.compiled.CompiledFlowStep;
 import com.npdev.dsl.v1.compiled.CompiledGeneratedActionDescriptorSpec;
 import com.npdev.dsl.v1.compiled.CompiledGuidePage;
@@ -130,9 +127,6 @@ import com.npdev.dsl.v1.compiled.CompiledGuidePageTheme;
 import com.npdev.dsl.v1.compiled.CompiledInvariant;
 import com.npdev.dsl.v1.compiled.CompiledLifecycle;
 import com.npdev.dsl.v1.compiled.CompiledModel;
-import com.npdev.dsl.v1.compiled.CompiledOrchestration;
-import com.npdev.dsl.v1.compiled.CompiledOrchestrationAction;
-import com.npdev.dsl.v1.compiled.CompiledOrchestrationTrigger;
 import com.npdev.dsl.v1.compiled.CompiledOrigin;
 import com.npdev.dsl.v1.compiled.CompiledAggregate;
 import com.npdev.dsl.v1.compiled.CompiledAggregateInvariant;
@@ -173,7 +167,6 @@ import com.npdev.dsl.v1.compiled.CompiledProcedureStep;
 import com.npdev.dsl.v1.compiled.CompiledProcedureVariable;
 import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.dsl.v1.compiled.CompiledReferenceSemantics;
-import com.npdev.dsl.v1.compiled.CompiledRuleProfile;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
 import com.npdev.dsl.v1.compiled.CompiledStateMachineState;
 import com.npdev.dsl.v1.compiled.CompiledStateTransition;
@@ -190,20 +183,27 @@ import java.util.*;
 public final class ModelCompiler {
 
     public CompiledModel compile(ModelAst modelAst) {
-        ResolvedModel resolvedModel = new ModelResolver().resolve(modelAst);
-        return compileResolved(resolvedModel.modelAst());
+        return compile(modelAst, Map.of());
     }
 
-    private CompiledModel compileResolved(ModelAst modelAst) {
+    /**
+     * FORM P3-T9 (D15): compiles with deployment adapter overrides ({@code config.json} {@code adapters},
+     * capability -> adapter). An override replaces the binding derived from the model (generated default or
+     * the capability's own {@code adapter}) for this deployment only.
+     */
+    public CompiledModel compile(ModelAst modelAst, Map<String, String> adapterOverrides) {
+        ResolvedModel resolvedModel = new ModelResolver().resolve(modelAst);
+        return compileResolved(resolvedModel.modelAst(), adapterOverrides == null ? Map.of() : adapterOverrides);
+    }
+
+    private CompiledModel compileResolved(ModelAst modelAst, Map<String, String> adapterOverrides) {
         Map<String, CompiledConcept> concepts = new LinkedHashMap<>();
         List<CompiledDomainType> domainTypes = new ArrayList<>();
         List<CompiledCapability> capabilities = new ArrayList<>();
         List<CompiledCapabilityBinding> bindings = new ArrayList<>();
         List<CompiledEvent> events = new ArrayList<>();
         List<CompiledFlow> flows = new ArrayList<>();
-        List<CompiledOrchestration> orchestrationRules = new ArrayList<>();
         List<CompiledQuery> queries = new ArrayList<>();
-        List<CompiledRuleProfile> ruleProfiles = new ArrayList<>();
         List<CompiledProcedure> procedures = new ArrayList<>();
         List<CompiledPanel> panels = new ArrayList<>();
         List<CompiledDocument> documents = new ArrayList<>();
@@ -436,13 +436,15 @@ public final class ModelCompiler {
             operationsByCapability.put(normalize(capabilityAst.getName()), operationMap);
         }
 
-        List<CapabilityBindingAst> orderedBindings = new ArrayList<>(modelAst.getBindings());
-        orderedBindings.sort(Comparator
-                .comparing((CapabilityBindingAst binding) -> normalize(binding.getCapability()))
-                .thenComparing(binding -> normalize(binding.getAdapter())));
-        for (CapabilityBindingAst bindingAst : orderedBindings) {
-            bindings.add(new CompiledCapabilityBinding(bindingAst.getCapability(), bindingAst.getAdapter()));
+        // FORM P3-T9 (D15): a capability's own `adapter` is its binding .
+        for (CapabilityAst capabilityAst : modelAst.getCapabilities()) {
+            if (capabilityAst.getAdapter() != null
+                    && bindings.stream().noneMatch(b -> normalize(b.getCapability()).equals(normalize(capabilityAst.getName())))) {
+                bindings.add(new CompiledCapabilityBinding(capabilityAst.getName(), capabilityAst.getAdapter()));
+            }
         }
+        bindings.sort(Comparator.comparing((CompiledCapabilityBinding binding) -> normalize(binding.getCapability()))
+                .thenComparing(binding -> normalize(binding.getAdapter())));
 
         List<EventAst> orderedEvents = new ArrayList<>(modelAst.getEvents());
         orderedEvents.sort(Comparator.comparing(event -> normalize(event.getName())));
@@ -456,6 +458,10 @@ public final class ModelCompiler {
                     toCompiledOrigin(eventAst.getOrigin()), eventAst.getUid()));
         }
 
+        // FORM P3-T10: the inbound doors live on capabilities; the runtime (WebhookInboundController) keys
+        // them, and the flows triggered by them, by URL path -- so a trigger names the capability in the
+        // model and is rewritten to that capability's door path here.
+        List<com.npdev.dsl.v1.ast.InboundDoorAst> inboundDoors = com.npdev.dsl.v1.ast.InboundDoorAst.of(modelAst.getCapabilities());
         List<FlowAst> orderedFlows = new ArrayList<>(modelAst.getFlows());
         orderedFlows.sort(Comparator.comparing(flow -> normalize(flow.getName())));
         for (FlowAst flowAst : orderedFlows) {
@@ -477,42 +483,11 @@ public final class ModelCompiler {
                     toCompiledActionMetadata(flowAst.getAction()),
                     flowAst.isStartEndpoint(),
                     toCompiledFlowSchedule(flowAst.getSchedule()),
-                    toCompiledOrigin(flowAst.getOrigin())
-            ));
-        }
-
-        List<OrchestrationAst> orderedOrchestrationRules = new ArrayList<>(modelAst.getOrchestrationRules());
-        orderedOrchestrationRules.sort(Comparator.comparing(rule -> normalize(rule.getName())));
-        for (OrchestrationAst ruleAst : orderedOrchestrationRules) {
-            OrchestrationTriggerAst triggerAst = ruleAst.getTrigger();
-            List<OrchestrationActionAst> actionAsts = ruleAst.getActions().isEmpty()
-                    ? (ruleAst.getAction() == null ? List.of() : List.of(ruleAst.getAction()))
-                    : ruleAst.getActions();
-            List<CompiledOrchestrationAction> compiledActions = new ArrayList<>();
-            for (OrchestrationActionAst actionAst : actionAsts) {
-                if (actionAst == null) {
-                    continue;
-                }
-                compiledActions.add(new CompiledOrchestrationAction(
-                        actionAst.getType(),
-                        actionAst.getConcept(),
-                        actionAst.getCapability(),
-                        actionAst.getOperation(),
-                        actionAst.getEvent(),
-                        actionAst.getDelaySeconds(),
-                        sortByKey(actionAst.getMap()),
-                        toCompiledActionMetadata(actionAst.getAction())
-                ));
-            }
-            CompiledOrchestrationAction primaryAction = compiledActions.isEmpty() ? null : compiledActions.get(0);
-            orchestrationRules.add(new CompiledOrchestration(
-                    ruleAst.getName(),
-                    ruleAst.getCondition(),
-                    triggerAst == null
-                            ? null
-                            : new CompiledOrchestrationTrigger(triggerAst.getType(), triggerAst.getEvent()),
-                    primaryAction,
-                    List.copyOf(compiledActions)
+                    toCompiledOrigin(flowAst.getOrigin()),
+                    toCompiledFlowTrigger(flowAst.getTrigger(), inboundDoors),
+                    flowAst.getExpose(),
+                    flowAst.getRunAs(),
+                    flowAst.getDescription()
             ));
         }
 
@@ -541,18 +516,6 @@ public final class ModelCompiler {
                             .map(column -> new com.npdev.dsl.v1.compiled.CompiledQueryComputedColumn(
                                     column.name(), column.expression()))
                             .toList()
-            ));
-        }
-
-        List<RuleProfileAst> orderedRuleProfiles = new ArrayList<>(modelAst.getRuleProfiles());
-        orderedRuleProfiles.sort(Comparator.comparing(profile -> normalize(profile.name())));
-        for (RuleProfileAst profileAst : orderedRuleProfiles) {
-            ruleProfiles.add(new CompiledRuleProfile(
-                    profileAst.name(),
-                    profileAst.description(),
-                    sortedStrings(profileAst.appliesTo()),
-                    profileAst.enabled(),
-                    sortObjectMap(profileAst.metadata())
             ));
         }
 
@@ -680,6 +643,9 @@ public final class ModelCompiler {
         List<CompiledConversion> conversions = compileConversions(modelAst.getConversions(), conceptsByNormalizedName);
 
         addImplicitPersistence(flows, capabilities, bindings);
+        addImplicitNotification(flows, capabilities);
+        addImplicitDeploymentDefaults(!events.isEmpty() || !flows.isEmpty(), capabilities, bindings);
+        applyAdapterOverrides(adapterOverrides, bindings);
 
         return new CompiledModel(
                 modelAst.getNamespace(),
@@ -691,9 +657,7 @@ public final class ModelCompiler {
                 bindings,
                 events,
                 flows,
-                orchestrationRules,
                 queries,
-                ruleProfiles,
                 procedures,
                 panels,
                 guidePages,
@@ -707,7 +671,7 @@ public final class ModelCompiler {
                 toCompiledProperties(modelAst.getProperties()),
                 compiledContexts,
                 conversions,
-                toCompiledWebhooks(modelAst.getWebhooks()),
+                toCompiledWebhooks(inboundDoors),
                 toCompiledSequences(modelAst.getSequences()),
                 toCompiledSeeds(modelAst.getSeeds()),
                 toCompiledAppShell(modelAst.getAppShell()),
@@ -1038,16 +1002,17 @@ public final class ModelCompiler {
         return compiled;
     }
 
-    /** R6.2: compiles the model-declared inbound webhook doors -- no origin (unlike roles/events/...,
-     *  a webhook's identity is a wire path segment, deliberately never pack-qualified; see
-     *  {@link com.npdev.dsl.v1.ast.WebhookAst}). */
+    /** FORM P3-T10: compiles the inbound doors derived from capabilities -- no origin: a door's identity is a
+     *  wire path segment, deliberately never pack-qualified (see {@link com.npdev.dsl.v1.ast.InboundDoorAst}).
+     *  The flow a door starts is declared on the flow ({@code trigger.webhook}), so {@code startFlow} is
+     *  always blank here and the runtime starts those flows through the trigger path. */
     private static List<com.npdev.dsl.v1.compiled.CompiledWebhook> toCompiledWebhooks(
-            List<com.npdev.dsl.v1.ast.WebhookAst> webhookAsts) {
+            List<com.npdev.dsl.v1.ast.InboundDoorAst> doors) {
         List<com.npdev.dsl.v1.compiled.CompiledWebhook> compiled = new ArrayList<>();
-        for (com.npdev.dsl.v1.ast.WebhookAst webhookAst : webhookAsts) {
+        for (com.npdev.dsl.v1.ast.InboundDoorAst door : doors) {
             compiled.add(new com.npdev.dsl.v1.compiled.CompiledWebhook(
-                    webhookAst.source(), webhookAst.hmacSecretEnvVar(), webhookAst.eventName(), webhookAst.fieldMapping(),
-                    webhookAst.startFlow(), webhookAst.idempotencyKey(), webhookAst.signature()));
+                    door.path(), door.hmacSecretEnvVar(), door.eventName(), door.fieldMapping(),
+                    "", door.idempotencyKey(), door.signature()));
         }
         return compiled;
     }
@@ -1637,7 +1602,9 @@ public final class ModelCompiler {
         for (CompiledFlow flow : flows) {
             collectPersistenceOperations(flow.getSteps(), operations);
         }
-        if (operations.isEmpty()) {
+        // A declared persistence capability with no persisting flow still needs its default binding
+        // (P3-T9: explicit default bindings are gone from models); only a wholly absent one stays absent.
+        if (operations.isEmpty() && !hasCapability) {
             return;
         }
         if (!hasCapability) {
@@ -1650,6 +1617,93 @@ public final class ModelCompiler {
         }
         if (!hasBinding) {
             bindings.add(new CompiledCapabilityBinding("persistence", "repository"));
+            bindings.sort(Comparator.comparing((CompiledCapabilityBinding binding) -> normalize(binding.getCapability()))
+                    .thenComparing(binding -> normalize(binding.getAdapter())));
+        }
+    }
+
+    static void applyAdapterOverrides(Map<String, String> overrides, List<CompiledCapabilityBinding> bindings) {
+        if (overrides.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<String, String> override : overrides.entrySet()) {
+            String key = normalize(override.getKey());
+            bindings.removeIf(b -> normalize(b.getCapability()).equals(key));
+            bindings.add(new CompiledCapabilityBinding(override.getKey(), override.getValue()));
+        }
+        bindings.sort(Comparator.comparing((CompiledCapabilityBinding binding) -> normalize(binding.getCapability()))
+                .thenComparing(binding -> normalize(binding.getAdapter())));
+    }
+
+    /** FORM P3-T8: a {@code notify} step (parsed to a {@code notification.send} call) needs no capability declaration.
+     *  When a flow calls a capability named {@code notification} and the model declares none, a
+     *  {@code NotificationCapability} with {@code send} is added; {@link #addImplicitDeploymentDefaults} then binds it
+     *  to {@code notification-inproc}. A declared capability of that name (any type) always wins. */
+    static void addImplicitNotification(List<CompiledFlow> flows, List<CompiledCapability> capabilities) {
+        if (capabilities.stream().anyMatch(c -> "notification".equalsIgnoreCase(c.getName()))) {
+            return;
+        }
+        boolean used = false;
+        for (CompiledFlow flow : flows) {
+            if (callsNotification(flow.getSteps())) {
+                used = true;
+                break;
+            }
+        }
+        if (!used) {
+            return;
+        }
+        capabilities.add(new CompiledCapability("notification", "NotificationCapability",
+                List.of(new CompiledCapabilityOperation("send", List.of(), List.of()))));
+        capabilities.sort(Comparator.comparing(capability -> normalize(capability.getName())));
+    }
+
+    private static boolean callsNotification(List<CompiledFlowStep> steps) {
+        if (steps == null) {
+            return false;
+        }
+        for (CompiledFlowStep step : steps) {
+            CompiledCapabilityCall call = step.getCapabilityCall();
+            if (call != null && "notification".equalsIgnoreCase(call.getCapabilityName())) {
+                return true;
+            }
+            if (callsNotification(step.getThenSteps()) || callsNotification(step.getElseSteps())
+                    || callsNotification(step.getLoopSteps()) || callsNotification(step.getOnFailureSteps())
+                    || callsNotification(step.getOnTimeoutSteps())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** FORM P3-T9 (D15): the two other deployment defaults, derived like {@link #addImplicitPersistence}:
+     *  the in-process event bus whenever the model has events or flows, and {@code notification-inproc} for each
+     *  {@code NotificationCapability} that names no adapter. An explicit {@code capabilities[].adapter} (or, until
+     *  the root key is gone, a {@code bindings[]} entry) still wins; {@code config.json adapters} overrides
+     *  these after compilation. */
+    static void addImplicitDeploymentDefaults(boolean usesEventBus, List<CompiledCapability> capabilities,
+                                              List<CompiledCapabilityBinding> bindings) {
+        boolean changed = false;
+        if (usesEventBus && bindings.stream().noneMatch(b -> "eventBus".equalsIgnoreCase(b.getCapability()))) {
+            bindings.add(new CompiledCapabilityBinding("eventBus", "inproc"));
+            changed = true;
+        }
+        for (CompiledCapability capability : capabilities) {
+            if ("NotificationCapability".equalsIgnoreCase(capability.getType())
+                    && bindings.stream().noneMatch(b -> normalize(b.getCapability()).equals(normalize(capability.getName())))) {
+                bindings.add(new CompiledCapabilityBinding(capability.getName(), "notification-inproc"));
+                changed = true;
+            }
+            // A pack-qualified persistence capability (e.g. pos::persistence) is not covered by
+            // addImplicitPersistence, which only knows the bare name; bind it by type.
+            if ("PersistenceCapability".equalsIgnoreCase(capability.getType())
+                    && !"persistence".equalsIgnoreCase(capability.getName())
+                    && bindings.stream().noneMatch(b -> normalize(b.getCapability()).equals(normalize(capability.getName())))) {
+                bindings.add(new CompiledCapabilityBinding(capability.getName(), "repository"));
+                changed = true;
+            }
+        }
+        if (changed) {
             bindings.sort(Comparator.comparing((CompiledCapabilityBinding binding) -> normalize(binding.getCapability()))
                     .thenComparing(binding -> normalize(binding.getAdapter())));
         }
@@ -1989,7 +2043,11 @@ public final class ModelCompiler {
                 resolvedInvariantRefs = sortedInvariantRefs;
             }
 
-            if (isCapabilityLikeStep(stepType)) {
+            // FORM P3-T5c: updateConcept{id,set,createIfMissing} is not a persistence.save call: the kernel runs it as
+            // the embedded patchConcept procedure step, so there is no capability call to compile.
+            boolean recordFormUpdate = "updateConcept".equalsIgnoreCase(stepType)
+                    && ((stepAst.getId() != null && !stepAst.getId().isBlank()) || !stepAst.getFieldValues().isEmpty());
+            if (isCapabilityLikeStep(stepType) && !recordFormUpdate) {
                 String capabilityName = resolveCapabilityNameForStep(stepAst, stepType);
                 String operationName = resolveOperationNameForStep(stepAst, stepType);
                 List<String> argsRefs = stepAst.getArgs();
@@ -2102,7 +2160,16 @@ public final class ModelCompiler {
                     stepAst.getParallelAwait(),
                     stepAst.getTimeoutSeconds(),
                     onTimeoutSteps,
-                    toCompiledHumanTask(stepAst.getTask())
+                    toCompiledHumanTask(stepAst.getTask()),
+                    stepAst.getId(),
+                    stepAst.getQuery(),
+                    sortByKey(stepAst.getParams()),
+                    stepAst.getFlow(),
+                    stepAst.getFieldValues(),
+                    stepAst.getCreateIfMissing(),
+                    stepAst.getErrorTarget(),
+                    stepAst.getIfExists(),
+                    stepAst.getDedupeKey()
             ));
         }
         return out;
@@ -2141,6 +2208,21 @@ public final class ModelCompiler {
                 actionMetadata.getInputFormHint(),
                 actionMetadata.getLabelLocales()
         );
+    }
+
+    private static CompiledFlowTrigger toCompiledFlowTrigger(
+            FlowTriggerAst trigger, List<com.npdev.dsl.v1.ast.InboundDoorAst> inboundDoors) {
+        if (trigger == null) {
+            return null;
+        }
+        String webhook = trigger.webhook();
+        for (com.npdev.dsl.v1.ast.InboundDoorAst door : inboundDoors) {
+            if (webhook != null && door.capability().equals(webhook.trim())) {
+                webhook = door.path();
+                break;
+            }
+        }
+        return new CompiledFlowTrigger(trigger.kind(), trigger.event(), trigger.condition(), webhook);
     }
 
     private static CompiledFlowSchedule toCompiledFlowSchedule(FlowScheduleAst schedule) {

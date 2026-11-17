@@ -61,9 +61,9 @@ validator before anything is generated.
 |---|---|---|
 | **Concepts are open boxes** | `concepts[]`, each with fields, rules, a `truthLevel` | Nothing is a black box. Look once and see a concept; look deeper and see its fields, its validations, its generated code |
 | **Invariants are declared, not encoded** | `concepts[].invariants[]` (`unique`, `expression`), `aggregates[].invariants[]` | Business truth enforced server-side where it cannot be bypassed — and where a regeneration cannot quietly drop it |
-| **Capabilities are contracts** | `capabilities[]` + `bindings[]` | A named promise: inputs, guarantees, outcomes. The implementation is swappable; the contract is not |
+| **Capabilities are contracts** | `capabilities[]` (with `adapter`) | A named promise: inputs, guarantees, outcomes. The implementation is swappable; the contract is not |
 | **Events are semantic facts** | `events[]` | `InvoiceCompleted`, not `invoiceService.complete()`. Causality is visible instead of buried in a call stack |
-| **Orchestration is declarative** | `orchestrationRules[]`, `flows[]` | *When `InvoiceCompleted`, require payment, then emit the fiscal document, then notify.* No glue code, full traceability, safe to regenerate |
+| **Orchestration is declarative** | `flows[]` (with a `trigger`) | *When `InvoiceCompleted`, require payment, then emit the fiscal document, then notify.* No glue code, full traceability, safe to regenerate |
 
 Every box carries a **truth level** — `T0` idea, `T1` declared, `T2` generated, `T3` runs locally,
 `T4` tested, `T5` evidence-backed, `T6` release-approved. Strictness rises only when you claim
@@ -160,7 +160,7 @@ you write.**
 
 | You write | You get |
 |---|---|
-| a `flow` with steps | **13 step types**: invariant check, capability call, generated action, emit event, schedule event, return, branch, await event, create, update, map, for-each, call procedure |
+| a `flow` with steps | **19 step types**: invariant check, capability call, generated action, emit event, schedule event, return, branch, await event, create, update, map, for-each, call procedure, set, read, list, run query, delete, call flow |
 | any flow | **durable execution: it survives a process restart and resumes where it stopped** |
 | `awaitEvent` | a process that pauses for an approval or a webhook — for days, across deploys |
 | `awaitEvent` + `task` | a **human task** in the assignee's inbox, with a form and named outcomes, that resumes the flow when it is completed |
@@ -168,10 +168,10 @@ you write.**
 | `forEach`, including parallel | isolated iterations that each resume correctly after a crash |
 | `scheduleEvent` / `schedule` | delayed and recurring work, with no separate scheduler |
 | a `procedure` | reusable server-side logic with parameters and a return value |
-| an `orchestrationRule` | when *this* event happens, run *that* |
+| a flow `trigger` (`event`, `schedule` or `webhook`) | when *this* event happens, run *that* flow |
 | a `capability` + `binding` | name an operation, swap its implementation without touching the model |
 | an operation `policy` | retries, timeouts, circuit breaker, bulkhead and idempotency keys, declared per operation |
-| `webhooks` | an inbound `POST /api/hooks/{source}`, HMAC-verified, that wakes a waiting flow or starts a new one |
+| a capability's `inbound` | an inbound `POST /api/hooks/{path}`, HMAC-verified, that wakes a waiting flow or starts a new one |
 | a capability bound to `http-connector` | calls to an outside REST API with no client code; the base URL can be a property overridden per tenant |
 
 ### Screens
@@ -227,9 +227,9 @@ you write.**
 
 | You write | You get |
 |---|---|
-| `fragments` | split a large model across files |
+| `{"$ref": "file.json"}` entries | split a large model across files |
 | `packs` | reusable model modules shared between applications — built in: identity, workspace, approvals, contacts, helpdesk, inventory, leave, notification, purchasing, sales, tracing |
-| `contexts` + `imports` | bounded contexts, so one team's `Order` is not another's |
+| `modules` + `imports` | bounded contexts, so one team's `Order` is not another's |
 | `propertyScopes` + `properties` | typed settings that cascade: the model's `default`, then per tenant, then per user, in the order you declare |
 | `agentAccess` | an AI assistant (MCP, Telegram, WhatsApp) that acts through the app's own API as the signed-in user, under that user's permissions |
 | — | multi-tenancy, H2 for development and PostgreSQL, MySQL or SQL Server for production |
@@ -443,7 +443,7 @@ Apache-2.0 (see `LICENSE`). Pre-1.0; the git tag (e.g. `beta1.4`) is the authori
 version. Two other numbers exist and mean something narrower: `npdev --version` reports the
 portable CLI wrapper's own version, and the Gradle module version pinned in each module's
 `build.gradle` (e.g. `NPDevContract/dsl/build.gradle`) is an internal JAR-artifact version, not the
-platform's. Separately, a model may declare `"dslVersion": "1.0.0"` (optional; omitted means 1.0.0) — that is the *model JSON
+platform's. Separately, a model may declare `"dslVersion": "3.0.0"` (optional; omitted means 3.0.0) — that is the *model JSON
 format* version, unrelated to any of the above; it has never changed, including across the
 "DSL 2.0" flowStep-vocabulary change (`BREAKING.md`).
 

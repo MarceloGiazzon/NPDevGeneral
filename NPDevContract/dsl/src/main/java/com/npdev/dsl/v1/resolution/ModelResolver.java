@@ -3,7 +3,6 @@ package com.npdev.dsl.v1.resolution;
 import com.npdev.dsl.v1.ast.AggregateAst;
 import com.npdev.dsl.v1.ast.AutoPanelAst;
 import com.npdev.dsl.v1.ast.CapabilityAst;
-import com.npdev.dsl.v1.ast.CapabilityBindingAst;
 import com.npdev.dsl.v1.ast.ConceptAccessAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
 import com.npdev.dsl.v1.ast.ActionMetadataAst;
@@ -21,16 +20,12 @@ import com.npdev.dsl.v1.ast.IndexAst;
 import com.npdev.dsl.v1.ast.InvariantAst;
 import com.npdev.dsl.v1.ast.LifecycleAst;
 import com.npdev.dsl.v1.ast.ModelAst;
-import com.npdev.dsl.v1.ast.OrchestrationActionAst;
-import com.npdev.dsl.v1.ast.OrchestrationAst;
-import com.npdev.dsl.v1.ast.OrchestrationTriggerAst;
 import com.npdev.dsl.v1.ast.OriginAst;
 import com.npdev.dsl.v1.ast.PresentationMetadataAst;
 import com.npdev.dsl.v1.ast.PanelAst;
 import com.npdev.dsl.v1.ast.GuidePageAst;
 import com.npdev.dsl.v1.ast.ProcedureAst;
 import com.npdev.dsl.v1.ast.QueryAst;
-import com.npdev.dsl.v1.ast.RuleProfileAst;
 import com.npdev.dsl.v1.ast.StateMachineStateAst;
 import com.npdev.dsl.v1.ast.StateTransitionAst;
 import com.npdev.dsl.v1.ast.StepAst;
@@ -57,32 +52,20 @@ public final class ModelResolver {
         Map<String, CapabilityAst> capabilitiesByName = indexByName(source.getCapabilities(), CapabilityAst::getName, "capability");
         Map<String, EventAst> eventsByName = indexByName(source.getEvents(), EventAst::getName, "event");
         Map<String, FlowAst> flowsByName = indexByName(source.getFlows(), FlowAst::getName, "flow");
-        Map<String, OrchestrationAst> orchestrationByName = indexByName(
-                source.getOrchestrationRules(),
-                OrchestrationAst::getName,
-                "orchestration rule"
-        );
 
         List<ConceptAst> resolvedConcepts = resolveConcepts(conceptsByName);
         List<DomainTypeAst> resolvedDomainTypes = resolveDomainTypes(source.getDomainTypes());
         List<CapabilityAst> resolvedCapabilities = resolveCapabilities(capabilitiesByName);
         List<EventAst> resolvedEvents = resolveEvents(eventsByName);
         List<FlowAst> resolvedFlows = resolveFlows(flowsByName);
-        List<OrchestrationAst> resolvedOrchestrationRules = resolveOrchestrationRules(orchestrationByName);
         List<QueryAst> resolvedQueries = new ArrayList<>(source.getQueries());
         resolvedQueries.sort(Comparator.comparing(query -> normalize(query.name())));
-        List<RuleProfileAst> resolvedRuleProfiles = new ArrayList<>(source.getRuleProfiles());
-        resolvedRuleProfiles.sort(Comparator.comparing(profile -> normalize(profile.name())));
         List<ProcedureAst> resolvedProcedures = new ArrayList<>(source.getProcedures());
         resolvedProcedures.sort(Comparator.comparing(procedure -> normalize(procedure.name())));
         List<PanelAst> resolvedPanels = new ArrayList<>(source.getPanels());
         resolvedPanels.sort(Comparator.comparing(panel -> normalize(panel.name())));
         List<GuidePageAst> resolvedGuidePages = new ArrayList<>(source.getGuidePages());
         resolvedGuidePages.sort(Comparator.comparing(page -> normalize(page.name())));
-        List<CapabilityBindingAst> resolvedBindings = new ArrayList<>(source.getBindings());
-        resolvedBindings.sort(Comparator
-                .comparing((CapabilityBindingAst binding) -> normalize(binding.getCapability()))
-                .thenComparing(binding -> normalize(binding.getAdapter())));
         List<DocumentAst> resolvedDocuments = new ArrayList<>(source.getDocuments());
         resolvedDocuments.sort(Comparator.comparing(document -> normalize(document.name())));
 
@@ -93,12 +76,9 @@ public final class ModelResolver {
                 resolvedConcepts,
                 resolvedDomainTypes,
                 resolvedCapabilities,
-                resolvedBindings,
                 resolvedEvents,
                 resolvedFlows,
-                resolvedOrchestrationRules,
                 resolvedQueries,
-                resolvedRuleProfiles,
                 resolvedProcedures,
                 resolvedPanels,
                 resolvedGuidePages,
@@ -121,11 +101,6 @@ public final class ModelResolver {
                 // resolution here never renames (extends is field-inheritance, not a rename), so the
                 // keys this map already has still match after resolution.
                 source.getPhysicalQualifierByConceptName(),
-                // Whole-list pass-through, same reasoning as aggregates/autoPanels above -- a
-                // webhook has no `extends`/specialization concept of its own for this resolver to
-                // expand; ModelSourceResolver already rewrote its `eventName` field (the pack
-                // composition step, upstream of this specialization resolver) if it was pack-local.
-                source.getWebhooks(),
                 // Whole-list pass-through, same reasoning -- a sequence has no `extends`/
                 // specialization concept either, and its own `name` is deliberately never rewritten
                 // by pack composition (see SequenceAst's javadoc), so there is nothing here for
@@ -666,7 +641,9 @@ public final class ModelResolver {
                 operations,
                 capability.getOrigin(),
                 capability.getUid(),
-                capability.getHttp()
+                capability.getHttp(),
+                capability.hasInbound() ? capability.getInbound() : null,
+                capability.getAdapter()
         );
     }
 
@@ -712,7 +689,9 @@ public final class ModelResolver {
                 mergedOrigin,
                 specialization.getUid(),
                 // INT-1: a specialization may add operations to a base connector and inherit its baseUrl/auth.
-                specialization.getHttp().isEmpty() ? base.getHttp() : specialization.getHttp()
+                specialization.getHttp().isEmpty() ? base.getHttp() : specialization.getHttp(),
+                specialization.hasInbound() ? specialization.getInbound() : (base.hasInbound() ? base.getInbound() : null),
+                specialization.getAdapter() != null ? specialization.getAdapter() : base.getAdapter()
         );
     }
 
@@ -849,52 +828,6 @@ public final class ModelResolver {
         return new ArrayList<>(cache.values());
     }
 
-    private List<OrchestrationAst> resolveOrchestrationRules(Map<String, OrchestrationAst> rulesByName) {
-        List<OrchestrationAst> rules = new ArrayList<>();
-        for (String key : sortedKeys(rulesByName)) {
-            OrchestrationAst rule = rulesByName.get(key);
-            if (rule == null) {
-                continue;
-            }
-            OrchestrationTriggerAst trigger = rule.getTrigger() == null
-                    ? null
-                    : new OrchestrationTriggerAst(
-                    rule.getTrigger().getType(),
-                    rule.getTrigger().getEvent()
-            );
-            OrchestrationActionAst action = rule.getAction() == null
-                    ? null
-                    : new OrchestrationActionAst(
-                    rule.getAction().getType(),
-                    rule.getAction().getConcept(),
-                    rule.getAction().getCapability(),
-                    rule.getAction().getOperation(),
-                    rule.getAction().getEvent(),
-                    rule.getAction().getDelaySeconds(),
-                    rule.getAction().getMap(),
-                    cloneActionMetadata(rule.getAction().getAction())
-            );
-            List<OrchestrationActionAst> actions = new ArrayList<>();
-            for (OrchestrationActionAst candidate : rule.getActions()) {
-                if (candidate == null) {
-                    continue;
-                }
-                actions.add(new OrchestrationActionAst(
-                        candidate.getType(),
-                        candidate.getConcept(),
-                        candidate.getCapability(),
-                        candidate.getOperation(),
-                        candidate.getEvent(),
-                        candidate.getDelaySeconds(),
-                        candidate.getMap(),
-                        cloneActionMetadata(candidate.getAction())
-                ));
-            }
-            rules.add(new OrchestrationAst(rule.getName(), rule.getCondition(), trigger, action, actions));
-        }
-        return rules;
-    }
-
     private FlowAst resolveFlow(
             String flowKey,
             Map<String, FlowAst> flowsByName,
@@ -958,7 +891,12 @@ public final class ModelResolver {
                 cloneActionMetadata(flow.getAction()),
                 flow.isStartEndpoint(),
                 flow.getSchedule(),
-                flow.getOrigin()
+                flow.getOrigin(),
+                flow.getTrigger(),
+                flow.getExpose(),
+                flow.getRunAs(),
+                flow.getDescription(),
+                flow.getCrossAggregateReason()
         );
     }
 
@@ -1016,7 +954,13 @@ public final class ModelResolver {
                 firstNonNullAction(specialization.getAction(), base.getAction()),
                 specialization.isStartEndpoint() || base.isStartEndpoint(),
                 mergedSchedule,
-                mergedOrigin
+                mergedOrigin,
+                // FORM P3-T5a: same "specialization wins, else base" rule as the schedule above.
+                specialization.getTrigger() != null ? specialization.getTrigger() : base.getTrigger(),
+                specialization.getExpose() != null ? specialization.getExpose() : base.getExpose(),
+                specialization.getRunAs() != null ? specialization.getRunAs() : base.getRunAs(),
+                specialization.getDescription() != null ? specialization.getDescription() : base.getDescription(),
+                specialization.getCrossAggregateReason() != null ? specialization.getCrossAggregateReason() : base.getCrossAggregateReason()
         );
     }
 
@@ -1135,7 +1079,16 @@ public final class ModelResolver {
                 step.getParallelAwait(),
                 step.getTimeoutSeconds(),
                 cloneSteps(step.getOnTimeoutSteps()),
-                step.getTask()
+                step.getTask(),
+                step.getId(),
+                step.getQuery(),
+                step.getParams(),
+                step.getFlow(),
+                step.getFieldValues(),
+                step.getCreateIfMissing(),
+                step.getErrorTarget(),
+                step.getIfExists(),
+                step.getDedupeKey()
         );
     }
 

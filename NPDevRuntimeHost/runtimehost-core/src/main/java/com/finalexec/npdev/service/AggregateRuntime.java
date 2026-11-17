@@ -327,7 +327,7 @@ public class AggregateRuntime {
         if (procedureRunner == null) {
             throw new IllegalStateException("No ProcedureRunner is available to invoke procedures over aggregates.");
         }
-        if (!procedureRunner.hasProcedure(procedureName)) {
+        if (!procedureRunner.canRun(procedureName)) { // FORM P3-T5c: a procedure or the flow that replaced it
             throw new IllegalArgumentException("Procedure not found: " + procedureName);
         }
         requireActionAllowedInCurrentState(aggregate, procedureName, draft, ctx);

@@ -351,8 +351,6 @@ final class UntrustedExtensionEmitterGeneratedActionTest {
                 List.of(),
                 List.of(flow),
                 List.of(),
-                List.of(),
-                List.of(),
                 List.of(procedure),
                 List.of()
         );

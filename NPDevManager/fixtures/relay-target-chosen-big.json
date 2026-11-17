@@ -18,7 +18,7 @@
     "verifyUrl": true,
     "notes": "Search product; input box and answer length expected to be the tightest. If round 1 does not fit, the profile switches to delivery=attachment or the UI shows 'works with limits, prefer Gemini'."
   },
-  "chars": 19261,
+  "chars": 31282,
   "fits": false,
   "delivery": "attachment"
 }

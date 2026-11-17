@@ -559,7 +559,7 @@ function Write-GeneratedRuntimeModel {
     $model = [ordered]@{
         '$schema' = "NPDevContract/schemas/model.schema.json"
         namespace = "npdev.trusted.source.beta0"
-        dslVersion = "1.0.0"
+        dslVersion = "3.0.0"
         version = "1.0"
         concepts = @(
             [ordered]@{
@@ -585,10 +585,6 @@ function Write-GeneratedRuntimeModel {
         )
         capabilities = @(
             [ordered]@{ name = "persistence"; type = "PersistenceCapability"; operations = @("save", "findById", "list") }
-        )
-        bindings = @(
-            [ordered]@{ capability = "persistence"; adapter = "repository" },
-            [ordered]@{ capability = "eventBus"; adapter = "inproc" }
         )
         events = @(
             [ordered]@{ name = "UserCreated"; payload = @([ordered]@{ name = "id"; type = "uuid" }) }

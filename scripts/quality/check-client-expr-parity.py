@@ -13,15 +13,20 @@ missing runtime can never turn into a silent pass in the pipeline.
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 ENGINE = ROOT / "NPDevGenerator/generator/src/main/resources/npdev-templates/npdev-expr.js.mustache"
 FIXTURE = ROOT / "NPDevContract/dsl/src/test/resources/expr-parity.json"
+FN_FIXTURE = ROOT / "NPDevContract/dsl/src/test/resources/functions-parity.json"
+STDLIB = ROOT / "NPDevContract/dsl/src/main/resources/expr/functions-stdlib.json"
+TABLE_MARKER = "/*@stdlib-table*/[]/*@end*/"
 
 # Read from stdin by `node -`; argv[2] = engine file, argv[3] = fixture file. The engine is plain JavaScript
 # in a .mustache-named file (no tags), which Node's CommonJS loader happily treats as a .js module.
@@ -64,13 +69,27 @@ for (const c of fx.boolean) {
   count++;
   if (api.isBooleanShaped(c.expr) !== c.shaped) failures.push("boolean shape of '" + c.expr + "' expected " + c.shaped);
 }
+// FORM P3-T2: the stdlib. Every js function in the generated table needs an implementation, then the shared
+// functions fixture is replayed with {functions: api.stdlib.functions} (opt-in: plain evaluate() has none).
+if (api.stdlib.missing.length) failures.push("functions-stdlib.json lists js functions with no JavaScript implementation: " + api.stdlib.missing.join(", "));
+function sameDeep(actual, expect) {
+  if (Array.isArray(expect)) return Array.isArray(actual) && actual.length === expect.length && expect.every((e, i) => sameDeep(actual[i], e));
+  return same(actual, expect);
+}
+const fnFx = JSON.parse(fs.readFileSync(process.argv[4], "utf8"));
+for (const c of fnFx.cases) {
+  count++;
+  let r;
+  try { r = api.evaluate(c.expr, c.vars, { functions: api.stdlib.functions }); } catch (e) { failures.push("function case threw for '" + c.expr + "': " + e.message); continue; }
+  if (!sameDeep(r, c.expect)) failures.push("function case '" + c.expr + "' expected " + JSON.stringify(c.expect) + " got " + JSON.stringify(r));
+}
 if (failures.length) { console.log(failures.join("\n")); process.exit(1); }
 console.log("browser engine agrees with the fixture on " + count + " cases");
 """
 
 
 def main() -> int:
-    for path in (ENGINE, FIXTURE):
+    for path in (ENGINE, FIXTURE, FN_FIXTURE, STDLIB):
         if not path.is_file():
             print(f"FAIL: {path.relative_to(ROOT)} is missing")
             return 1
@@ -81,8 +100,17 @@ def main() -> int:
             return 1
         print("SKIP: node is not installed; browser/server expression parity not checked on this machine")
         return 0
-    result = subprocess.run([node, "-", str(ENGINE), str(FIXTURE)], input=RUNNER, text=True,
-                            encoding="utf-8", capture_output=True)
+    # Render the template the way BusinessUiEmitter does: inject the generated function table.
+    functions = json.dumps(json.loads(STDLIB.read_text(encoding="utf-8"))["functions"], separators=(",", ":"))
+    text = ENGINE.read_text(encoding="utf-8")
+    if TABLE_MARKER not in text:
+        print("FAIL: npdev-expr.js.mustache lost its " + TABLE_MARKER + " marker")
+        return 1
+    with tempfile.TemporaryDirectory() as tmp:
+        rendered = Path(tmp) / "npdev-expr.js"
+        rendered.write_text(text.replace(TABLE_MARKER, functions), encoding="utf-8")
+        result = subprocess.run([node, "-", str(rendered), str(FIXTURE), str(FN_FIXTURE)], input=RUNNER, text=True,
+                                encoding="utf-8", capture_output=True)
     sys.stdout.write(result.stdout)
     if result.returncode != 0:
         sys.stderr.write(result.stderr)

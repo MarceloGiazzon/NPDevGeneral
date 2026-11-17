@@ -114,7 +114,7 @@ final class BoxManifestEmitterTest {
         Path modelSourcePath = tempDir.resolve("model.json");
         Files.writeString(modelSourcePath, """
                 {
-                  "namespace": "box.lineage", "dslVersion": "1.0.0", "version": "v1",
+                  "namespace": "box.lineage", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [
                     { "name": "Invoice", "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true },

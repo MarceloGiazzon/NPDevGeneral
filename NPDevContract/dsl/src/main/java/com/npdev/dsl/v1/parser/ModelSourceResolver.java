@@ -49,13 +49,9 @@ public final class ModelSourceResolver {
             "domainTypes",
             "capabilities",
             "customCapabilities",
-            "bindings",
             "events",
             "flows",
-            "orchestrationRules",
-            "orchestrations",
             "queries",
-            "ruleProfiles",
             "procedures",
             "conversions",
             "panels",
@@ -63,7 +59,7 @@ public final class ModelSourceResolver {
             // Move 13 (REG-108): roles/propertyScopes/properties are top-level arrays exactly like
             // the ones above, but were never added here when they shipped (RC-A1/RC-B1) -- a pack
             // or fragment declaring any of the three had its declaration silently dropped by
-            // mergePackNonConceptArrays/appendFragment, which only ever loop this set. Root-level
+            // mergePackNonConceptArrays, which only ever loop this set. Root-level
             // declarations were unaffected (resolveRoot's own unrecognized-key passthrough, below,
             // covers the root only). X0-shaped: an author authoring a pack-level property gets no
             // error, just a property that silently never resolves.
@@ -84,13 +80,6 @@ public final class ModelSourceResolver {
             "autoPanels",
             "documents",
             "selectors",
-            // R6.2 (2026-08-19): webhooks[] threaded exactly like the PACK-11 four keys above --
-            // composer support here first, pack.schema.json permission second (relaxing the schema
-            // alone would accept a pack's webhooks[] file and drop its content in silence, REG-108's
-            // X0 shape). Its `eventName` field also needs a rewriteKnownMemberReferenceFields entry
-            // (the "PACK-11 fifth place" for any member kind carrying a reference of its own) --
-            // see that method's own "webhooks" branch.
-            "webhooks",
             // R5.3 (2026-08-19): sequences[] threaded the same way. Unlike every other kind in this
             // set, its own `name` field is deliberately EXCLUDED from mergeQualifiedNonConceptArrays'
             // generic pack-qualification (see that method's own "sequences" check) -- a sequence is
@@ -98,9 +87,9 @@ public final class ModelSourceResolver {
             // field's defaultExpression TEXT, which rewriteKnownMemberReferenceFields cannot reach
             // (it rewrites discrete JSON fields, never substrings inside another field's expression
             // string). Qualifying the declaration but never the reference would silently break every
-            // pack-declared sequence -- the same reasoning webhooks[].source already established for
+            // pack-declared sequence -- the same reasoning an inbound door's path already established for
             // a wire-visible identity. SequenceValidation instead requires global name uniqueness
-            // across the fully-resolved model, closing the loop WebhookValidation closes for source.
+            // across the fully-resolved model, closing the loop WebhookValidation closes for an inbound path.
             "sequences",
             // R8.8 (Roadmap Wave 2, 2026-08-19): seeds[] threaded the same way, but with the
             // OPPOSITE reference-rewriting posture from every kind above: a seed's `concept` field
@@ -123,7 +112,6 @@ public final class ModelSourceResolver {
             "schemaVersion",
             "dslVersion",
             "namespace",
-            "model",
             "version"
     );
     private static final Set<String> FRAGMENT_KEYS;
@@ -299,16 +287,10 @@ public final class ModelSourceResolver {
             }
         }
 
-        ObjectNode metadata = JsonNodeFactory.instance.objectNode();
-        Set<String> rootMetadataKeys = new LinkedHashSet<>();
         JsonNode rootMetadata = root.get("metadata");
-        if (rootMetadata != null) {
-            if (!rootMetadata.isObject()) {
-                throw error(sourceFile, "/metadata", "metadata must be an object");
-            }
-            rootMetadata.fieldNames().forEachRemaining(rootMetadataKeys::add);
+        if (rootMetadata != null && !rootMetadata.isObject()) {
+            throw error(sourceFile, "/metadata", "metadata must be an object");
         }
-        Map<String, Path> fragmentMetadataOwners = new LinkedHashMap<>();
 
         for (String key : MODEL_ARRAY_KEYS) {
             JsonNode array = root.get(key);
@@ -317,18 +299,9 @@ public final class ModelSourceResolver {
             }
         }
 
-        JsonNode fragments = root.get("fragments");
-        if (fragments != null) {
-            if (!fragments.isArray()) {
-                throw error(sourceFile, "/fragments", "fragments must be an array of local $ref objects");
-            }
-            int index = 0;
-            for (JsonNode fragmentRef : fragments) {
-                Ref ref = parseRefObject(fragmentRef, sourceFile, "/fragments/" + index);
-                ObjectNode fragment = resolveFragment(ref, sourceFile, state, 1, new ArrayDeque<>());
-                appendFragment(resolved, metadata, rootMetadataKeys, fragmentMetadataOwners, fragment, state);
-                index++;
-            }
+        if (root.has("fragments")) {
+            throw error(sourceFile, "/fragments", "Root 'fragments' was removed: put {\"$ref\": \"file.json\"} entries in the "
+                    + "arrays themselves (capabilities, bindings, flows, ...); a referenced file's same-named array is spliced in");
         }
 
         JsonNode packs = root.get("packs");
@@ -341,36 +314,18 @@ public final class ModelSourceResolver {
             checkPackRequirements(requirements, root.get("provides"), sourceFile);
         }
 
-        JsonNode contexts = root.get("contexts");
+        JsonNode contexts = root.get("modules");
         if (contexts != null) {
             if (!contexts.isArray()) {
-                throw error(sourceFile, "/contexts", "contexts must be an array of {name, $ref} objects");
+                throw error(sourceFile, "/modules", "modules must be an array of {name, $ref} objects");
             }
             resolveContexts((ArrayNode) contexts, resolved, sourceFile, state);
         }
 
         resolveUnqualifiedReferences(resolved, sourceFile, state);
 
-        if (!metadata.isEmpty()) {
-            resolved.set("metadata", metadata);
-        }
-        if (rootMetadata != null && rootMetadata.isObject()) {
-            ObjectNode effective = resolved.has("metadata") && resolved.get("metadata").isObject()
-                    ? (ObjectNode) resolved.get("metadata")
-                    : JsonNodeFactory.instance.objectNode();
-            rootMetadata.fields().forEachRemaining(entry -> {
-                if (effective.has(entry.getKey())) {
-                    state.warnings.add(diagnostic(
-                            ValidationSeverity.WARNING,
-                            "MODEL_INCLUDE_METADATA_ROOT_OVERRIDES_FRAGMENT",
-                            "Root metadata key '" + entry.getKey() + "' overrides fragment metadata.",
-                            sourceFile,
-                            "/metadata/" + escapePointer(entry.getKey())
-                    ));
-                }
-                effective.set(entry.getKey(), entry.getValue().deepCopy());
-            });
-            resolved.set("metadata", effective);
+        if (rootMetadata != null) {
+            resolved.set("metadata", rootMetadata.deepCopy());
         }
 
         // Pass through any unrecognized top-level keys verbatim so downstream JSON Schema
@@ -381,50 +336,6 @@ public final class ModelSourceResolver {
             }
         });
         return resolved;
-    }
-
-    private void appendFragment(
-            ObjectNode resolved,
-            ObjectNode metadata,
-            Set<String> rootMetadataKeys,
-            Map<String, Path> fragmentMetadataOwners,
-            ObjectNode fragment,
-            ResolutionState state
-    ) throws IOException {
-        for (String key : MODEL_ARRAY_KEYS) {
-            JsonNode value = fragment.get(key);
-            if (value == null) {
-                continue;
-            }
-            if (!value.isArray()) {
-                throw new IOException("Fragment key '" + key + "' must be an array");
-            }
-            ArrayNode target = resolved.has(key) && resolved.get(key).isArray()
-                    ? (ArrayNode) resolved.get(key)
-                    : JsonNodeFactory.instance.arrayNode();
-            for (JsonNode item : value) {
-                target.add(item.deepCopy());
-            }
-            resolved.set(key, target);
-        }
-        JsonNode fragmentMetadata = fragment.get("metadata");
-        if (fragmentMetadata != null) {
-            if (!fragmentMetadata.isObject()) {
-                throw new IOException("Fragment metadata must be an object");
-            }
-            fragmentMetadata.fields().forEachRemaining(entry -> {
-                String key = entry.getKey();
-                Path source = state.provenance.getOrDefault(pointerOf(fragmentMetadata), state.rootRealPath);
-                if (fragmentMetadataOwners.containsKey(key)) {
-                    throwUnchecked(new IOException("Duplicate fragment metadata key '" + key + "' from "
-                            + source + " and " + fragmentMetadataOwners.get(key)));
-                }
-                fragmentMetadataOwners.put(key, source);
-                if (!rootMetadataKeys.contains(key)) {
-                    metadata.set(key, entry.getValue().deepCopy());
-                }
-            });
-        }
     }
 
     /**
@@ -455,14 +366,14 @@ public final class ModelSourceResolver {
         Map<String, String> contextRefByName = new LinkedHashMap<>();
         // S8 Wave 4 (ADR-0011 D4's v2 escape): the context DECLARATION's own physicallyIsolate flag
         // -- distinct from anything in the fragment file itself -- must survive this method's
-        // rebuild of the contexts[] registry below, or a context declaring it silently loses the
+        // rebuild of the modules[] registry below, or a context declaring it silently loses the
         // flag the moment a model composes it (the REG-108 shape CLAUDE.md's four-place rule exists
         // to prevent).
         Map<String, Boolean> contextPhysicallyIsolateByName = new LinkedHashMap<>();
 
         int index = 0;
         for (JsonNode contextRefNode : contextsNode) {
-            String path = "/contexts/" + index;
+            String path = "/modules/" + index;
             if (!contextRefNode.isObject()) {
                 throw error(modelFile, path, "Context declaration must be a JSON object with name and $ref");
             }
@@ -519,7 +430,7 @@ public final class ModelSourceResolver {
                 if (!importGraph.containsKey(imported)) {
                     throw error(contextFiles.get(entry.getKey()), "/imports", "Context '" + entry.getKey()
                             + "' imports undeclared context '" + imported + "' -- every entry in imports[] "
-                            + "must name a context also declared in this model's own contexts[] array");
+                            + "must name a context also declared in this model's own modules[] array");
                 }
             }
         }
@@ -567,7 +478,7 @@ public final class ModelSourceResolver {
             }
             contextsOut.add(node);
         }
-        resolved.set("contexts", contextsOut);
+        resolved.set("modules", contextsOut);
     }
 
     private static Path resolveContextPath(String ref, Path modelFile, Path rootDirectory) throws IOException {
@@ -584,7 +495,7 @@ public final class ModelSourceResolver {
         for (String start : importGraph.keySet()) {
             if (!visited.contains(start)) {
                 detectCycleFrom(start, importGraph, visited, onStack, pathStack, cyclePath ->
-                        error(modelFile, "/contexts", "Import cycle detected: " + String.join(" -> ", cyclePath)
+                        error(modelFile, "/modules", "Import cycle detected: " + String.join(" -> ", cyclePath)
                                 + " -- a context's imports[] graph must be acyclic (a cycle means the boundary "
                                 + "is not a boundary)"));
             }
@@ -875,7 +786,7 @@ public final class ModelSourceResolver {
      *
      *  <p>npdev-qualifier-rule -- twin-pair token, see scripts/quality/twin-pair-registry.json.
      *  THIS is the authoritative copy of the qualification rule: a context qualifies by the name
-     *  its {@code contexts[]} entry declares, a pack by its {@code as} alias when the import gives
+     *  its {@code modules[]} entry declares, a pack by its {@code as} alias when the import gives
      *  one and by the pack file's own {@code pack} id otherwise. REG-186 (2026-08-17) added a
      *  second, deliberately narrow copy in {@code NPDevCli/npdev_cli.py}, so that the build-free
      *  introspection commands ({@code inspect app}/{@code inspect bonds}/
@@ -1238,6 +1149,21 @@ public final class ModelSourceResolver {
      *  a non-empty one, naming both candidates in a thrown error the moment an ambiguous bare name
      *  is actually referenced (not merely declared twice -- two packs may each harmlessly declare
      *  the same domainType name forever if nothing ever references it unqualified). */
+    /**
+     * FORM P3-T5c: a screen's {@code procedure}/hook reference names a procedure OR the flow that replaced it. A bare name
+     * that a pack's procedure of that name qualifies is rewritten as before; otherwise it is looked up among the pack's flows.
+     */
+    private static MemberNameResolver procedureOrFlowResolver(
+            Map<String, Map<String, String>> rewriteMaps, Map<String, Map<String, Set<String>>> ambiguousNames) {
+        MemberNameResolver procedures = resolverFor(rewriteMaps, ambiguousNames, "procedures");
+        MemberNameResolver flows = resolverFor(rewriteMaps, ambiguousNames, "flows");
+        Map<String, String> procedureMap = mapFor(rewriteMaps, "procedures");
+        Map<String, Set<String>> procedureAmbiguous = ambiguousNames.getOrDefault("procedures", Map.of());
+        return bareName -> procedureMap.containsKey(bareName) || procedureAmbiguous.containsKey(bareName)
+                ? procedures.resolve(bareName)
+                : flows.resolve(bareName);
+    }
+
     private static MemberNameResolver resolverFor(
             Map<String, Map<String, String>> rewriteMaps, Map<String, Map<String, Set<String>>> ambiguousNames, String kind) {
         Map<String, String> map = mapFor(rewriteMaps, kind);
@@ -1311,6 +1237,9 @@ public final class ModelSourceResolver {
             rewriteTextField(object, "capability", resolverFor(rewriteMaps, ambiguousNames, "capabilities"), qualifiedReferenceValidator);
             rewriteTextField(object, "procedure", resolverFor(rewriteMaps, ambiguousNames, "procedures"), qualifiedReferenceValidator);
             rewriteTextField(object, "event", resolverFor(rewriteMaps, ambiguousNames, "events"), qualifiedReferenceValidator);
+            // FORM P3-T5b: runQuery names a query in `query`, callFlow a flow in `flow` -- keys no other flow object uses.
+            rewriteTextField(object, "query", resolverFor(rewriteMaps, ambiguousNames, "queries"), qualifiedReferenceValidator);
+            rewriteTextField(object, "flow", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
             // PACK-1: an awaitEvent step names the event it parks on in `awaitEvent`, not `event`; without
             // this a pack that declares an event and awaits it (the approvals pack) kept the bare name
             // while the event itself was pack-qualified, and validation rejected it as unknown.
@@ -1332,9 +1261,9 @@ public final class ModelSourceResolver {
             }
             if ("dataSources".equals(parentKey)) {
                 rewriteTextField(object, "query", resolverFor(rewriteMaps, ambiguousNames, "queries"), qualifiedReferenceValidator);
-                rewriteTextField(object, "procedure", resolverFor(rewriteMaps, ambiguousNames, "procedures"), qualifiedReferenceValidator);
+                rewriteTextField(object, "procedure", procedureOrFlowResolver(rewriteMaps, ambiguousNames), qualifiedReferenceValidator);
             } else if ("actions".equals(parentKey)) {
-                rewriteTextField(object, "procedure", resolverFor(rewriteMaps, ambiguousNames, "procedures"), qualifiedReferenceValidator);
+                rewriteTextField(object, "procedure", procedureOrFlowResolver(rewriteMaps, ambiguousNames), qualifiedReferenceValidator);
                 rewriteTextField(object, "flow", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
             } else if (parentKey.isBlank()) {
                 // The panel object itself (not a nested dataSource/action) -- guidePage names a
@@ -1353,13 +1282,13 @@ public final class ModelSourceResolver {
             // `procedure` on a surface's dataSource, on each workbench action, and on every
             // transaction hook. Rewritten at any depth for the same reason flowStep.scope is: it is
             // this shape's own field name and means nothing else inside an autoPanel.
-            rewriteTextField(object, "procedure", resolverFor(rewriteMaps, ambiguousNames, "procedures"), qualifiedReferenceValidator);
-            rewriteTextField(object, "onLoad", resolverFor(rewriteMaps, ambiguousNames, "procedures"), qualifiedReferenceValidator);
-            rewriteTextField(object, "onFieldChange", resolverFor(rewriteMaps, ambiguousNames, "procedures"), qualifiedReferenceValidator);
-            rewriteTextField(object, "beforeAction", resolverFor(rewriteMaps, ambiguousNames, "procedures"), qualifiedReferenceValidator);
-            rewriteTextField(object, "onValidate", resolverFor(rewriteMaps, ambiguousNames, "procedures"), qualifiedReferenceValidator);
-            rewriteTextField(object, "onCommit", resolverFor(rewriteMaps, ambiguousNames, "procedures"), qualifiedReferenceValidator);
-            rewriteTextField(object, "afterAction", resolverFor(rewriteMaps, ambiguousNames, "procedures"), qualifiedReferenceValidator);
+            rewriteTextField(object, "procedure", procedureOrFlowResolver(rewriteMaps, ambiguousNames), qualifiedReferenceValidator);
+            rewriteTextField(object, "onLoad", procedureOrFlowResolver(rewriteMaps, ambiguousNames), qualifiedReferenceValidator);
+            rewriteTextField(object, "onFieldChange", procedureOrFlowResolver(rewriteMaps, ambiguousNames), qualifiedReferenceValidator);
+            rewriteTextField(object, "beforeAction", procedureOrFlowResolver(rewriteMaps, ambiguousNames), qualifiedReferenceValidator);
+            rewriteTextField(object, "onValidate", procedureOrFlowResolver(rewriteMaps, ambiguousNames), qualifiedReferenceValidator);
+            rewriteTextField(object, "onCommit", procedureOrFlowResolver(rewriteMaps, ambiguousNames), qualifiedReferenceValidator);
+            rewriteTextField(object, "afterAction", procedureOrFlowResolver(rewriteMaps, ambiguousNames), qualifiedReferenceValidator);
             rewriteTextField(object, "panel", resolverFor(rewriteMaps, ambiguousNames, "panels"), qualifiedReferenceValidator);
         } else if ("guidePages".equals(rootKey)) {
             // PACK-11: every chart/KPI gadget binds to a named query.
@@ -1381,29 +1310,14 @@ public final class ModelSourceResolver {
                 rewriteTextField(object, "root", conceptRewriteMap, qualifiedReferenceValidator);
             }
             rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
-        } else if ("orchestrations".equals(rootKey) || "orchestrationRules".equals(rootKey)) {
-            if ("action".equals(parentKey) || "actions".equals(parentKey)) {
-                rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
-                rewriteTextField(object, "targetConcept", conceptRewriteMap, qualifiedReferenceValidator);
-                rewriteTextField(object, "capability", resolverFor(rewriteMaps, ambiguousNames, "capabilities"), qualifiedReferenceValidator);
-                rewriteTextField(object, "event", resolverFor(rewriteMaps, ambiguousNames, "events"), qualifiedReferenceValidator);
-            } else if ("trigger".equals(parentKey)) {
-                rewriteTextField(object, "event", resolverFor(rewriteMaps, ambiguousNames, "events"), qualifiedReferenceValidator);
-            }
-        } else if ("ruleProfiles".equals(rootKey)) {
-            rewriteTextOrArrayField(object, "appliesTo", conceptRewriteMap, qualifiedReferenceValidator);
         } else if ("events".equals(rootKey)) {
             rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
             rewriteTextField(object, "conceptName", conceptRewriteMap, qualifiedReferenceValidator);
-        } else if ("webhooks".equals(rootKey) && parentKey.isBlank()) {
-            // R6.2 (the "PACK-11 fifth place"): a webhook names the event it publishes on a
-            // verified request. `source` itself is deliberately NOT rewritten here -- unlike every
-            // other MODEL_ARRAY_KEYS member, a webhook's identity is a wire path segment a third
-            // party posts to; qualifying it would make POST /api/hooks/{source} depend on pack
-            // composition order, which the external contract cannot tolerate (see WebhookAst).
+        } else if ("capabilities".equals(rootKey) && "inbound".equals(parentKey)) {
+            // FORM P3-T10: a capability's inbound door names the event it publishes on a verified request.
+            // `inbound.path` itself is deliberately NOT rewritten -- a third party posts to a fixed URL, so
+            // qualifying it would make POST /api/hooks/{path} depend on pack composition order.
             rewriteTextField(object, "eventName", resolverFor(rewriteMaps, ambiguousNames, "events"), qualifiedReferenceValidator);
-        } else if ("bindings".equals(rootKey) && parentKey.isBlank()) {
-            rewriteTextField(object, "capability", resolverFor(rewriteMaps, ambiguousNames, "capabilities"), qualifiedReferenceValidator);
         } else if ("properties".equals(rootKey) && parentKey.isBlank()) {
             rewriteTextArrayField(object, "settableAt", resolverFor(rewriteMaps, ambiguousNames, "propertyScopes"), qualifiedReferenceValidator);
         } else if ("concepts".equals(rootKey) && "transitions".equals(parentKey)) {
@@ -1886,62 +1800,6 @@ public final class ModelSourceResolver {
         return out;
     }
 
-    private ObjectNode resolveFragment(
-            Ref ref,
-            Path referencingFile,
-            ResolutionState state,
-            int depth,
-            ArrayDeque<Path> stack
-    ) throws IOException {
-        Path includedFile = resolveIncludePath(ref.ref(), referencingFile, state);
-        JsonNode fragment = resolveIncludedFile(includedFile, state, depth, stack);
-        if (!fragment.isObject()) {
-            throw error(includedFile, "$", "Fragment file must contain a JSON object");
-        }
-        ArrayDeque<Path> childStack = new ArrayDeque<>(stack);
-        childStack.push(includedFile);
-        ObjectNode fragmentObject = (ObjectNode) fragment;
-        validateFragmentObject(fragmentObject, includedFile);
-
-        ObjectNode out = JsonNodeFactory.instance.objectNode();
-        for (String key : MODEL_ARRAY_KEYS) {
-            JsonNode value = fragmentObject.get(key);
-            if (value != null) {
-                out.set(key, resolveArray(key, value, includedFile, state, depth + 1, childStack));
-            }
-        }
-        if (fragmentObject.has("metadata")) {
-            out.set("metadata", fragmentObject.get("metadata").deepCopy());
-        }
-        JsonNode nestedFragments = fragmentObject.get("fragments");
-        if (nestedFragments != null) {
-            if (!nestedFragments.isArray()) {
-                throw error(includedFile, "/fragments", "fragments must be an array of local $ref objects");
-            }
-            ObjectNode nestedMetadata = JsonNodeFactory.instance.objectNode();
-            Map<String, Path> nestedMetadataOwners = new LinkedHashMap<>();
-            int index = 0;
-            for (JsonNode nestedRefNode : nestedFragments) {
-                Ref nestedRef = parseRefObject(nestedRefNode, includedFile, "/fragments/" + index);
-                ObjectNode nested = resolveFragment(nestedRef, includedFile, state, depth + 1, childStack);
-                appendFragment(out, nestedMetadata, Set.of(), nestedMetadataOwners, nested, state);
-                index++;
-            }
-            if (!nestedMetadata.isEmpty()) {
-                ObjectNode effective = out.has("metadata") && out.get("metadata").isObject()
-                        ? (ObjectNode) out.get("metadata")
-                        : JsonNodeFactory.instance.objectNode();
-                nestedMetadata.fields().forEachRemaining(entry -> {
-                    if (!effective.has(entry.getKey())) {
-                        effective.set(entry.getKey(), entry.getValue().deepCopy());
-                    }
-                });
-                out.set("metadata", effective);
-            }
-        }
-        return out;
-    }
-
     private ArrayNode resolveArray(
             String key,
             JsonNode node,
@@ -1961,9 +1819,11 @@ public final class ModelSourceResolver {
                 Path includedFile = resolveIncludePath(ref.ref(), sourceFile, state);
                 JsonNode included = resolveIncludedFile(includedFile, state, depth + 1, stack);
                 if (included.isObject() && included.has(key) && included.get(key).isArray()) {
-                    for (JsonNode expanded : included.get(key)) {
-                        out.add(expanded.deepCopy());
-                    }
+                    // the included file's own entries may be {"$ref"} too: resolve them relative to THAT file, and
+                    // carry the include stack so a cycle through several files is still refused
+                    ArrayDeque<Path> childStack = new ArrayDeque<>(stack);
+                    childStack.push(includedFile);
+                    out.addAll(resolveArray(key, included.get(key), includedFile, state, depth + 1, childStack));
                 } else {
                     out.add(included.deepCopy());
                 }
@@ -2064,18 +1924,8 @@ public final class ModelSourceResolver {
         return ROOT_SCALAR_KEYS.contains(key)
                 || MODEL_ARRAY_KEYS.contains(key)
                 || "metadata".equals(key)
-                || "fragments".equals(key)
                 || "packs".equals(key)
-                || "contexts".equals(key);
-    }
-
-    private static void validateFragmentObject(ObjectNode fragment, Path sourceFile) throws IOException {
-        fragment.fieldNames().forEachRemaining(key -> {
-            if (!FRAGMENT_KEYS.contains(key)) {
-                throwUnchecked(new IOException("Unsupported model fragment key '" + key + "' in " + sourceFile));
-            }
-        });
-        validateNoMalformedRef(fragment, sourceFile, "$");
+                || "modules".equals(key);
     }
 
     private static void validatePackFragmentObject(ObjectNode fragment, Path sourceFile) throws IOException {
@@ -2102,10 +1952,10 @@ public final class ModelSourceResolver {
                 // (ONLY at /packs/N -- see model.schema.json's packRef); a top-level context
                 // declaration (B20, S2) additionally carries a required "name"
                 // ({"$ref": "...", "name": "..."}) and, since S8 Wave 4 (ADR-0011 D4's v2 opt-in),
-                // an optional "physicallyIsolate", but ONLY at /contexts/N -- everywhere else
+                // an optional "physicallyIsolate", but ONLY at /modules/N -- everywhere else
                 // "name"/"physicallyIsolate"/"allowSideBySide" alongside a bare $ref stays
                 // malformed, same as any other stray key would.
-                boolean isContextDeclaration = path.matches("^\\$/contexts/\\d+$");
+                boolean isContextDeclaration = path.matches("^\\$/modules/\\d+$");
                 boolean isPackDeclaration = path.matches("^\\$/packs/\\d+$");
                 boolean onlyRefAndOptionalAlias = node.size() == 1
                         || (node.size() == 2 && node.has("as"))

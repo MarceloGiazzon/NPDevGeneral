@@ -108,7 +108,7 @@ class PackCliMainTest {
         return """
                 {
                   "namespace": "cli.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "$ref": "packs/crm/pack.json" } ]
                 }
@@ -118,7 +118,7 @@ class PackCliMainTest {
     private void writeDiamondFixtures() throws Exception {
         write("packs/user/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "user",
                   "version": "2.0.0",
                   "concepts": [ { "name": "Account", "fields": [
@@ -128,7 +128,7 @@ class PackCliMainTest {
                 """);
         write("packs/crm/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "crm",
                   "version": "1.0.0",
                   "packs": [ { "pack": "user", "version": "^2.0" } ],

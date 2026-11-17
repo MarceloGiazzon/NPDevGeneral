@@ -41,7 +41,7 @@ class ConversionHookEmitterDeclaredConversionsTest {
     private static final String MODEL_JSON = """
             {
               "namespace": "s7.conversions.test",
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "version": "1.0",
               "concepts": [
                 { "name": "Customer", "fields": [

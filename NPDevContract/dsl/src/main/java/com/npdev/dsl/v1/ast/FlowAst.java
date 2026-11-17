@@ -16,6 +16,11 @@ public final class FlowAst {
     private final ActionMetadataAst action;
     private final boolean startEndpoint;
     private final FlowScheduleAst schedule;
+    private final FlowTriggerAst trigger;
+    private final String description;
+    private final String crossAggregateReason;
+    private final String expose;
+    private final String runAs;
     private final OriginAst origin;
 
     public FlowAst(String name, String concept, List<StepAst> steps) {
@@ -110,6 +115,73 @@ public final class FlowAst {
             FlowScheduleAst schedule,
             OriginAst origin
     ) {
+        this(name, concept, mode, specializesName, hooks, steps, inputSchema, outputSchema, action, startEndpoint, schedule, origin, null, null, null);
+    }
+
+    /** FORM P3-T5a: canonical constructor, adding {@code trigger}, {@code expose} and {@code runAs}; {@code null} means the default of each. */
+    /** Pre-P3-T5c constructor: {@code null} for every key the merged flow vocabulary added after it. */
+    public FlowAst(
+            String name,
+            String concept,
+            String mode,
+            String specializesName,
+            List<FlowHookAst> hooks,
+            List<StepAst> steps,
+            SchemaAst inputSchema,
+            SchemaAst outputSchema,
+            ActionMetadataAst action,
+            boolean startEndpoint,
+            FlowScheduleAst schedule,
+            OriginAst origin,
+            FlowTriggerAst trigger,
+            String expose,
+            String runAs
+    ) {
+        this(name, concept, mode, specializesName, hooks, steps, inputSchema, outputSchema, action, startEndpoint, schedule, origin, trigger, expose, runAs, null);
+    }
+
+    public FlowAst(
+            String name,
+            String concept,
+            String mode,
+            String specializesName,
+            List<FlowHookAst> hooks,
+            List<StepAst> steps,
+            SchemaAst inputSchema,
+            SchemaAst outputSchema,
+            ActionMetadataAst action,
+            boolean startEndpoint,
+            FlowScheduleAst schedule,
+            OriginAst origin,
+            FlowTriggerAst trigger,
+            String expose,
+            String runAs,
+            String description
+    ) {
+        this(name, concept, mode, specializesName, hooks, steps, inputSchema, outputSchema, action, startEndpoint, schedule,
+                origin, trigger, expose, runAs, description, null);
+    }
+
+    public FlowAst(
+            String name,
+            String concept,
+            String mode,
+            String specializesName,
+            List<FlowHookAst> hooks,
+            List<StepAst> steps,
+            SchemaAst inputSchema,
+            SchemaAst outputSchema,
+            ActionMetadataAst action,
+            boolean startEndpoint,
+            FlowScheduleAst schedule,
+            OriginAst origin,
+            FlowTriggerAst trigger,
+            String expose,
+            String runAs,
+            String description,
+            String crossAggregateReason
+    ) {
+        this.crossAggregateReason = crossAggregateReason;
         this.name = name;
         this.concept = concept;
         this.mode = mode;
@@ -122,7 +194,17 @@ public final class FlowAst {
         this.startEndpoint = startEndpoint;
         this.schedule = schedule;
         this.origin = origin;
+        this.trigger = trigger;
+        this.expose = expose;
+        this.runAs = runAs;
+        this.description = description;
     }
+
+    /** FORM P3-T5c: what the flow is for (one or two sentences; null = none). */
+    public String getDescription() { return description; }
+
+    /** FORM P3-T5c: the stated reason this flow is exempt from the one-aggregate-one-transaction rule; null = not exempt. */
+    public String getCrossAggregateReason() { return crossAggregateReason; }
 
     public String getName() { return name; }
 
@@ -167,4 +249,12 @@ public final class FlowAst {
         return origin;
     }
 
+    /** FORM P3-T5a: what starts this flow; {@code null} means the default, an API call. */
+    public FlowTriggerAst getTrigger() { return trigger; }
+
+    /** FORM P3-T5a: {@code api} (default, null), {@code ui} or {@code internal}. */
+    public String getExpose() { return expose; }
+
+    /** FORM P3-T5a: {@code caller} (default, null) or {@code system}. */
+    public String getRunAs() { return runAs; }
 }

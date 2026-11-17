@@ -57,8 +57,8 @@ class CanonicalDemoRegressionTest {
                 compiled.getConcepts().stream().map(CompiledConcept::getName).sorted().toList());
         assertEquals(List.of("MRN", "NPI"),
                 compiled.getDomainTypes().stream().map(domainType -> domainType.getName()).sorted().toList());
-        assertEquals(1, compiled.getFlows().size());
-        assertEquals(1, compiled.getOrchestrationRules().size());
+        // FORM P3-T5c: the orchestration rule CompleteAppointmentFlow is now an event-trigger flow
+        assertEquals(2, compiled.getFlows().size());
 
         CompiledFlow flow = compiled.findFlow("CreateAppointment").orElseThrow();
         assertEquals("Appointment", flow.getConcept());
@@ -118,7 +118,7 @@ class CanonicalDemoRegressionTest {
         assertEquals("canonical.clinicdemo", root.path("namespace").asText());
         assertEquals(4, catalogs.path("concepts").size());
         assertEquals(36, catalogs.path("fields").size());
-        assertEquals(9, catalogs.path("actions").size());
+        assertEquals(12, catalogs.path("actions").size());
         assertEquals(5, catalogs.path("references").size());
 
         JsonNode createAppointment = findByName(catalogs.path("actions"), "CreateAppointment");

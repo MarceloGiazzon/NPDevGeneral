@@ -59,7 +59,7 @@ class FinalAppAssemblerTest {
 
         write(artifact.resolve("src/main/java/com/npdev/generated/entities/User.java"), "package com.npdev.generated.entities;\n");
         write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
-                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
+                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"3.0.0\"}\n");
         write(artifact.resolve("src/main/resources/npdev/support/generated-folder.signature.properties"),
                 "contract=npdev-generated-folder-signature-v1\n");
         write(artifact.resolve("src/main/resources/db/migration/R__should_not_mount_here.sql"), "select 2;\n");
@@ -178,7 +178,7 @@ class FinalAppAssemblerTest {
 
         write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
         write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
-                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
+                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"3.0.0\"}\n");
 
         new FinalAppAssembler().assemble(
                 new FinalAppAssembler.Options(
@@ -209,7 +209,7 @@ class FinalAppAssemblerTest {
 
         write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
         write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
-                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
+                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"3.0.0\"}\n");
 
         // Stand in for a previously generated app that has been RUN: it has a database, a log
         // archive, an operator-written provider key, and stale emitted output.
@@ -251,7 +251,7 @@ class FinalAppAssemblerTest {
 
         write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
         write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
-                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
+                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"3.0.0\"}\n");
         write(webAssets.resolve("custom-screen.html"), "<html>custom screen</html>\n");
         write(webAssets.resolve("assets/custom-screen.panel.json"), "{\"screen\":\"web/custom-screen.html\"}\n");
         // Must be filtered exactly like every other copy mode -- proves WEB_ASSETS still gets the
@@ -293,7 +293,7 @@ class FinalAppAssemblerTest {
 
         write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
         write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
-                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
+                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"3.0.0\"}\n");
         write(webAssets.resolve("shell.js"), "// author's own, unrelated shell.js\n");
         write(webAssets.resolve("npdev-business-ui/index.html"), "<html>author collision</html>\n");
 
@@ -325,7 +325,7 @@ class FinalAppAssemblerTest {
 
         write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
         write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
-                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
+                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"3.0.0\"}\n");
 
         FinalAppAssembler assembler = new FinalAppAssembler();
         FinalAppAssembler.Options options = new FinalAppAssembler.Options(
@@ -362,7 +362,7 @@ class FinalAppAssemblerTest {
         write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
         write(host.resolve("src/main/java/com/finalexec/FinalExecApplication.java"), "package com.finalexec;\n");
         write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
-                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
+                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"3.0.0\"}\n");
 
         FinalAppAssembler.Options options = new FinalAppAssembler.Options(
                 host, artifact, finalApp, null, "npdev-generated", "npdev-meta", true, 17, null,
@@ -407,7 +407,7 @@ class FinalAppAssemblerTest {
 
         write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
         write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
-                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
+                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"3.0.0\"}\n");
 
         FinalAppAssembler.Options options = new FinalAppAssembler.Options(
                 host, artifact, finalApp, null, "npdev-generated", "npdev-meta", true, 17, null,
@@ -459,7 +459,7 @@ class FinalAppAssemblerTest {
 
         write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
         write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
-                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
+                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"3.0.0\"}\n");
         // A fake staged dir: two jars plus the manifest verifyNpdevRuntimeHostLibs reads. Includes
         // sourceDiscoveredJars the way sync-runtimehost-libs.ps1's real manifest does -- an absolute
         // build-machine path per jar, which is what PORT-1's out-of-tree-generation gate caught being
@@ -524,7 +524,7 @@ class FinalAppAssemblerTest {
 
         write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
         write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
-                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
+                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"3.0.0\"}\n");
 
         withRuntimeHostLibsDir(absentStaging, () -> {
             try {
@@ -563,7 +563,7 @@ class FinalAppAssemblerTest {
 
         write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
         write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
-                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
+                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"3.0.0\"}\n");
 
         java.util.Map<String, String> buildRootOnly = new java.util.HashMap<>();
         buildRootOnly.put("NPDEV_RUNTIMEHOST_LIBS_DIR", null);
@@ -615,7 +615,7 @@ class FinalAppAssemblerTest {
 
         write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
         write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
-                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
+                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"3.0.0\"}\n");
         // The cache holds the CURRENT jar plus the stale pre-rename one; the manifest --
         // freshly written by sync-runtimehost-libs.ps1 -- declares only the current one.
         write(stagedLibs.resolve("dsl-0.1.0.jar"), "stale duplicate of the npdev-dsl classes");

@@ -73,21 +73,16 @@ ITEM_LABELS = {
     "documents": ("document", "documents"),
     "roles": ("role", "roles"),
     "events": ("event", "events"),
-    "webhooks": ("webhook", "webhooks"),
     "aggregates": ("summary", "summaries"),
     "selectors": ("selector", "selectors"),
     "sequences": ("number sequence", "number sequences"),
     "seeds": ("starting data set", "starting data sets"),
     "domainTypes": ("custom data type", "custom data types"),
-    "bindings": ("connection", "connections"),
     "capabilities": ("capability", "capabilities"),
     "conversions": ("conversion", "conversions"),
     "properties": ("setting", "settings"),
     "propertyScopes": ("setting level", "setting levels"),
-    "orchestrationRules": ("automation rule", "automation rules"),
-    "orchestrations": ("automation", "automations"),
-    "ruleProfiles": ("rule profile", "rule profiles"),
-    "contexts": ("area", "areas"),
+    "modules": ("area", "areas"),
 }
 
 # English text for every preview line. The Manager translates by `code`, filling the same `params`.
@@ -902,11 +897,15 @@ def _base_moved_result(findings, candidate_text, **detail) -> dict:
                    next={"kind": "user-action", "messageId": "BASE_MOVED"})
 
 
-SPLIT_ROOT_KEYS = ("fragments", "contexts", "packs")  # a model.json carrying any of these is made of more than itself
+SPLIT_ROOT_KEYS = ("modules", "packs")  # a model.json carrying any of these is made of more than itself
 
 
 def is_split_root(model) -> bool:
-    return isinstance(model, dict) and any(key in model for key in SPLIT_ROOT_KEYS)
+    """A model is split when it carries `modules`/`packs`, or when any top-level array has a `{"$ref": file}` entry."""
+    if not isinstance(model, dict):
+        return False
+    return any(key in model for key in SPLIT_ROOT_KEYS) or any(isinstance(v, list) and any(isinstance(e, dict) and "$ref" in e for e in v) for v in model.values())
+
 
 
 def evaluate_create(session, candidate_model_text, ai_manifest, *, work_dir=None, extra_files=None) -> dict:

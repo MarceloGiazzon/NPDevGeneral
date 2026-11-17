@@ -1,7 +1,7 @@
 {
   "$schema": "..\\..\\NPDevContract\\schemas\\model.schema.json",
   "namespace": "trial.contactintake",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "version": "1.0",
   "concepts": [
     {
@@ -65,36 +65,6 @@
       ]
     }
   ],
-  "capabilities": [
-    {
-      "name": "persistence",
-      "type": "PersistenceCapability",
-      "operations": [
-        "save"
-      ]
-    },
-    {
-      "name": "notification",
-      "type": "NotificationCapability",
-      "operations": [
-        "send"
-      ]
-    }
-  ],
-  "bindings": [
-    {
-      "capability": "persistence",
-      "adapter": "repository"
-    },
-    {
-      "capability": "notification",
-      "adapter": "notification-inproc"
-    },
-    {
-      "capability": "eventBus",
-      "adapter": "inproc"
-    }
-  ],
   "events": [
     {
       "name": "ContactMessageReceived",
@@ -134,23 +104,16 @@
         },
         {
           "name": "save-message",
-          "type": "capabilityCall",
-          "args": [
-            "$input"
-          ],
-          "capability": "persistence",
-          "operation": "save",
+          "type": "createConcept",
+          "scope": "ContactMessage",
+          "input": "$input",
           "output": "$saved"
         },
         {
           "name": "send-notification",
-          "type": "capabilityCall",
-          "args": [
-            "$saved"
-          ],
-          "capability": "notification",
-          "operation": "send",
-          "output": "$delivery"
+          "type": "notify",
+          "to": "$saved.email",
+          "message": "$saved.message"
         },
         {
           "name": "emit-contact-event",

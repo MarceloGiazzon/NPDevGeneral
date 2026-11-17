@@ -24,9 +24,9 @@ class ComputedExpressionTest {
     }
 
     @Test
-    void wholeResultsRenderAsIntegersFractionsAsDoubles() {
+    void wholeResultsRenderAsIntegersFractionsAsDecimals() {
         assertEquals(5L, eval("10 / 2", Map.of()));
-        assertEquals(2.5d, eval("5 / 2", Map.of()));
+        assertEquals(new java.math.BigDecimal("2.5"), eval("5 / 2", Map.of()));
         assertEquals(1L, eval("7 % 3", Map.of()));
     }
 

@@ -1,6 +1,6 @@
 {
   "$schema": "../../schemas/pack.schema.json",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "pack": "project-tracker-demo",
   "version": "1.0.0",
   "description": "Demo pack exported from the superuser-admin-console sample to prove the export-concept-to-pack.ps1 script end to end.",

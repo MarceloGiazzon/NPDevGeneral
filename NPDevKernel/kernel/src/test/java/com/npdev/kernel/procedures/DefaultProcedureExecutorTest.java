@@ -114,7 +114,7 @@ class DefaultProcedureExecutorTest {
                 List.of(
                         ProcedureStep.ifThenElse(
                                 "when-enabled",
-                                "enabled",
+                                "$enabled",
                                 List.of(
                                         ProcedureStep.forEach(
                                                 "save-each-expense",
@@ -152,63 +152,6 @@ class DefaultProcedureExecutorTest {
         @SuppressWarnings("unchecked")
         List<Object> returned = (List<Object>) result.state().get("return");
         assertEquals(2, returned.size());
-    }
-
-    @Test
-    void callProcedureReturnsNestedProcedureOutput() {
-        ProcedureDefinition child = new ProcedureDefinition(
-                "BuildPayload",
-                List.of(
-                        ProcedureStep.mapValue("copy-input", "$input", "copied"),
-                        ProcedureStep.returnValue("return-copy", "$copied")
-                )
-        );
-        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
-                governedGateway(),
-                (call, state) -> CapabilityResult.success(Map.of()),
-                new CapturingEventBus(),
-                Map.of("BuildPayload", child)
-        );
-        ProcedureDefinition parent = new ProcedureDefinition(
-                "Parent",
-                List.of(
-                        ProcedureStep.callProcedure("call-child", "BuildPayload", "input", "childOutput"),
-                        ProcedureStep.returnValue("return-child", "$childOutput")
-                )
-        );
-
-        ProcedureExecutionResult result = executor.execute(
-                parent,
-                Map.of("value", "hello"),
-                ExecutionContext.of("tenant-a", "actor-a")
-        );
-
-        assertTrue(result.ok());
-        assertEquals(Map.of("value", "hello"), result.state().get("return"));
-    }
-
-    @Test
-    void failsDeterministicallyWhenProcedureRecursionLimitIsExceeded() {
-        ProcedureDefinition recursive = new ProcedureDefinition(
-                "Recursive",
-                List.of(ProcedureStep.callProcedure("again", "Recursive", "input", "out"))
-        );
-        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
-                governedGateway(),
-                (call, state) -> CapabilityResult.success(Map.of()),
-                new CapturingEventBus(),
-                Map.of("Recursive", recursive),
-                new ProcedureExecutionLimits(100, 2, 100)
-        );
-
-        ProcedureExecutionResult result = executor.execute(
-                recursive,
-                Map.of("value", "hello"),
-                ExecutionContext.of("tenant-a", "actor-a")
-        );
-
-        assertFalse(result.ok());
-        assertEquals("PROCEDURE_RECURSION_LIMIT_EXCEEDED", result.failureCode());
     }
 
     @Test

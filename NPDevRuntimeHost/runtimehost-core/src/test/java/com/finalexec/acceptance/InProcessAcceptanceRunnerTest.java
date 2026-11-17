@@ -24,32 +24,127 @@ class InProcessAcceptanceRunnerTest {
 
     private static final String MODEL = """
         {
-          "dslVersion": "1.0.0", "namespace": "demo.tasks", "version": "1.0",
+          "dslVersion": "3.0.0",
+          "namespace": "demo.tasks",
+          "version": "1.0",
           "concepts": [
-            { "name": "Task", "fields": [
-              { "name": "id", "type": "uuid", "id": true, "required": true },
-              { "name": "title", "type": "string", "required": true },
-              { "name": "status", "type": "enum", "required": true, "enumValues": ["OPEN", "CLOSED"] } ] }
+            {
+              "name": "Task",
+              "fields": [
+                {
+                  "name": "id",
+                  "type": "uuid",
+                  "id": true,
+                  "required": true
+                },
+                {
+                  "name": "title",
+                  "type": "string",
+                  "required": true
+                },
+                {
+                  "name": "status",
+                  "type": "enum",
+                  "required": true,
+                  "enumValues": [
+                    "OPEN",
+                    "CLOSED"
+                  ]
+                }
+              ]
+            }
           ],
-          "bindings": [ { "adapter": "externalAi", "capability": "vendor" } ],
-          "capabilities": [ { "name": "vendor", "operations": ["ask"], "type": "ExternalAiCapability" } ],
-          "queries": [ { "name": "OpenTasks", "concept": "Task", "where": "status == 'OPEN'" } ],
+          "capabilities": [
+            {
+              "name": "vendor",
+              "operations": [
+                "ask"
+              ],
+              "type": "ExternalAiCapability",
+              "adapter": "externalAi"
+            }
+          ],
+          "queries": [
+            {
+              "name": "OpenTasks",
+              "concept": "Task",
+              "where": "status == 'OPEN'"
+            }
+          ],
           "flows": [
-            { "name": "AskFlow", "concept": "Task", "steps": [
-              { "name": "ask", "type": "capabilityCall", "capability": "vendor", "operation": "ask",
-                "args": ["$input"], "output": "$answer" } ] }
-          ],
-          "procedures": [
-            { "name": "CloseAll", "steps": [
-              { "name": "open", "type": "runQuery", "query": "OpenTasks", "concept": "Task", "target": "open" },
-              { "name": "close-each", "type": "forEach", "items": "$open", "as": "task", "steps": [
-                { "name": "close", "type": "patchConcept", "concept": "Task", "id": "$task.id",
-                  "set": { "status": "CLOSED" }, "target": "closed" } ] },
-              { "name": "done", "type": "return", "value": "$open" } ] },
-            { "name": "AskVendor", "steps": [
-              { "name": "ask", "type": "capabilityCall", "capability": "vendor", "operation": "ask",
-                "args": { "prompt": "$input" }, "target": "answer" },
-              { "name": "done", "type": "return", "value": "$answer" } ] }
+            {
+              "name": "AskFlow",
+              "concept": "Task",
+              "steps": [
+                {
+                  "name": "ask",
+                  "type": "capabilityCall",
+                  "capability": "vendor",
+                  "operation": "ask",
+                  "args": [
+                    "$input"
+                  ],
+                  "output": "$answer"
+                }
+              ]
+            },
+            {
+              "name": "CloseAll",
+              "expose": "internal",
+              "steps": [
+                {
+                  "name": "open",
+                  "type": "runQuery",
+                  "query": "OpenTasks",
+                  "scope": "Task",
+                  "output": "open"
+                },
+                {
+                  "name": "close-each",
+                  "type": "forEach",
+                  "collection": "$open",
+                  "itemKey": "task",
+                  "steps": [
+                    {
+                      "name": "close",
+                      "type": "updateConcept",
+                      "scope": "Task",
+                      "id": "$task.id",
+                      "set": {
+                        "status": "CLOSED"
+                      },
+                      "output": "closed"
+                    }
+                  ]
+                },
+                {
+                  "name": "done",
+                  "type": "return",
+                  "value": "$open"
+                }
+              ]
+            },
+            {
+              "name": "AskVendor",
+              "expose": "internal",
+              "steps": [
+                {
+                  "name": "ask",
+                  "type": "capabilityCall",
+                  "capability": "vendor",
+                  "operation": "ask",
+                  "args": [
+                    "$input"
+                  ],
+                  "output": "answer"
+                },
+                {
+                  "name": "done",
+                  "type": "return",
+                  "value": "$answer"
+                }
+              ]
+            }
           ]
         }
         """;
@@ -93,7 +188,8 @@ class InProcessAcceptanceRunnerTest {
 
         assertEquals(false, observed.get("ok"));
         String failure = observed.get("failureCode") + " " + observed.get("failureMessage");
-        assertTrue(failure.contains("CAPABILITY_NOT_STUBBED"), failure);
+        // a flow reports a failed capability as CAPABILITY_FAILED with the capability's own message
+        assertTrue(failure.contains("no stubs[\"vendor.ask\"]"), failure);
     }
 
     @Test

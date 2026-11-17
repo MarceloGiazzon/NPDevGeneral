@@ -35,13 +35,13 @@ class PackWhyCliTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
             _write(tmp_dir / "packs" / "user" / "pack.json", json.dumps({
-                "dslVersion": "1.0.0", "pack": "user", "version": "2.0.0",
+                "dslVersion": "3.0.0", "pack": "user", "version": "2.0.0",
                 "concepts": [{"name": "Account", "fields": [
                     {"name": "id", "type": "uuid", "id": True, "required": True},
                 ]}],
             }))
             _write(tmp_dir / "packs" / "crm" / "pack.json", json.dumps({
-                "dslVersion": "1.0.0", "pack": "crm", "version": "1.0.0",
+                "dslVersion": "3.0.0", "pack": "crm", "version": "1.0.0",
                 "packs": [{"pack": "user", "version": "^2.0"}],
                 "concepts": [{"name": "Lead", "fields": [
                     {"name": "id", "type": "uuid", "id": True, "required": True},
@@ -49,7 +49,7 @@ class PackWhyCliTest(unittest.TestCase):
             }))
             model_path = tmp_dir / "model.json"
             _write(model_path, json.dumps({
-                "namespace": "test.pack.why", "dslVersion": "1.0.0", "version": "1.0",
+                "namespace": "test.pack.why", "dslVersion": "3.0.0", "version": "1.0",
                 "packs": [{"$ref": "packs/crm/pack.json"}],
             }))
 

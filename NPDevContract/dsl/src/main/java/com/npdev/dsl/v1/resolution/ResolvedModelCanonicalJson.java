@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.npdev.dsl.v1.ast.CapabilityAst;
-import com.npdev.dsl.v1.ast.CapabilityBindingAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationErrorAst;
 import com.npdev.dsl.v1.ast.CapabilityAuthAst;
@@ -19,8 +18,6 @@ import com.npdev.dsl.v1.ast.FieldAst;
 import com.npdev.dsl.v1.ast.FlowAst;
 import com.npdev.dsl.v1.ast.InvariantAst;
 import com.npdev.dsl.v1.ast.ModelAst;
-import com.npdev.dsl.v1.ast.OrchestrationActionAst;
-import com.npdev.dsl.v1.ast.OrchestrationAst;
 import com.npdev.dsl.v1.ast.ReferenceSemanticsAst;
 import com.npdev.dsl.v1.ast.SchemaAst;
 import com.npdev.dsl.v1.ast.StepAst;
@@ -47,10 +44,8 @@ public final class ResolvedModelCanonicalJson {
         root.put("version", safe(modelAst.getVersion()));
         root.set("concepts", toEntities(modelAst.getConcepts()));
         root.set("capabilities", toCapabilities(modelAst.getCapabilities()));
-        root.set("bindings", toBindings(modelAst.getBindings()));
         root.set("events", toEvents(modelAst.getEvents()));
         root.set("flows", toFlows(modelAst.getFlows()));
-        root.set("orchestrationRules", toOrchestrationRules(modelAst.getOrchestrationRules()));
         try {
             return MAPPER.writeValueAsString(root) + "\n";
         } catch (IOException exception) {
@@ -130,21 +125,6 @@ public final class ResolvedModelCanonicalJson {
         return out;
     }
 
-    private static ArrayNode toBindings(List<CapabilityBindingAst> bindings) {
-        ArrayNode out = JsonNodeFactory.instance.arrayNode();
-        List<CapabilityBindingAst> sorted = new ArrayList<>(bindings);
-        sorted.sort(Comparator
-                .comparing((CapabilityBindingAst binding) -> normalize(binding.getCapability()))
-                .thenComparing(binding -> normalize(binding.getAdapter())));
-        for (CapabilityBindingAst binding : sorted) {
-            ObjectNode node = JsonNodeFactory.instance.objectNode();
-            node.put("capability", safe(binding.getCapability()));
-            node.put("adapter", safe(binding.getAdapter()));
-            out.add(node);
-        }
-        return out;
-    }
-
     private static ArrayNode toEvents(List<EventAst> events) {
         ArrayNode out = JsonNodeFactory.instance.arrayNode();
         List<EventAst> sorted = new ArrayList<>(events);
@@ -183,74 +163,6 @@ public final class ResolvedModelCanonicalJson {
             node.set("action", toActionMetadata(flow.getAction()));
             node.set("steps", toSteps(flow.getSteps()));
             out.add(node);
-        }
-        return out;
-    }
-
-    private static ArrayNode toOrchestrationRules(List<OrchestrationAst> rules) {
-        ArrayNode out = JsonNodeFactory.instance.arrayNode();
-        List<OrchestrationAst> sorted = new ArrayList<>(rules);
-        sorted.sort(Comparator.comparing(rule -> normalize(rule.getName())));
-        for (OrchestrationAst rule : sorted) {
-            ObjectNode node = JsonNodeFactory.instance.objectNode();
-            node.put("name", safe(rule.getName()));
-            node.put("condition", safe(rule.getCondition()));
-
-            ObjectNode triggerNode = JsonNodeFactory.instance.objectNode();
-            if (rule.getTrigger() != null) {
-                triggerNode.put("type", safe(rule.getTrigger().getType()));
-                triggerNode.put("event", safe(rule.getTrigger().getEvent()));
-            } else {
-                triggerNode.put("type", "");
-                triggerNode.put("event", "");
-            }
-            node.set("trigger", triggerNode);
-
-            List<OrchestrationActionAst> actions = rule.getActions().isEmpty()
-                    ? (rule.getAction() == null ? List.of() : List.of(rule.getAction()))
-                    : rule.getActions();
-            OrchestrationActionAst primaryAction = actions.isEmpty() ? null : actions.get(0);
-            node.set("action", toOrchestrationActionNode(primaryAction));
-            node.set("actions", toOrchestrationActions(actions));
-            out.add(node);
-        }
-        return out;
-    }
-
-    private static ObjectNode toOrchestrationActionNode(OrchestrationActionAst action) {
-        ObjectNode actionNode = JsonNodeFactory.instance.objectNode();
-        if (action != null) {
-            actionNode.put("type", safe(action.getType()));
-            actionNode.put("concept", safe(action.getConcept()));
-            actionNode.put("capability", safe(action.getCapability()));
-            actionNode.put("operation", safe(action.getOperation()));
-            actionNode.put("event", safe(action.getEvent()));
-            if (action.getDelaySeconds() == null) {
-                actionNode.putNull("delaySeconds");
-            } else {
-                actionNode.put("delaySeconds", action.getDelaySeconds());
-            }
-            actionNode.set("action", toActionMetadata(action.getAction()));
-            actionNode.set("map", toStringMap(action.getMap()));
-            return actionNode;
-        }
-        actionNode.put("type", "");
-        actionNode.put("concept", "");
-        actionNode.put("capability", "");
-        actionNode.put("operation", "");
-        actionNode.put("event", "");
-        actionNode.putNull("delaySeconds");
-        actionNode.set("map", JsonNodeFactory.instance.objectNode());
-        return actionNode;
-    }
-
-    private static ArrayNode toOrchestrationActions(List<OrchestrationActionAst> actions) {
-        ArrayNode out = JsonNodeFactory.instance.arrayNode();
-        if (actions == null) {
-            return out;
-        }
-        for (OrchestrationActionAst action : actions) {
-            out.add(toOrchestrationActionNode(action));
         }
         return out;
     }

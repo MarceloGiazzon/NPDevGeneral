@@ -1,7 +1,6 @@
 package com.npdev.dsl.v1.compiled;
 
 import com.npdev.dsl.v1.ast.CapabilityAst;
-import com.npdev.dsl.v1.ast.CapabilityBindingAst;
 import com.npdev.dsl.v1.ast.FlowAst;
 import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.ast.ProcedureAst;
@@ -40,8 +39,10 @@ public final class CompiledPluginRequirementGraphBuilder {
         }
 
         Map<String, String> bindingsByCapability = new HashMap<>();
-        for (CapabilityBindingAst binding : modelAst.getBindings()) {
-            bindingsByCapability.put(normalize(binding.getCapability()), safe(binding.getAdapter()));
+        for (CapabilityAst capability : modelAst.getCapabilities()) {
+            if (capability.getAdapter() != null) {
+                bindingsByCapability.put(normalize(capability.getName()), safe(capability.getAdapter()));
+            }
         }
 
         List<CompiledPluginRequirement> requirements = new ArrayList<>();

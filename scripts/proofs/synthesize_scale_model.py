@@ -57,7 +57,7 @@ def build_model(concept_count: int) -> dict:
     return {
         "$schema": SCHEMA_REF,
         "namespace": "scaleproof.synthetic",
-        "dslVersion": "1.0.0",
+        "dslVersion": "3.0.0",
         "version": "1.0",
         "metadata": {
             "purpose": (
@@ -69,10 +69,6 @@ def build_model(concept_count: int) -> dict:
         "concepts": concepts,
         "capabilities": [
             {"name": "persistence", "type": "PersistenceCapability", "operations": ["save", "findById"]}
-        ],
-        "bindings": [
-            {"capability": "persistence", "adapter": "repository"},
-            {"capability": "eventBus", "adapter": "inproc"},
         ],
         "queries": [
             {

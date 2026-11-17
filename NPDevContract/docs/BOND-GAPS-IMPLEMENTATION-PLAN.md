@@ -404,7 +404,7 @@ void releaseGatePassesWhenAllDependenciesMeetTarget() throws Exception {
     Files.writeString(modelPath, """
             {
               "namespace": "truth.ok",
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "version": "1.0",
               "concepts": [
                 {
@@ -453,7 +453,7 @@ void semanticValidatorDoesNotBlockOnTruthEdgeViolation() throws Exception {
     Files.writeString(modelPath, """
             {
               "namespace": "truth.warn",
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "version": "1.0",
               "concepts": [
                 {
@@ -498,7 +498,7 @@ void bondClosureIncludesTransitiveDependencies() throws Exception {
     Files.writeString(modelPath, """
             {
               "namespace": "truth.chain",
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "version": "1.0",
               "concepts": [
                 {
@@ -596,7 +596,7 @@ void packConceptWithConnectableAnchorIsPreservedInResolvedModel() throws Excepti
             {
               "pack": "catalog",
               "version": "1.0",
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "concepts": [
                 {
                   "name": "Product",
@@ -613,7 +613,7 @@ void packConceptWithConnectableAnchorIsPreservedInResolvedModel() throws Excepti
     Path model = write("model.json", """
             {
               "namespace": "order.app",
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "version": "1.0",
               "packs": [{ "$ref": "packs/catalog.json" }],
               "concepts": [
@@ -685,7 +685,7 @@ void crossPackBondPassesSemanticValidation() throws Exception {
             {
               "pack": "catalog",
               "version": "1.0",
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "concepts": [
                 {
                   "name": "Product",
@@ -708,7 +708,7 @@ void crossPackBondPassesSemanticValidation() throws Exception {
     Files.writeString(modelFile, """
             {
               "namespace": "order.app",
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "version": "1.0",
               "packs": [{ "$ref": "packs/catalog.json" }],
               "concepts": [

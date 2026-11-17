@@ -44,7 +44,7 @@ def _stem(path: str) -> str:
 
 def _concepts(model) -> dict | None:
     """{concept name: [its field names]} -- or None when the model cannot say (a concept may come from a fragment or a pack)."""
-    if not isinstance(model, dict) or any(model.get(k) for k in ("packs", "fragments", "contexts")):
+    if not isinstance(model, dict) or any(model.get(k) for k in ("packs", "modules")) or any(isinstance(v, list) and any(isinstance(e, dict) and "$ref" in e for e in v) for v in model.values()):
         return None
     items = model.get("concepts")
     if not isinstance(items, list) or any(not (isinstance(i, dict) and isinstance(i.get("name"), str)) for i in items):

@@ -24,13 +24,18 @@ class PluginRequirementAssetEmitterTest {
         Path model = writeModel("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
                       "name": "TriggerEntity",
                       "fields": [
-                        { "name": "id", "type": "uuid", "id": true, "required": true }
+                        {
+                          "name": "id",
+                          "type": "uuid",
+                          "id": true,
+                          "required": true
+                        }
                       ]
                     }
                   ],
@@ -38,23 +43,25 @@ class PluginRequirementAssetEmitterTest {
                     {
                       "name": "persistence",
                       "type": "PersistenceCapability",
-                      "operations": ["save"]
+                      "operations": [
+                        "save"
+                      ]
                     }
                   ],
                   "customCapabilities": [
                     {
                       "name": "customExtension",
                       "type": "CustomProcedureCapability",
+                      "adapter": "plugin:custom-procedure",
                       "operations": [
                         {
                           "name": "run",
-                          "input": { "conceptRef": "TriggerEntity" }
+                          "input": {
+                            "conceptRef": "TriggerEntity"
+                          }
                         }
                       ]
                     }
-                  ],
-                  "bindings": [
-                    { "capability": "customExtension", "adapter": "plugin:custom-procedure" }
                   ],
                   "flows": [
                     {

@@ -21,7 +21,7 @@ import java.util.Set;
  * {@code version} itself: this differ has no opinion that version is special, see
  * {@code AuthoringMergeGate#withoutVersion} for why the merge gate strips it before calling here), a
  * reordering of an order-significant array, or an array element with no usable {@code name} (e.g.
- * {@code bindings[]}, identified by {@code capability}+{@code adapter} instead) -- collapses the
+ * {@code conversions[]}, identified by {@code id} instead) -- collapses the
  * WHOLE document pair to a single {@code wholeDocument} conflict rather than guessing. This class
  * never decides whether a merge is safe; it only reports what changed. {@link AuthoringMergeGate}
  * is the one that acts on the result.

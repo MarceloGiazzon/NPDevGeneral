@@ -21,7 +21,7 @@ class CompoundUniqueValidationTest {
     private static String modelJson(String fieldsJson) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.uq", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.uq", "version": "1.0",
               "concepts": [
                 { "name": "Membership", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

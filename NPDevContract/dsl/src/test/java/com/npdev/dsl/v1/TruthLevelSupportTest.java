@@ -26,7 +26,7 @@ class TruthLevelSupportTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "truth.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -58,7 +58,7 @@ class TruthLevelSupportTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "truth.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -97,7 +97,7 @@ class TruthLevelSupportTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "truth.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {

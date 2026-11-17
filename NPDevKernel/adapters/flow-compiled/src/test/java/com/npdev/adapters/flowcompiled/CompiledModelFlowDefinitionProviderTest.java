@@ -37,46 +37,106 @@ class CompiledModelFlowDefinitionProviderTest {
         CompiledModel compiled = compile("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
                       "name": "User",
                       "fields": [
-                        { "name":"id", "type":"uuid", "id":true, "required":true },
-                        { "name":"email", "type":"string", "required":true }
+                        {
+                          "name": "id",
+                          "type": "uuid",
+                          "id": true,
+                          "required": true
+                        },
+                        {
+                          "name": "email",
+                          "type": "string",
+                          "required": true
+                        }
                       ],
                       "invariants": [
-                        { "name":"EmailRequired", "expr":"email != null" },
-                        { "name":"EmailUnique", "rule":"unique(email)" }
+                        {
+                          "name": "EmailRequired",
+                          "expr": "email != null"
+                        },
+                        {
+                          "name": "EmailUnique",
+                          "rule": "unique(email)"
+                        }
                       ]
                     }
                   ],
                   "capabilities": [
-                    { "name":"persistence", "type":"PersistenceCapability", "operations":["save"] }
-                  ],
-                  "bindings": [
-                    { "capability":"persistence", "adapter":"inmemory" }
+                    {
+                      "name": "persistence",
+                      "type": "PersistenceCapability",
+                      "operations": [
+                        "save"
+                      ],
+                      "adapter": "inmemory"
+                    }
                   ],
                   "events": [
-                    { "name":"UserCreated", "payload":[{"name":"id","type":"uuid"}] }
+                    {
+                      "name": "UserCreated",
+                      "payload": [
+                        {
+                          "name": "id",
+                          "type": "uuid"
+                        }
+                      ]
+                    }
                   ],
                   "flows": [
                     {
                       "name": "CreateUser",
-                      "input": { "concept":"User", "mode":"create" },
+                      "input": {
+                        "concept": "User",
+                        "mode": "create"
+                      },
                       "inputSchema": {
                         "type": "object",
-                        "required": ["email"],
+                        "required": [
+                          "email"
+                        ],
                         "properties": {
-                          "email": { "type": "string" }
+                          "email": {
+                            "type": "string"
+                          }
                         }
                       },
                       "steps": [
-                        { "name":"validate", "type":"invariantCheck", "scope":"User", "invariants":["EmailRequired","EmailUnique"] },
-                        { "name":"save", "type":"capabilityCall", "capability":"persistence", "operation":"save", "args":["$input"], "output":"$saved" },
-                        { "name":"emit", "type":"emitEvent", "event":"UserCreated", "from":"$saved" },
-                        { "name":"ret", "type":"return", "value":"$saved" }
+                        {
+                          "name": "validate",
+                          "type": "invariantCheck",
+                          "scope": "User",
+                          "invariants": [
+                            "EmailRequired",
+                            "EmailUnique"
+                          ]
+                        },
+                        {
+                          "name": "save",
+                          "type": "capabilityCall",
+                          "capability": "persistence",
+                          "operation": "save",
+                          "args": [
+                            "$input"
+                          ],
+                          "output": "$saved"
+                        },
+                        {
+                          "name": "emit",
+                          "type": "emitEvent",
+                          "event": "UserCreated",
+                          "from": "$saved"
+                        },
+                        {
+                          "name": "ret",
+                          "type": "return",
+                          "value": "$saved"
+                        }
                       ]
                     }
                   ]
@@ -109,7 +169,7 @@ class CompiledModelFlowDefinitionProviderTest {
         CompiledModel compiled = compile("""
                 {
                   "namespace": "wms",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Order", "fields": [ { "name":"id", "type":"uuid", "id":true, "required":true } ] }
@@ -179,7 +239,7 @@ class CompiledModelFlowDefinitionProviderTest {
         CompiledModel compiled = compile("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -210,31 +270,63 @@ class CompiledModelFlowDefinitionProviderTest {
         CompiledModel compiled = compile("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
                       "name": "ExpenseRequest",
                       "fields": [
-                        { "name":"id", "type":"uuid", "id":true, "required":true },
-                        { "name":"amount", "type":"integer", "required":true }
+                        {
+                          "name": "id",
+                          "type": "uuid",
+                          "id": true,
+                          "required": true
+                        },
+                        {
+                          "name": "amount",
+                          "type": "integer",
+                          "required": true
+                        }
                       ]
                     }
                   ],
                   "capabilities": [
-                    { "name":"persistence", "type":"PersistenceCapability", "operations":["save"] }
-                  ],
-                  "bindings": [
-                    { "capability":"persistence", "adapter":"inmemory" }
+                    {
+                      "name": "persistence",
+                      "type": "PersistenceCapability",
+                      "operations": [
+                        "save"
+                      ],
+                      "adapter": "inmemory"
+                    }
                   ],
                   "flows": [
                     {
                       "name": "SubmitExpense",
-                      "input": { "concept":"ExpenseRequest", "mode":"create" },
+                      "input": {
+                        "concept": "ExpenseRequest",
+                        "mode": "create"
+                      },
                       "steps": [
-                        { "name":"create-expense", "type":"createConcept", "scope":"ExpenseRequest", "input":"$input", "output":"$created" },
-                        { "name":"update-expense", "type":"updateConcept", "scope":"ExpenseRequest", "input":"$created", "output":"$updated" },
-                        { "name":"ret", "type":"return", "value":"$updated" }
+                        {
+                          "name": "create-expense",
+                          "type": "createConcept",
+                          "scope": "ExpenseRequest",
+                          "input": "$input",
+                          "output": "$created"
+                        },
+                        {
+                          "name": "update-expense",
+                          "type": "updateConcept",
+                          "scope": "ExpenseRequest",
+                          "input": "$created",
+                          "output": "$updated"
+                        },
+                        {
+                          "name": "ret",
+                          "type": "return",
+                          "value": "$updated"
+                        }
                       ]
                     }
                   ]
@@ -293,8 +385,7 @@ class CompiledModelFlowDefinitionProviderTest {
                                         null
                                 )
                         )
-                )),
-                List.of()
+                ))
         );
 
         CompiledModelFlowDefinitionProvider provider = new CompiledModelFlowDefinitionProvider(compiled);
@@ -312,7 +403,7 @@ class CompiledModelFlowDefinitionProviderTest {
         CompiledModel compiled = compile("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -399,45 +490,192 @@ class CompiledModelFlowDefinitionProviderTest {
         assertEquals("postgres:saved:a@b.com", second);
     }
 
+    /** FORM P3-T5b: the merged vocabulary's steps compile into the kernel step kinds that run them. */
+    @Test
+    void mergedVocabularyStepsCompileToTheKernelStepKindsThatRunThem() throws Exception {
+        CompiledModel model = compile("""
+                {
+                  "namespace": "demo", "dslVersion": "3.0.0", "version": "1.0",
+                  "concepts": [
+                    { "name": "Line", "fields": [
+                      { "name":"id", "type":"uuid", "id":true, "required":true },
+                      { "name":"sku", "type":"string" } ] },
+                    { "name": "Note", "fields": [
+                      { "name":"id", "type":"uuid", "id":true, "required":true } ] }
+                  ],
+                  "queries": [ { "name": "LinesBySku", "concept": "Note", "where": "id == $params.sku",
+                                 "parameters": [ { "name": "sku", "type": "string" } ] } ],
+                  "flows": [
+                    { "name": "Helper", "concept": "Line", "expose": "internal",
+                      "steps": [ { "name":"ret", "type":"return", "value":"$input" } ] },
+                    { "name": "Merged", "concept": "Line",
+                      "steps": [
+                        { "name":"s-set",  "type":"set", "value":"$input.sku", "output":"$sku" },
+                        { "name":"s-read", "type":"readConcept", "id":"$input.lineId", "output":"$line" },
+                        { "name":"s-list", "type":"listConcepts", "output":"$all" },
+                        { "name":"s-query","type":"runQuery", "query":"LinesBySku", "params": { "sku": "$sku" }, "output":"$hits" },
+                        { "name":"s-del",  "type":"deleteConcept", "id":"$input.lineId" },
+                        { "name":"s-call", "type":"callFlow", "flow":"Helper", "input":"$input", "output":"$helped" }
+                      ] }
+                  ]
+                }
+                """);
+
+        List<FlowStepDefinition> steps = new CompiledModelFlowDefinitionProvider(model).getFlow("Merged").getSteps();
+
+        assertEquals(List.of(
+                FlowStepDefinition.Type.PROCEDURE_STEP, FlowStepDefinition.Type.PROCEDURE_STEP,
+                FlowStepDefinition.Type.PROCEDURE_STEP, FlowStepDefinition.Type.PROCEDURE_STEP,
+                FlowStepDefinition.Type.PROCEDURE_STEP, FlowStepDefinition.Type.CALL_FLOW),
+                steps.stream().map(FlowStepDefinition::getType).toList());
+        com.npdev.kernel.procedures.ProcedureStep read = steps.get(1).getEmbeddedStep();
+        assertEquals("Line", read.conceptName(), "a concept step defaults to the flow's own concept");
+        assertEquals("input.lineId", read.idRef(), "the leading $ of a ref is dropped, as for a procedure step");
+        assertEquals("line", read.outputKey());
+        com.npdev.kernel.procedures.ProcedureStep query = steps.get(3).getEmbeddedStep();
+        assertEquals("Note", query.conceptName(), "a runQuery step acts on the concept its query ranges over");
+        assertEquals("LinesBySku", query.operation());
+        assertEquals(Map.of("sku", "$sku"), query.queryParams());
+        assertEquals("Helper", steps.get(5).getProcedureName());
+        assertEquals("$helped", steps.get(5).getOutputRef(), "callFlow keeps the ref as written, like the other call steps; the runner normalises it");
+    }
+
+    /** FORM P3-T5c: set evaluates an expression; map builds an object or a list; updateConcept{id,set} runs as patchConcept; a flow needs no concept. */
+    @Test
+    void p3t5cVocabularyKeysCompileToEmbeddedStepsAndAFlowNeedsNoConcept() throws Exception {
+        CompiledModel model = compile("""
+                {
+                  "namespace": "demo", "dslVersion": "3.0.0", "version": "1.0",
+                  "concepts": [
+                    { "name": "Line", "fields": [
+                      { "name":"id", "type":"uuid", "id":true, "required":true },
+                      { "name":"sku", "type":"string" } ] }
+                  ],
+                  "flows": [
+                    { "name": "NoConcept", "description": "orchestration only",
+                      "steps": [
+                        { "name":"s-set", "type":"set", "value":"$input.qty * 2", "output":"doubled" },
+                        { "name":"s-obj", "type":"map", "select": { "sku": "$input.sku", "kind": "x" }, "output":"obj" },
+                        { "name":"s-list", "type":"map", "collection":"$input.lines", "itemKey":"l", "select": { "sku": "$l.sku" }, "output":"skus" },
+                        { "name":"s-patch", "type":"updateConcept", "scope":"Line", "id":"$input.lineId",
+                          "set": { "sku": "$obj.sku", "note": null }, "createIfMissing": true, "output":"line" }
+                      ] }
+                  ]
+                }
+                """);
+
+        FlowDefinition flow = new CompiledModelFlowDefinitionProvider(model).getFlow("NoConcept");
+        assertEquals("_noconcept", flow.getEntityName(), "a concept-less flow runs under a placeholder entity name");
+        List<FlowStepDefinition> steps = flow.getSteps();
+        assertEquals(List.of(FlowStepDefinition.Type.PROCEDURE_STEP, FlowStepDefinition.Type.PROCEDURE_STEP,
+                        FlowStepDefinition.Type.PROCEDURE_STEP, FlowStepDefinition.Type.PROCEDURE_STEP),
+                steps.stream().map(FlowStepDefinition::getType).toList());
+        assertEquals(com.npdev.kernel.procedures.ProcedureStepType.EVALUATE, steps.get(0).getEmbeddedStep().type());
+        assertEquals("$input.qty * 2", steps.get(0).getEmbeddedStep().valueRef());
+        assertEquals(com.npdev.kernel.procedures.ProcedureStepType.BUILD_OBJECT, steps.get(1).getEmbeddedStep().type());
+        assertEquals(Map.of("sku", "$input.sku", "kind", "x"), steps.get(1).getEmbeddedStep().setValues());
+        com.npdev.kernel.procedures.ProcedureStep list = steps.get(2).getEmbeddedStep();
+        assertEquals(com.npdev.kernel.procedures.ProcedureStepType.MAP_LIST, list.type());
+        assertEquals("input.lines", list.collectionRef());
+        assertEquals("l", list.itemKey());
+        com.npdev.kernel.procedures.ProcedureStep patch = steps.get(3).getEmbeddedStep();
+        assertEquals(com.npdev.kernel.procedures.ProcedureStepType.PATCH_CONCEPT, patch.type());
+        assertEquals("Line", patch.conceptName());
+        assertEquals("input.lineId", patch.idRef());
+        assertTrue(patch.createIfMissing());
+        assertTrue(patch.setValues().containsKey("note"), "an explicit null clears the field and must survive");
+    }
+
     private static String conceptWriteModel() {
         return """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
                       "name": "Line",
                       "fields": [
-                        { "name":"id", "type":"uuid", "id":true, "required":true },
-                        { "name":"sku", "type":"string", "required":true },
-                        { "name":"unitPrice", "type":"integer", "required":true },
-                        { "name":"channel", "type":"string", "required":true, "default":"web" },
-                        { "name":"note", "type":"string" }
+                        {
+                          "name": "id",
+                          "type": "uuid",
+                          "id": true,
+                          "required": true
+                        },
+                        {
+                          "name": "sku",
+                          "type": "string",
+                          "required": true
+                        },
+                        {
+                          "name": "unitPrice",
+                          "type": "integer",
+                          "required": true
+                        },
+                        {
+                          "name": "channel",
+                          "type": "string",
+                          "required": true,
+                          "default": "web"
+                        },
+                        {
+                          "name": "note",
+                          "type": "string"
+                        }
                       ]
                     }
                   ],
                   "capabilities": [
-                    { "name":"persistence", "type":"PersistenceCapability", "operations":["save"] }
-                  ],
-                  "bindings": [
-                    { "capability":"persistence", "adapter":"inmemory" }
+                    {
+                      "name": "persistence",
+                      "type": "PersistenceCapability",
+                      "operations": [
+                        "save"
+                      ],
+                      "adapter": "inmemory"
+                    }
                   ],
                   "flows": [
                     {
                       "name": "RecordLine",
-                      "input": { "concept":"Line", "mode":"create" },
+                      "input": {
+                        "concept": "Line",
+                        "mode": "create"
+                      },
                       "steps": [
-                        { "name":"save-line", "type":"createConcept", "scope":"Line", "input":"$input", "output":"$saved" },
-                        { "name":"ret", "type":"return", "value":"$saved" }
+                        {
+                          "name": "save-line",
+                          "type": "createConcept",
+                          "scope": "Line",
+                          "input": "$input",
+                          "output": "$saved"
+                        },
+                        {
+                          "name": "ret",
+                          "type": "return",
+                          "value": "$saved"
+                        }
                       ]
                     },
                     {
                       "name": "ReviseLine",
-                      "input": { "concept":"Line", "mode":"update" },
+                      "input": {
+                        "concept": "Line",
+                        "mode": "update"
+                      },
                       "steps": [
-                        { "name":"apply-line", "type":"updateConcept", "scope":"Line", "input":"$input", "output":"$updated" },
-                        { "name":"ret", "type":"return", "value":"$updated" }
+                        {
+                          "name": "apply-line",
+                          "type": "updateConcept",
+                          "scope": "Line",
+                          "input": "$input",
+                          "output": "$updated"
+                        },
+                        {
+                          "name": "ret",
+                          "type": "return",
+                          "value": "$updated"
+                        }
                       ]
                     }
                   ]
@@ -568,19 +806,12 @@ class CompiledModelFlowDefinitionProviderTest {
         return """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Order", "fields": [ { "name":"id", "type":"uuid", "id":true, "required":true } ] }
                   ],
                   "procedures": [
-                    {
-                      "name": "ScoreOrder",
-                      "steps": [
-                        { "name":"score", "type":"mapValue", "value":"$lineCount", "target":"risk" },
-                        { "name":"ret", "type":"return", "value":"$risk" }
-                      ]
-                    },
                     {
                       "name": "PackagedAction",
                       "metadata": { "untrustedExtensionEntrypoint": "src/PackagedAction.java" },
@@ -588,6 +819,12 @@ class CompiledModelFlowDefinitionProviderTest {
                     }
                   ],
                   "flows": [
+                    {
+                      "name": "ScoreOrder",
+                      "steps": [
+                        { "name":"ret", "type":"return", "value":"$input" }
+                      ]
+                    },
                     {
                       "name": "Place",
                       "input": { "concept":"Order", "mode":"create" },
@@ -603,13 +840,13 @@ class CompiledModelFlowDefinitionProviderTest {
     }
 
     @Test
-    void generatedActionNamingADeclaredProcedureRunsThatProcedureButAPackagedOneKeepsItsCapability() throws Exception {
+    void generatedActionNamingADeclaredFlowRunsThatFlowButAPackagedOneKeepsItsCapability() throws Exception {
         CompiledModelFlowDefinitionProvider provider = new CompiledModelFlowDefinitionProvider(compile(generatedActionModel()));
         FlowDefinition place = provider.getFlow("Place");
 
         FlowStepDefinition scored = place.getSteps().get(0);
         FlowStepDefinition packaged = place.getSteps().get(1);
-        assertEquals(FlowStepDefinition.Type.CALL_PROCEDURE, scored.getType());
+        assertEquals(FlowStepDefinition.Type.CALL_FLOW, scored.getType());
         assertEquals("ScoreOrder", scored.getProcedureName());
         assertEquals("$input", scored.getInputRef());
         assertEquals("$risk", scored.getOutputRef());
@@ -656,7 +893,7 @@ class CompiledModelFlowDefinitionProviderTest {
         return """
                 {
                   "namespace": "billing",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -689,30 +926,56 @@ class CompiledModelFlowDefinitionProviderTest {
         return """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
                       "name": "User",
                       "fields": [
-                        { "name":"id", "type":"uuid", "id":true },
-                        { "name":"email", "type":"string", "required":true }
+                        {
+                          "name": "id",
+                          "type": "uuid",
+                          "id": true
+                        },
+                        {
+                          "name": "email",
+                          "type": "string",
+                          "required": true
+                        }
                       ]
                     }
                   ],
                   "capabilities": [
-                    { "name":"persistence", "type":"PersistenceCapability", "operations":["save"] }
-                  ],
-                  "bindings": [
-                    { "capability":"persistence", "adapter":"%s" }
+                    {
+                      "name": "persistence",
+                      "type": "PersistenceCapability",
+                      "operations": [
+                        "save"
+                      ],
+                      "adapter": "%s"
+                    }
                   ],
                   "flows": [
                     {
-                      "name":"CreateUser",
-                      "input": { "concept":"User", "mode":"create" },
+                      "name": "CreateUser",
+                      "input": {
+                        "concept": "User",
+                        "mode": "create"
+                      },
                       "steps": [
-                        { "type":"capabilityCall", "capability":"persistence", "operation":"save", "args":["$input"], "output":"$saved" },
-                        { "type":"return", "value":"$saved" }
+                        {
+                          "type": "capabilityCall",
+                          "capability": "persistence",
+                          "operation": "save",
+                          "args": [
+                            "$input"
+                          ],
+                          "output": "$saved"
+                        },
+                        {
+                          "type": "return",
+                          "value": "$saved"
+                        }
                       ]
                     }
                   ]

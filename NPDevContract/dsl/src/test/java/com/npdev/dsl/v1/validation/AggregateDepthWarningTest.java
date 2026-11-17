@@ -38,7 +38,7 @@ class AggregateDepthWarningTest {
         }
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "f6.depthwarn", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "f6.depthwarn", "version": "1.0",
               "concepts": [ %s ],
               "aggregates": [ { "name": "Root", "root": "Root", "collections": [ %s ] } ],
               "autoPanels": [ { "aggregate": "Root" } ]

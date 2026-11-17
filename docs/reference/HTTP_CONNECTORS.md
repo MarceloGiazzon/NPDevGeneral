@@ -23,6 +23,7 @@ There is no new top-level array: the block lives on `capabilities[]` and on each
     {
       "name": "payments",
       "type": "HttpConnector",
+      "adapter": "http-connector",
       "http": {
         "baseUrl": "https://api.payments.example/v1",
         "baseUrlProperty": "paymentsBaseUrl",
@@ -58,8 +59,7 @@ There is no new top-level array: the block lives on `capabilities[]` and on each
         }
       ]
     }
-  ],
-  "bindings": [ { "capability": "payments", "adapter": "http-connector" } ]
+  ]
 }
 ```
 

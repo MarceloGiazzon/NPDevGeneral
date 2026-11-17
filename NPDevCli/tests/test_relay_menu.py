@@ -114,7 +114,7 @@ class CheckTests(unittest.TestCase):
         self.assertEqual(codes(check([{"label": "Customers", "target": "Customer"}])), [])
         panel = {**seed(), "panels": [{"name": "Dashboard"}]}
         self.assertEqual(codes(check([{"label": "Home", "target": "Dashboard"}], model=panel)), [])
-        for hidden in ({"packs": [{"from": "x"}]}, {"fragments": [{"$ref": "fragments/a.json"}]}, {"autoPanels": [{"concept": "Customer"}]}):
+        for hidden in ({"packs": [{"from": "x"}]}, {"concepts": [{"$ref": "concepts/a.json"}]}, {"autoPanels": [{"concept": "Customer"}]}):
             self.assertEqual(codes(check([{"label": "Clients", "target": "Client"}], model={**seed(), **hidden})), [], hidden)
 
     def test_a_role_the_model_does_not_declare_is_a_warning_only_when_the_model_declares_roles(self):

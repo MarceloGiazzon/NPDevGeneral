@@ -1,5 +1,6 @@
 package com.finalexec.npdev.service;
 
+import com.finalexec.acceptance.InProcessAcceptanceRunner;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.compiled.CompiledModel;
@@ -27,39 +28,132 @@ class AggregateRuntimeCommitTest {
 
     private static final String MODEL = """
         {
-          "dslVersion": "1.0.0", "namespace": "wms", "version": "1.0",
+          "dslVersion": "3.0.0",
+          "namespace": "wms",
+          "version": "1.0",
           "concepts": [
-            { "name": "Expedicao", "fields": [
-              { "name": "id", "type": "uuid", "id": true, "required": true },
-              { "name": "cliente", "type": "string" } ] },
-            { "name": "ExpedicaoItem", "fields": [
-              { "name": "id", "type": "uuid", "id": true, "required": true },
-              { "name": "expedicaoId", "type": "uuid" }, { "name": "produtoId", "type": "string" } ] },
-            { "name": "MovtoOrigem", "fields": [
-              { "name": "id", "type": "uuid", "id": true, "required": true },
-              { "name": "itemSeq", "type": "uuid" }, { "name": "local", "type": "string" } ] }
+            {
+              "name": "Expedicao",
+              "fields": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "id": true,
+                  "required": true
+                },
+                {
+                  "name": "cliente",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "ExpedicaoItem",
+              "fields": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "id": true,
+                  "required": true
+                },
+                {
+                  "name": "expedicaoId",
+                  "type": "string"
+                },
+                {
+                  "name": "produtoId",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "MovtoOrigem",
+              "fields": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "id": true,
+                  "required": true
+                },
+                {
+                  "name": "itemSeq",
+                  "type": "string"
+                },
+                {
+                  "name": "local",
+                  "type": "string"
+                }
+              ]
+            }
           ],
           "aggregates": [
-            { "name": "Expedicao", "root": "Expedicao",
+            {
+              "name": "Expedicao",
+              "root": "Expedicao",
               "collections": [
-                { "name": "itens", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned",
+                {
+                  "name": "itens",
+                  "concept": "ExpedicaoItem",
+                  "childField": "expedicaoId",
+                  "ownership": "owned",
                   "collections": [
-                    { "name": "origens", "concept": "MovtoOrigem", "childField": "itemSeq", "ownership": "owned" }
-                  ] }
-              ] }
+                    {
+                      "name": "origens",
+                      "concept": "MovtoOrigem",
+                      "childField": "itemSeq",
+                      "ownership": "owned"
+                    }
+                  ]
+                }
+              ]
+            }
           ],
-          "procedures": [
-            { "name": "GerarDemanda", "steps": [
-              { "type": "assign", "value": "$cliente", "target": "clienteEcho" }
-            ] },
-            { "name": "ProporDraft", "steps": [
-              { "type": "assign", "value": "$cliente", "target": "scratch" },
-              { "type": "return", "value": "$input" }
-            ] },
-            { "name": "LerCliente", "steps": [
-              { "type": "assign", "value": "$cliente", "target": "scratch" },
-              { "type": "return", "value": "$cliente" }
-            ] }
+          "flows": [
+            {
+              "name": "GerarDemanda",
+              "expose": "internal",
+              "steps": [
+                {
+                  "type": "map",
+                  "select": { "clienteEcho": "$input.cliente" },
+                  "output": "patch"
+                },
+                {
+                  "type": "return",
+                  "value": "$patch"
+                }
+              ]
+            },
+            {
+              "name": "ProporDraft",
+              "expose": "internal",
+              "steps": [
+                {
+                  "type": "set",
+                  "value": "$input.cliente",
+                  "output": "scratch"
+                },
+                {
+                  "type": "return",
+                  "value": "$input"
+                }
+              ]
+            },
+            {
+              "name": "LerCliente",
+              "expose": "internal",
+              "steps": [
+                {
+                  "type": "set",
+                  "value": "$input.cliente",
+                  "output": "scratch"
+                },
+                {
+                  "type": "return",
+                  "value": "$input.cliente"
+                }
+              ]
+            }
           ]
         }
         """;
@@ -153,7 +247,7 @@ class AggregateRuntimeCommitTest {
     void invokeRunsProcedureOverDraftAndReturnsPatchedDraftWithoutPersisting() throws Exception {
         Store store = new Store();
         CompiledModel model = compiledModel();
-        AggregateRuntime runtime = new AggregateRuntime(model, store, new ProcedureRunner(model, store, null, null));
+        AggregateRuntime runtime = new AggregateRuntime(model, store, wired(model, store));
         ExecutionContext ctx = ExecutionContext.anonymous();
 
         Map<String, Object> draft = new java.util.LinkedHashMap<>(Map.of(
@@ -162,10 +256,9 @@ class AggregateRuntimeCommitTest {
 
         Map<String, Object> patched = runtime.invoke("Expedicao", "GerarDemanda", draft, ctx);
 
-        // The procedure patched the draft (clienteEcho = cliente) and the original tree survives.
-        assertEquals("Alimentos", patched.get("clienteEcho"), "procedure output patched into the draft");
-        assertEquals("Alimentos", patched.get("cliente"));
-        assertEquals("E9", patched.get("id"));
+        // FORM P3-T5c: the invoked name is a flow now, so the answer is exactly the flow's return value
+        // (the old "scratch targets patch the draft" shape belonged to procedures and is gone).
+        assertEquals(Map.of("clienteEcho", "Alimentos"), patched, "the flow's return value is the whole answer");
         assertNull(patched.get("input"), "internal input echo is stripped from the returned draft");
         // invoke must NOT persist — the store is untouched until the user commits.
         assertEquals(0, store.count("Expedicao"), "invoke does not persist the root");
@@ -184,7 +277,7 @@ class AggregateRuntimeCommitTest {
     @Test
     void invokeOfAProcedureWithAReturnStepAnswersWithOnlyTheReturnedValue() throws Exception {
         CompiledModel model = compiledModel();
-        AggregateRuntime runtime = new AggregateRuntime(model, new Store(), new ProcedureRunner(model, new Store(), null, null));
+        AggregateRuntime runtime = new AggregateRuntime(model, new Store(), wired(model, new Store()));
         ExecutionContext ctx = ExecutionContext.anonymous();
         Map<String, Object> draft = new java.util.LinkedHashMap<>(Map.of("id", "E9", "cliente", "Alimentos"));
 
@@ -193,5 +286,11 @@ class AggregateRuntimeCommitTest {
 
         Map<String, Object> scalar = runtime.invoke("Expedicao", "LerCliente", draft, ctx);
         assertEquals(Map.of("return", "Alimentos"), scalar, "a non-map return comes back under 'return' alone");
+    }
+
+    private static ProcedureRunner wired(CompiledModel model, ConceptGateway gateway) {
+        ProcedureRunner runner = new ProcedureRunner(model, gateway, null, null);
+        InProcessAcceptanceRunner.attachKernel(runner, model, null, gateway, null);
+        return runner;
     }
 }

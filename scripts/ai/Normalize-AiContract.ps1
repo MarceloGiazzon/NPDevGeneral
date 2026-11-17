@@ -416,7 +416,7 @@ function New-OfficialModel {
     return [ordered]@{
         '$schema' = "NPDevContract/schemas/model.schema.json"
         namespace = "npdev.ai.beta." + ($ScenarioId -replace "-", ".")
-        dslVersion = "1.0.0"
+        dslVersion = "3.0.0"
         version = "1.0"
         concepts = $concepts
         capabilities = @(
@@ -424,16 +424,6 @@ function New-OfficialModel {
                 name = "persistence"
                 type = "PersistenceCapability"
                 operations = @("save", "unique", "findById")
-            }
-        )
-        bindings = @(
-            [ordered]@{
-                capability = "persistence"
-                adapter = "repository"
-            },
-            [ordered]@{
-                capability = "eventBus"
-                adapter = "inproc"
             }
         )
         events = $events

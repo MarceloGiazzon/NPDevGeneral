@@ -36,7 +36,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_PATH = REPO_ROOT / "schemas" / "ai" / "change-impact-report.schema.json"
 
 MODEL_JSON = {
-    "dslVersion": "1.0.0",
+    "dslVersion": "3.0.0",
     "version": "1.0",
     "namespace": "demo",
     "concepts": [
@@ -45,7 +45,7 @@ MODEL_JSON = {
 }
 
 PACK_JSON = {
-    "dslVersion": "1.0.0",
+    "dslVersion": "3.0.0",
     "pack": "widgets",
     "version": "1.0.0",
     "concepts": [{"name": "Widget", "fields": [{"name": "id", "type": "string"}]}],
@@ -287,7 +287,7 @@ class DocumentKindDetectionTest(unittest.TestCase):
         self.assertEqual("pack", npdev_cli._document_kind({"pack": "widgets", "version": "1.0.0"}, Path("x")))
 
     def test_no_pack_key_means_model(self):
-        self.assertEqual("model", npdev_cli._document_kind({"dslVersion": "1.0.0", "version": "1.0"}, Path("x")))
+        self.assertEqual("model", npdev_cli._document_kind({"dslVersion": "3.0.0", "version": "1.0"}, Path("x")))
 
     def test_a_blank_pack_string_still_means_model(self):
         self.assertEqual("model", npdev_cli._document_kind({"pack": "  ", "concepts": []}, Path("x")))

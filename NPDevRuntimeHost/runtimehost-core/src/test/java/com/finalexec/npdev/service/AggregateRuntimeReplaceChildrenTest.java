@@ -30,8 +30,8 @@ class AggregateRuntimeReplaceChildrenTest {
                         List.of())),
                 null, Map.of(), null);
         return new CompiledModel("demo.mosaic", "1.0.0", "1.0", Map.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(),
                 List.of(mosaic));
     }
 

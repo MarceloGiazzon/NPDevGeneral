@@ -90,6 +90,21 @@ public final class ComputedExpression {
         default String describeFieldPath() {
             return null;
         }
+
+        /** FORM P3-T2: this node as expression text, for error messages that name a sub-expression. */
+        default String render() {
+            return "?";
+        }
+
+        /** FORM P3-T2: the static type of this node (see {@link ExpressionTypeChecker}); ANY when it cannot be told. */
+        default ExprType typeOf(ExpressionTypeChecker.Session session) {
+            return ExprType.ANY;
+        }
+
+        /** FORM P3-T2: true only for a {@code param => body} lambda. */
+        default boolean isLambda() {
+            return false;
+        }
     }
 
     /** Parse an expression into an AST, or throw {@link ExpressionException}. */
@@ -142,6 +157,18 @@ public final class ComputedExpression {
                 args.add(portable(arg));
             }
             out.put("args", args);
+        } else if (node instanceof ListLiteral list) {
+            out.put("k", "list");
+            List<Object> items = new ArrayList<>();
+            for (Node item : list.items()) {
+                items.add(portable(item));
+            }
+            out.put("items", items);
+        } else if (node instanceof Ternary ternary) {
+            out.put("k", "tern");
+            out.put("c", portable(ternary.cond()));
+            out.put("a", portable(ternary.whenTrue()));
+            out.put("b", portable(ternary.whenFalse()));
         } else {
             out.put("k", "lambda");
         }
@@ -170,6 +197,33 @@ public final class ComputedExpression {
             return parse(expression).eval(vars);
         } finally {
             CURRENT_FUNCTIONS.set(previous);
+        }
+    }
+
+    /**
+     * FORM P3-T2: strict evaluation, for contexts where a silent default hides a bug (writes,
+     * invariants). {@code - * / %}, unary minus and {@code +} with a null operand, a non-numeric operand
+     * of {@code - * / %}, and division or remainder by zero throw an {@link ExpressionException} naming the
+     * sub-expression, where {@link #evaluate} (lenient) treats null as 0 and {@code x / 0} as 0.
+     */
+    public static Object evaluateStrict(String expression, Map<String, Object> vars, FunctionRegistry functions) {
+        Boolean previous = STRICT.get();
+        STRICT.set(Boolean.TRUE);
+        try {
+            return evaluate(expression, vars, functions);
+        } finally {
+            STRICT.set(previous);
+        }
+    }
+
+    /** {@link #evaluateBoolean(String, Map, FunctionRegistry)} under {@link #evaluateStrict} rules. */
+    public static boolean evaluateBooleanStrict(String expression, Map<String, Object> vars, FunctionRegistry functions) {
+        Boolean previous = STRICT.get();
+        STRICT.set(Boolean.TRUE);
+        try {
+            return evaluateBoolean(expression, vars, functions);
+        } finally {
+            STRICT.set(previous);
         }
     }
 
@@ -298,6 +352,14 @@ public final class ComputedExpression {
             return value;
         }
 
+        public String render() {
+            return value instanceof String s ? "'" + s + "'" : String.valueOf(value);
+        }
+
+        public ExprType typeOf(ExpressionTypeChecker.Session session) {
+            return session.literal(value);
+        }
+
         public boolean looksBoolean() {
             return value instanceof Boolean;
         }
@@ -332,12 +394,32 @@ public final class ComputedExpression {
         public String describeFieldPath() {
             return name;
         }
+
+        public String render() {
+            return name;
+        }
+
+        public ExprType typeOf(ExpressionTypeChecker.Session session) {
+            return session.variable(name);
+        }
     }
 
     private record Unary(String op, Node operand) implements Node {
         public Object eval(Map<String, Object> vars) {
             Object v = operand.eval(vars);
-            return "!".equals(op) ? !truthy(v) : number(-toNumber(v));
+            if ("!".equals(op)) {
+                return !truthy(v);
+            }
+            requireNumeric(this, operand, v);
+            return normalize(dec(v).negate());
+        }
+
+        public String render() {
+            return op + operand.render();
+        }
+
+        public ExprType typeOf(ExpressionTypeChecker.Session session) {
+            return session.unary(this, op, operand, operand.typeOf(session));
         }
 
         public boolean looksBoolean() {
@@ -357,12 +439,106 @@ public final class ComputedExpression {
         }
     }
 
+    /** FORM P3-T2: {@code ['A', 'B']}. Evaluates to a fresh {@link java.util.ArrayList}. */
+    private record ListLiteral(List<Node> items) implements Node {
+        public String render() {
+            return "[" + items.stream().map(Node::render).collect(java.util.stream.Collectors.joining(", ")) + "]";
+        }
+
+        public ExprType typeOf(ExpressionTypeChecker.Session session) {
+            items.forEach(item -> item.typeOf(session));
+            return ExprType.LIST;
+        }
+
+        public Object eval(Map<String, Object> vars) {
+            List<Object> out = new ArrayList<>(items.size());
+            for (Node item : items) {
+                out.add(item.eval(vars));
+            }
+            return out;
+        }
+
+        public void collectFields(java.util.Set<String> out) {
+            items.forEach(i -> i.collectFields(out));
+        }
+
+        public void collectFunctionCalls(java.util.Set<String> out) {
+            items.forEach(i -> i.collectFunctionCalls(out));
+        }
+
+        public void collectOrderedComparisons(List<OrderedComparison> out) {
+            items.forEach(i -> i.collectOrderedComparisons(out));
+        }
+    }
+
+    /** FORM P3-T2: {@code cond ? a : b}; only the chosen branch is evaluated. */
+    private record Ternary(Node cond, Node whenTrue, Node whenFalse) implements Node {
+        public String render() {
+            return cond.render() + " ? " + whenTrue.render() + " : " + whenFalse.render();
+        }
+
+        public ExprType typeOf(ExpressionTypeChecker.Session session) {
+            return session.ternary(this, cond.typeOf(session), whenTrue.typeOf(session), whenFalse.typeOf(session));
+        }
+
+        public Object eval(Map<String, Object> vars) {
+            return truthy(cond.eval(vars)) ? whenTrue.eval(vars) : whenFalse.eval(vars);
+        }
+
+        public boolean looksBoolean() {
+            return whenTrue.looksBoolean() && whenFalse.looksBoolean();
+        }
+
+        public void collectFields(java.util.Set<String> out) {
+            cond.collectFields(out);
+            whenTrue.collectFields(out);
+            whenFalse.collectFields(out);
+        }
+
+        public void collectFunctionCalls(java.util.Set<String> out) {
+            cond.collectFunctionCalls(out);
+            whenTrue.collectFunctionCalls(out);
+            whenFalse.collectFunctionCalls(out);
+        }
+
+        public void collectOrderedComparisons(List<OrderedComparison> out) {
+            cond.collectOrderedComparisons(out);
+            whenTrue.collectOrderedComparisons(out);
+            whenFalse.collectOrderedComparisons(out);
+        }
+    }
+
+    /** {@code in}: membership of {@code item} in a list, by the same loose equality as {@code ==}. A non-list right side is false. */
+    private static boolean contains(Object collection, Object item) {
+        if (!(collection instanceof java.util.Collection<?> c)) {
+            return false;
+        }
+        for (Object element : c) {
+            if (equalsLoose(item, element)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static final java.util.Set<String> ORDERED_OPS = java.util.Set.of("<", "<=", ">", ">=");
 
     private static final java.util.Set<String> BOOLEAN_OPS = java.util.Set.of(
-            "&&", "||", "==", "!=", "<", "<=", ">", ">=");
+            "&&", "||", "==", "!=", "<", "<=", ">", ">=", "in", "not in");
 
     private record Binary(String op, Node left, Node right) implements Node {
+        public String render() {
+            return wrap(left) + " " + op + " " + wrap(right);
+        }
+
+        private static String wrap(Node child) {
+            return child instanceof Binary || child instanceof Ternary ? "(" + child.render() + ")" : child.render();
+        }
+
+        public ExprType typeOf(ExpressionTypeChecker.Session session) {
+            return session.binary(this, op, left, left.typeOf(session), right, right.typeOf(session));
+        }
+
         public boolean looksBoolean() {
             return BOOLEAN_OPS.contains(op);
         }
@@ -389,21 +565,45 @@ public final class ComputedExpression {
             switch (op) {
                 case "&&": return truthy(left.eval(vars)) && truthy(right.eval(vars));
                 case "||": return truthy(left.eval(vars)) || truthy(right.eval(vars));
+                case "??": {
+                    Object first = left.eval(vars);
+                    return first != null ? first : right.eval(vars);
+                }
                 default: break;
             }
             Object l = left.eval(vars);
             Object r = right.eval(vars);
             switch (op) {
                 case "+":
+                    // Strict: a null side is an error (use `x ?? 0` or `x ?? ''`), never "" or 0.
+                    if (STRICT.get() && (l == null || r == null)) {
+                        throw strictFailure(this, "null operand `" + (l == null ? left : right).render() + "`");
+                    }
                     // Arithmetic when both sides are numeric (incl. numeric strings); else concatenate.
                     if (isNumericLike(l) && isNumericLike(r)) {
-                        return number(toNumber(l) + toNumber(r));
+                        return normalize(dec(l).add(dec(r)));
                     }
                     return stringify(l) + stringify(r);
-                case "-": return number(toNumber(l) - toNumber(r));
-                case "*": return number(toNumber(l) * toNumber(r));
-                case "/": { double d = toNumber(r); return number(d == 0 ? 0 : toNumber(l) / d); }
-                case "%": { double d = toNumber(r); return number(d == 0 ? 0 : toNumber(l) % d); }
+                case "-": requireNumeric(this, left, l); requireNumeric(this, right, r);
+                    return normalize(dec(l).subtract(dec(r)));
+                case "*": requireNumeric(this, left, l); requireNumeric(this, right, r);
+                    return normalize(dec(l).multiply(dec(r)));
+                case "/": case "%": {
+                    requireNumeric(this, left, l);
+                    requireNumeric(this, right, r);
+                    java.math.BigDecimal divisor = dec(r);
+                    if (divisor.signum() == 0) {
+                        if (STRICT.get()) {
+                            throw strictFailure(this, "division by zero");
+                        }
+                        return 0L;
+                    }
+                    return normalize("/".equals(op)
+                            ? dec(l).divide(divisor, java.math.MathContext.DECIMAL64)
+                            : dec(l).remainder(divisor));
+                }
+                case "in": return contains(r, l);
+                case "not in": return !contains(r, l);
                 case "==": return equalsLoose(l, r);
                 case "!=": return !equalsLoose(l, r);
                 case "<": return ordered(l, r, c -> c < 0);
@@ -424,12 +624,27 @@ public final class ComputedExpression {
      * uniqueBy}'s per-item key-field-name argument can control their own evaluation.
      */
     private record Call(String name, List<Node> args) implements Node {
+        public String render() {
+            return name + "(" + args.stream().map(Node::render).collect(java.util.stream.Collectors.joining(", ")) + ")";
+        }
+
+        public ExprType typeOf(ExpressionTypeChecker.Session session) {
+            return session.call(this, name, args);
+        }
+
         public Object eval(Map<String, Object> vars) {
             ExprFunction fn = CURRENT_FUNCTIONS.get().lookup(name);
             if (fn == null) {
                 throw new ExpressionException("unknown function: " + name);
             }
-            return fn.call(args, vars);
+            Object result = fn.call(args, vars);
+            // FORM P3-T5c: the date functions answer null for an operand that is not a date (a field expression stays
+            // soft). Under strict evaluation -- the flow `set` step, which replaced computeValue's
+            // COMPUTE_VALUE_INVALID_OPERAND -- that null is an error, never a silently stored empty value.
+            if (result == null && STRICT.get() && ("addDays".equals(name) || "daysBetween".equals(name))) {
+                throw strictFailure(this, "operand is not a date");
+            }
+            return result;
         }
 
         public boolean looksBoolean() {
@@ -477,6 +692,18 @@ public final class ComputedExpression {
      * layered over the outer variables.
      */
     private record Lambda(String param, Node body) implements Node {
+        public String render() {
+            return param + " => " + body.render();
+        }
+
+        public ExprType typeOf(ExpressionTypeChecker.Session session) {
+            return session.lambda(param, body);
+        }
+
+        public boolean isLambda() {
+            return true;
+        }
+
         public Object eval(Map<String, Object> vars) {
             throw new ExpressionException("lambda expression used outside a function-call argument");
         }
@@ -539,7 +766,7 @@ public final class ComputedExpression {
 
     // ---- Coercion ----------------------------------------------------------
 
-    private static boolean isNumericLike(Object v) {
+    static boolean isNumericLike(Object v) {
         if (v instanceof Number) {
             return true;
         }
@@ -554,23 +781,6 @@ public final class ComputedExpression {
         return false;
     }
 
-    private static double toNumber(Object v) {
-        if (v instanceof Number n) {
-            return n.doubleValue();
-        }
-        if (v instanceof Boolean b) {
-            return b ? 1 : 0;
-        }
-        if (v instanceof String s) {
-            try {
-                return Double.parseDouble(s.trim());
-            } catch (NumberFormatException ignored) {
-                return 0;
-            }
-        }
-        return 0;
-    }
-
     /**
      * REG-269: the relational operators ({@code < <= > >=}). Two numeric(-looking) operands compare as
      * numbers, as before. Two temporal operands -- a {@code LocalDate}/{@code LocalDateTime}/
@@ -583,7 +793,7 @@ public final class ComputedExpression {
      */
     private static boolean ordered(Object l, Object r, java.util.function.IntPredicate test) {
         if (isNumericLike(l) && isNumericLike(r)) {
-            return test.test(Double.compare(toNumber(l), toNumber(r)));
+            return test.test(dec(l).compareTo(dec(r)));
         }
         java.time.Instant li = toInstant(l);
         java.time.Instant ri = toInstant(r);
@@ -598,7 +808,7 @@ public final class ComputedExpression {
         if (li != null || ri != null) {
             return false;
         }
-        return test.test(Double.compare(toNumber(l), toNumber(r)));
+        return test.test(dec(l).compareTo(dec(r)));
     }
 
     private static java.time.LocalDate utcDay(java.time.Instant instant) {
@@ -617,7 +827,7 @@ public final class ComputedExpression {
             java.util.regex.Pattern.compile("^\\d{4}-\\d{2}-\\d{2}([T ].*)?$");
 
     /** @return the instant a temporal value denotes (a date at 00:00 UTC, a local date-time as UTC), or null. */
-    private static java.time.Instant toInstant(Object v) {
+    static java.time.Instant toInstant(Object v) {
         if (v == null) {
             return null;
         }
@@ -664,12 +874,85 @@ public final class ComputedExpression {
         return null;
     }
 
-    /** Return a whole double as Long (so totals render without a trailing .0), else Double. */
-    private static Object number(double d) {
-        if (d == Math.rint(d) && !Double.isInfinite(d)) {
-            return (long) d;
+    /**
+     * FORM P3-T2: a decimal result as the narrowest honest type -- a whole number that fits is a
+     * {@code Long} (so totals render without a trailing zero), anything else a {@link java.math.BigDecimal}
+     * with trailing zeros stripped. Replaces the old double result, so {@code 0.1 + 0.2} is exactly 0.3.
+     */
+    static Object normalize(java.math.BigDecimal b) {
+        if (b.signum() == 0) {
+            return 0L;
         }
-        return d;
+        java.math.BigDecimal s = b.stripTrailingZeros();
+        if (s.scale() <= 0) {
+            try {
+                return s.longValueExact();
+            } catch (ArithmeticException tooBig) {
+                return s;
+            }
+        }
+        return s;
+    }
+
+    /**
+     * Lenient numeric coercion to a decimal: a number as itself (a double through its shortest decimal
+     * text, never its binary expansion), a boolean as 1/0, text through BigDecimal then the legacy
+     * {@code Double.parseDouble} grammar ({@code "12d"}), everything else -- and a non-finite double -- 0.
+     */
+    static java.math.BigDecimal dec(Object v) {
+        if (v instanceof java.math.BigDecimal b) {
+            return b;
+        }
+        if (v instanceof Long || v instanceof Integer || v instanceof Short || v instanceof Byte) {
+            return java.math.BigDecimal.valueOf(((Number) v).longValue());
+        }
+        if (v instanceof java.math.BigInteger bi) {
+            return new java.math.BigDecimal(bi);
+        }
+        if (v instanceof Float f) {
+            return f.isNaN() || f.isInfinite() ? java.math.BigDecimal.ZERO : new java.math.BigDecimal(f.toString());
+        }
+        if (v instanceof Number n) {
+            double d = n.doubleValue();
+            return Double.isNaN(d) || Double.isInfinite(d) ? java.math.BigDecimal.ZERO : java.math.BigDecimal.valueOf(d);
+        }
+        if (v instanceof Boolean b) {
+            return b ? java.math.BigDecimal.ONE : java.math.BigDecimal.ZERO;
+        }
+        if (v instanceof String s) {
+            String t = s.trim();
+            try {
+                return new java.math.BigDecimal(t);
+            } catch (NumberFormatException notDecimal) {
+                try {
+                    double d = Double.parseDouble(t);
+                    return Double.isNaN(d) || Double.isInfinite(d) ? java.math.BigDecimal.ZERO : java.math.BigDecimal.valueOf(d);
+                } catch (NumberFormatException notNumber) {
+                    return java.math.BigDecimal.ZERO;
+                }
+            }
+        }
+        return java.math.BigDecimal.ZERO;
+    }
+
+    /** FORM P3-T2: true while {@link #evaluateStrict} runs on this thread. */
+    private static final ThreadLocal<Boolean> STRICT = ThreadLocal.withInitial(() -> Boolean.FALSE);
+
+    private static ExpressionException strictFailure(Node at, String what) {
+        return new ExpressionException(what + " in `" + at.render() + "`");
+    }
+
+    /** Strict operand check for {@code - * / %} and unary minus: a null or non-numeric operand is an error, never 0. */
+    private static void requireNumeric(Node at, Node operandNode, Object value) {
+        if (!STRICT.get()) {
+            return;
+        }
+        if (value == null) {
+            throw strictFailure(at, "null operand `" + operandNode.render() + "`");
+        }
+        if (value instanceof Boolean || !isNumericLike(value)) {
+            throw strictFailure(at, "operand `" + operandNode.render() + "` is not a number (" + value + ")");
+        }
     }
 
     private static boolean truthy(Object v) {
@@ -695,7 +978,7 @@ public final class ComputedExpression {
         // the same value at different scales. Found live: a groupBy/aggregate proof app's invariant
         // rejected two decimal fields holding numerically-equal, differently-scaled values.
         if (isNumericLike(l) && isNumericLike(r)) {
-            return toNumber(l) == toNumber(r);
+            return dec(l).compareTo(dec(r)) == 0;
         }
         return stringify(l).equals(stringify(r));
     }
@@ -766,7 +1049,7 @@ public final class ComputedExpression {
             // multi-char operators first
             String two = i + 1 < n ? s.substring(i, i + 2) : "";
             if (two.equals("==") || two.equals("!=") || two.equals("<=") || two.equals(">=")
-                    || two.equals("&&") || two.equals("||") || two.equals("=>")) {
+                    || two.equals("&&") || two.equals("||") || two.equals("=>") || two.equals("??")) {
                 tokens.add(new Token("OP", two));
                 i += 2;
                 continue;
@@ -776,8 +1059,9 @@ public final class ComputedExpression {
                 i++;
                 continue;
             }
-            if ("+-*/%<>!()".indexOf(c) >= 0) {
-                tokens.add(new Token(c == '(' ? "LP" : c == ')' ? "RP" : "OP", String.valueOf(c)));
+            if ("+-*/%<>!()?:[]".indexOf(c) >= 0) {
+                tokens.add(new Token(c == '(' ? "LP" : c == ')' ? "RP" : c == '[' ? "LB" : c == ']' ? "RB" : "OP",
+                        String.valueOf(c)));
                 i++;
                 continue;
             }
@@ -798,7 +1082,7 @@ public final class ComputedExpression {
         }
 
         Node parseAll() {
-            Node node = parseOr();
+            Node node = parseTernary();
             expect("EOF");
             return node;
         }
@@ -824,6 +1108,27 @@ public final class ComputedExpression {
                 throw new ExpressionException("expected " + type + " but found '" + peek().text() + "'");
             }
             pos++;
+        }
+
+        /** expr := coalesce ( '?' expr ':' expr )? -- the lowest precedence. */
+        private Node parseTernary() {
+            Node cond = parseCoalesce();
+            if (matchOp("?")) {
+                Node whenTrue = parseTernary();
+                if (!matchOp(":")) {
+                    throw new ExpressionException("expected ':' in a ?: expression but found '" + peek().text() + "'");
+                }
+                return new Ternary(cond, whenTrue, parseTernary());
+            }
+            return cond;
+        }
+
+        private Node parseCoalesce() {
+            Node left = parseOr();
+            while (matchOp("??")) {
+                left = new Binary("??", left, parseOr());
+            }
+            return left;
         }
 
         private Node parseOr() {
@@ -858,6 +1163,16 @@ public final class ComputedExpression {
                     || peek().text().equals(">") || peek().text().equals(">="))) {
                 String op = next().text();
                 left = new Binary(op, left, parseAdditive());
+            }
+            // 'in' / 'not in' are infix only; a field called `in` still works anywhere else.
+            if (peek().type().equals("IDENT") && peek().text().equals("in")) {
+                next();
+                return new Binary("in", left, parseAdditive());
+            }
+            if (peek().type().equals("IDENT") && peek().text().equals("not")
+                    && tokens.get(pos + 1).type().equals("IDENT") && tokens.get(pos + 1).text().equals("in")) {
+                pos += 2;
+                return new Binary("not in", left, parseAdditive());
             }
             return left;
         }
@@ -895,7 +1210,7 @@ public final class ComputedExpression {
                 case "NUM":
                     next();
                     try {
-                        return new Literal(number(Double.parseDouble(t.text())));
+                        return new Literal(normalize(new java.math.BigDecimal(t.text())));
                     } catch (NumberFormatException e) {
                         throw new ExpressionException("invalid number: " + t.text());
                     }
@@ -915,9 +1230,22 @@ public final class ComputedExpression {
                     }
                 case "LP":
                     next();
-                    Node inner = parseOr();
+                    Node inner = parseTernary();
                     expect("RP");
                     return inner;
+                case "LB": {
+                    next();
+                    List<Node> items = new ArrayList<>();
+                    if (!peek().type().equals("RB")) {
+                        items.add(parseTernary());
+                        while (peek().type().equals("COMMA")) {
+                            next();
+                            items.add(parseTernary());
+                        }
+                    }
+                    expect("RB");
+                    return new ListLiteral(items);
+                }
                 default:
                     throw new ExpressionException("unexpected token '" + t.text() + "' in expression");
             }
@@ -969,10 +1297,10 @@ public final class ComputedExpression {
                     && tokens.get(pos + 1).text().equals("=>")) {
                 String param = next().text();
                 next(); // consume =>
-                Node body = parseOr();
+                Node body = parseTernary();
                 return new Lambda(param, body);
             }
-            return parseOr();
+            return parseTernary();
         }
     }
 }

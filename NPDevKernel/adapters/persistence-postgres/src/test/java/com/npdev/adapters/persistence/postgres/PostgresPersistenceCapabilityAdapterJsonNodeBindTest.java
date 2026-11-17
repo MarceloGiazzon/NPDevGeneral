@@ -34,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class PostgresPersistenceCapabilityAdapterJsonNodeBindTest {
 
     private static final String MODEL = "{"
-            + "\"dslVersion\":\"1.0.0\",\"namespace\":\"jsonnode.test\",\"version\":\"1.0\","
+            + "\"dslVersion\":\"3.0.0\",\"namespace\":\"jsonnode.test\",\"version\":\"1.0\","
             + "\"concepts\":[{\"name\":\"Doc\",\"fields\":["
             + "{\"name\":\"id\",\"type\":\"string\",\"id\":true,\"required\":true},"
             + "{\"name\":\"payload\",\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"integer\"},\"b\":{\"type\":\"string\"}}}]}]}";

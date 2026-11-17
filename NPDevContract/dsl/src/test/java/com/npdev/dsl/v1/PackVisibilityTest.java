@@ -36,7 +36,7 @@ class PackVisibilityTest {
 
     private static final String PACK_WITH_PRIVATE_DOMAIN_TYPE = """
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "identity",
               "version": "1.0.0",
               "domainTypes": [
@@ -52,7 +52,7 @@ class PackVisibilityTest {
         write("packs/identity/pack.json", PACK_WITH_PRIVATE_DOMAIN_TYPE);
         Path model = write("model.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "$ref": "packs/identity/pack.json" } ],
                   "concepts": [
@@ -75,7 +75,7 @@ class PackVisibilityTest {
         write("packs/identity/pack.json", PACK_WITH_PRIVATE_DOMAIN_TYPE);
         Path model = write("model.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "$ref": "packs/identity/pack.json" } ],
                   "concepts": [
@@ -97,7 +97,7 @@ class PackVisibilityTest {
         write("packs/identity/pack.json", PACK_WITH_PRIVATE_DOMAIN_TYPE);
         Path model = write("model.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "$ref": "packs/identity/pack.json" } ],
                   "concepts": [
@@ -119,7 +119,7 @@ class PackVisibilityTest {
     void packsOwnMembersMayReferenceItsPrivateMembersFreely() throws Exception {
         write("packs/identity/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "identity",
                   "version": "1.0.0",
                   "domainTypes": [
@@ -136,7 +136,7 @@ class PackVisibilityTest {
                 """);
         Path model = write("model.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "$ref": "packs/identity/pack.json" } ]
                 }
@@ -153,7 +153,7 @@ class PackVisibilityTest {
         write("packs/identity/pack.json", PACK_WITH_PRIVATE_DOMAIN_TYPE);
         write("packs/billing/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "billing",
                   "version": "1.0.0",
                   "concepts": [
@@ -166,7 +166,7 @@ class PackVisibilityTest {
                 """);
         Path model = write("model.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [
                     { "$ref": "packs/identity/pack.json" },
@@ -185,7 +185,7 @@ class PackVisibilityTest {
     void specializingAPrivateConceptRefusesUnlessDeclaredAsAnExtensionPoint() throws Exception {
         write("packs/identity/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "identity",
                   "version": "1.0.0",
                   "concepts": [
@@ -198,7 +198,7 @@ class PackVisibilityTest {
                 """);
         Path model = write("model.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "$ref": "packs/identity/pack.json" } ],
                   "concepts": [
@@ -218,7 +218,7 @@ class PackVisibilityTest {
     void specializingADeclaredExtensionPointSucceedsDespiteBeingPrivate() throws Exception {
         write("packs/identity/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "identity",
                   "version": "1.0.0",
                   "concepts": [
@@ -232,7 +232,7 @@ class PackVisibilityTest {
                 """);
         Path model = write("model.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "$ref": "packs/identity/pack.json" } ],
                   "concepts": [

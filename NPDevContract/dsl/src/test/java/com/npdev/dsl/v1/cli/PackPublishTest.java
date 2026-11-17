@@ -160,13 +160,13 @@ class PackPublishTest {
     @Test
     void gateModeStillWorksForOldNewPackValidation() throws Exception {
         Path oldPack = writeJson("old.json", """
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                   "concepts": [ { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true }
                   ] } ] }
                 """);
         Path newPack = writeJson("new.json", """
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.1.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.1.0",
                   "concepts": [ { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "nickname", "type": "string", "required": false }
@@ -188,14 +188,14 @@ class PackPublishTest {
     @Test
     void gateModeRefusesInsufficientBump() throws Exception {
         Path oldPack = writeJson("old.json", """
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                   "concepts": [ { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "sku", "type": "string", "required": true }
                   ] } ] }
                 """);
         Path newPack = writeJson("new.json", """
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.1",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.1",
                   "concepts": [ { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true }
                   ] } ] }
@@ -245,7 +245,7 @@ class PackPublishTest {
         Path packDir = temp.resolve(packId);
         Files.createDirectories(packDir);
         Files.writeString(packDir.resolve("pack.json"), """
-                { "dslVersion": "1.0.0", "pack": "%s", "version": "%s",
+                { "dslVersion": "3.0.0", "pack": "%s", "version": "%s",
                   "concepts": [ { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true }
                   ] } ] }

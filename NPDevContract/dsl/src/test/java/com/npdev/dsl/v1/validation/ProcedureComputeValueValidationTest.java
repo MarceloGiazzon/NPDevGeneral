@@ -21,7 +21,7 @@ class ProcedureComputeValueValidationTest {
     private static String modelJson(String stepJson) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.qcomputevalue", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.qcomputevalue", "version": "1.0",
               "concepts": [
                 { "name": "Order", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }

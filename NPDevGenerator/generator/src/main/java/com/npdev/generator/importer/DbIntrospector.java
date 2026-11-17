@@ -192,7 +192,7 @@ public final class DbIntrospector {
         tables.forEach(t -> tableByName.put(t.name(), t));
 
         ObjectNode model = MAPPER.createObjectNode();
-        model.put("dslVersion", "1.0.0");
+        model.put("dslVersion", "3.0.0");
         model.put("namespace", namespace);
         model.put("version", "0.1.0");
         ArrayNode concepts = model.putArray("concepts");

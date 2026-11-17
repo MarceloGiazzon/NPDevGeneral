@@ -31,10 +31,10 @@ from test_relay_apply import FENCE, PASSED, SEED_MODEL, ApplyCase, manifest  # n
 def split_model(model: dict) -> tuple:
     """The seed model as model.json + one fragment per concept: (model.json dict, {path: fragment dict})."""
     root = {key: value for key, value in model.items() if key != "concepts"}
-    root["fragments"], fragments = [], {}
+    root["concepts"], fragments = [], {}
     for concept in model["concepts"]:
         path = f"fragments/{concept['name'].lower()}.json"
-        root["fragments"].append({"$ref": path})
+        root["concepts"].append({"$ref": path})
         fragments[path] = {"concepts": [concept]}
     return root, fragments
 
@@ -252,7 +252,7 @@ class SplitChangeTests(SplitAnswerCase):
         self.assertTrue(done["ok"], done)
         self.assertEqual(done["files"], ["fragments/customer.json", "fragments/order.json", "model.json"])
         written = json.loads((app / "model.json").read_text(encoding="utf-8"))
-        self.assertEqual([r["$ref"] for r in written["fragments"]], ["fragments/customer.json", "fragments/order.json"])
+        self.assertEqual([r["$ref"] for r in written["concepts"]], ["fragments/customer.json", "fragments/order.json"])
         self.assertIn("phone", json.dumps(json.loads((app / "fragments" / "customer.json").read_text(encoding="utf-8"))))
         self.assertEqual(Path(done["backupPath"]).read_bytes(), before["model.json"])  # model.json's own backup still there
 
@@ -319,7 +319,7 @@ class SplitChangeTests(SplitAnswerCase):
             (app / path).write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
         code = self.start(app, "Add products")
         changed = copy.deepcopy(root)
-        changed["concepts"] = [{"name": "Product", "fields": [
+        changed["concepts"] = [*root["concepts"], {"name": "Product", "fields": [
             {"name": "id", "type": "uuid", "id": True, "required": True}, {"name": "title", "type": "string"}]}]
         result = engine.ingest(code, answer_of(code, 1, {"model.json": changed, "npdev-submission.json": manifest()}), source="paste")
         self.assertEqual(result["outcome"], "READY", result["findings"])

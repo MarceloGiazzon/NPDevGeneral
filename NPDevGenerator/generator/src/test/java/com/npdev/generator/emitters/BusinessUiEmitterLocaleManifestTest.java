@@ -36,7 +36,7 @@ public class BusinessUiEmitterLocaleManifestTest {
 
     private static final String LOCALIZED = """
             {
-              "namespace": "locale.demo", "dslVersion": "1.0.0", "version": "1.0",
+              "namespace": "locale.demo", "dslVersion": "3.0.0", "version": "1.0",
               "concepts": [
                 { "name": "Order",
                   "fields": [
@@ -50,7 +50,7 @@ public class BusinessUiEmitterLocaleManifestTest {
 
     private static final String PLAIN = """
             {
-              "namespace": "locale.plain", "dslVersion": "1.0.0", "version": "1.0",
+              "namespace": "locale.plain", "dslVersion": "3.0.0", "version": "1.0",
               "concepts": [
                 { "name": "Note", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true },
                                               { "name": "body", "type": "string" } ] }
@@ -97,7 +97,7 @@ public class BusinessUiEmitterLocaleManifestTest {
 
     private static final String PORTUGUESE_APP = """
             {
-              "namespace": "locale.pt", "dslVersion": "1.0.0", "version": "1.0",
+              "namespace": "locale.pt", "dslVersion": "3.0.0", "version": "1.0",
               "settings": { "locale": "pt-BR" },
               "concepts": [
                 { "name": "Note", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }

@@ -2,7 +2,6 @@ package com.npdev.dsl.v1.validation;
 
 import com.npdev.dsl.v1.ast.CapabilityAst;
 import com.npdev.dsl.v1.ast.ConceptAccessAst;
-import com.npdev.dsl.v1.ast.CapabilityBindingAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
 import com.npdev.dsl.v1.ast.DomainTypeAst;
 import com.npdev.dsl.v1.ast.CapabilityPolicyAst;
@@ -17,9 +16,6 @@ import com.npdev.dsl.v1.ast.FlowScheduleAst;
 import com.npdev.dsl.v1.ast.InvariantAst;
 import com.npdev.dsl.v1.ast.LifecycleAst;
 import com.npdev.dsl.v1.ast.ModelAst;
-import com.npdev.dsl.v1.ast.OrchestrationActionAst;
-import com.npdev.dsl.v1.ast.OrchestrationAst;
-import com.npdev.dsl.v1.ast.OrchestrationTriggerAst;
 import com.npdev.dsl.v1.ast.AggregateAst;
 import com.npdev.dsl.v1.ast.AggregateCollectionAst;
 import com.npdev.dsl.v1.ast.AutoPanelAst;
@@ -42,7 +38,6 @@ import com.npdev.dsl.v1.ast.ProcedureParameterAst;
 import com.npdev.dsl.v1.ast.ProcedureStepAst;
 import com.npdev.dsl.v1.ast.QueryAst;
 import com.npdev.dsl.v1.ast.ReferenceSemanticsAst;
-import com.npdev.dsl.v1.ast.RuleProfileAst;
 import com.npdev.dsl.v1.ast.TruthLevel;
 import com.npdev.dsl.v1.ast.SchemaAst;
 import com.npdev.dsl.v1.ast.StateMachineStateAst;
@@ -244,8 +239,9 @@ final class LifecycleValidation {
                 } else if (!isSupportedLifecycleGuard(transition.getGuard())) {
                     errors.add("Entity " + conceptName + " lifecycle transition " + from + " -> " + to
                             + ": guard uses an unsupported expression format");
-                } else if (transition.getGuard().contains("$user")) {
-                    // REG-285: same evaluator as access rules, same unbound-name hole.
+                } else {
+                    // REG-285: same evaluator as access rules, same unbound-name hole. FORM P3-T3: every
+                    // guard goes through it now, so the check no longer waits for a "$user" mention.
                     String unbound = UserReferences.firstUnbound(transition.getGuard());
                     if (unbound != null) {
                         errors.add("Entity " + conceptName + " lifecycle transition " + from + " -> " + to
@@ -326,57 +322,19 @@ final class LifecycleValidation {
         return procedures;
     }
 
+    /** FORM P3-T3: a guard is a boolean expression of the one expression language (row fields and {@code $user});
+     * the hand-rolled ==/!= token grammar it replaces is gone. */
     private static boolean isSupportedLifecycleGuard(String expression) {
         String trimmed = expression == null ? "" : expression.trim();
         if (trimmed.isBlank()) {
             return false;
         }
-        if ("true".equalsIgnoreCase(trimmed) || "false".equalsIgnoreCase(trimmed)) {
+        try {
+            ComputedExpression.parse(trimmed);
             return true;
-        }
-        if (trimmed.contains("$user")) {
-            // Evaluated at runtime by the unified expression language (kernel UserScopedExpressions,
-            // the evaluator row access uses), so it must parse there: && / || / ! and
-            // $user.roles.contains('Role') all allowed.
-            try {
-                ComputedExpression.parse(trimmed);
-                return true;
-            } catch (ComputedExpression.ExpressionException malformed) {
-                return false;
-            }
-        }
-        int notEqualsIndex = trimmed.indexOf("!=");
-        if (notEqualsIndex >= 0) {
-            return isSupportedLifecycleGuardToken(trimmed.substring(0, notEqualsIndex))
-                    && isSupportedLifecycleGuardToken(trimmed.substring(notEqualsIndex + 2));
-        }
-        int equalsIndex = trimmed.indexOf("==");
-        if (equalsIndex >= 0) {
-            return isSupportedLifecycleGuardToken(trimmed.substring(0, equalsIndex))
-                    && isSupportedLifecycleGuardToken(trimmed.substring(equalsIndex + 2));
-        }
-        return isSupportedLifecycleGuardToken(trimmed);
-    }
-
-    private static boolean isSupportedLifecycleGuardToken(String token) {
-        String trimmed = token == null ? "" : token.trim();
-        if (trimmed.isBlank()) {
+        } catch (ComputedExpression.ExpressionException malformed) {
             return false;
         }
-        if ("null".equalsIgnoreCase(trimmed)
-                || "true".equalsIgnoreCase(trimmed)
-                || "false".equalsIgnoreCase(trimmed)) {
-            return true;
-        }
-        if ((trimmed.startsWith("\"") && trimmed.endsWith("\""))
-                || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
-            return trimmed.length() >= 2;
-        }
-        if (trimmed.matches("-?\\d+(\\.\\d+)?")) {
-            return true;
-        }
-        return trimmed.matches("(\\$payload|\\$current|\\$next)(\\.[A-Za-z_][A-Za-z0-9_.]*)?")
-                || trimmed.matches("[A-Za-z_][A-Za-z0-9_.]*");
     }
 
 }

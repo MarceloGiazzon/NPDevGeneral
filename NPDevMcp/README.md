@@ -20,6 +20,8 @@ Model Context Protocol server (JSON-RPC 2.0 over stdio) that wraps the portable 
 | `npdev_graph_explain` | "Why does this element exist?" — purely from a generated app's `npdev/semantic-graph.json`: which elements reference it and what it references. |
 | `npdev_graph_reuse` | "What would I reuse for this intent?" — keyword-ranks existing elements in that same graph against a free-text intent, with each candidate's own wiring. |
 | `npdev_search_fix` | Given a validator diagnostic, retrieve precedent fixes keyed by a normalized failure signature (identifiers templated out). |
+| `npdev_pack_search` | Find reusable packs for a need in plain words; returns one catalog line per pack (`id\|kind\|area\|trust\|need\|requires`). Reads `<BuildRoot>/npr-catalog/catalog/l0.txt` (build it with `scripts/pack-repo/build-ai-catalog.py`). |
+| `npdev_pack_card` | The L1 card of one catalog pack (about 300 tokens): concepts, roles to bind, flows, events, screens, the exact `packs[]` line to consume it, and its main limit. |
 | `npdev_check_support` | Cheap pre-check before committing to a model shape: is a feature a known gap, constraint or already-lifted boundary? Takes a ledger id (`REG-244`) or free text. |
 | `npdev_author_tier` | Ranks reuse > specialization > new concept > untrusted extension for an authoring intent, and explains each choice. |
 | `npdev_author_diff_gate` | AI Authoring Contract check (no archival): verifies a candidate `model.json` against its previous version and a submission manifest. |

@@ -26,7 +26,7 @@ public class BusinessUiEmitterCollabAssetsTest {
 
     private static final String WITHOUT_TASK = """
             {
-              "namespace": "collab.demo", "dslVersion": "1.0.0", "version": "1.0",
+              "namespace": "collab.demo", "dslVersion": "3.0.0", "version": "1.0",
               "concepts": [
                 { "name": "Req", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -98,13 +98,32 @@ public class BusinessUiEmitterCollabAssetsTest {
 
     private static final String NOTIFY_MODEL = """
             {
-              "namespace": "collab.notify", "dslVersion": "1.0.0", "version": "1.0",
+              "namespace": "collab.notify",
+              "dslVersion": "3.0.0",
+              "version": "1.0",
               "concepts": [
-                { "name": "Req", "fields": [
-                  { "name": "id", "type": "uuid", "id": true, "required": true } ] }
+                {
+                  "name": "Req",
+                  "fields": [
+                    {
+                      "name": "id",
+                      "type": "uuid",
+                      "id": true,
+                      "required": true
+                    }
+                  ]
+                }
               ],
-              "capabilities": [ { "name": "Notify", "type": "NotifyCapability", "operations": [ "send" ] } ],
-              "bindings": [ { "capability": "Notify", "adapter": "notify" } ]
+              "capabilities": [
+                {
+                  "name": "Notify",
+                  "type": "NotifyCapability",
+                  "operations": [
+                    "send"
+                  ],
+                  "adapter": "notify"
+                }
+              ]
             }
             """;
 

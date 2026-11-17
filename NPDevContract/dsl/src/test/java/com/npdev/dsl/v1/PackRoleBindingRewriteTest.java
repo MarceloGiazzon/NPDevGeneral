@@ -31,7 +31,7 @@ class PackRoleBindingRewriteTest {
 
     private static final String CURATOR_PACK = """
             {
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "pack": "labeling",
               "version": "1.0.0",
               "concepts": [
@@ -72,7 +72,7 @@ class PackRoleBindingRewriteTest {
         Path model = write("model.json", """
                 {
                   "namespace": "role.binding.unbound.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "$ref": "packs/labeling/pack.json" } ]
                 }
@@ -91,7 +91,7 @@ class PackRoleBindingRewriteTest {
         Path modelA = write("appA/model.json", """
                 {
                   "namespace": "role.binding.appA.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "provides": { "roleBindings": { "curator": "WidgetLabelCurator" } },
                   "packs": [ { "$ref": "packs/labeling/pack.json" } ]
@@ -102,7 +102,7 @@ class PackRoleBindingRewriteTest {
         Path modelB = write("appB/model.json", """
                 {
                   "namespace": "role.binding.appB.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "provides": { "roleBindings": { "curator": "SUPERVISOR" } },
                   "packs": [ { "$ref": "packs/labeling/pack.json" } ]
@@ -139,7 +139,7 @@ class PackRoleBindingRewriteTest {
     void packWithNoRoleTokenIsUnaffected() throws Exception {
         write("packs/billing/pack.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "billing",
                   "version": "1.0.0",
                   "concepts": [ { "name": "Invoice", "fields": [
@@ -150,7 +150,7 @@ class PackRoleBindingRewriteTest {
         Path model = write("model.json", """
                 {
                   "namespace": "role.binding.notoken.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [ { "$ref": "packs/billing/pack.json" } ]
                 }

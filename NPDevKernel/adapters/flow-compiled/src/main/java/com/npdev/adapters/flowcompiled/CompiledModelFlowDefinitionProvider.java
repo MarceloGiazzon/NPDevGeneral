@@ -10,7 +10,6 @@ import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
 import com.npdev.dsl.v1.compiled.CompiledFlowStep;
 import com.npdev.dsl.v1.compiled.CompiledModel;
-import com.npdev.dsl.v1.compiled.CompiledProcedure;
 import com.npdev.kernel.FlowDefinition;
 import com.npdev.kernel.FlowStepDefinition;
 import com.npdev.kernel.capabilities.CapabilityExecutionPolicy;
@@ -37,6 +36,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * instance resuming across a reshaped flow -- that is tracked separately and out of scope here.
  */
 public final class CompiledModelFlowDefinitionProvider implements FlowDefinitionProvider {
+    /** FORM P3-T5c: the entity name a concept-less flow runs under (steps name their own scope). */
+    static final String NO_CONCEPT = "_noconcept";
+
 
     /**
      * Immutable snapshot of everything the constructor used to populate directly. Rebuilt in
@@ -115,10 +117,12 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
         );
         return new FlowDefinition(
                 flow.getName(),
-                flow.getConcept(),
+                // FORM P3-T5c: a concept-less flow still needs a non-blank entity name; every concept step names its own scope
+                flow.getConcept() == null || flow.getConcept().isBlank() ? NO_CONCEPT : flow.getConcept(),
                 steps,
                 toSchemaObject(flow.getInputSchema()),
-                toSchemaObject(flow.getOutputSchema())
+                toSchemaObject(flow.getOutputSchema()),
+                "system".equals(flow.getRunAs())
         );
     }
 
@@ -133,20 +137,32 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
         for (int stepIndex = 0; stepIndex < steps.size(); stepIndex++) {
             CompiledFlowStep step = steps.get(stepIndex);
             String type = normalize(step.getType());
-            // REG-259: a generatedAction whose actionName is a procedure declared in this model (and
-            // not a packaged trusted-source one) has no generated-action capability behind it -- only
-            // trusted-source procedures register one -- so it ran into "capability binding not found"
-            // AFTER the preceding steps had already written. Run the declared procedure instead,
-            // exactly as a callProcedure step would.
-            String inProcessAction = "generatedaction".equals(type)
-                    ? facts.inProcessProcedureName(step.getGeneratedActionName())
+            // FORM P3-T5c: procedures[] are flows now -- a generatedAction naming a declared FLOW runs it as callFlow.
+            String inProcessFlow = "generatedaction".equals(type)
+                    ? facts.inProcessFlowName(step.getGeneratedActionName())
                     : null;
-            if (inProcessAction != null) {
-                type = "callprocedure";
+            if (inProcessFlow != null) {
+                type = "callflow";
             }
             String name = nonBlank(step.getName(), defaultStepName(type, stepIndex));
             int builtSizeBefore = out.size();
 
+            if ("updateconcept".equals(type) && isRecordForm(step)) {
+                // FORM P3-T5c: updateConcept{id,set,createIfMissing} runs as the embedded patchConcept procedure step
+                // (ConceptGateway read + merge + save, CONCEPT_NOT_FOUND, strict refs, a NEW id on a createIfMissing miss).
+                out.add(FlowStepDefinition.procedureStep(
+                        name,
+                        com.npdev.kernel.procedures.ProcedureStep.patchConcept(
+                                name,
+                                nonBlank(step.getScope(), flowConcept),
+                                stateKey(step.getRecordIdRef()),
+                                new LinkedHashMap<String, Object>(step.getFieldValues()),
+                                stateKey(step.getMapToRef()),
+                                Boolean.TRUE.equals(step.getCreateIfMissing())),
+                        stateKey(step.getMapToRef())));
+                attachCompensation(out, builtSizeBefore, step, flowConcept, adapterIdByCapability, capabilityOperationsByCapability, facts);
+                continue;
+            }
             switch (type) {
                 case "invariant" -> out.add(FlowStepDefinition.invariant(
                         name,
@@ -223,11 +239,26 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
                         toFlowSteps(step.getThenSteps(), flowConcept, adapterIdByCapability, capabilityOperationsByCapability, facts),
                         toFlowSteps(step.getElseSteps(), flowConcept, adapterIdByCapability, capabilityOperationsByCapability, facts)
                 ));
-                case "map" -> out.add(FlowStepDefinition.map(
-                        name,
-                        step.getMapFromRef(),
-                        step.getMapToRef()
-                ));
+                // FORM P3-T5c: map with `collection` builds a list (one `select` object per item); with `select` and no
+                // collection it builds ONE object; with neither it is the plain copy it always was.
+                case "map" -> {
+                    if (step.getCollectionRef() != null && !step.getCollectionRef().isBlank()) {
+                        out.add(FlowStepDefinition.procedureStep(
+                                name,
+                                com.npdev.kernel.procedures.ProcedureStep.mapList(
+                                        name, stateKey(step.getCollectionRef()), step.getItemKey(),
+                                        new LinkedHashMap<String, Object>(step.getFieldValues()), stateKey(step.getMapToRef())),
+                                stateKey(step.getMapToRef())));
+                    } else if (!step.getFieldValues().isEmpty()) {
+                        out.add(FlowStepDefinition.procedureStep(
+                                name,
+                                com.npdev.kernel.procedures.ProcedureStep.buildObject(
+                                        name, new LinkedHashMap<String, Object>(step.getFieldValues()), stateKey(step.getMapToRef())),
+                                stateKey(step.getMapToRef())));
+                    } else {
+                        out.add(FlowStepDefinition.map(name, step.getMapFromRef(), step.getMapToRef()));
+                    }
+                }
                 case "await" -> out.add(FlowStepDefinition.awaitEvent(
                         name,
                         step.getAwaitEventName(),
@@ -252,11 +283,18 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
                 // getOutput() for EVERY flow step type, not just "map" (confirmed by reading that
                 // method directly), so reusing them is consistent with how every other step already
                 // gets its input/output threaded through, not a repurposing specific to this step.
-                case "callprocedure" -> out.add(FlowStepDefinition.callProcedure(
+                // FORM P3-T5b: the merged vocabulary's concept steps run as the procedure step the procedure
+                // executor already implements (one implementation, two surfaces); callFlow starts another flow.
+                case "set", "readconcept", "listconcepts", "runquery", "deleteconcept" -> out.add(FlowStepDefinition.procedureStep(
                         name,
-                        inProcessAction != null ? inProcessAction : step.getProcedureName(),
-                        inProcessAction != null ? firstArgRef(step.getCapabilityCall()) : step.getMapFromRef(),
-                        inProcessAction != null && step.getCapabilityCall() != null
+                        toProcedureStep(type, name, step, flowConcept, facts),
+                        stateKey(step.getMapToRef())
+                ));
+                case "callflow" -> out.add(FlowStepDefinition.callFlow(
+                        name,
+                        inProcessFlow != null ? inProcessFlow : step.getFlowName(),
+                        inProcessFlow != null ? firstArgRef(step.getCapabilityCall()) : step.getMapFromRef(),
+                        inProcessFlow != null && step.getCapabilityCall() != null
                                 ? step.getCapabilityCall().getOutputRef()
                                 : step.getMapToRef()
                 ));
@@ -268,7 +306,13 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
             // REG-262/263/264: createConcept/updateConcept both compile to the same bare
             // persistence.save call; record which one the author wrote so the kernel can enforce the
             // difference (required fields on create; row must exist, merge into it, on update).
-            FlowStepDefinition.ConceptWrite conceptWrite = conceptWriteOf(type, flowConcept, facts);
+            if (step.getErrorTarget() != null || step.getIfExists() != null) {
+                out.set(builtSizeBefore, out.get(builtSizeBefore).withCallOptions(step.getErrorTarget(), step.getIfExists()));
+            }
+            if (step.getDedupeKey() != null) {
+                out.set(builtSizeBefore, out.get(builtSizeBefore).withDedupeKey(step.getDedupeKey()));
+            }
+            FlowStepDefinition.ConceptWrite conceptWrite = conceptWriteOf(type, nonBlank(step.getScope(), flowConcept), facts);
             if (conceptWrite != null) {
                 out.set(builtSizeBefore, out.get(builtSizeBefore).withConceptWrite(conceptWrite));
             }
@@ -276,12 +320,7 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
             // LNCH-17: every case above adds exactly one built step -- attach its declared
             // compensation steps (if any) onto that just-built step rather than threading
             // onFailureSteps through every FlowStepDefinition factory method individually.
-            if (!step.getOnFailureSteps().isEmpty()) {
-                List<FlowStepDefinition> onFailureSteps = toFlowSteps(
-                        step.getOnFailureSteps(), flowConcept, adapterIdByCapability, capabilityOperationsByCapability, facts
-                );
-                out.set(builtSizeBefore, out.get(builtSizeBefore).withOnFailure(onFailureSteps));
-            }
+            attachCompensation(out, builtSizeBefore, step, flowConcept, adapterIdByCapability, capabilityOperationsByCapability, facts);
 
             // R2.5: attach a durable await deadline + timeout-branch steps onto an "await" step the
             // same way LNCH-17 attaches onFailureSteps above -- only AWAIT_EVENT ever sets this.
@@ -295,6 +334,72 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
         return out;
     }
 
+    /**
+     * FORM P3-T5b: a flow's concept step as the {@link com.npdev.kernel.procedures.ProcedureStep} that runs it. The
+     * concept is the step's {@code scope} when it names one, otherwise the flow's own concept; a {@code runQuery}
+     * step acts on the concept its declared query ranges over. Refs lose their leading {@code $} exactly as
+     * ProcedureRunner does for a procedure's steps, so both surfaces resolve against state the same way.
+     */
+    private static com.npdev.kernel.procedures.ProcedureStep toProcedureStep(
+            String type,
+            String name,
+            CompiledFlowStep step,
+            String flowConcept,
+            ModelFacts facts
+    ) {
+        String concept = nonBlank(step.getScope(), flowConcept);
+        String output = stateKey(step.getMapToRef());
+        return switch (type) {
+            // FORM P3-T5c: `value` is ONE expression (the one expression language), evaluated strictly
+            case "set" -> com.npdev.kernel.procedures.ProcedureStep.evaluate(
+                    name, step.getReturnValueRef(), output);
+            case "readconcept" -> com.npdev.kernel.procedures.ProcedureStep.readConcept(
+                    name, concept, stateKey(step.getRecordIdRef()), output);
+            case "listconcepts" -> com.npdev.kernel.procedures.ProcedureStep.listConcepts(name, concept, output);
+            case "deleteconcept" -> com.npdev.kernel.procedures.ProcedureStep.deleteConcept(
+                    name, concept, stateKey(step.getRecordIdRef()));
+            case "runquery" -> {
+                String queryName = step.getQueryName();
+                String queryConcept = facts.conceptByQuery().get(normalize(queryName));
+                yield com.npdev.kernel.procedures.ProcedureStep.runQuery(
+                        name, queryName, nonBlank(queryConcept, concept), output)
+                        .withQueryParams(new LinkedHashMap<String, Object>(step.getQueryParams()));
+            }
+            default -> throw new IllegalArgumentException("Not a concept step: " + type);
+        };
+    }
+
+    /** FORM P3-T5c: an updateConcept that names the row by {@code id} and the fields by {@code set} (not the legacy {@code input} form). */
+    private static boolean isRecordForm(CompiledFlowStep step) {
+        return (step.getRecordIdRef() != null && !step.getRecordIdRef().isBlank()) || !step.getFieldValues().isEmpty();
+    }
+
+    /** LNCH-17: the step's declared compensation steps go onto the step just built at {@code index}. */
+    private static void attachCompensation(
+            List<FlowStepDefinition> out,
+            int index,
+            CompiledFlowStep step,
+            String flowConcept,
+            Map<String, String> adapterIdByCapability,
+            Map<String, Map<String, CompiledCapabilityOperation>> capabilityOperationsByCapability,
+            ModelFacts facts
+    ) {
+        if (!step.getOnFailureSteps().isEmpty()) {
+            List<FlowStepDefinition> onFailureSteps = toFlowSteps(
+                    step.getOnFailureSteps(), flowConcept, adapterIdByCapability, capabilityOperationsByCapability, facts);
+            out.set(index, out.get(index).withOnFailure(onFailureSteps));
+        }
+    }
+
+    /** A step's ref as a flow-state key: surrounding whitespace and one leading {@code $} dropped; null when blank. */
+    private static String stateKey(String ref) {
+        if (ref == null || ref.isBlank()) {
+            return null;
+        }
+        String text = ref.trim();
+        return text.startsWith("$") ? text.substring(1) : text;
+    }
+
     /** The generatedAction step's input ref: it travels as the capability call's first argument. */
     private static String firstArgRef(CompiledCapabilityCall call) {
         if (call == null || call.getArgsRefs() == null || call.getArgsRefs().isEmpty()) {
@@ -306,26 +411,24 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
     /** What the provider needs to know about the whole model to compile one step. */
     private record ModelFacts(
             Map<String, List<String>> requiredRefsByConcept,
-            Map<String, String> inProcessProcedureByAction
+            Map<String, String> inProcessFlowByAction,
+            Map<String, String> conceptByQuery
     ) {
         static ModelFacts of(CompiledModel compiledModel) {
-            Map<String, String> byAction = new LinkedHashMap<>();
-            for (CompiledProcedure procedure : compiledModel.getProcedures()) {
-                Object entrypoint = procedure.metadata().get("untrustedExtensionEntrypoint");
-                if (entrypoint != null && !String.valueOf(entrypoint).isBlank()) {
-                    continue; // packaged trusted-source procedure: the generated-action capability runs it
-                }
-                byAction.putIfAbsent(normalize(procedure.name()), procedure.name());
-                if (procedure.actionDescriptor() != null && hasText(procedure.actionDescriptor().actionName())) {
-                    byAction.putIfAbsent(normalize(procedure.actionDescriptor().actionName()), procedure.name());
-                }
+            Map<String, String> conceptByQuery = new LinkedHashMap<>();
+            for (com.npdev.dsl.v1.compiled.CompiledQuery query : compiledModel.getQueries()) {
+                conceptByQuery.putIfAbsent(normalize(query.name()), query.concept());
             }
-            return new ModelFacts(computeRequiredRefsByConcept(compiledModel), byAction);
+            Map<String, String> flowByAction = new LinkedHashMap<>();
+            for (CompiledFlow flow : compiledModel.getFlows()) {
+                flowByAction.putIfAbsent(normalize(flow.getName()), flow.getName());
+            }
+            return new ModelFacts(computeRequiredRefsByConcept(compiledModel), flowByAction, conceptByQuery);
         }
 
-        /** The declared (non-trusted) procedure a generatedAction named {@code actionName} resolves to, or null. */
-        String inProcessProcedureName(String actionName) {
-            return actionName == null ? null : inProcessProcedureByAction.get(normalize(actionName));
+        /** The declared flow a generatedAction named {@code actionName} resolves to, or null. */
+        String inProcessFlowName(String actionName) {
+            return actionName == null ? null : inProcessFlowByAction.get(normalize(actionName));
         }
     }
 
@@ -337,9 +440,10 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
         return switch (normalizedType) {
             case "createconcept", "createentity" -> new FlowStepDefinition.ConceptWrite(
                     FlowStepDefinition.ConceptWrite.CREATE,
-                    facts.requiredRefsByConcept().getOrDefault(normalize(flowConcept), List.of()));
+                    facts.requiredRefsByConcept().getOrDefault(normalize(flowConcept), List.of()),
+                    flowConcept);
             case "updateconcept", "updateentity" -> new FlowStepDefinition.ConceptWrite(
-                    FlowStepDefinition.ConceptWrite.UPDATE, List.of());
+                    FlowStepDefinition.ConceptWrite.UPDATE, List.of(), flowConcept);
             default -> null;
         };
     }

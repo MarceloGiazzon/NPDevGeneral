@@ -23,7 +23,7 @@ class AutoPanelSurfaceOverrideTest {
 
     private static final String TEMPLATE = """
         {
-          "dslVersion": "1.0.0", "namespace": "wms", "version": "1.0",
+          "dslVersion": "3.0.0", "namespace": "wms", "version": "1.0",
           "concepts": [
             { "name": "Pedido", "fields": [
               { "name": "id", "type": "uuid", "id": true, "required": true },

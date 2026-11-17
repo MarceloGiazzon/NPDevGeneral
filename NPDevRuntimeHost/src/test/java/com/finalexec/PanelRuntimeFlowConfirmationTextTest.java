@@ -160,8 +160,6 @@ class PanelRuntimeFlowConfirmationTextTest {
                 List.of(confirmedFlow, silentFlow),
                 List.of(),
                 List.of(),
-                List.of(),
-                List.of(),
                 List.of(panel)
         );
     }

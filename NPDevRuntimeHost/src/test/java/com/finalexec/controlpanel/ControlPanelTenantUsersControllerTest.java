@@ -110,7 +110,7 @@ class ControlPanelTenantUsersControllerTest {
                 new CompiledConcept("UserRolePermission", "UserRolePermission", "identity_user_role_permissions", List.of()));
         return new CompiledModel(
                 "test", "2.0", "1.0.0", concepts,
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 List.of(), List.of(), List.of(), List.of(), List.of(),
                 null, null,
                 List.of(roles)

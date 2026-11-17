@@ -3,15 +3,10 @@
     {
       "name": "auditLog",
       "type": "AuditLogCapability",
+      "adapter": "plugin:java-source",
       "operations": [
         "record"
       ]
-    }
-  ],
-  "bindings": [
-    {
-      "capability": "auditLog",
-      "adapter": "plugin:java-source"
     }
   ],
   "flows": [
@@ -27,7 +22,9 @@
           "type": "capabilityCall",
           "capability": "auditLog",
           "operation": "record",
-          "args": [ "$input" ],
+          "args": [
+            "$input"
+          ],
           "output": "$recorded"
         },
         {

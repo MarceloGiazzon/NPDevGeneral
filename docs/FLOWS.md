@@ -211,6 +211,46 @@ into the 10 real kinds:
    by another tenant fails with `PERSISTENCE_RECORD_NOT_IN_TENANT` ("record not found for this tenant")
    and leaves that record untouched. Tables without a `tenant_id` column stay unscoped.
 
+### The concept steps, `expose` and `runAs` (FORM P3-T5b)
+
+Five author-facing step names have no kernel kind of their own: `set`, `readConcept`, `listConcepts`, `runQuery` and
+`deleteConcept` compile to `PROCEDURE_STEP`, which carries the procedure step that already implements them and runs it
+as a one-step procedure (`ProcedureFlowStep`) — so a flow and a procedure run the same code for a read, a query or a
+delete, and refs resolve the same way. `callFlow` compiles to `CALL_FLOW` (`CallFlowStep`): it starts the named flow
+synchronously as a separate execution (own instance, trace and permission check), binds its output, fails the calling
+step if the callee does not finish, and refuses nesting deeper than 16. The host runs the one-step definitions as
+supplied (`ProcedureRunner.execute(definition, ...)`); declared procedures still run by name.
+
+Flow-level keys: `expose` is `api` (default), `ui` or `internal`; only `api` flows get a public
+`POST /api/flows/{name}/execute` (also refused by the direct-execution gateway and left out of OpenAPI), and an
+`internal` flow is started by `callFlow`. `runAs: system` runs every step as the tenant's system principal with the
+caller kept for audit (`ProcedureElevation`); the caller still needs `flow.execute` to start it. `trigger` starts a flow without an HTTP call, always as
+the system principal (never a caller): `{event, condition}` runs it whenever the event is published
+(`FlowEventTriggerService`, tenant of the event or the home tenant, `condition` over `$event`, once per event id, a re-emitting chain is cut at depth 8, failures never reach the publisher);
+`{webhook}` names a capability that declares `inbound` and runs on every verified delivery with the mapped payload
+(at most one flow per door; fan out with `inbound.eventName` and flows whose trigger is an event; a failing flow answers 500 so the sender retries); `{schedule}` is the flow's cron. Several flows may name the
+same event: each is its own subscription and all of them fire.
+
+### The merged vocabulary's keys (FORM P3-T5c)
+
+These let the retired `procedures[]` and `orchestrationRules[]` (removed in DSL 3.0) be written as flows; each runs through the same procedure-step code (or
+`CapabilityCallStep`) as before. **`set`** takes ONE expression in `value`, evaluated strictly: every `$ref` must
+resolve (a typo fails the step with `REF_UNRESOLVABLE`), a bare name is refused and a text literal is quoted
+(`'text'`). **`map`** with `select` (field to literal-or-`$ref`, an explicit `null` allowed) builds ONE object;
+with `collection` + `itemKey` it builds a list, one object per item; with neither it is the plain copy. **`updateConcept`**
+with `id` + `set` (instead of `input`) changes the listed fields of one row through `ConceptGateway`
+(`CONCEPT_NOT_FOUND`, strict refs), and `createIfMissing: true` creates it with a NEW generated id on a miss.
+**`capabilityCall.errorTarget`** turns a failed call into the value `{code, message, kind, retryable, httpStatus?,
+details}` under that state key (the step succeeds, its output is removed; a later success clears the key), where
+`onFailure` is compensation of EARLIER steps: they are different mechanisms. **`createConcept.ifExists: skip`** turns a
+unique-constraint conflict into a skipped step (output `null`); any other failure still fails. A flow's `concept` is
+optional (a concept step then names its own `scope`) and `description` says what it is for. A `runAs: system` flow must be
+`expose: internal` unless an event, schedule or webhook trigger starts it. A concept record read by one step is a plain
+map `{conceptName, id, tenantId, data, rowVersion}` in the next; a ref such as `$ride.status` reads the record's
+FIELDS first, as on a procedure's record, and `$ride.data.status` works too. Flow state may hold `null` values.
+
+**Screens and hooks reach flows by the old name (stage 3).** A panel action or data source, an `onRowLoad`, an aggregate hook (`onValidate`/`onCommit`/`beforeAction`...), a workbench action and an agent `photoIntake` name a `procedure`; that name may now be a flow. `ProcedureRunner` runs a declared procedure first and, only when no procedure has the name, the flow of that name through the kernel runner, answering in the procedure result shape (`state.return` = the flow output; a failed step's `CODE:` becomes `failureCode`; a flow that parks on an event is reported as `FLOW_WAITING`). Validators, the reference index and the pack composer resolve those names against `procedures[]` and `flows[]`. Each such call is a flow execution (an instance and a checkpoint per step), and the caller needs `flow.execute` like any flow start.
+
 ### Worked examples, from real sample models
 
 `NPDevSamples/medium-expense-approval/Input/model.json`'s one flow, `SubmitExpense` (`:260-340`),
@@ -669,10 +709,9 @@ semantics, for free). Because the run goes through the same `execute → execute
 `AWAIT_EVENT`/`EMIT_EVENT`/`SCHEDULE_EVENT` steps inside a cron-triggered flow behave identically to
 one triggered any other way.
 
-## 8. Hooks and orchestration rules — inject behavior without editing the flow
+## 8. Hooks and event-triggered flows — inject behavior without editing the flow
 
-Two independent mechanisms, both configured at the model's top level rather than inside a flow's own
-`steps`:
+Two mechanisms for adding behavior without editing the flow it reacts to:
 
 **Before/after step hooks** apply only to a flow that `specializes` a base flow
 (`Flow.hooks`, schema `flowHook` `$defs`). A plain flow is forbidden from declaring `hooks` at all; a
@@ -685,20 +724,15 @@ specializing flow adds only the incremental behavior. Worked examples: `NPDevSam
 (`SubmitMedicalInvoice specializes SubmitInvoice`, a `before`/`return-base` hook emitting
 `MedicalInvoiceCreated`).
 
-**Event-triggered orchestration rules** are model-top-level `orchestrationRules[]` — not part of any
-flow at all. Each has a trigger event, an optional condition expression over `$event`, and one or more
-actions (`create`, `callCapability`, `scheduleEvent`). The runtime is a **genuinely separate mechanism**
-from `KernelRunner`'s flow-step execution: `GeneratedCrudRuntimeSupport.initializeOrchestrationSubscribers`
-subscribes directly to the event bus per orchestration
-(`NPDevKernel/adapters/runtime-support/.../GeneratedCrudRuntimeSupport.java`), sitting alongside
-the flow engine's own subscribers, not routed through `FlowStepDefinition`/`executeSteps`. Each firing
-claims an exactly-once execution slot (`OrchestrationExecutionRegistry`, keyed by orchestration name +
-source event id) before running its actions. Worked example:
-`NPDevSamples/canonical-demo/Input/model.json`'s `orchestrationRules` entry `CompleteAppointmentFlow`
-— triggered on `AppointmentCompleted`, conditioned on `$event.status`, creating an `InsuranceClaim`
-and calling `notification.send`. Since DSL 2.0 (the retired DSL 2.0 plan §2.A), an
-orchestration rule's actions are always the `actions` array (a single-element list here) — the
-scalar `action` field this example originally used has been retired.
+**Event-triggered flows** replace the retired `orchestrationRules[]` (removed in DSL 3.0). A flow with
+`trigger: {event: X, condition: ...}` runs whenever event `X` is published, with the
+condition evaluated over `$event`; its steps do what a rule's actions used to (`createConcept`,
+`capabilityCall`, `scheduleEvent`). The runtime is `FlowEventTriggerService` (see the trigger paragraph
+above): it subscribes to the event bus once per trigger flow and runs the flow through the same
+`KernelRunner` step engine as any other flow, with a per-event exactly-once claim. Worked example:
+`NPDevSamples/canonical-demo/Input/model.json`'s flow `CompleteAppointmentFlow` — triggered on
+`AppointmentCompleted`, conditioned on `$event.status`, creating an `InsuranceClaim` and calling
+`notification.send`.
 
 **Lifecycle rule profiles** are a third, distinct "config the model, not the code" mechanism —
 `ConceptRuleProfile` (`ALWAYS`, `INTERACTIVE`, `HEADLESS`, `QUERY`, `BEFORE_COMMIT`, `AFTER_COMMIT`) —

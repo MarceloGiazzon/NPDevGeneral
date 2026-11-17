@@ -109,6 +109,14 @@ public final class ConceptQueryEngine {
                     && candidates.stream().anyMatch(candidate -> valuesEqual(actual, candidate));
             case IS_NULL -> actual == null;
             case IS_NOT_NULL -> actual != null;
+            case DISTANCE_KM -> expected instanceof ConceptQuery.Distance distance && distance.matches(name -> {
+                if (name.indexOf('.') >= 0 || name.contains("::")) {
+                    throw new UnsupportedOperationException(
+                            "ConceptQueryEngine (the in-memory adapter) does not resolve reference-path distance "
+                                    + "coordinate '" + name + "' -- only JdbcBusinessConceptStore joins one");
+                }
+                return record.data() == null ? null : record.data().get(name);
+            });
             case OR_GROUPS -> throw new IllegalArgumentException(
                     "OR_GROUPS may only appear as the sole top-level filter, not nested inside a clause group");
         };

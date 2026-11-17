@@ -1,7 +1,6 @@
 package com.npdev.dsl.v1.validation;
 
 import com.npdev.dsl.v1.ast.CapabilityAst;
-import com.npdev.dsl.v1.ast.CapabilityBindingAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
 import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.ast.PropertyAst;
@@ -34,9 +33,9 @@ final class HttpConnectorValidation {
 
     static void validate(ModelAst model, List<String> errors) {
         Set<String> connectorCapabilities = new HashSet<>();
-        for (CapabilityBindingAst binding : model.getBindings()) {
-            if (ADAPTER_ID.equalsIgnoreCase(safe(binding.getAdapter()))) {
-                connectorCapabilities.add(normalize(binding.getCapability()));
+        for (CapabilityAst capability : model.getCapabilities()) {
+            if (ADAPTER_ID.equalsIgnoreCase(safe(capability.getAdapter()))) {
+                connectorCapabilities.add(normalize(capability.getName()));
             }
         }
         Set<String> propertyNames = new HashSet<>();
@@ -50,8 +49,8 @@ final class HttpConnectorValidation {
             if (!bound) {
                 if (!http.isEmpty()) {
                     errors.add("Capability " + capability.getName() + " declares an http block but is not bound to adapter '"
-                            + ADAPTER_ID + "' -- the block is inert -- suggestedFix: add {\"capability\": \"" + capability.getName()
-                            + "\", \"adapter\": \"" + ADAPTER_ID + "\"} to bindings[] or remove the http block");
+                            + ADAPTER_ID + "' -- the block is inert -- suggestedFix: set \"adapter\": \"" + ADAPTER_ID
+                            + "\" on capability " + capability.getName() + " or remove the http block");
                 }
                 continue;
             }

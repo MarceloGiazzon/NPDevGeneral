@@ -38,7 +38,7 @@ class UnenforceableAccessRuleCheckTest {
     private static final String WITH_ACCESS_RULES = """
             {
               "namespace": "reg44",
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "version": "v1",
               "concepts": [
                 {
@@ -56,7 +56,7 @@ class UnenforceableAccessRuleCheckTest {
     private static final String WITHOUT_ACCESS_RULES = """
             {
               "namespace": "reg44",
-              "dslVersion": "1.0.0",
+              "dslVersion": "3.0.0",
               "version": "v1",
               "concepts": [
                 {

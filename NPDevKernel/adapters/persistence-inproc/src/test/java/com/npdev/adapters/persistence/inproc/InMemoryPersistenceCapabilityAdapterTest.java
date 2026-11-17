@@ -83,7 +83,7 @@ class InMemoryPersistenceCapabilityAdapterTest {
     }
 
     private static final String FLOW_DEFAULTS_MODEL = "{"
-            + "\"dslVersion\":\"1.0.0\",\"namespace\":\"flowdefaults.test\",\"version\":\"1.0\","
+            + "\"dslVersion\":\"3.0.0\",\"namespace\":\"flowdefaults.test\",\"version\":\"1.0\","
             + "\"sequences\":[{\"name\":\"ticketCode\",\"format\":\"TK-{seq:4}\",\"scope\":\"tenant\"}],"
             + "\"concepts\":["
             + "{\"name\":\"Order\",\"fields\":["

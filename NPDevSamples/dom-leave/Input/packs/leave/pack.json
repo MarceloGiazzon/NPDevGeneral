@@ -1,6 +1,6 @@
 {
   "$schema": "../../schemas/pack.schema.json",
-  "dslVersion": "1.0.0",
+  "dslVersion": "3.0.0",
   "pack": "leave",
   "version": "1.2.1",
   "namespace": "com.npdev.leave",
@@ -390,8 +390,8 @@
           "then": [
             {
               "name": "apply-decision",
-              "type": "callProcedure",
-              "procedure": "ApplyLeaveDecision",
+              "type": "callFlow",
+              "flow": "ApplyLeaveDecision",
               "input": "$decision",
               "output": "$applied"
             }
@@ -403,36 +403,35 @@
           "value": "$saved"
         }
       ]
-    }
-  ],
-  "procedures": [
+    },
     {
       "name": "ApplyLeaveDecision",
       "description": "A human task answered from My tasks publishes LeaveDecided {requestId, status, comment, completedBy}; this moves the request to the chosen status and records who decided and why, unless the request already left PENDING (for example the employee's leave was cancelled meanwhile).",
+      "expose": "internal",
       "steps": [
         {
           "name": "read-request",
           "type": "readConcept",
-          "concept": "LeaveRequest",
+          "scope": "LeaveRequest",
           "id": "$input.requestId",
-          "target": "request"
+          "output": "request"
         },
         {
           "name": "still-pending",
-          "type": "if",
+          "type": "branch",
           "condition": "$request.status == 'PENDING'",
           "then": [
             {
               "name": "apply",
-              "type": "patchConcept",
-              "concept": "LeaveRequest",
+              "type": "updateConcept",
+              "scope": "LeaveRequest",
               "id": "$input.requestId",
               "set": {
                 "status": "$input.status",
                 "decidedBy": "$input.completedBy",
                 "decisionComment": "$input.comment"
               },
-              "target": "request"
+              "output": "request"
             }
           ]
         },

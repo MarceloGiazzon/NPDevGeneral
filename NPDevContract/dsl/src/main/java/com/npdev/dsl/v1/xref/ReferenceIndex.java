@@ -16,8 +16,6 @@ import com.npdev.dsl.v1.ast.GuidePageAst;
 import com.npdev.dsl.v1.ast.GuidePageGadgetAst;
 import com.npdev.dsl.v1.ast.LifecycleAst;
 import com.npdev.dsl.v1.ast.ModelAst;
-import com.npdev.dsl.v1.ast.OrchestrationActionAst;
-import com.npdev.dsl.v1.ast.OrchestrationAst;
 import com.npdev.dsl.v1.ast.PanelActionAst;
 import com.npdev.dsl.v1.ast.PanelAst;
 import com.npdev.dsl.v1.ast.PanelDataSourceAst;
@@ -152,6 +150,10 @@ public final class ReferenceIndex {
     public static final String SITE_FLOW_STEP_CAPABILITY = "flow.steps.capability";
     public static final String SITE_FLOW_STEP_EVENT = "flow.steps.event";
     public static final String SITE_FLOW_STEP_PROCEDURE = "flow.steps.procedure";
+    /** FORM P3-T5b: a flow runQuery step's {@code query}. */
+    public static final String SITE_FLOW_STEP_QUERY = "flow.steps.query";
+    /** FORM P3-T5b: a flow callFlow step's {@code flow}. */
+    public static final String SITE_FLOW_STEP_FLOW = "flow.steps.flow";
     public static final String SITE_FLOW_STEP_INVARIANT = "flow.steps.invariants";
 
     public static final String SITE_AGGREGATE_ROOT = "aggregate.root";
@@ -186,13 +188,6 @@ public final class ReferenceIndex {
     public static final String SITE_CONVERSION_FIELD = "conversion.field";
     public static final String SITE_CONVERSION_MATCH_CONCEPT = "conversion.match.concept";
 
-    /** P2.3 follow-up: a {@code scheduleEvent} orchestration action's event -- the third of three
-     *  event-production mechanisms the graph did not model before this. {@code
-     *  OrchestrationValidation} already checks this exact reference for existence ("schedule event
-     *  not found"), so this site is excluded from {@code ReferenceIntegrityValidation}'s generic
-     *  sweep the same way every other already-owned site is. */
-    public static final String SITE_ORCHESTRATION_ACTION_EVENT = "orchestration.actions.event";
-
     public static final String KIND_FIELD = "field";
     public static final String KIND_CONCEPT = "concept";
     public static final String KIND_QUERY = "query";
@@ -208,7 +203,6 @@ public final class ReferenceIndex {
     public static final String KIND_EXPRESSION = "expression";
     public static final String KIND_GENERATED_ACTION = "generatedAction";
     public static final String KIND_PARAMETER = "parameter";
-    public static final String KIND_ORCHESTRATION = "orchestration";
 
     private final List<ReferenceEdge> edges;
 
@@ -308,6 +302,8 @@ public final class ReferenceIndex {
                 }
             }
             collectNames(procedureNames, nullSafe(model.getProcedures()), ProcedureAst::name);
+            // FORM P3-T5c: a screen's procedure reference may name the flow that replaced the procedure
+            collectNames(procedureNames, nullSafe(model.getFlows()), com.npdev.dsl.v1.ast.FlowAst::getName);
             for (ProcedureAst procedure : nullSafe(model.getProcedures())) {
                 if (procedure == null || !hasText(procedure.name())) {
                     continue;
@@ -446,7 +442,6 @@ public final class ReferenceIndex {
             queryEdges();
             procedureEdges();
             flowEdges();
-            orchestrationEdges();
             aggregateEdges();
             autoPanelEdges();
             selectorEdges();
@@ -474,36 +469,6 @@ public final class ReferenceIndex {
                 add(KIND_CONCEPT, event.getConceptName(), SITE_CONCEPT_EVENT_TRIGGER_MODE,
                         "events[" + safe(event.getName()) + "].triggerMode", KIND_EVENT, event.getName(),
                         null, Resolution.RESOLVED);
-            }
-        }
-
-        // -- orchestrations -------------------------------------------------------------------
-
-        /**
-         * P2.3 follow-up: a {@code scheduleEvent} action's event is the third event-production
-         * mechanism the graph did not model before this. Every other action type ({@code
-         * callCapability}, {@code create}) is already indexed via other sites the concept/capability
-         * edges above cover; this class adds only what those do not.
-         */
-        private void orchestrationEdges() {
-            for (OrchestrationAst rule : nullSafe(model.getOrchestrationRules())) {
-                if (rule == null || !hasText(rule.getName())) {
-                    continue;
-                }
-                String owner = rule.getName();
-                String base = "orchestrations[" + owner + "].actions";
-                List<OrchestrationActionAst> actionSequence = !nullSafe(rule.getActions()).isEmpty()
-                        ? rule.getActions()
-                        : (rule.getAction() == null ? List.of() : List.of(rule.getAction()));
-                int position = 0;
-                for (OrchestrationActionAst action : actionSequence) {
-                    if (action != null && "scheduleevent".equals(lower(action.getType()))
-                            && hasText(action.getEvent())) {
-                        named(KIND_ORCHESTRATION, owner, SITE_ORCHESTRATION_ACTION_EVENT,
-                                base + "[" + position + "].event", KIND_EVENT, action.getEvent(), eventNames);
-                    }
-                    position++;
-                }
             }
         }
 
@@ -915,12 +880,15 @@ public final class ReferenceIndex {
                 queryPredicateV2(owner, site, path, concept, expression, aliases);
                 return;
             }
+            // FORM P3-T4: `#n` counts the fields in the order they are WRITTEN, the numbering `npdev
+            // migrate rename` reads off the text; lowered clauses can be reordered or multiplied.
             int position = 0;
-            for (QueryPredicateGrammar.Clause clause : clauses) {
-                if (hasText(clause.field()) && !aliases.contains(lower(clause.field()))) {
-                    // `#n`, not `[n]`: `where` is ONE string and n selects a clause within it. The
+            for (GroupByJoinGrammar.Target written : QueryPredicateGrammar.referencedPaths(expression)) {
+                if (written instanceof GroupByJoinGrammar.Target.Direct direct
+                        && hasText(direct.field()) && !aliases.contains(lower(direct.field()))) {
+                    // `#n`, not `[n]`: `where` is ONE string and n selects a field within it. The
                     // bracket form named an array element that does not exist.
-                    fieldOf(KIND_QUERY, owner, site, path + "#" + position, concept, clause.field());
+                    fieldOf(KIND_QUERY, owner, site, path + "#" + position, concept, direct.field());
                 }
                 position++;
             }
@@ -952,16 +920,13 @@ public final class ReferenceIndex {
             }
             String v2Site = SITE_QUERY_WHERE.equals(site) ? SITE_QUERY_WHERE_V2 : SITE_QUERY_HAVING_V2;
             int position = 0;
-            for (List<QueryPredicateGrammar.PredicateClause> group : groups) {
-                for (QueryPredicateGrammar.PredicateClause clause : group) {
-                    GroupByJoinGrammar.Target left = clause.path();
-                    boolean alias = left instanceof GroupByJoinGrammar.Target.Direct direct
-                            && aliases.contains(lower(direct.field()));
-                    if (!alias) {
-                        targetEdges(owner, path + "#" + position, concept, left, v2Site, v2Site);
-                    }
-                    position++;
+            for (GroupByJoinGrammar.Target left : QueryPredicateGrammar.referencedPaths(expression)) {
+                boolean alias = left instanceof GroupByJoinGrammar.Target.Direct direct
+                        && aliases.contains(lower(direct.field()));
+                if (!alias) {
+                    targetEdges(owner, path + "#" + position, concept, left, v2Site, v2Site);
                 }
+                position++;
             }
         }
 
@@ -1097,6 +1062,10 @@ public final class ReferenceIndex {
                         KIND_EVENT, step.getEvent(), eventNames);
                 named(KIND_FLOW, owner, SITE_FLOW_STEP_PROCEDURE, stepBase + ".procedure",
                         KIND_PROCEDURE, step.getProcedure(), procedureNames);
+                named(KIND_FLOW, owner, SITE_FLOW_STEP_QUERY, stepBase + ".query",
+                        KIND_QUERY, step.getQuery(), queryNames);
+                named(KIND_FLOW, owner, SITE_FLOW_STEP_FLOW, stepBase + ".flow",
+                        KIND_FLOW, step.getFlow(), flowNames);
                 int invariantPosition = 0;
                 for (String invariant : nullSafe(step.getInvariants())) {
                     if (hasText(invariant)) {

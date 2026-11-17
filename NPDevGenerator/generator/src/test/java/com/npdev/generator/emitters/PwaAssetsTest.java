@@ -23,7 +23,7 @@ class PwaAssetsTest {
     private static CompiledModel model(String guidePagesJson) throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "demo.pwa", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "demo.pwa", "version": "1.0",
               "concepts": [ { "name": "Thing", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ]
               %s
             }

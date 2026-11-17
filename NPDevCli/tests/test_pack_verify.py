@@ -56,7 +56,7 @@ def _write(path: Path, content) -> None:
 
 def _valid_pack_doc(pack_id: str = "widgets", version: str = "1.0.0") -> dict:
     return {
-        "dslVersion": "1.0.0",
+        "dslVersion": "3.0.0",
         "pack": pack_id,
         "version": version,
         "category": "other",

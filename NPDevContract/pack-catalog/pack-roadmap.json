@@ -978,9 +978,9 @@
       "id": "helpdesk",
       "name": "Helpdesk",
       "kind": "module",
-      "need": "Handle tickets from customers or staff",
+      "need": "Help desk / IT support: handle tickets from customers or staff",
       "summary": "Agents, categories, tickets and comments.",
-      "area": "scheduling",
+      "area": "communication",
       "sectors": [],
       "status": "existing"
     },

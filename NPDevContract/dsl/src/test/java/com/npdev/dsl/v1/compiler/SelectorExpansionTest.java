@@ -28,7 +28,7 @@ class SelectorExpansionTest {
     void selectorExpandsToPickerPanel() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.sel", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.sel", "version": "1.0",
               "concepts": [
                 { "name": "LocalArmazenagem", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -63,7 +63,7 @@ class SelectorExpansionTest {
     void selectorColumnsDefaultToConceptFields() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.sel", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.sel", "version": "1.0",
               "concepts": [
                 { "name": "Local", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

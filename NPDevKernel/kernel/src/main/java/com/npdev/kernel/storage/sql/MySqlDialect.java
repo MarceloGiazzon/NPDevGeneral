@@ -770,4 +770,10 @@ public final class MySqlDialect implements SqlDialect {
             return "SELECT LAST_INSERT_ID()";
         }
     }
+
+    /** MySQL 8.0.17+ accepts {@code CAST(x AS DOUBLE)}; its CAST has no DOUBLE PRECISION target. */
+    @Override
+    public String doublePrecisionType() {
+        return "DOUBLE";
+    }
 }

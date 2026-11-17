@@ -40,7 +40,7 @@ class ContactsPackResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "contacts.pack.test",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [
                     { "$ref": "packs/contacts/pack.json", "as": "contacts" }

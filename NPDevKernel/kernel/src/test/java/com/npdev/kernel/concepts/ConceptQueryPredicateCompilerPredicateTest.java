@@ -37,7 +37,7 @@ class ConceptQueryPredicateCompilerPredicateTest {
         List<CompiledProcedureParameter> parameters =
                 List.of(new CompiledProcedureParameter("storeId", "uuid", true, null, null));
         List<List<ConceptQueryPredicateCompiler.ResolvedClause>> groups = ConceptQueryPredicateCompiler.compilePredicate(
-                "storeId == :storeId", parameters, Map.of("storeId", "store-a"));
+                "storeId == $params.storeId", parameters, Map.of("storeId", "store-a"));
         assertEquals("store-a", groups.get(0).get(0).value());
     }
 
@@ -46,7 +46,7 @@ class ConceptQueryPredicateCompilerPredicateTest {
         List<CompiledProcedureParameter> parameters =
                 List.of(new CompiledProcedureParameter("first", "string", true, null, null));
         List<List<ConceptQueryPredicateCompiler.ResolvedClause>> groups = ConceptQueryPredicateCompiler.compilePredicate(
-                "status in (:first, 'CLOSED')", parameters, Map.of("first", "ACTIVE"));
+                "status in [$params.first, 'CLOSED']", parameters, Map.of("first", "ACTIVE"));
         ConceptQueryPredicateCompiler.ResolvedClause clause = groups.get(0).get(0);
         assertEquals(PredicateOperator.IN, clause.operator());
         assertEquals(List.of("ACTIVE", "CLOSED"), clause.value());
@@ -59,8 +59,8 @@ class ConceptQueryPredicateCompilerPredicateTest {
         ConceptQueryPredicateCompiler.UnsupportedPredicateException thrown = assertThrows(
                 ConceptQueryPredicateCompiler.UnsupportedPredicateException.class,
                 () -> ConceptQueryPredicateCompiler.compilePredicate(
-                        "status in (:first, 'CLOSED')", parameters, Map.of()));
-        assertTrue(thrown.getMessage().contains(":first"), thrown.getMessage());
+                        "status in [$params.first, 'CLOSED']", parameters, Map.of()));
+        assertTrue(thrown.getMessage().contains("$params.first"), thrown.getMessage());
         assertTrue(thrown.getMessage().contains("not supplied a value"), thrown.getMessage());
     }
 
@@ -68,14 +68,14 @@ class ConceptQueryPredicateCompilerPredicateTest {
     void undeclaredPlaceholderIsRefused() {
         ConceptQueryPredicateCompiler.UnsupportedPredicateException thrown = assertThrows(
                 ConceptQueryPredicateCompiler.UnsupportedPredicateException.class,
-                () -> ConceptQueryPredicateCompiler.compilePredicate("storeId == :storeId"));
+                () -> ConceptQueryPredicateCompiler.compilePredicate("storeId == $params.storeId"));
         assertTrue(thrown.getMessage().contains("storeId"), thrown.getMessage());
     }
 
     @Test
     void isNullClauseCarriesNoValue() {
         List<List<ConceptQueryPredicateCompiler.ResolvedClause>> groups =
-                ConceptQueryPredicateCompiler.compilePredicate("note is null");
+                ConceptQueryPredicateCompiler.compilePredicate("note == null");
         ConceptQueryPredicateCompiler.ResolvedClause clause = groups.get(0).get(0);
         assertEquals(PredicateOperator.IS_NULL, clause.operator());
         assertEquals(null, clause.value());

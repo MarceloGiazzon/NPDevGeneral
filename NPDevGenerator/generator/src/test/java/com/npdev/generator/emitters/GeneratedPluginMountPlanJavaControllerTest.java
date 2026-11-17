@@ -296,16 +296,27 @@ final class GeneratedPluginMountPlanJavaControllerTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
-                    { "name": "Trigger", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
+                    {
+                      "name": "Trigger",
+                      "fields": [
+                        {
+                          "name": "id",
+                          "type": "uuid",
+                          "id": true,
+                          "required": true
+                        }
+                      ]
+                    }
                   ],
                   "customCapabilities": [
-                    { "name": "%s", "type": "%s" }
-                  ],
-                  "bindings": [
-                    { "capability": "%s", "adapter": "plugin:java-controller" }
+                    {
+                      "name": "%s",
+                      "type": "%s",
+                      "adapter": "plugin:java-controller"
+                    }
                   ]
                 }
                 """.formatted(capabilityName, capabilityType, capabilityName));

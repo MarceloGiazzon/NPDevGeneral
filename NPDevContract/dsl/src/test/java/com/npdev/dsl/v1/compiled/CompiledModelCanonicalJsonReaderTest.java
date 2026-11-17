@@ -317,31 +317,6 @@ class CompiledModelCanonicalJsonReaderTest {
                 new CompiledFlowSchedule("0 0 2 * * *", List.of("acme", "beta"))
         );
 
-        CompiledOrchestration orchestration = new CompiledOrchestration(
-                "NotifyUser",
-                "status == 'Active'",
-                new CompiledOrchestrationTrigger("event", "UserCreated"),
-                List.of(new CompiledOrchestrationAction(
-                        "callCapability",
-                        "User",
-                        "notification",
-                        "send",
-                        null,
-                        null,
-                        Map.of("email", "input.email"),
-                        new CompiledActionMetadata(
-                                "Send welcome email",
-                                null,
-                                "Email queued.",
-                                "Retry after notification recovery.",
-                                "low",
-                                null,
-                                "notifications.send",
-                                "welcome-email"
-                        )
-                ))
-        );
-
         Map<String, CompiledConcept> entities = new LinkedHashMap<>();
         entities.put(entity.getName(), entity);
 
@@ -353,8 +328,7 @@ class CompiledModelCanonicalJsonReaderTest {
                 List.of(capability),
                 List.of(new CompiledCapabilityBinding("NotificationCapability", "notification-inproc")),
                 List.of(event),
-                List.of(flow),
-                List.of(orchestration)
+                List.of(flow)
         );
 
         String json = CompiledModelCanonicalJson.toJson(original);
@@ -412,7 +386,6 @@ class CompiledModelCanonicalJsonReaderTest {
                 restoredChartLabel.getSchema().getDerivedExpression());
         assertEquals(2, restoredStatus.getEnumOptions().size());
         assertTrue(restoredStatus.getEnumOptions().get(0).isDefaultValue());
-        assertEquals("Send welcome email", restored.getOrchestrationRules().get(0).getActions().get(0).getAction().getLabel());
 
         // LNCH-13: access (row-level authorization) must survive the canonical JSON round trip --
         // confirmed live that it didn't (the writer never emitted it, the reader never parsed it)
@@ -423,10 +396,32 @@ class CompiledModelCanonicalJsonReaderTest {
     }
 
     @Test
+    void aFlowWithNoConceptKeepsANullConceptAcrossTheCanonicalRoundTrip() throws Exception {
+        String model = """
+            {
+              "dslVersion": "3.0.0", "namespace": "demo", "version": "1.0",
+              "concepts": [ { "name": "Noop", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
+              "flows": [
+                { "name": "Free", "expose": "internal", "steps": [ { "name": "r", "type": "return", "value": "$input" } ] },
+                { "name": "Bound", "concept": "Noop", "expose": "ui", "steps": [ { "name": "r", "type": "return", "value": "$input" } ] }
+              ]
+            }
+            """;
+        CompiledModel compiled = new com.npdev.dsl.v1.compiler.ModelCompiler()
+                .compile(new com.npdev.dsl.v1.parser.JsonModelParser().parse(MAPPER.readTree(model)));
+        assertNull(compiled.findFlow("Free").orElseThrow().getConcept(), "the compiler leaves an absent concept null");
+
+        CompiledModel restored = CompiledModelCanonicalJsonReader.fromJson(CompiledModelCanonicalJson.toJson(compiled));
+
+        assertNull(restored.findFlow("Free").orElseThrow().getConcept(), "null, not the empty string, after the round trip");
+        assertEquals("Noop", restored.findFlow("Bound").orElseThrow().getConcept());
+    }
+
+    @Test
     void readsLegacyEntitiesAlias() throws Exception {
         String json = """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "namespace": "demo",
                   "version": "v1",
                   "entities": [

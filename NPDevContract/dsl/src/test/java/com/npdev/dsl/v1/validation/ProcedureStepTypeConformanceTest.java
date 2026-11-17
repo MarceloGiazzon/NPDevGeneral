@@ -82,8 +82,6 @@ class ProcedureStepTypeConformanceTest {
             "set": { "total": 4 } },
           { "name": "s-patch-create",   "type": "patchConcept",   "concept": "Order", "createIfMissing": true,
             "set": { "total": 5 } },
-          { "name": "s-procedurecall",  "type": "procedureCall",  "procedure": "ConformanceHelper", "target": "calledA" },
-          { "name": "s-callprocedure",  "type": "callProcedure",  "procedure": "ConformanceHelper", "target": "calledB" },
           { "name": "s-capabilitycall", "type": "capabilityCall", "capability": "persistence", "operation": "save",
             "args": { "record": "$input" }, "target": "persistedA" },
           { "name": "s-callcapability", "type": "callCapability", "capability": "persistence", "operation": "save",
@@ -141,7 +139,7 @@ class ProcedureStepTypeConformanceTest {
     private static String conformanceModelJson() {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.procstepconformance", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.procstepconformance", "version": "1.0",
               "concepts": [
                 { "name": "Order", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

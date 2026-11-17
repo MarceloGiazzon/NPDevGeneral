@@ -40,7 +40,7 @@ class PackDiffEngineTest {
     void identicalPacks_produceNoFindings() {
         String json = """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "widgets",
                   "version": "1.0.0",
                   "concepts": [
@@ -57,7 +57,7 @@ class PackDiffEngineTest {
     void newNullableFieldOnExistingConcept_isAdditive() {
         JsonNode oldPack = pack("""
                 {
-                  "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+                  "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                   "concepts": [
                     { "name": "Widget", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true }
@@ -67,7 +67,7 @@ class PackDiffEngineTest {
                 """);
         JsonNode newPack = pack("""
                 {
-                  "dslVersion": "1.0.0", "pack": "widgets", "version": "1.1.0",
+                  "dslVersion": "3.0.0", "pack": "widgets", "version": "1.1.0",
                   "concepts": [
                     { "name": "Widget", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -88,7 +88,7 @@ class PackDiffEngineTest {
     void fieldRemoved_isBreaking() {
         JsonNode oldPack = pack("""
                 {
-                  "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+                  "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                   "concepts": [
                     { "name": "Widget", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -99,7 +99,7 @@ class PackDiffEngineTest {
                 """);
         JsonNode newPack = pack("""
                 {
-                  "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                  "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.0",
                   "concepts": [
                     { "name": "Widget", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true }
@@ -119,14 +119,14 @@ class PackDiffEngineTest {
     void descriptionOnlyChange_isPatch() {
         JsonNode oldPack = pack("""
                 {
-                  "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+                  "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                   "description": "Widgets, first draft.",
                   "concepts": [ { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ]
                 }
                 """);
         JsonNode newPack = pack("""
                 {
-                  "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.1",
+                  "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.1",
                   "description": "Widgets, now with a better README paragraph.",
                   "concepts": [ { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ]
                 }
@@ -142,7 +142,7 @@ class PackDiffEngineTest {
     void fieldDescriptionOnlyChange_isPatch() {
         JsonNode oldPack = pack("""
                 {
-                  "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+                  "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                   "concepts": [ { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "sku", "type": "string", "required": true, "description": "old copy" }
@@ -151,7 +151,7 @@ class PackDiffEngineTest {
                 """);
         JsonNode newPack = pack("""
                 {
-                  "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.1",
+                  "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.1",
                   "concepts": [ { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "sku", "type": "string", "required": true, "description": "new copy" }
@@ -177,7 +177,7 @@ class PackDiffEngineTest {
     void fieldRenameHasNoDedicatedDetection_soItIsClassifiedBreakingViaRemovePlusAdd() {
         JsonNode oldPack = pack("""
                 {
-                  "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+                  "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                   "concepts": [ { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "oldName", "type": "string", "required": false }
@@ -186,7 +186,7 @@ class PackDiffEngineTest {
                 """);
         JsonNode newPack = pack("""
                 {
-                  "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                  "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.0",
                   "concepts": [ { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "newName", "type": "string", "required": false }
@@ -208,12 +208,12 @@ class PackDiffEngineTest {
     @Test
     void wholeNewConcept_isAdditive() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
                   { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
                 ] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.1.0", "concepts": [
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.1.0", "concepts": [
                   { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
                   { "name": "Gadget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
                 ] }
@@ -228,13 +228,13 @@ class PackDiffEngineTest {
     @Test
     void conceptRemoved_isBreaking() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
                   { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
                   { "name": "Gadget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
                 ] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0", "concepts": [
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.0", "concepts": [
                   { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
                 ] }
                 """);
@@ -248,12 +248,12 @@ class PackDiffEngineTest {
     @Test
     void newPanel_isAdditive() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
                   { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
                 ] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.1.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.1.0",
                   "concepts": [ { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
                   "panels": [ { "name": "WidgetPanel", "route": "/widgets" } ]
                 }
@@ -268,13 +268,13 @@ class PackDiffEngineTest {
     @Test
     void panelRemoved_isBreaking() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                   "concepts": [ { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
                   "panels": [ { "name": "WidgetPanel", "route": "/widgets" } ]
                 }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.0",
                   "concepts": [ { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ]
                 }
                 """);
@@ -288,12 +288,12 @@ class PackDiffEngineTest {
     @Test
     void newQuery_isAdditive() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
                   { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
                 ] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.1.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.1.0",
                   "concepts": [ { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
                   "queries": [ { "name": "AllWidgets", "concept": "Widget" } ]
                 }
@@ -308,12 +308,12 @@ class PackDiffEngineTest {
     @Test
     void newProcedure_isAdditive() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
                   { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
                 ] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.1.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.1.0",
                   "concepts": [ { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
                   "procedures": [ { "name": "ArchiveWidget" } ]
                 }
@@ -328,7 +328,7 @@ class PackDiffEngineTest {
     @Test
     void fieldTypeNarrowedOrRetyped_isBreaking() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
                   { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "quantity", "type": "string", "required": true }
@@ -336,7 +336,7 @@ class PackDiffEngineTest {
                 ] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0", "concepts": [
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.0", "concepts": [
                   { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "quantity", "type": "int", "required": true }
@@ -353,7 +353,7 @@ class PackDiffEngineTest {
     @Test
     void fieldMadeRequired_isBreaking() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
                   { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "sku", "type": "string", "required": false }
@@ -361,7 +361,7 @@ class PackDiffEngineTest {
                 ] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "2.0.0", "concepts": [
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "2.0.0", "concepts": [
                   { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "sku", "type": "string", "required": true }
@@ -378,7 +378,7 @@ class PackDiffEngineTest {
     @Test
     void fieldRelaxedFromRequiredToOptional_isAdditive() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
                   { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "sku", "type": "string", "required": true }
@@ -386,7 +386,7 @@ class PackDiffEngineTest {
                 ] }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.1.0", "concepts": [
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.1.0", "concepts": [
                   { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "sku", "type": "string", "required": false }
@@ -403,13 +403,13 @@ class PackDiffEngineTest {
     @Test
     void reorderingAListOfImportsWithNoOtherChange_producesNoFinding() {
         JsonNode oldPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                   "imports": ["alpha", "beta"],
                   "concepts": [ { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ]
                 }
                 """);
         JsonNode newPack = pack("""
-                { "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+                { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                   "imports": ["beta", "alpha"],
                   "concepts": [ { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ]
                 }
@@ -423,12 +423,12 @@ class PackDiffEngineTest {
     @Test
     void versionAndSchemaPointerChanges_areNeverDiffed() {
         JsonNode oldPack = pack("""
-                { "$schema": "../../schemas/pack.schema.json", "dslVersion": "1.0.0", "pack": "widgets", "version": "1.0.0",
+                { "$schema": "../../schemas/pack.schema.json", "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
                   "concepts": [ { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ]
                 }
                 """);
         JsonNode newPack = pack("""
-                { "$schema": "pack.schema.json", "dslVersion": "1.0.0", "pack": "widgets", "version": "9.9.9",
+                { "$schema": "pack.schema.json", "dslVersion": "3.0.0", "pack": "widgets", "version": "9.9.9",
                   "concepts": [ { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ]
                 }
                 """);
@@ -441,7 +441,7 @@ class PackDiffEngineTest {
     @Test
     void nonObjectInputsAreRejected() {
         JsonNode notAnObject = pack("[1, 2, 3]");
-        JsonNode validPack = pack("{ \"dslVersion\": \"1.0.0\", \"pack\": \"widgets\", \"version\": \"1.0.0\" }");
+        JsonNode validPack = pack("{ \"dslVersion\": \"3.0.0\", \"pack\": \"widgets\", \"version\": \"1.0.0\" }");
         assertFalse(notAnObject.isObject());
         org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
                 () -> PackDiffEngine.diff(notAnObject, validPack));

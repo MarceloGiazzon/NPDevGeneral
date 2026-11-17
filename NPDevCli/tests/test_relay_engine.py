@@ -264,7 +264,9 @@ class RealValidatorTests(unittest.TestCase):
             good.write_text(SEED_MODEL, encoding="utf-8")
             report = engine.run_validation(good, Path(tmp) / "good-report.json")
             self.assertIsNotNone(report)
-            self.assertEqual(report["status"], "passed")
+            # "warning" is fine: default-deny warns about a seed with no roles[]; only errors fail a model.
+            self.assertEqual(report["summary"]["errors"], 0)
+            self.assertIn(report["status"], ("passed", "warning"))
             bad = Path(tmp) / "bad.json"
             model = json.loads(SEED_MODEL)
             model["concepts"][0]["fields"][1]["type"] = "money"

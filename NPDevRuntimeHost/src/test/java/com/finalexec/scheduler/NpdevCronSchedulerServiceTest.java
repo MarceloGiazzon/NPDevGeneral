@@ -67,8 +67,7 @@ final class NpdevCronSchedulerServiceTest {
                         null,
                         false,
                         new CompiledFlowSchedule("* * * * * *", List.of("tenant-a"))
-                )),
-                List.of()
+                ))
         );
 
         CapabilityRegistry registry = new CapabilityRegistry();

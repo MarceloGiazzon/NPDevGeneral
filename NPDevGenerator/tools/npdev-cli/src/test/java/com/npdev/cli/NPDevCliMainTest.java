@@ -432,7 +432,7 @@ class NPDevCliMainTest {
         Path model = writeText("""
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "v1",
                   "unexpectedRootKey": "boom",
                   "concepts": [
@@ -581,48 +581,61 @@ class NPDevCliMainTest {
     private static String idempotencyModelJson() {
         return """
                 {
-                  "namespace":"demo",
-                  "dslVersion":"1.0.0",
-                  "version":"v1",
-                  "concepts":[
+                  "namespace": "demo",
+                  "dslVersion": "3.0.0",
+                  "version": "v1",
+                  "concepts": [
                     {
-                      "name":"User",
-                      "fields":[
-                        {"name":"id","type":"uuid","id":true},
-                        {"name":"email","type":"string","required":true}
+                      "name": "User",
+                      "fields": [
+                        {
+                          "name": "id",
+                          "type": "uuid",
+                          "id": true
+                        },
+                        {
+                          "name": "email",
+                          "type": "string",
+                          "required": true
+                        }
                       ]
                     }
                   ],
-                  "capabilities":[
+                  "capabilities": [
                     {
-                      "name":"persistence",
-                      "type":"PersistenceCapability",
-                      "operations":["save"]
+                      "name": "persistence",
+                      "type": "PersistenceCapability",
+                      "operations": [
+                        "save"
+                      ],
+                      "adapter": "inmemory"
                     }
                   ],
-                  "bindings":[
-                    {"capability":"persistence","adapter":"inmemory"}
-                  ],
-                  "flows":[
+                  "flows": [
                     {
-                      "name":"CreateUser",
-                      "concept":"User",
-                      "steps":[
+                      "name": "CreateUser",
+                      "concept": "User",
+                      "steps": [
                         {
-                          "name":"save",
-                          "type":"capabilityCall",
-                          "capability":"persistence",
-                          "operation":"save",
-                          "args":["$input"],
-                          "output":"$saved",
-                          "policy":{
-                            "retryCount":1,
-                            "retryDelayMs":0,
-                            "timeoutMs":0,
-                            "idempotencyKeyField":"$input.requestId"
+                          "name": "save",
+                          "type": "capabilityCall",
+                          "capability": "persistence",
+                          "operation": "save",
+                          "args": [
+                            "$input"
+                          ],
+                          "output": "$saved",
+                          "policy": {
+                            "retryCount": 1,
+                            "retryDelayMs": 0,
+                            "timeoutMs": 0,
+                            "idempotencyKeyField": "$input.requestId"
                           }
                         },
-                        {"type":"return","value":"$saved"}
+                        {
+                          "type": "return",
+                          "value": "$saved"
+                        }
                       ]
                     }
                   ]
@@ -634,7 +647,7 @@ class NPDevCliMainTest {
         return """
                 {
                   "namespace":"demo",
-                  "dslVersion":"1.0.0",
+                  "dslVersion":"3.0.0",
                   "version":"v1",
                   "concepts":[
                     {

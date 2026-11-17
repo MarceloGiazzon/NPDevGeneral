@@ -1,5 +1,6 @@
 package com.finalexec.npdev.service;
 
+import com.finalexec.acceptance.InProcessAcceptanceRunner;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.finalexec.db.JdbcBusinessConceptStore;
 import com.npdev.dsl.v1.ast.ModelAst;
@@ -49,26 +50,79 @@ class AggregateRuntimeOnCommitTest {
 
     private static final String MODEL = """
         {
-          "dslVersion": "1.0.0", "namespace": "wms", "version": "1.0",
+          "dslVersion": "3.0.0",
+          "namespace": "wms",
+          "version": "1.0",
           "concepts": [
-            { "name": "Movimento", "fields": [
-              { "name": "id", "type": "uuid", "id": true, "required": true },
-              { "name": "situacao", "type": "string" },
-              { "name": "ledgerRef", "type": "uuid" } ] },
-            { "name": "Ledger", "fields": [
-              { "name": "id", "type": "uuid", "id": true, "required": true },
-              { "name": "quantidade", "type": "string" },
-              { "name": "synced", "type": "string" } ] }
+            {
+              "name": "Movimento",
+              "fields": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "id": true,
+                  "required": true
+                },
+                {
+                  "name": "situacao",
+                  "type": "string"
+                },
+                {
+                  "name": "ledgerRef",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "Ledger",
+              "fields": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "id": true,
+                  "required": true
+                },
+                {
+                  "name": "quantidade",
+                  "type": "string"
+                },
+                {
+                  "name": "synced",
+                  "type": "string"
+                }
+              ]
+            }
           ],
           "aggregates": [
-            { "name": "Movimento", "root": "Movimento", "onCommit": "SyncLedgerProcedure", "collections": [] }
+            {
+              "name": "Movimento",
+              "root": "Movimento",
+              "onCommit": "SyncLedgerProcedure",
+              "collections": []
+            }
           ],
-          "procedures": [
-            { "name": "SyncLedgerProcedure", "steps": [
-              { "name": "sync-ledger", "type": "patchConcept", "concept": "Ledger", "id": "$input.ledgerRef",
-                "set": { "synced": "true" }, "target": "patched" },
-              { "name": "return-patched", "type": "return", "value": "$patched" }
-            ] }
+          "flows": [
+            {
+              "name": "SyncLedgerProcedure",
+              "expose": "ui",
+              "steps": [
+                {
+                  "name": "sync-ledger",
+                  "type": "updateConcept",
+                  "scope": "Ledger",
+                  "id": "$input.ledgerRef",
+                  "set": {
+                    "synced": "true"
+                  },
+                  "output": "patched"
+                },
+                {
+                  "name": "return-patched",
+                  "type": "return",
+                  "value": "$patched"
+                }
+              ]
+            }
           ]
         }
         """;
@@ -117,6 +171,7 @@ class AggregateRuntimeOnCommitTest {
     @Test
     void onCommitPatchesSiblingConceptAfterRootCommits() {
         ProcedureRunner procedureRunner = new ProcedureRunner(model, gateway, null, null);
+        InProcessAcceptanceRunner.attachKernel(procedureRunner, model, null, gateway, null);
         AggregateRuntime runtime = new AggregateRuntime(model, gateway, procedureRunner, transactionManager);
 
         Map<String, Object> draft = new LinkedHashMap<>(Map.of("id", "M1", "situacao", "Concluido", "ledgerRef", "L1"));
@@ -146,6 +201,7 @@ class AggregateRuntimeOnCommitTest {
         }
 
         ProcedureRunner procedureRunner = new ProcedureRunner(model, gateway, null, null);
+        InProcessAcceptanceRunner.attachKernel(procedureRunner, model, null, gateway, null);
         AggregateRuntime runtime = new AggregateRuntime(model, gateway, procedureRunner, transactionManager);
 
         Map<String, Object> draft = new LinkedHashMap<>(Map.of("id", "M1", "situacao", "Concluido", "ledgerRef", "L1"));

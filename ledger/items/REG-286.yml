@@ -3,9 +3,11 @@ title: >-
   An orchestration rule whose any one action cannot be built is dropped whole, with no log, error or startup signal
 type: BUG
 severity: MEDIUM
-status: DONE
+status: OBSOLETE
 opened: 2026-10-23
 closed: 2026-10-23
+decision: >-
+  Orchestration rules (orchestration[]) were removed end to end in FORM P3-T5c stage 6b; the unbuildable-action drop and the legacy condition matcher this item described no longer exist, and the guard test was deleted with them.
 source: >-
   REG-282 (X0-11 audit), 2026-10-23. Already visible in ENF-1's witness allowlist
   (scripts/policy/dsl-behavior-witness.json, orchestrationAction.concept/delay*/event entry).
@@ -20,14 +22,6 @@ detail: |
   declared rule that will never fire is indistinguishable from one waiting for its event.
   Smaller, same family: evaluateOrchestrationCondition falls back to a legacy ==/!= substring matcher when the
   condition does not parse as a ComputedExpression, so a malformed condition gets a guessed answer instead of an error.
-guard:
-  kind: test
-  ref: NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportOrchestrationReloadTest.java#aRuleWithAnUnbuildableActionIsReportedNotSilentlyDropped
-  asserts: >-
-    A rule with a callCapability and a create action, built with no EntityManager, is reported once at SEVERE naming
-    the rule and EntityManager and runs none of its actions; anUndecidableConditionIsReportedNotGuessed: a condition
-    that evaluates to the string "true" no longer fires through the legacy matcher and is reported.
-  provenRed: true
 resolution: >-
   Done when a rule that cannot be fully built is reported, not skipped: model validation refuses what is a model
   error (unknown action type / concept, blank fields), and what depends on the environment (no dataSource /

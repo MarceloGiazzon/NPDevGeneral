@@ -554,10 +554,10 @@ public final class NPDevCliMain {
                     target
             ).withErrorTarget(normalized(step.errorTarget()));
             case PUBLISH_EVENT -> ProcedureStep.publishEvent(stepName(step), normalized(step.event()), dataRef(step));
-            case CALL_PROCEDURE -> ProcedureStep.callProcedure(stepName(step), normalized(step.procedure()), dataRef(step), target);
             case IF -> ProcedureStep.ifThenElse(
                     stepName(step),
-                    refOf(step.condition(), "condition"),
+                    // FORM P3-T3: the condition is an expression, passed through whole (see ProcedureRunner).
+                    normalized(step.condition()),
                     step.thenSteps().stream().map(NPDevCliMain::toProcedureStep).toList(),
                     step.elseSteps().stream().map(NPDevCliMain::toProcedureStep).toList()
             );
@@ -575,6 +575,7 @@ public final class NPDevCliMain {
                     target
             );
             case MAP_VALUE -> ProcedureStep.mapValue(stepName(step), literalOrRef(step.value(), "$input"), target);
+            case EVALUATE, BUILD_OBJECT -> throw new IllegalArgumentException(type + " is a flow-only step, not an authored procedure step type");
             case COMPUTE_VALUE -> ProcedureStep.computeValue(
                     stepName(step), normalized(step.operation()), step.left(), step.right(), target);
             case RETURN -> ProcedureStep.returnValue(

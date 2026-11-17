@@ -26,7 +26,7 @@ class BondSemanticsSupportTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "bond.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -78,7 +78,7 @@ class BondSemanticsSupportTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "bond.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -131,7 +131,7 @@ class BondSemanticsSupportTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "bond.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -174,7 +174,7 @@ class BondSemanticsSupportTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "bond.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -213,7 +213,7 @@ class BondSemanticsSupportTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "bond.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -262,7 +262,7 @@ class BondSemanticsSupportTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "bond.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -305,7 +305,7 @@ class BondSemanticsSupportTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "bond.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -348,7 +348,7 @@ class BondSemanticsSupportTest {
         Files.writeString(modelPath, """
                 {
                   "namespace": "bond.demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     {
@@ -391,7 +391,7 @@ class BondSemanticsSupportTest {
                 {
                   "pack": "catalog",
                   "version": "1.0.0",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "concepts": [
                     {
                       "name": "Product",
@@ -407,7 +407,7 @@ class BondSemanticsSupportTest {
         Files.writeString(modelFile, """
                 {
                   "namespace": "order.app",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [{ "$ref": "packs/catalog.json" }],
                   "concepts": [

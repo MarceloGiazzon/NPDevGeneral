@@ -48,7 +48,7 @@ class LiveConceptCrudSupportTest {
     private static final ExecutionContext CONTEXT = ExecutionContext.of("tenant-a", "test-actor");
 
     private static final String EMPTY_MODEL = """
-            { "namespace": "reg244.phase4c", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
+            { "namespace": "reg244.phase4c", "dslVersion": "3.0.0", "version": "1.0", "concepts": [
               { "name": "Placeholder", "fields": [
                 { "name": "id", "type": "uuid", "id": true, "required": true }
               ] }
@@ -56,7 +56,7 @@ class LiveConceptCrudSupportTest {
             """;
 
     private static final String MODEL_WITH_WIDGET = """
-            { "namespace": "reg244.phase4c", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
+            { "namespace": "reg244.phase4c", "dslVersion": "3.0.0", "version": "1.0", "concepts": [
               { "name": "Placeholder", "fields": [
                 { "name": "id", "type": "uuid", "id": true, "required": true }
               ] },
@@ -154,7 +154,7 @@ class LiveConceptCrudSupportTest {
         // model that was never live-reloaded at all -- an ordinarily-generated app's reference
         // fields must resolve here too, not just a live-provisioned one's.
         CompiledModel model = compile("""
-                { "namespace": "reg244.phase4c", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
+                { "namespace": "reg244.phase4c", "dslVersion": "3.0.0", "version": "1.0", "concepts": [
                   { "name": "Widget", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true }
                   ] },

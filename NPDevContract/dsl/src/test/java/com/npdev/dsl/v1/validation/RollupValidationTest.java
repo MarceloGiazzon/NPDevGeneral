@@ -32,7 +32,7 @@ class RollupValidationTest {
     private static String model(String rollups) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "demo.rollup", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "demo.rollup", "version": "1.0",
               "concepts": [
                 { "name": "Mosaic", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

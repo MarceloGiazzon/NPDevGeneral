@@ -29,7 +29,7 @@ class TableNameCollisionValidationTest {
     private static String modelWithConceptNames(String firstName, String secondName) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "wms.tablecollision", "version": "1.0",
+              "dslVersion": "3.0.0", "namespace": "wms.tablecollision", "version": "1.0",
               "concepts": [
                 { "name": "%s", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] },
@@ -124,8 +124,8 @@ class TableNameCollisionValidationTest {
     void bothIsolatingDifferentConceptNameIsLegalDistinctTables() throws Exception {
         String json = """
             {
-              "dslVersion": "1.0.0", "namespace": "wms", "version": "1.0",
-              "contexts": [
+              "dslVersion": "3.0.0", "namespace": "wms", "version": "1.0",
+              "modules": [
                 { "name": "wms", "$ref": "contexts/wms.model.json", "physicallyIsolate": true },
                 { "name": "logistics", "$ref": "contexts/logistics.model.json", "physicallyIsolate": true }
               ],
@@ -160,8 +160,8 @@ class TableNameCollisionValidationTest {
     private static String modelWithTwoContexts(boolean wmsIsolate, boolean logisticsIsolate) {
         return """
             {
-              "dslVersion": "1.0.0", "namespace": "wms", "version": "1.0",
-              "contexts": [
+              "dslVersion": "3.0.0", "namespace": "wms", "version": "1.0",
+              "modules": [
                 { "name": "wms", "$ref": "contexts/wms.model.json", "physicallyIsolate": %s },
                 { "name": "logistics", "$ref": "contexts/logistics.model.json", "physicallyIsolate": %s }
               ],

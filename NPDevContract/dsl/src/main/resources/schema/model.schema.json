@@ -9,17 +9,8 @@
   ],
   "allOf": [
     {
-      "oneOf": [
-        {
-          "required": [
-            "namespace"
-          ]
-        },
-        {
-          "required": [
-            "model"
-          ]
-        }
+      "required": [
+        "namespace"
       ]
     },
     {
@@ -38,14 +29,10 @@
     },
     "dslVersion": {
       "type": "string",
-      "description": "Optional. Model-format version; defaults to 1.0.0. Unrelated to the DSL 2.0 step-type rename.",
-      "const": "1.0.0"
+      "description": "Optional. Model-format version; defaults to 3.0.0 (the unified-vocabulary DSL).",
+      "const": "3.0.0"
     },
     "namespace": {
-      "type": "string",
-      "minLength": 1
-    },
-    "model": {
       "type": "string",
       "minLength": 1
     },
@@ -122,23 +109,6 @@
         }
       }
     },
-    "bindings": {
-      "type": "array",
-      "items": {
-        "if": {
-          "type": "object",
-          "required": [
-            "$ref"
-          ]
-        },
-        "then": {
-          "$ref": "#/$defs/localModelRef"
-        },
-        "else": {
-          "$ref": "#/$defs/binding"
-        }
-      }
-    },
     "events": {
       "type": "array",
       "items": {
@@ -173,40 +143,6 @@
         }
       }
     },
-    "orchestrationRules": {
-      "type": "array",
-      "items": {
-        "if": {
-          "type": "object",
-          "required": [
-            "$ref"
-          ]
-        },
-        "then": {
-          "$ref": "#/$defs/localModelRef"
-        },
-        "else": {
-          "$ref": "#/$defs/orchestrationRule"
-        }
-      }
-    },
-    "orchestrations": {
-      "type": "array",
-      "items": {
-        "if": {
-          "type": "object",
-          "required": [
-            "$ref"
-          ]
-        },
-        "then": {
-          "$ref": "#/$defs/localModelRef"
-        },
-        "else": {
-          "$ref": "#/$defs/orchestrationRule"
-        }
-      }
-    },
     "queries": {
       "type": "array",
       "items": {
@@ -221,23 +157,6 @@
         },
         "else": {
           "$ref": "#/$defs/query"
-        }
-      }
-    },
-    "ruleProfiles": {
-      "type": "array",
-      "items": {
-        "if": {
-          "type": "object",
-          "required": [
-            "$ref"
-          ]
-        },
-        "then": {
-          "$ref": "#/$defs/localModelRef"
-        },
-        "else": {
-          "$ref": "#/$defs/ruleProfile"
         }
       }
     },
@@ -380,12 +299,6 @@
     "metadata": {
       "type": "object"
     },
-    "fragments": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/localModelRef"
-      }
-    },
     "packs": {
       "type": "array",
       "items": {
@@ -443,19 +356,12 @@
       },
       "description": "Wave 6 (RC-A1): declared runtime properties resolved through the scoped-property cascade (see propertyScopes)."
     },
-    "contexts": {
+    "modules": {
       "type": "array",
       "items": {
         "$ref": "#/$defs/context"
       },
       "description": "B20 (S2): bounded-context declarations. Each names a context and $ref's the fragment file (composed via the same pack/fragment $ref machinery as `fragments`/`packs`) whose concepts/queries/panels/flows belong to that context. Cross-context references use context::Concept (D1); a fragment may only reference a context its own `imports[]` (pack.schema.json) declares (D3) -- an undeclared or unresolvable reference is a compile error, never silent."
-    },
-    "webhooks": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/webhook"
-      },
-      "description": "R6.2: model-declared inbound webhook doors -- POST /api/hooks/{source} verifies an HMAC-SHA256 signature against a named env var and, once verified, publishes eventName into the flow engine's event store so a flow parked on awaitEvent can be resumed by a third party holding no NPDev credential."
     },
     "sequences": {
       "type": "array",
@@ -510,39 +416,24 @@
       },
       "additionalProperties": false
     },
-    "webhook": {
+    "inboundDoor": {
       "type": "object",
-      "required": [
-        "source",
-        "hmacSecretEnvVar"
-      ],
-      "anyOf": [
-        {
-          "required": [
-            "eventName"
-          ]
-        },
-        {
-          "required": [
-            "startFlow"
-          ]
-        }
-      ],
+      "description": "FORM P3-T10: a capability's inbound door -- POST /api/hooks/{path} verifies a provider HMAC signature against an environment variable and, once verified, publishes eventName into the flow engine's event store and starts every flow whose trigger is {webhook: <this capability's name>} (at most one such flow per door). A third party holding no NPDev credential can resume a flow parked on awaitEvent.",
       "properties": {
-        "source": {
+        "path": {
           "type": "string",
           "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$",
-          "description": "Path segment identifying this webhook door: POST /api/hooks/{source}. Deliberately NOT namespace-qualified by pack composition -- a third party posts to a fixed, predictable URL."
+          "description": "Path segment identifying this door: POST /api/hooks/{path}. Defaults to the capability's name; REQUIRED when the capability is pack-qualified (a third party posts to a fixed, predictable URL, so the path is never namespace-qualified by pack composition)."
         },
         "hmacSecretEnvVar": {
           "type": "string",
           "minLength": 1,
-          "description": "Name of the environment variable holding the HMAC-SHA256 verification secret -- never a literal secret value in the model, never committed."
+          "description": "Name of the environment variable holding the HMAC-SHA256 verification secret -- never a literal secret value in the model, never committed. Defaults to NPDEV_WEBHOOK_<PATH upper-cased, '-' replaced by '_'>_SECRET."
         },
         "eventName": {
           "type": "string",
           "minLength": 1,
-          "description": "Flow event name published into the event store once the signature verifies; must name a member of this model's own events[]."
+          "description": "Flow event name published into the event store once the signature verifies; must name a member of this model's own events[]. Optional when a flow declares trigger.webhook for this capability."
         },
         "fieldMapping": {
           "type": "object",
@@ -551,11 +442,6 @@
             "minLength": 1
           },
           "description": "Target event-payload field name -> dot-path into the inbound JSON body. Absent/empty means the raw parsed JSON body becomes the event payload unchanged."
-        },
-        "startFlow": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Name of a flow (flows[].name) started with the mapped payload as its input once the signature verifies. Either eventName, startFlow, or both must be declared. The flow runs synchronously inside the provider's request, so keep it short."
         },
         "idempotencyKey": {
           "type": "string",
@@ -573,12 +459,12 @@
                 "hmac-sha256-base64",
                 "stripe-v1"
               ],
-              "description": "npdev (default): X-Npdev-Webhook-Signature, hex HMAC of the raw body, optional sha256= prefix. hmac-sha256-hex: GitHub style. hmac-sha256-base64: Shopify style. stripe-v1: Stripe-Signature 't=<unix>,v1=<hex>' over 't.body' with a timestamp tolerance."
+              "description": "npdev (default): X-Npdev-Webhook-Signature, hex HMAC of the raw body, optional sha256= prefix. hmac-sha256-hex: GitHub style. hmac-sha256-base64: Shopify style. stripe-v1: Stripe-Signature 't=<unix>,v1=<hex>' over 't.body' with a timestamp tolerance (header defaults to Stripe-Signature, tolerance to 300)."
             },
             "header": {
               "type": "string",
               "minLength": 1,
-              "description": "Request header carrying the signature. Required for every scheme except npdev."
+              "description": "Request header carrying the signature. Required for every scheme except npdev and stripe-v1."
             },
             "prefix": {
               "type": "string",
@@ -3039,6 +2925,14 @@
         "http": {
           "$ref": "#/$defs/httpConnector"
         },
+        "inbound": {
+          "$ref": "#/$defs/inboundDoor"
+        },
+        "adapter": {
+          "type": "string",
+          "minLength": 1,
+          "description": "FORM P3-T9 (D15): the adapter this capability is bound to when that is not a deployment default, e.g. plugin:java-source, plugin:java-controller, http-connector, externalAi, fileStore, notify, mail-smtp. The deployment defaults (persistence -> repository, eventBus -> inproc, a NotificationCapability -> notification-inproc) are derived and need no declaration; config.json adapters may override them. Replaces the removed root bindings[]."
+        },
         "operations": {
           "type": "array",
           "items": {
@@ -3259,28 +3153,6 @@
       },
       "additionalProperties": false
     },
-    "binding": {
-      "type": "object",
-      "required": [
-        "capability",
-        "adapter"
-      ],
-      "properties": {
-        "capability": {
-          "type": "string",
-          "minLength": 1
-        },
-        "adapter": {
-          "type": "string",
-          "minLength": 1,
-          "not": {
-            "const": "plugin:query-provider"
-          },
-          "description": "Capability adapter id, e.g. 'plugin:java-source' or 'plugin:java-controller'. 'plugin:query-provider' is a considered-but-unimplemented plugin kind (R10, __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R10) explicitly out of scope for this DSL version -- rejected here so a future session does not have to rediscover the question from scratch. Plugin code is admission-checked at generation and at boot against a bytecode denylist (SEC-3/B30), then runs in a separate OS process on a restricted classpath with a runtime class denylist and memory/CPU ceilings (B30); on Windows its network egress is not OS-blocked, so review plugins you did not write."
-        }
-      },
-      "additionalProperties": false
-    },
     "flow": {
       "type": "object",
       "required": [
@@ -3311,11 +3183,58 @@
         "action": {
           "$ref": "#/$defs/actionMetadata"
         },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "FORM P3-T5c: what the flow is for, in one or two sentences (read by humans and by AI authors)."
+        },
         "startEndpoint": {
           "type": "boolean"
         },
         "schedule": {
           "$ref": "#/$defs/flowSchedule"
+        },
+        "trigger": {
+          "description": "FORM P3-T5a: what starts this flow. \"api\" (the default) or exactly one of event (optionally with a condition in the one expression language), schedule (a cron, folded into the flow's schedule; declaring both schedule and trigger.schedule is refused) or webhook (a hook name). An event trigger runs the flow (as the system principal of the event's tenant) whenever the event is published; a webhook trigger names a capability that declares an inbound door and runs on every verified delivery; a schedule trigger runs from its cron.",
+          "oneOf": [
+            { "const": "api" },
+            {
+              "type": "object",
+              "properties": {
+                "event": { "type": "string", "minLength": 1 },
+                "condition": { "type": "string", "minLength": 1 }
+              },
+              "required": [ "event" ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": { "schedule": { "$ref": "#/$defs/flowSchedule" } },
+              "required": [ "schedule" ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": { "webhook": { "type": "string", "minLength": 1 } },
+              "required": [ "webhook" ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "expose": {
+          "type": "string",
+          "enum": [ "api", "ui", "internal" ],
+          "description": "FORM P3-T5a: who may start this flow. api (default): a public REST endpoint; ui: startable from a screen or panel action; internal: only through a callFlow step."
+        },
+        "runAs": {
+          "type": "string",
+          "enum": [ "caller", "system" ],
+          "description": "FORM P3-T5a: caller (default) runs every step as the acting user; system runs them as the platform's system principal, the caller kept for audit."
+        },
+        "crossAggregateReason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "FORM P3-T5c: why this flow may write concepts of more than one aggregate (the one-aggregate-one-transaction rule is waived for this flow only; the reason is mandatory). For a flow migrated from a multi-aggregate procedure."
         },
         "hooks": {
           "type": "array",
@@ -3382,180 +3301,6 @@
       ],
       "additionalProperties": false
     },
-    "orchestrationRule": {
-      "type": "object",
-      "required": [
-        "name",
-        "trigger",
-        "actions"
-      ],
-      "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "condition": {
-          "type": "string",
-          "minLength": 1
-        },
-        "trigger": {
-          "$ref": "#/$defs/orchestrationTrigger"
-        },
-        "actions": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/$defs/orchestrationAction"
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    "orchestrationTrigger": {
-      "type": "object",
-      "required": [
-        "type",
-        "event"
-      ],
-      "properties": {
-        "type": {
-          "type": "string",
-          "enum": [
-            "event"
-          ]
-        },
-        "event": {
-          "type": "string",
-          "minLength": 1
-        }
-      },
-      "additionalProperties": false
-    },
-    "orchestrationAction": {
-      "type": "object",
-      "required": [
-        "type",
-        "map"
-      ],
-      "properties": {
-        "type": {
-          "type": "string",
-          "enum": [
-            "create",
-            "callCapability",
-            "scheduleEvent"
-          ]
-        },
-        "concept": {
-          "type": "string",
-          "minLength": 1
-        },
-        "capability": {
-          "type": "string",
-          "minLength": 1
-        },
-        "operation": {
-          "type": "string",
-          "minLength": 1
-        },
-        "event": {
-          "type": "string",
-          "minLength": 1
-        },
-        "delaySeconds": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "delayMs": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "delayMinutes": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "action": {
-          "$ref": "#/$defs/actionMetadata"
-        },
-        "map": {
-          "type": "object",
-          "minProperties": 1,
-          "additionalProperties": {
-            "type": "string",
-            "minLength": 1
-          }
-        }
-      },
-      "allOf": [
-        {
-          "if": {
-            "properties": {
-              "type": {
-                "const": "create"
-              }
-            }
-          },
-          "then": {
-            "required": [
-              "concept"
-            ]
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "type": {
-                "const": "callCapability"
-              }
-            }
-          },
-          "then": {
-            "required": [
-              "capability",
-              "operation"
-            ]
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "type": {
-                "const": "scheduleEvent"
-              }
-            }
-          },
-          "then": {
-            "allOf": [
-              {
-                "required": [
-                  "event"
-                ]
-              },
-              {
-                "anyOf": [
-                  {
-                    "required": [
-                      "delaySeconds"
-                    ]
-                  },
-                  {
-                    "required": [
-                      "delayMs"
-                    ]
-                  },
-                  {
-                    "required": [
-                      "delayMinutes"
-                    ]
-                  }
-                ]
-              }
-            ]
-          }
-        }
-      ],
-      "additionalProperties": false
-    },
     "flowHook": {
       "type": "object",
       "required": [
@@ -3610,7 +3355,13 @@
             "updateConcept",
             "map",
             "forEach",
-            "callProcedure"
+            "set",
+            "deleteConcept",
+            "readConcept",
+            "listConcepts",
+            "runQuery",
+            "callFlow",
+            "notify"
           ]
         },
         "checkpoint": {
@@ -3661,10 +3412,25 @@
             "minLength": 1
           }
         },
-        "procedure": {
+        "id": {
           "type": "string",
           "minLength": 1,
-          "description": "Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md): the procedure a callProcedure flow step invokes synchronously. Reuses this step's own input/output for the procedure's input map / result binding."
+          "description": "FORM P3-T5a: the record id a readConcept or deleteConcept step acts on, as a ref."
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "description": "FORM P3-T5a: the named query a runQuery step runs; its result is bound to output."
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "FORM P3-T5a: a runQuery step's bind parameters, name to ref or expression."
+        },
+        "flow": {
+          "type": "string",
+          "minLength": 1,
+          "description": "FORM P3-T5a: the flow a callFlow step starts."
         },
         "policy": {
           "$ref": "#/$defs/capabilityPolicy"
@@ -3747,6 +3513,41 @@
           "type": "string",
           "minLength": 1,
           "description": "LIFT-LOOP: state variable name each forEach iteration's item is bound to."
+        },
+        "to": {
+          "description": "FORM P3-T8: on a notify step, the recipient -- a literal or a $ref expression (e.g. $input.email). notify lowers to a map step plus a notification.send call; the notification capability and its default adapter are implied, no declaration needed."
+        },
+        "message": {
+          "description": "FORM P3-T8: on a notify step, the message body -- a literal or a $ref expression."
+        },
+        "select": {
+          "type": "object",
+          "description": "FORM P3-T5c: on a map step, the object to build -- field name to a literal or a $ref. With collection, one such object is built per item (item bound to itemKey) and the result is the list; without collection the result is the single object.",
+          "additionalProperties": true
+        },
+        "set": {
+          "type": "object",
+          "description": "FORM P3-T5c: on an updateConcept step, the fields to change -- field name to a literal or a $ref (strict: an unresolvable $ref fails the step); an explicit null clears the field. Use with id.",
+          "additionalProperties": true
+        },
+        "createIfMissing": {
+          "type": "boolean",
+          "description": "FORM P3-T5c: on an updateConcept step, create the row (with a NEW generated id) when the id does not exist instead of failing with CONCEPT_NOT_FOUND."
+        },
+        "errorTarget": {
+          "type": "string",
+          "minLength": 1,
+          "description": "FORM P3-T5c: on a capabilityCall step, a failed call is stored under this state key as {code,message,kind,retryable} and the step succeeds, instead of failing the flow. Cleared on success."
+        },
+        "ifExists": {
+          "type": "string",
+          "enum": ["skip"],
+          "description": "FORM P3-T5c: on a createConcept step, skip silently when a row with the same unique field values already exists (the step output is then null) instead of failing."
+        },
+        "dedupeKey": {
+          "type": "string",
+          "minLength": 1,
+          "description": "FORM P3-T5c: on a scheduleEvent step with a delay, an expression ($input.id, $order.id, a literal) that makes the schedule unique ACROSS executions: the same flow, step, event and dedupeKey value is scheduled once, however many times the flow runs (an orchestration scheduleEvent action had this per source event). Absent = unique per execution."
         },
         "steps": {
           "type": "array",
@@ -4005,13 +3806,86 @@
           "if": {
             "properties": {
               "type": {
-                "const": "callProcedure"
+                "const": "set"
               }
             }
           },
           "then": {
             "required": [
-              "procedure"
+              "value",
+              "output"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "readConcept"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "id",
+              "output"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "deleteConcept"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "listConcepts"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "output"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "runQuery"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "query",
+              "output"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "callFlow"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "flow"
             ]
           }
         }
@@ -4603,45 +4477,6 @@
       },
       "additionalProperties": false
     },
-    "ruleProfile": {
-      "type": "object",
-      "required": [
-        "name"
-      ],
-      "properties": {
-        "name": {
-          "type": "string",
-          "enum": [
-            "always",
-            "interactive",
-            "interactiveOnly",
-            "headless",
-            "headlessOnly",
-            "beforeCommit",
-            "afterCommit",
-            "query"
-          ]
-        },
-        "description": {
-          "type": "string",
-          "minLength": 1
-        },
-        "appliesTo": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "enabled": {
-          "type": "boolean"
-        },
-        "metadata": {
-          "type": "object"
-        }
-      },
-      "additionalProperties": false
-    },
     "procedure": {
       "type": "object",
       "required": [
@@ -4851,8 +4686,6 @@
             "saveConcept",
             "conceptDelete",
             "deleteConcept",
-            "procedureCall",
-            "callProcedure",
             "capabilityCall",
             "callCapability",
             "eventPublish",
@@ -4918,10 +4751,6 @@
           "type": "object"
         },
         "id": {
-          "type": "string",
-          "minLength": 1
-        },
-        "procedure": {
           "type": "string",
           "minLength": 1
         },

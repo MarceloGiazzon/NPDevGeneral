@@ -72,6 +72,15 @@ public record ConceptQuery(
         /** R4.3: {@code field IS NOT NULL}. {@link Filter#value()} is unused (conventionally {@code null}). */
         IS_NOT_NULL("is not null"),
         /**
+         * FORM P3-T4: the great-circle distance between two coordinates, compared with a radius --
+         * {@code withinKm(lat1, lng1, lat2, lng2, km)} and {@code distanceKm(...) <op> km}.
+         * {@link Filter#value()} is a {@link Distance}; {@link Filter#field()} is its first field
+         * operand, or {@link Distance#SENTINEL_FIELD} when all four coordinates are values. A store
+         * renders it with {@code SqlDialect#greatCircleKm}; an in-memory adapter calls
+         * {@link Distance#matches}. A missing coordinate makes the clause false (SQL NULL semantics).
+         */
+        DISTANCE_KM("distanceKm"),
+        /**
          * R4.3: NOT a real per-field comparison -- a MARKER that carries this query's whole
          * OR-of-AND predicate ({@code QueryPredicateGrammar}'s v2 grammar) without changing
          * {@link ConceptQuery}'s own record shape, which generated code across every existing
@@ -156,6 +165,12 @@ public record ConceptQuery(
             return new Filter(field, Operator.IS_NOT_NULL, null);
         }
 
+        /** FORM P3-T4: a {@link Operator#DISTANCE_KM} clause. */
+        public static Filter distanceKm(Distance distance) {
+            Objects.requireNonNull(distance, "distance");
+            return new Filter(distance.firstFieldOrSentinel(), Operator.DISTANCE_KM, distance);
+        }
+
         /**
          * R4.3: wraps {@code groups} (OR-of-AND clause groups; each inner list is AND-combined, the
          * outer list is OR-combined) as the sole entry of a {@link ConceptQuery}'s {@code filters}
@@ -176,6 +191,94 @@ public record ConceptQuery(
                 copy.add(List.copyOf(group));
             }
             return new Filter("__or_groups__", Operator.OR_GROUPS, List.copyOf(copy));
+        }
+    }
+
+    /** How a {@link Distance} is compared with its radius. {@code withinKm} is {@link #LTE}. */
+    public enum DistanceCmp {
+        LT, LTE, GT, GTE
+    }
+
+    /**
+     * One coordinate of a {@link Distance}: either a field of the row (a plain name or a reference path,
+     * resolved by the store) or an already-resolved value (a bound parameter, a caller value, a literal).
+     */
+    public record DistanceOperand(String field, Object value) {
+        public static DistanceOperand ofField(String field) {
+            return new DistanceOperand(Objects.requireNonNull(field, "field"), null);
+        }
+
+        public static DistanceOperand ofValue(Object value) {
+            return new DistanceOperand(null, value);
+        }
+
+        public boolean isField() {
+            return field != null;
+        }
+    }
+
+    /**
+     * FORM P3-T4: {@code distance(lat1, lng1, lat2, lng2) <cmp> km}. The distance is the haversine on a
+     * mean Earth radius of 6371 km, rounded to metres -- the SAME value {@code distanceKm()} computes in
+     * the expression language ({@code StdlibFunctions#distanceKmBetween}), which is what keeps the SQL a
+     * store renders and the in-memory evaluation answering alike.
+     */
+    public record Distance(DistanceOperand lat1, DistanceOperand lng1, DistanceOperand lat2, DistanceOperand lng2,
+                           DistanceCmp cmp, Object km) {
+        /** The {@link Filter#field()} of a clause whose four coordinates are all values. */
+        public static final String SENTINEL_FIELD = "__distance__";
+
+        public Distance {
+            Objects.requireNonNull(lat1, "lat1");
+            Objects.requireNonNull(lng1, "lng1");
+            Objects.requireNonNull(lat2, "lat2");
+            Objects.requireNonNull(lng2, "lng2");
+            Objects.requireNonNull(cmp, "cmp");
+        }
+
+        public List<DistanceOperand> coordinates() {
+            return List.of(lat1, lng1, lat2, lng2);
+        }
+
+        String firstFieldOrSentinel() {
+            for (DistanceOperand operand : coordinates()) {
+                if (operand.isField()) {
+                    return operand.field();
+                }
+            }
+            return SENTINEL_FIELD;
+        }
+
+        /** In-memory evaluation; {@code read} resolves a field operand to its value. A missing coordinate or radius is false. */
+        public boolean matches(java.util.function.Function<String, Object> read) {
+            java.math.BigDecimal distance = com.npdev.dsl.v1.expr.StdlibFunctions.distanceKmBetween(
+                    valueOf(lat1, read), valueOf(lng1, read), valueOf(lat2, read), valueOf(lng2, read));
+            java.math.BigDecimal limit = decimal(km);
+            if (distance == null || limit == null) {
+                return false;
+            }
+            int order = distance.compareTo(limit);
+            return switch (cmp) {
+                case LT -> order < 0;
+                case LTE -> order <= 0;
+                case GT -> order > 0;
+                case GTE -> order >= 0;
+            };
+        }
+
+        private static Object valueOf(DistanceOperand operand, java.util.function.Function<String, Object> read) {
+            return operand.isField() ? read.apply(operand.field()) : operand.value();
+        }
+
+        private static java.math.BigDecimal decimal(Object value) {
+            if (value == null) {
+                return null;
+            }
+            try {
+                return value instanceof java.math.BigDecimal big ? big : new java.math.BigDecimal(value.toString().trim());
+            } catch (NumberFormatException notANumber) {
+                return null;
+            }
         }
     }
 

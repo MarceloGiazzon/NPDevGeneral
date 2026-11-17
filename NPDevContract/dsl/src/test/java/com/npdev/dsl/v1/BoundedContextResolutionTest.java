@@ -49,9 +49,9 @@ class BoundedContextResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
-                  "contexts": [
+                  "modules": [
                     { "name": "inventory", "$ref": "contexts/inventory.json" },
                     { "name": "sales", "$ref": "contexts/sales.json" }
                   ],
@@ -93,9 +93,9 @@ class BoundedContextResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
-                  "contexts": [
+                  "modules": [
                     { "name": "inventory", "$ref": "contexts/inventory.json" },
                     { "name": "sales", "$ref": "contexts/sales.json" }
                   ],
@@ -132,9 +132,9 @@ class BoundedContextResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
-                  "contexts": [
+                  "modules": [
                     { "name": "inventory", "$ref": "contexts/inventory.json" },
                     { "name": "sales", "$ref": "contexts/sales.json" }
                   ],
@@ -161,9 +161,9 @@ class BoundedContextResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
-                  "contexts": [
+                  "modules": [
                     { "name": "sales", "$ref": "contexts/sales.json" }
                   ],
                   "concepts": []
@@ -184,9 +184,9 @@ class BoundedContextResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
-                  "contexts": [
+                  "modules": [
                     { "name": "sales", "$ref": "contexts/sales.json" }
                   ],
                   "concepts": []
@@ -212,9 +212,9 @@ class BoundedContextResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
-                  "contexts": [
+                  "modules": [
                     { "name": "a", "$ref": "contexts/a.json" },
                     { "name": "b", "$ref": "contexts/b.json" }
                   ],
@@ -232,7 +232,7 @@ class BoundedContextResolutionTest {
         // is unrestricted, exactly as it already is today without any bounded context involved.
         write("pack/catalog.json", """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "catalog",
                   "version": "1.0.0",
                   "concepts": [
@@ -251,10 +251,10 @@ class BoundedContextResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "packs": [{ "$ref": "pack/catalog.json" }],
-                  "contexts": [
+                  "modules": [
                     { "name": "sales", "$ref": "contexts/sales.json" }
                   ],
                   "concepts": []
@@ -283,9 +283,9 @@ class BoundedContextResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
-                  "contexts": [
+                  "modules": [
                     { "name": "wms", "$ref": "contexts/wms.json", "physicallyIsolate": true }
                   ],
                   "concepts": []
@@ -294,7 +294,7 @@ class BoundedContextResolutionTest {
 
         JsonNode resolved = new ModelSourceResolver().resolve(model).resolvedRoot();
         assertEquals("wms::Sale", resolved.get("concepts").get(0).get("name").asText());
-        assertTrue(resolved.get("contexts").get(0).get("physicallyIsolate").asBoolean(),
+        assertTrue(resolved.get("modules").get(0).get("physicallyIsolate").asBoolean(),
                 "physicallyIsolate must survive the resolver's own contexts[] registry rebuild");
 
         ModelAst ast = new JsonModelParser().parse(model);
@@ -311,15 +311,15 @@ class BoundedContextResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
-                  "contexts": [ { "name": "wms", "$ref": "contexts/wms.json" } ],
+                  "modules": [ { "name": "wms", "$ref": "contexts/wms.json" } ],
                   "concepts": []
                 }
                 """);
 
         JsonNode resolved = new ModelSourceResolver().resolve(model).resolvedRoot();
-        assertFalse(resolved.get("contexts").get(0).has("physicallyIsolate"),
+        assertFalse(resolved.get("modules").get(0).has("physicallyIsolate"),
                 "must not be emitted at all when absent -- I4's byte-identical regression DoD");
 
         ModelAst ast = new JsonModelParser().parse(model);
@@ -331,7 +331,7 @@ class BoundedContextResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
                   "concepts": [
                     { "name": "Plain", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
@@ -342,7 +342,7 @@ class BoundedContextResolutionTest {
         ModelAst ast = new JsonModelParser().parse(model);
         assertTrue(ast.getContexts().isEmpty());
         JsonNode resolved = new ModelSourceResolver().resolve(model).resolvedRoot();
-        assertFalse(resolved.has("contexts"), "a model with no contexts[] key should not gain one");
+        assertFalse(resolved.has("modules"), "a model with no contexts[] key should not gain one");
     }
 
     /** A context fragment is schema-shaped like a pack (D2: same composition machinery), so it needs
@@ -374,9 +374,9 @@ class BoundedContextResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
-                  "contexts": [ { "name": "wms", "$ref": "contexts/wms.json" } ],
+                  "modules": [ { "name": "wms", "$ref": "contexts/wms.json" } ],
                   "concepts": []
                 }
                 """);
@@ -421,9 +421,9 @@ class BoundedContextResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
-                  "contexts": [
+                  "modules": [
                     { "name": "inventory", "$ref": "contexts/inventory.json" },
                     { "name": "wms", "$ref": "contexts/wms.json" }
                   ],
@@ -469,9 +469,9 @@ class BoundedContextResolutionTest {
         Path model = write("model.json", """
                 {
                   "namespace": "demo",
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "version": "1.0",
-                  "contexts": [
+                  "modules": [
                     { "name": "inventory", "$ref": "contexts/inventory.json" },
                     { "name": "wms", "$ref": "contexts/wms.json" }
                   ],
@@ -490,7 +490,7 @@ class BoundedContextResolutionTest {
                 : ",\n  \"imports\": " + importsArrayJsonOrNull;
         return """
                 {
-                  "dslVersion": "1.0.0",
+                  "dslVersion": "3.0.0",
                   "pack": "%s",
                   "version": "1.0.0",
                   %s%s

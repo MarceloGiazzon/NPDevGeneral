@@ -1,7 +1,10 @@
 package com.npdev.kernel.procedures;
 
 import com.npdev.dsl.v1.compiled.CompiledQuery;
+import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.dsl.v1.expr.DateFunctions;
+import com.npdev.dsl.v1.expr.ResolverScope;
+import com.npdev.kernel.concepts.ValueExpressionFunctions;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityResult;
 import com.npdev.kernel.ExecutionContext;
@@ -40,7 +43,6 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
     private final ConceptGateway conceptGateway;
     private final CapabilityDispatcher capabilityDispatcher;
     private final EventBus eventBus;
-    private final Map<String, ProcedureDefinition> procedureRegistry;
     private final ProcedureExecutionLimits limits;
     private final Map<String, CompiledQuery> queriesByName;
     private final IdProvider idProvider;
@@ -107,7 +109,6 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
         this.conceptGateway = Objects.requireNonNull(conceptGateway, "conceptGateway");
         this.capabilityDispatcher = Objects.requireNonNull(capabilityDispatcher, "capabilityDispatcher");
         this.eventBus = eventBus == null ? event -> { } : eventBus;
-        this.procedureRegistry = procedureRegistry == null ? Map.of() : Map.copyOf(procedureRegistry);
         this.limits = limits == null ? ProcedureExecutionLimits.defaults() : limits;
         Map<String, CompiledQuery> normalizedQueries = new java.util.LinkedHashMap<>();
         if (queriesByName != null) {
@@ -236,12 +237,13 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
             case DELETE_CONCEPT -> deleteConcept(step, state, context);
             case CALL_CAPABILITY -> callCapability(step, state, context);
             case PUBLISH_EVENT -> publishEvent(definition, step, stepIndex, state, context);
-            case CALL_PROCEDURE -> callProcedure(step, state, context, scope, recursionDepth);
             case IF -> ifThenElse(definition, step, stepIndex, state, context, scope, recursionDepth);
             case FOR_EACH -> forEach(definition, step, stepIndex, state, context, scope, recursionDepth);
             case MAP_LIST -> mapList(step, state);
             case MAP_VALUE -> mapValue(step, state);
             case COMPUTE_VALUE -> computeValue(step, state);
+            case EVALUATE -> evaluate(step, state);
+            case BUILD_OBJECT -> buildObject(step, state);
             case RETURN -> returnValue(step, state);
         };
     }
@@ -487,7 +489,7 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
     }
 
     /** K3: {code, message, kind, retryable, httpStatus?, details}. */
-    private static Map<String, Object> errorDescription(
+    public static Map<String, Object> errorDescription(
             com.npdev.kernel.CapabilityError error, String code, String message) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("code", code);
@@ -539,37 +541,6 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
         return ProcedureStepResult.success(step);
     }
 
-    private ProcedureStepResult callProcedure(
-            ProcedureStep step,
-            Map<String, Object> state,
-            ExecutionContext context,
-            ProcedureExecutionScope scope,
-            int recursionDepth
-    ) {
-        if (step.procedureName() == null || step.procedureName().isBlank()) {
-            return ProcedureStepResult.failure(step, "PROCEDURE_REQUIRED", "Procedure step requires procedureName.");
-        }
-        if (recursionDepth >= limits.maxRecursionDepth()) {
-            return ProcedureStepResult.failure(
-                    step,
-                    "PROCEDURE_RECURSION_LIMIT_EXCEEDED",
-                    "Procedure recursion depth exceeded maxRecursionDepth=" + limits.maxRecursionDepth()
-            );
-        }
-        ProcedureDefinition nestedDefinition = procedureRegistry.get(step.procedureName());
-        if (nestedDefinition == null) {
-            return ProcedureStepResult.failure(step, "PROCEDURE_NOT_FOUND", "Procedure not found: " + step.procedureName());
-        }
-        Map<String, Object> input = step.payloadRef() == null ? Map.of() : requireMap(state, step.payloadRef(), step.name(), "payloadRef");
-        ProcedureExecutionResult result = executeDefinition(nestedDefinition, input, context, scope, recursionDepth + 1);
-        if (!result.ok()) {
-            return ProcedureStepResult.failure(step, result.failureCode(), result.failureMessage());
-        }
-        Object output = result.state().containsKey("return") ? result.state().get("return") : result.state();
-        putOutput(state, step.outputKey(), output);
-        return ProcedureStepResult.success(step);
-    }
-
     private ProcedureStepResult ifThenElse(
             ProcedureDefinition definition,
             ProcedureStep step,
@@ -579,15 +550,18 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
             ProcedureExecutionScope scope,
             int recursionDepth
     ) {
-        // REG-96 (Wave 0.6): was truthy(resolve(...)) -- a bare reference tested for truthiness,
-        // which could never ask "does it equal 'Concluido'". A bare ref still means exactly what it
-        // used to; a comparison is now expressible using the SAME grammar visibleWhen carries.
+        // FORM P3-T3: the one expression language, strict and boolean (was ProcedureConditionEvaluator,
+        // a second hand-rolled grammar). A blank condition is false; a condition that does not parse or
+        // does not decide to a boolean refuses the step rather than taking the else-branch (X0's rule).
         boolean condition;
         try {
-            condition = ProcedureConditionEvaluator.evaluate(
-                    step.conditionRef(), state, DefaultProcedureExecutor::resolve);
-        } catch (ProcedureConditionEvaluator.UnsupportedConditionException unsupported) {
-            return ProcedureStepResult.failure(step, "CONDITION_UNSUPPORTED", unsupported.getMessage());
+            condition = evaluateCondition(step.conditionRef(), state);
+        } catch (ComputedExpression.ExpressionException unsupported) {
+            return ProcedureStepResult.failure(step, "CONDITION_UNSUPPORTED",
+                    "CONDITION_UNSUPPORTED: cannot evaluate condition \"" + step.conditionRef() + "\" -- "
+                            + unsupported.getMessage()
+                            + ". A condition is a boolean expression over $refs, e.g. $input.status == 'Done' "
+                            + "or $match.found; it is refused rather than treated as false.");
         }
         List<ProcedureStep> selectedSteps = condition ? step.thenSteps() : step.elseSteps();
         ProcedureStepResult nestedResult = executeNestedSteps(
@@ -600,6 +574,28 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
                 recursionDepth
         );
         return nestedResult.ok() ? ProcedureStepResult.success(step) : nestedResult;
+    }
+
+    /**
+     * FORM P3-T3: a procedure {@code if} condition through {@link ComputedExpression}. Names resolve
+     * against procedure state exactly as every other {@code $ref} does ({@link #resolve}); a name
+     * without the {@code $} sigil is refused, so a typo such as {@code abc} cannot quietly be
+     * {@code null}.
+     */
+    private static boolean evaluateCondition(String condition, Map<String, Object> state) {
+        if (condition == null || condition.isBlank()) {
+            return false;
+        }
+        return ComputedExpression.evaluateBooleanStrict(
+                condition,
+                new ResolverScope(name -> {
+                    if (!name.startsWith("$")) {
+                        throw new ComputedExpression.ExpressionException(
+                                "unknown name '" + name + "' -- procedure state is referenced as $" + name);
+                    }
+                    return resolve(state, name);
+                }),
+                ValueExpressionFunctions.flow());
     }
 
     private ProcedureStepResult forEach(
@@ -704,6 +700,45 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
      * #resolve}, which a literal array/object could never survive (it would be treated as a dotted
      * path and resolve to {@code null}).
      */
+    /**
+     * FORM P3-T5c: the flow {@code set} step. The value is ONE expression of the one expression language; every
+     * {@code $ref} resolves through {@link #resolveStrict} (a typo fails the step with REF_UNRESOLVABLE) and a bare
+     * name is refused, exactly as in {@link #evaluateCondition}. A parse/arithmetic error refuses the step.
+     */
+    private ProcedureStepResult evaluate(ProcedureStep step, Map<String, Object> state) {
+        String expression = step.valueRef() == null ? null : step.valueRef().toString();
+        if (expression == null || expression.isBlank()) {
+            return ProcedureStepResult.failure(step, "EXPRESSION_REQUIRED", "A set step needs a value expression.");
+        }
+        Object value;
+        try {
+            value = ComputedExpression.evaluateStrict(
+                    expression,
+                    new ResolverScope(name -> {
+                        if (!name.startsWith("$")) {
+                            throw new ComputedExpression.ExpressionException(
+                                    "unknown name '" + name + "' -- flow state is referenced as $" + name
+                                            + " (a text literal is quoted: 'text')");
+                        }
+                        return resolveStrict(state, name, step.name(), "value");
+                    }),
+                    ValueExpressionFunctions.flow());
+        } catch (ComputedExpression.ExpressionException invalid) {
+            return ProcedureStepResult.failure(step, "EXPRESSION_INVALID",
+                    "EXPRESSION_INVALID: cannot evaluate \"" + expression + "\" -- " + invalid.getMessage());
+        }
+        putOutput(state, step.outputKey(), value);
+        return ProcedureStepResult.success(step);
+    }
+
+    /** FORM P3-T5c: a flow {@code map} step without a collection: one object from {@code select} (strict literal-or-ref values). */
+    private ProcedureStepResult buildObject(ProcedureStep step, Map<String, Object> state) {
+        Map<String, Object> built = new LinkedHashMap<>();
+        step.setValues().forEach((key, raw) -> built.put(key, resolveSetValue(state, raw, step.name(), key)));
+        putOutput(state, step.outputKey(), built);
+        return ProcedureStepResult.success(step);
+    }
+
     private ProcedureStepResult mapValue(ProcedureStep step, Map<String, Object> state) {
         Object value = resolveSetValue(state, step.valueRef(), step.name(), "valueRef");
         putOutput(state, step.outputKey(), value);
@@ -925,6 +960,17 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
         throw new IllegalArgumentException("Procedure step " + stepName + " requires map " + field + ": " + ref);
     }
 
+    /**
+     * FORM P3-T5c: a concept record that crossed a flow step boundary is the plain map {@code {conceptName, id, tenantId,
+     * data, rowVersion}} (FlowStepSupport.plainTree). A ref reads such a record's FIELDS first -- exactly as it does on a
+     * {@link ConceptRecord} inside one procedure -- so {@code $ride.status} means the same in a flow as it did in the
+     * procedure it replaced; {@code $ride.data.status} and {@code $ride.rowVersion} still work through the map's own keys.
+     * Null when {@code map} is not record-shaped.
+     */
+    public static Map<?, ?> recordFields(Map<?, ?> map) {
+        return map.containsKey("conceptName") && map.get("data") instanceof Map<?, ?> data ? data : null;
+    }
+
     private static Object resolve(Map<String, Object> state, String ref) {
         if (ref == null || ref.isBlank()) {
             return null;
@@ -943,7 +989,8 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
                 current = record.data();
             }
             if (current instanceof Map<?, ?> map) {
-                current = map.get(parts[index]);
+                Map<?, ?> fields = recordFields(map);
+                current = fields != null && fields.containsKey(parts[index]) ? fields.get(parts[index]) : map.get(parts[index]);
             } else {
                 return null;
             }
@@ -981,10 +1028,14 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
                 current = record.data();
             }
             if (current instanceof Map<?, ?> map) {
-                if (!map.containsKey(parts[index])) {
+                Map<?, ?> fields = recordFields(map);
+                if (fields != null && fields.containsKey(parts[index])) {
+                    current = fields.get(parts[index]);
+                } else if (!map.containsKey(parts[index])) {
                     throw new UnresolvableReferenceException(stepName, field, ref);
+                } else {
+                    current = map.get(parts[index]);
                 }
-                current = map.get(parts[index]);
             } else {
                 throw new UnresolvableReferenceException(stepName, field, ref);
             }
