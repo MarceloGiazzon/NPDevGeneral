@@ -60,7 +60,7 @@ validator before anything is generated.
 | The idea | In your model | What it buys you |
 |---|---|---|
 | **Concepts are open boxes** | `concepts[]`, each with fields, rules, a `truthLevel` | Nothing is a black box. Look once and see a concept; look deeper and see its fields, its validations, its generated code |
-| **Invariants are declared, not encoded** | `concepts[].invariants[]` (`unique`, `expression`), `aggregates[].invariants[]` | Business truth enforced server-side where it cannot be bypassed — and where a regeneration cannot quietly drop it |
+| **Invariants are declared, not encoded** | `concepts[].invariants[]` (`unique`, `expression`), `concepts[].composition.invariants[]` | Business truth enforced server-side where it cannot be bypassed — and where a regeneration cannot quietly drop it |
 | **Capabilities are contracts** | `capabilities[]` (with `adapter`) | A named promise: inputs, guarantees, outcomes. The implementation is swappable; the contract is not |
 | **Events are semantic facts** | `events[]` | `InvoiceCompleted`, not `invoiceService.complete()`. Causality is visible instead of buried in a call stack |
 | **Orchestration is declarative** | `flows[]` (with a `trigger`) | *When `InvoiceCompleted`, require payment, then emit the fiscal document, then notify.* No glue code, full traceability, safe to regenerate |
@@ -184,9 +184,9 @@ you write.**
 | `visibility` / `enabledWhen` | conditional display driven by rules, not JavaScript |
 | an `action` | a button that runs a flow — including ones that stream a generated file back |
 | an `aggregate` | a **master-detail-detail workbench**, saved in one transaction, with commit hooks |
-| a `document` | printable output: one-record documents, and list reports with grouping and totals as PDF and CSV |
+| a `screens[]` entry of kind `document` | printable output: one-record documents, and list reports with grouping and totals as PDF and CSV |
 | a `guidePage` | in-app guidance attached to the screen it explains |
-| `appShell`, `settings.strings`, a theme | your own navigation and start page, your own wording in any language, and your own colours (`themes/<id>.json`) |
+| `backOffice`, `backOffice.strings`, a theme | your own navigation and start page, your own wording in any language, and your own colours (`themes/<id>.json`) |
 | a `web/*.html` page beside the model | **a screen you design yourself**, inside the app's shell or **public, with no sign-in**, talking to the same API (see the escape hatches below) |
 
 ### Access

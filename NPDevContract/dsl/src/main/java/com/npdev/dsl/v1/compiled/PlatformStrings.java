@@ -9,7 +9,7 @@ import java.util.Map;
  * This is the fix for the fault line named in {@code docs/MOVE6_TYPED_SURFACE_PLAN.md} §2 -- every
  * generated app's Aggregate Workbench page mixed English platform text with Portuguese literal
  * fallbacks baked into the compiler/template (e.g. "Save" beside "Adicionar"). An app overrides any
- * subset of these ids via {@code model.settings.strings}; every id not overridden keeps this
+ * subset of these ids via {@code model.backOffice.strings}; every id not overridden keeps this
  * English default, so a model that declares no {@code settings} block renders coherent English
  * instead of today's mix. Referenced by both {@link CompiledSettings} (merges app overrides on top)
  * and {@code AutoPanelExpander} (bakes the resolved value into compiled panelAction/picker labels).
@@ -60,7 +60,7 @@ public final class PlatformStrings {
         // staying just as immutable to callers.
         DEFAULTS = Collections.unmodifiableMap(d);
 
-        // settings.locale "pt*": the shell chrome was hard-coded Portuguese until 2026-10-07, so a
+        // backOffice.locale "pt*": the shell chrome was hard-coded Portuguese until 2026-10-07, so a
         // pt app (WmsOffice) keeps exactly those words; every other locale gets the English above.
         Map<String, String> pt = new LinkedHashMap<>();
         pt.put("shell.signedInAs", "logado como");

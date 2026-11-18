@@ -23,7 +23,7 @@
     "aggregateFunction",
     "invariant",
     "aggregateInvariant",
-    "aggregate",
+    "composition",
     "aggregateBalance",
     "aggregateCollection",
     "lifecycle",

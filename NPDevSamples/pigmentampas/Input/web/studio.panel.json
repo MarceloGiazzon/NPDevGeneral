@@ -35,7 +35,7 @@
   "calls": [
     "/api/queries/ApprovedCaps",
     "/api/mosaics",
-    "/api/runtime/aggregate/MosaicAggregate",
+    "/api/runtime/aggregate/Mosaic",
     "/api/files"
   ],
   "slotOf": null,
@@ -43,5 +43,5 @@
   "unresolved": [],
   "handWritten": true,
   "reviewedBy": "claude-opus-5-5",
-  "notes": "Hex-offset mosaic editor (20x33 by default, rows/cols taken from a loaded Mosaic). Talks to the app only through NPDevShell.api; saves one MosaicAggregate commit with only the painted cells."
+  "notes": "Hex-offset mosaic editor (20x33 by default, rows/cols taken from a loaded Mosaic). Talks to the app only through NPDevShell.api; saves one Mosaic commit with only the painted cells."
 }

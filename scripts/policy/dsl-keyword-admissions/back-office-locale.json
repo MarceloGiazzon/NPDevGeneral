@@ -1,0 +1,45 @@
+{
+ "$comment": "FORM P5-T9g admission, written 2026-11-18 (owner decision): the top-level settings {locale, strings, ui} became backOffice.locale and backOffice.strings, inside the optional root backOffice (T9c), so an app with no roles or experiences can still translate its shell. settings.ui (pageRows, dateFormat) was read by nothing and is deleted. Net budget change is -1 slot (settings.locale, settings.strings, settings.ui out; backOffice.locale, backOffice.strings in).",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "backOffice.locale / backOffice.strings",
+ "slots": [
+  "backOffice.locale",
+  "backOffice.strings"
+ ],
+ "rung": 0,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-18",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "a locale tag and a map from a closed list of platform string ids to replacement text; no logic, no ordering"
+  },
+  "notLower": {
+   "value": true,
+   "why": "the strings are the labels of the generated shell and workbench chrome (shell.*, workbench.*, action.*), compiled once into the UI catalogue at generation time; no expression, function or step can reach them, and a Property is resolved at runtime, not baked into the generated bundle"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "AppGen/apps/_official/WmsOffice",
+    "NPDevSamples/dsl-conformance-max"
+   ],
+   "note": "locale: WmsOffice (pt-BR), dsl-conformance-max and pigmentampas (en-US). strings: WmsOffice (pt-BR catalogue) and dsl-conformance-max (workbench.saved)"
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/BusinessUiEmitterWorkbenchTest.java",
+   "note": "tests, not a booted probe: BusinessUiEmitterWorkbenchTest fails if an overridden string stops reaching the generated page; BusinessUiEmitterLocaleManifestTest fails if the locale stops reaching the UI manifest; NPDevContract/dsl BackOfficeConfigThreadingTest fails if locale/strings stop compiling or round-tripping through the canonical IR"
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "`backOffice.locale` / `backOffice.strings` (optional): `\"locale\":\"pt-BR\",\"strings\":{\"action.save\":\"Gravar\"}` -- override platform text by id, an id left out keeps the English default; needs no role or experience"
+  }
+ },
+ "replaces": [
+  "settings.locale",
+  "settings.strings",
+  "settings.ui"
+ ],
+ "budgetDelta": -1
+}

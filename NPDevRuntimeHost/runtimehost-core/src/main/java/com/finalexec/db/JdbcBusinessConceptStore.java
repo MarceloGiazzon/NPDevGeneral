@@ -1730,7 +1730,15 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         try {
             return java.time.OffsetDateTime.parse(text).toInstant();
         } catch (java.time.format.DateTimeParseException ignored) {
+            // fall through to the zone-less forms
+        }
+        try {
             return java.time.LocalDateTime.parse(text).atZone(java.time.ZoneId.systemDefault()).toInstant();
+        } catch (java.time.format.DateTimeParseException ignored) {
+            // REG-341: a plain date ("2026-11-18" -- what today() gives, or ?where=createdAt:gte:2026-11-18) compared with a
+            // datetime column is the START of that day in UTC, the zone today() itself is read in. It used to throw, the
+            // experience count answered null and the REST filter failed.
+            return java.time.LocalDate.parse(text.trim()).atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
         }
     }
 

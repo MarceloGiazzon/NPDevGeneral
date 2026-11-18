@@ -22,10 +22,11 @@ import static com.npdev.dsl.v1.validation.SemanticValidator.hasText;
 import static com.npdev.dsl.v1.validation.SemanticValidator.normalize;
 
 /**
- * R5.7 (Roadmap Wave 1 2026-08-19): semantic validation for {@code documents[]} -- concept/aggregate
+ * R5.7 (Roadmap Wave 1 2026-08-19): semantic validation for the documents ({@code screens[]} entries of kind
+ * {@code document} since FORM P5-T9b; {@code ModelAst.getDocuments()} derives them) -- concept/aggregate
  * resolution, and the band tree (header/lineItems bands bound to an aggregate's root/collections).
  * Split out to mirror {@link AggregateValidation}'s shape ({@code SemanticValidator} is an
- * orchestrator only, see its javadoc). Before this class, {@code documents[]} had exactly one
+ * orchestrator only, see its javadoc). Before this class, documents had exactly one
  * check anywhere -- {@code ModelCompiler}'s hard "concept not found" throw -- and nothing validated
  * a document's (new) {@code aggregate}/{@code bands}/{@code logo} at all.
  *
@@ -68,12 +69,13 @@ final class DocumentValidation {
             Map<String, QueryAst> queriesByLower,
             Set<String> documentNames,
             List<String> errors) {
-        String here = "Document " + document.name();
-        if (!hasText(document.name())) {
-            errors.add("Document: name is required -- suggestedFix: Give this document a 'name'.");
-        } else if (!documentNames.add(normalize(document.name()))) {
-            errors.add(here + ": duplicate document name -- suggestedFix: Rename this document so its "
-                    + "'name' is unique among documents[].");
+        // A derived document always has a name and a concept (ModelAst.getDocuments() skips a screen without one;
+        // ExperienceValidation reports it), and a duplicate name is already "duplicate screen name" there -- the
+        // set below only guards direct callers.
+        String here = "Document screen " + document.name();
+        if (!documentNames.add(normalize(document.name()))) {
+            errors.add(here + ": duplicate document name -- suggestedFix: Rename this document screen so its "
+                    + "'name' is unique among screens[].");
         }
 
         // document.concept existence is already a hard ModelCompiler.compileModel failure; this
@@ -123,7 +125,7 @@ final class DocumentValidation {
     private static final Set<String> TOTAL_FUNCTIONS = Set.of("sum", "count", "min", "max", "avg");
 
     /**
-     * REP-1: {@code kind: list} -- a multi-record report. The load-bearing checks are the ones that
+     * REP-1: {@code report: true} (the old {@code kind: list}) -- a multi-record report. The load-bearing checks are the ones that
      * would otherwise print a silently wrong report: a column or groupBy field that is not on the
      * concept (an always-blank column), a subtotal with nothing to total, and a total row with no
      * column left to carry its label.
@@ -136,14 +138,10 @@ final class DocumentValidation {
             List<String> errors) {
         boolean declaresListMembers = hasText(document.query()) || !document.columns().isEmpty()
                 || !document.groupBy().isEmpty() || document.subtotals() != null || document.grandTotal() != null;
-        if (hasText(document.kind()) && !document.listReport()) {
-            errors.add(here + ": kind must be 'list', found: " + document.kind()
-                    + " -- suggestedFix: Set 'kind' to 'list', or remove it for a one-record document.");
-        }
         if (!document.listReport()) {
             if (declaresListMembers) {
-                errors.add(here + ": query/columns/groupBy/subtotals/grandTotal only apply to a list report"
-                        + " -- suggestedFix: Add kind: list to this document, or remove those members.");
+                errors.add(here + ": query/printColumns/groupBy/subtotals/grandTotal only apply to a list report"
+                        + " -- suggestedFix: Add \"report\": true to this document screen, or remove those members.");
             }
             return;
         }
@@ -151,13 +149,13 @@ final class DocumentValidation {
         if (hasText(document.aggregate()) || !document.bands().isEmpty() || document.logo() != null) {
             errors.add(here + ": a list report does not support aggregate/bands/logo (it has no single root "
                     + "record to lay out)"
-                    + " -- suggestedFix: Remove 'aggregate', 'bands' and 'logo', or drop kind: list "
+                    + " -- suggestedFix: Remove 'aggregate', 'bands' and 'logo', or drop \"report\": true "
                     + "to keep a one-record document.");
         }
         if (document.columns().isEmpty()) {
             errors.add(here + ": a list report must declare at least one column -- an empty report would print "
                     + "a blank table, indistinguishable from an authoring mistake"
-                    + " -- suggestedFix: Add 'columns', each naming a property on concept '" + document.concept() + "'.");
+                    + " -- suggestedFix: Add 'printColumns', each naming a property on concept '" + document.concept() + "'.");
         }
 
         Set<String> conceptFieldNames = rootConcept == null ? null : rootConcept.getFields().stream()
@@ -174,7 +172,7 @@ final class DocumentValidation {
             }
             if (!seenColumns.add(normalize(column.field()))) {
                 errors.add(here + ": duplicate column '" + column.field() + "' -- suggestedFix: List each field "
-                        + "once in 'columns'.");
+                        + "once in 'printColumns'.");
             }
             if (conceptFieldNames != null && !conceptFieldNames.contains(normalize(column.field()))) {
                 errors.add(here + ": column field '" + column.field() + "' not found on concept '"

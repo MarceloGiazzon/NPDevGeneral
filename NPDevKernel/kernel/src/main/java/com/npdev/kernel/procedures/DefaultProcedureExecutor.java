@@ -2,11 +2,8 @@ package com.npdev.kernel.procedures;
 
 import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.dsl.v1.expr.ComputedExpression;
-import com.npdev.dsl.v1.expr.DateFunctions;
 import com.npdev.dsl.v1.expr.ResolverScope;
 import com.npdev.kernel.concepts.ValueExpressionFunctions;
-import com.npdev.kernel.CapabilityCall;
-import com.npdev.kernel.CapabilityResult;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.ConceptListRequest;
@@ -17,13 +14,9 @@ import com.npdev.kernel.concepts.ConceptQueryRequest;
 import com.npdev.kernel.concepts.ConceptReadRequest;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.concepts.ConceptWriteRequest;
-import com.npdev.kernel.events.EventEnvelope;
-import com.npdev.kernel.ports.CapabilityDispatcher;
-import com.npdev.kernel.ports.EventBus;
 import com.npdev.kernel.ports.IdProvider;
 
 import java.lang.reflect.Array;
-import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.ArrayList;
@@ -33,88 +26,51 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.UUID;
 
+/**
+ * FORM P3-T7: the ONE implementation of the concept-bound step types a flow runs -- {@code set} (EVALUATE),
+ * {@code readConcept}, {@code listConcepts}, {@code runQuery}, {@code deleteConcept}, the {@code map} select forms
+ * ({@code MAP_LIST} / {@code BUILD_OBJECT}) and {@code updateConcept}'s read-modify-write ({@code PATCH_CONCEPT}).
+ * The flow engine ({@code KernelRunner}, via {@code ProcedureFlowStep}) hands each such step here as a one-step
+ * definition. Control flow (if / forEach / return), capability calls, events and persistence writes are the flow
+ * engine's own steps; this class no longer carries a second copy of them (procedures[] are never executed: they are
+ * declarative stubs for trusted Java code, and every executable procedure became a flow in P3-T5c).
+ */
 public final class DefaultProcedureExecutor implements ProcedureExecutor {
     /** LIFT-QUERY-P1: soft cap applied to a {@code runQuery} step's results when the query
      * declares no explicit {@code limit}, so a capability is never handed an unbounded list. */
     private static final int DEFAULT_QUERY_ROW_CAP = 1_000;
 
     private final ConceptGateway conceptGateway;
-    private final CapabilityDispatcher capabilityDispatcher;
-    private final EventBus eventBus;
     private final ProcedureExecutionLimits limits;
     private final Map<String, CompiledQuery> queriesByName;
     private final IdProvider idProvider;
 
-    public DefaultProcedureExecutor(
-            ConceptGateway conceptGateway,
-            CapabilityDispatcher capabilityDispatcher,
-            EventBus eventBus
-    ) {
-        this(conceptGateway, capabilityDispatcher, eventBus, Map.of());
+    public DefaultProcedureExecutor(ConceptGateway conceptGateway) {
+        this(conceptGateway, ProcedureExecutionLimits.defaults(), Map.of(), null);
     }
 
-    public DefaultProcedureExecutor(
-            ConceptGateway conceptGateway,
-            CapabilityDispatcher capabilityDispatcher,
-            EventBus eventBus,
-            Map<String, ProcedureDefinition> procedureRegistry
-    ) {
-        this(conceptGateway, capabilityDispatcher, eventBus, procedureRegistry, ProcedureExecutionLimits.defaults());
-    }
-
-    public DefaultProcedureExecutor(
-            ConceptGateway conceptGateway,
-            CapabilityDispatcher capabilityDispatcher,
-            EventBus eventBus,
-            Map<String, ProcedureDefinition> procedureRegistry,
-            ProcedureExecutionLimits limits
-    ) {
-        this(conceptGateway, capabilityDispatcher, eventBus, procedureRegistry, limits, Map.of());
+    public DefaultProcedureExecutor(ConceptGateway conceptGateway, Map<String, CompiledQuery> queriesByName) {
+        this(conceptGateway, ProcedureExecutionLimits.defaults(), queriesByName, null);
     }
 
     /** LIFT-QUERY-P1: {@code queriesByName} (keyed case-insensitively) lets {@code runQuery} steps
      * honor their declared query's {@code where}/{@code orderBy}/{@code limit} instead of always
-     * returning every row for the concept. Defaults to empty so existing callers compile unchanged
-     * -- a {@code runQuery} step referencing a name absent from this map still runs, just unfiltered
-     * (its prior behavior), rather than failing. */
+     * returning every row for the concept; a name absent from the map still runs, unfiltered.
+     * {@code idProvider} backs {@code patchConcept}'s {@code createIfMissing} (defaults to {@link IdProvider#uuid()}). */
     public DefaultProcedureExecutor(
             ConceptGateway conceptGateway,
-            CapabilityDispatcher capabilityDispatcher,
-            EventBus eventBus,
-            Map<String, ProcedureDefinition> procedureRegistry,
-            ProcedureExecutionLimits limits,
-            Map<String, CompiledQuery> queriesByName
-    ) {
-        this(conceptGateway, capabilityDispatcher, eventBus, procedureRegistry, limits, queriesByName, null);
-    }
-
-    /**
-     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1B): {@code idProvider} backs
-     * {@code saveConcept}'s blank-idRef fallback and {@code patchConcept}'s {@code createIfMissing}
-     * -- the create-with-generated-id half REG-77 found missing, using the same port
-     * {@code KernelRunner} already has ({@link IdProvider#uuid()} by default so no existing caller
-     * needs to change).
-     */
-    public DefaultProcedureExecutor(
-            ConceptGateway conceptGateway,
-            CapabilityDispatcher capabilityDispatcher,
-            EventBus eventBus,
-            Map<String, ProcedureDefinition> procedureRegistry,
             ProcedureExecutionLimits limits,
             Map<String, CompiledQuery> queriesByName,
             IdProvider idProvider
     ) {
         this.conceptGateway = Objects.requireNonNull(conceptGateway, "conceptGateway");
-        this.capabilityDispatcher = Objects.requireNonNull(capabilityDispatcher, "capabilityDispatcher");
-        this.eventBus = eventBus == null ? event -> { } : eventBus;
         this.limits = limits == null ? ProcedureExecutionLimits.defaults() : limits;
-        Map<String, CompiledQuery> normalizedQueries = new java.util.LinkedHashMap<>();
+        Map<String, CompiledQuery> normalizedQueries = new LinkedHashMap<>();
         if (queriesByName != null) {
             for (Map.Entry<String, CompiledQuery> entry : queriesByName.entrySet()) {
                 if (entry.getKey() != null && entry.getValue() != null) {
-                    normalizedQueries.put(entry.getKey().trim().toLowerCase(java.util.Locale.ROOT), entry.getValue());
+                    normalizedQueries.put(entry.getKey().trim().toLowerCase(Locale.ROOT), entry.getValue());
                 }
             }
         }
@@ -128,16 +84,6 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
             Map<String, Object> input,
             ExecutionContext context
     ) {
-        return executeDefinition(definition, input, context, new ProcedureExecutionScope(limits), 1);
-    }
-
-    private ProcedureExecutionResult executeDefinition(
-            ProcedureDefinition definition,
-            Map<String, Object> input,
-            ExecutionContext context,
-            ProcedureExecutionScope scope,
-            int recursionDepth
-    ) {
         Objects.requireNonNull(definition, "definition");
         ExecutionContext effectiveContext = context == null ? ExecutionContext.anonymous() : context;
         if (definition.runAsSystem() && !ExecutionContext.isSystem(effectiveContext)) {
@@ -146,20 +92,18 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
             ExecutionContext elevated = ExecutionContext.system(effectiveContext.tenantId());
             String previous = ProcedureElevation.swap(callerActor);
             try {
-                return runSteps(definition, input, elevated, scope, recursionDepth);
+                return runSteps(definition, input, elevated);
             } finally {
                 ProcedureElevation.swap(previous);
             }
         }
-        return runSteps(definition, input, effectiveContext, scope, recursionDepth);
+        return runSteps(definition, input, effectiveContext);
     }
 
     private ProcedureExecutionResult runSteps(
             ProcedureDefinition definition,
             Map<String, Object> input,
-            ExecutionContext effectiveContext,
-            ProcedureExecutionScope scope,
-            int recursionDepth
+            ExecutionContext effectiveContext
     ) {
         Map<String, Object> state = new LinkedHashMap<>();
         if (input != null) {
@@ -167,44 +111,30 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
         }
         state.putIfAbsent("input", input == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(input)));
 
+        ProcedureExecutionScope scope = new ProcedureExecutionScope(limits);
         List<ProcedureStepResult> stepResults = new ArrayList<>();
-        for (int index = 0; index < definition.steps().size(); index++) {
-            ProcedureStep step = definition.steps().get(index);
-            ProcedureStepResult result = executeStepWithBudget(
-                    definition,
-                    step,
-                    index,
-                    state,
-                    effectiveContext,
-                    scope,
-                    recursionDepth
-            );
+        for (ProcedureStep step : definition.steps()) {
+            ProcedureStepResult result = executeStepWithBudget(step, state, effectiveContext, scope);
             stepResults.add(result);
             if (!result.ok()) {
                 return ProcedureExecutionResult.failure(state, stepResults, result.code(), result.message());
-            }
-            if (step.type() == ProcedureStepType.RETURN) {
-                return ProcedureExecutionResult.success(state, stepResults);
             }
         }
         return ProcedureExecutionResult.success(state, stepResults);
     }
 
     private ProcedureStepResult executeStepWithBudget(
-            ProcedureDefinition definition,
             ProcedureStep step,
-            int stepIndex,
             Map<String, Object> state,
             ExecutionContext context,
-            ProcedureExecutionScope scope,
-            int recursionDepth
+            ProcedureExecutionScope scope
     ) {
         ProcedureStepResult budget = scope.beforeStep(step);
         if (!budget.ok()) {
             return budget;
         }
         try {
-            return executeStep(definition, step, stepIndex, state, context, scope, recursionDepth);
+            return executeStep(step, state, context);
         } catch (UnresolvableReferenceException exception) {
             // X0-6 (REG-100): named separately from the generic catch below so callers can branch on
             // "REF_UNRESOLVABLE" specifically, the same way QUERY_NOT_FOUND (X0-7) is named rather
@@ -219,65 +149,17 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
         }
     }
 
-    private ProcedureStepResult executeStep(
-            ProcedureDefinition definition,
-            ProcedureStep step,
-            int stepIndex,
-            Map<String, Object> state,
-            ExecutionContext context,
-            ProcedureExecutionScope scope,
-            int recursionDepth
-    ) {
+    private ProcedureStepResult executeStep(ProcedureStep step, Map<String, Object> state, ExecutionContext context) {
         return switch (step.type()) {
-            case SAVE_CONCEPT -> saveConcept(step, state, context);
             case PATCH_CONCEPT -> patchConcept(step, state, context);
             case READ_CONCEPT -> readConcept(step, state, context);
             case LIST_CONCEPTS -> listConcepts(step, state, context);
             case RUN_QUERY -> runQuery(step, state, context);
             case DELETE_CONCEPT -> deleteConcept(step, state, context);
-            case CALL_CAPABILITY -> callCapability(step, state, context);
-            case PUBLISH_EVENT -> publishEvent(definition, step, stepIndex, state, context);
-            case IF -> ifThenElse(definition, step, stepIndex, state, context, scope, recursionDepth);
-            case FOR_EACH -> forEach(definition, step, stepIndex, state, context, scope, recursionDepth);
             case MAP_LIST -> mapList(step, state);
-            case MAP_VALUE -> mapValue(step, state);
-            case COMPUTE_VALUE -> computeValue(step, state);
             case EVALUATE -> evaluate(step, state);
             case BUILD_OBJECT -> buildObject(step, state);
-            case RETURN -> returnValue(step, state);
         };
-    }
-
-    private ProcedureStepResult saveConcept(ProcedureStep step, Map<String, Object> state, ExecutionContext context) {
-        String id = resolveOrGenerateId(state, step.idRef(), step.conceptName());
-        Map<String, Object> data = requireMap(state, step.dataRef(), step.name(), "dataRef");
-        // Found live (Move 5, final item / REG-78 investigation): a real governed ConceptGateway's
-        // semantic policy (ConfiguredConceptGatewaySemanticPolicy) requires every declared required
-        // field to be present IN THE DATA MAP, including "id" -- but resolveOrGenerateId's fallback
-        // id was never folded back into data, only passed as the write request's separate id
-        // parameter. Every dataRef that doesn't already carry an "id" key (the normal case for a
-        // fresh record, e.g. a client payload with no id yet) was silently CONCEPT_FIELD_REQUIRED-
-        // denied against any real policy -- invisible in kernel unit tests, which construct
-        // DefaultConceptGateway with a permissive/noop semantic policy, not a real one.
-        data.putIfAbsent("id", id);
-        ConceptRecord saved = conceptGateway.save(new ConceptWriteRequest(step.conceptName(), id, null, data), context);
-        putOutput(state, step.outputKey(), saved);
-        return ProcedureStepResult.success(step);
-    }
-
-    /**
-     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1B): a blank/unresolved idRef no longer
-     * fails saveConcept -- it falls back to a generated id, the same auto-id fallback
-     * {@code PostgresPersistenceCapabilityAdapter.save()} already gives flow-bound
-     * createConcept/updateConcept steps (REG-77's exact asymmetry: flows got this for free via the
-     * persistence capability, procedures never did).
-     */
-    private String resolveOrGenerateId(Map<String, Object> state, String ref, String conceptName) {
-        Object value = ref == null || ref.isBlank() ? null : resolve(state, ref);
-        if (value == null || String.valueOf(value).isBlank()) {
-            return idProvider.nextId(conceptName);
-        }
-        return String.valueOf(value).trim();
     }
 
     /**
@@ -432,61 +314,6 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
         return ProcedureStepResult.success(step);
     }
 
-    private ProcedureStepResult callCapability(ProcedureStep step, Map<String, Object> state, ExecutionContext context) {
-        List<Object> args = new ArrayList<>();
-        for (String ref : step.argRefs()) {
-            // Move 4 (docs/MOVE4_CROSS_RECORD_WRITE_PLAN.md, REG-75 wound #2): resolve() only
-            // unwraps a ConceptRecord while traversing a dotted path, not on a bare-ref hit -- the
-            // same asymmetry requireMap already works around for saveConcept's dataRef. Matching it
-            // here means a readConcept result can be passed straight to a capability call.
-            Object v = resolve(state, ref);
-            // P4 (G3): a bare (non-$) arg naming nothing in state is a literal -- the flow-step rule
-            // (KernelRunner.resolveReference), so capabilityCall args: ["PaintMosaic", "$input"] means
-            // the same thing in a procedure as in a flow.
-            if (v == null && ref != null && !ref.trim().startsWith("$") && !state.containsKey(ref.trim())) {
-                v = ref.trim();
-            }
-            args.add(v instanceof ConceptRecord r ? r.data() : v);
-        }
-        // The adapter sees the caller's identity the same way a flow-step adapter does (KernelRunner
-        // seeds tenantId/actorId into flow state): per-user quotas and tenant-scoped reads need it.
-        Map<String, Object> adapterState = new LinkedHashMap<>(state);
-        adapterState.putIfAbsent("tenantId", context.tenantId());
-        adapterState.putIfAbsent("actorId", context.actorId());
-        if (ProcedureElevation.onBehalfOf() != null) {
-            adapterState.put("onBehalfOf", ProcedureElevation.onBehalfOf());
-        }
-        CapabilityResult result = capabilityDispatcher.invoke(
-                new CapabilityCall(
-                        step.capability(),
-                        step.capabilityType(),
-                        step.adapterId(),
-                        step.operation(),
-                        args,
-                        correlationId(context),
-                        context.idempotencyKey()
-                ),
-                adapterState
-        );
-        if (!result.ok()) {
-            String code = result.error() == null ? "CAPABILITY_FAILED" : result.error().code();
-            String message = result.error() == null ? "Capability failed." : result.error().message();
-            if (step.errorTarget() != null) {
-                // K3: a failed outside call is a normal business answer -- hand it to the model, succeed the step.
-                state.put(step.errorTarget(), errorDescription(result.error(), code, message));
-                if (step.outputKey() != null) {
-                    state.remove(step.outputKey());
-                }
-                return ProcedureStepResult.success(step);
-            }
-            return ProcedureStepResult.failure(step, code, message);
-        }
-        if (step.errorTarget() != null) {
-            state.remove(step.errorTarget());
-        }
-        putOutput(state, step.outputKey(), result.value());
-        return ProcedureStepResult.success(step);
-    }
 
     /** K3: {code, message, kind, retryable, httpStatus?, details}. */
     public static Map<String, Object> errorDescription(
@@ -520,134 +347,8 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
         return bound;
     }
 
-    private ProcedureStepResult publishEvent(
-            ProcedureDefinition definition,
-            ProcedureStep step,
-            int stepIndex,
-            Map<String, Object> state,
-            ExecutionContext context
-    ) {
-        Map<String, Object> payload = requireMap(state, step.payloadRef(), step.name(), "payloadRef");
-        eventBus.publish(EventEnvelope.create(
-                step.eventName(),
-                payload,
-                correlationId(context),
-                UUID.randomUUID().toString(),
-                definition.name(),
-                stepIndex,
-                context.tenantId(),
-                context.actorId()
-        ));
-        return ProcedureStepResult.success(step);
-    }
 
-    private ProcedureStepResult ifThenElse(
-            ProcedureDefinition definition,
-            ProcedureStep step,
-            int stepIndex,
-            Map<String, Object> state,
-            ExecutionContext context,
-            ProcedureExecutionScope scope,
-            int recursionDepth
-    ) {
-        // FORM P3-T3: the one expression language, strict and boolean (was ProcedureConditionEvaluator,
-        // a second hand-rolled grammar). A blank condition is false; a condition that does not parse or
-        // does not decide to a boolean refuses the step rather than taking the else-branch (X0's rule).
-        boolean condition;
-        try {
-            condition = evaluateCondition(step.conditionRef(), state);
-        } catch (ComputedExpression.ExpressionException unsupported) {
-            return ProcedureStepResult.failure(step, "CONDITION_UNSUPPORTED",
-                    "CONDITION_UNSUPPORTED: cannot evaluate condition \"" + step.conditionRef() + "\" -- "
-                            + unsupported.getMessage()
-                            + ". A condition is a boolean expression over $refs, e.g. $input.status == 'Done' "
-                            + "or $match.found; it is refused rather than treated as false.");
-        }
-        List<ProcedureStep> selectedSteps = condition ? step.thenSteps() : step.elseSteps();
-        ProcedureStepResult nestedResult = executeNestedSteps(
-                definition,
-                selectedSteps,
-                stepIndex,
-                state,
-                context,
-                scope,
-                recursionDepth
-        );
-        return nestedResult.ok() ? ProcedureStepResult.success(step) : nestedResult;
-    }
 
-    /**
-     * FORM P3-T3: a procedure {@code if} condition through {@link ComputedExpression}. Names resolve
-     * against procedure state exactly as every other {@code $ref} does ({@link #resolve}); a name
-     * without the {@code $} sigil is refused, so a typo such as {@code abc} cannot quietly be
-     * {@code null}.
-     */
-    private static boolean evaluateCondition(String condition, Map<String, Object> state) {
-        if (condition == null || condition.isBlank()) {
-            return false;
-        }
-        return ComputedExpression.evaluateBooleanStrict(
-                condition,
-                new ResolverScope(name -> {
-                    if (!name.startsWith("$")) {
-                        throw new ComputedExpression.ExpressionException(
-                                "unknown name '" + name + "' -- procedure state is referenced as $" + name);
-                    }
-                    return resolve(state, name);
-                }),
-                ValueExpressionFunctions.flow());
-    }
-
-    private ProcedureStepResult forEach(
-            ProcedureDefinition definition,
-            ProcedureStep step,
-            int stepIndex,
-            Map<String, Object> state,
-            ExecutionContext context,
-            ProcedureExecutionScope scope,
-            int recursionDepth
-    ) {
-        Iterable<?> items = toIterable(resolve(state, step.collectionRef()));
-        if (items == null) {
-            return ProcedureStepResult.failure(step, "COLLECTION_REQUIRED", "Procedure forEach requires an iterable collection.");
-        }
-        String itemKey = step.itemKey() == null ? "item" : step.itemKey();
-        Object previous = state.get(itemKey);
-        boolean hadPrevious = state.containsKey(itemKey);
-        int iterations = 0;
-        try {
-            for (Object item : items) {
-                iterations++;
-                if (iterations > limits.maxLoopIterations()) {
-                    return ProcedureStepResult.failure(
-                            step,
-                            "PROCEDURE_LOOP_LIMIT_EXCEEDED",
-                            "Procedure loop exceeded maxLoopIterations=" + limits.maxLoopIterations()
-                    );
-                }
-                state.put(itemKey, item);
-                ProcedureStepResult nestedResult = executeNestedSteps(
-                        definition,
-                        step.steps(),
-                        stepIndex,
-                        state,
-                        context,
-                        scope,
-                        recursionDepth
-                );
-                if (!nestedResult.ok()) {
-                    return nestedResult;
-                }
-            }
-        } finally {
-            if (hadPrevious) {
-                state.put(itemKey, previous);
-            } else {
-                state.remove(itemKey);
-            }
-        }
-        return ProcedureStepResult.success(step);
-    }
 
     /**
      * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 3A / Gap 6): unlike {@link #forEach}, which
@@ -739,198 +440,7 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
         return ProcedureStepResult.success(step);
     }
 
-    private ProcedureStepResult mapValue(ProcedureStep step, Map<String, Object> state) {
-        Object value = resolveSetValue(state, step.valueRef(), step.name(), "valueRef");
-        putOutput(state, step.outputKey(), value);
-        return ProcedureStepResult.success(step);
-    }
 
-    /**
-     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, final item / REG-78): {@code left}/{@code right}
-     * live in {@code step.setValues()} (keys "left"/"right") and resolve via the SAME {@link
-     * #resolveSetValue} literal-vs-{@code $ref} convention {@code patchConcept}'s {@code set} and
-     * {@code mapList}'s {@code select} already use -- a fixed delta needs no "$", a value read off a
-     * prior step (e.g. {@code $existing.quantidade}) does. {@code step.operation()} carries the
-     * operator ("add"/"subtract", the minimum REG-78 named). Operands are coerced through
-     * {@link BigDecimal} so a "long" concept field (WMS quantities) added to a plain JSON integer
-     * literal doesn't round-trip through binary floating point; the result is normalized back to a
-     * {@code Long} when it has no fractional part, a {@code Double} otherwise.
-     */
-    private ProcedureStepResult computeValue(ProcedureStep step, Map<String, Object> state) {
-        Object leftRaw = resolveSetValue(state, step.setValues().get("left"), step.name(), "left");
-        Object rightRaw = resolveSetValue(state, step.setValues().get("right"), step.name(), "right");
-        String requested = step.operation() == null ? "" : step.operation().trim().toLowerCase(Locale.ROOT);
-        if (COMPUTE_VALUE_DATE_OPERATORS.contains(requested)) {
-            return computeDateValue(step, state, requested, leftRaw, rightRaw);
-        }
-        BigDecimal left;
-        BigDecimal right;
-        try {
-            left = toBigDecimal(leftRaw);
-            right = toBigDecimal(rightRaw);
-        } catch (NumberFormatException | ArithmeticException exception) {
-            return ProcedureStepResult.failure(
-                    step,
-                    "COMPUTE_VALUE_INVALID_OPERAND",
-                    "Procedure computeValue requires numeric operands; got left=" + leftRaw + ", right=" + rightRaw
-            );
-        }
-        String operator = step.operation() == null ? "" : step.operation().trim().toLowerCase(Locale.ROOT);
-        BigDecimal result = switch (operator) {
-            case "add" -> left.add(right);
-            case "subtract" -> left.subtract(right);
-            case "multiply" -> left.multiply(right);
-            case "min" -> left.min(right);
-            case "max" -> left.max(right);
-            case "divide" -> {
-                if (right.signum() == 0) {
-                    yield DIVIDE_BY_ZERO;
-                }
-                yield left.divide(right, 10, java.math.RoundingMode.HALF_EVEN);
-            }
-            case "round" -> {
-                BigDecimal places = right.stripTrailingZeros();
-                if (places.scale() > 0 || right.signum() < 0 || right.compareTo(BigDecimal.TEN) > 0) {
-                    yield INVALID_ROUND_PLACES;
-                }
-                yield left.setScale(right.intValueExact(), java.math.RoundingMode.HALF_UP);
-            }
-            default -> null;
-        };
-        if (result == DIVIDE_BY_ZERO) {
-            return ProcedureStepResult.failure(step, "COMPUTE_VALUE_DIVIDE_BY_ZERO",
-                    "Procedure computeValue divide by zero: left=" + leftRaw + ", right=" + rightRaw);
-        }
-        if (result == INVALID_ROUND_PLACES) {
-            return ProcedureStepResult.failure(step, "COMPUTE_VALUE_INVALID_OPERAND",
-                    "Procedure computeValue round needs a whole number of decimal places from 0 to 10; got right=" + rightRaw);
-        }
-        if (result == null) {
-            return ProcedureStepResult.failure(
-                    step,
-                    "COMPUTE_VALUE_UNKNOWN_OPERATOR",
-                    "Procedure computeValue has an unknown operator (expected add/subtract/multiply/divide/min/max/round/addDays/daysBetween/today): "
-                            + step.operation()
-            );
-        }
-        putOutput(state, step.outputKey(), normalizeComputedNumber(result));
-        return ProcedureStepResult.success(step);
-    }
-
-    private static final BigDecimal DIVIDE_BY_ZERO = new BigDecimal("0E-99");
-    private static final BigDecimal INVALID_ROUND_PLACES = new BigDecimal("0E-98");
-
-    /** REG-313 (b): {@code today}/{@code addDays}/{@code daysBetween} -- the expression language's {@link DateFunctions}, lower-cased like the other operators. */
-    private static final java.util.Set<String> COMPUTE_VALUE_DATE_OPERATORS = DateFunctions.NAMES.stream()
-            .map(name -> name.toLowerCase(Locale.ROOT)).collect(java.util.stream.Collectors.toUnmodifiableSet());
-
-    private ProcedureStepResult computeDateValue(
-            ProcedureStep step, Map<String, Object> state, String operator, Object leftRaw, Object rightRaw) {
-        Object result = DateFunctions.apply(operator,
-                "today".equals(operator) ? List.of() : java.util.Arrays.asList(leftRaw, rightRaw));
-        if (result == null) {
-            String needs = "adddays".equals(operator) ? "a date and a whole number of days" : "two dates";
-            return ProcedureStepResult.failure(
-                    step,
-                    "COMPUTE_VALUE_INVALID_OPERAND",
-                    "Procedure computeValue " + step.operation().trim() + " requires " + needs
-                            + "; got left=" + leftRaw + ", right=" + rightRaw
-            );
-        }
-        putOutput(state, step.outputKey(), result);
-        return ProcedureStepResult.success(step);
-    }
-
-    private static BigDecimal toBigDecimal(Object value) {
-        if (value == null) {
-            throw new NumberFormatException("computeValue operand is null");
-        }
-        if (value instanceof BigDecimal bigDecimal) {
-            return bigDecimal;
-        }
-        if (value instanceof Number number) {
-            return new BigDecimal(number.toString());
-        }
-        return new BigDecimal(String.valueOf(value).trim());
-    }
-
-    /**
-     * Deliberately an if/else, NOT a ternary: {@code cond ? stripped.longValueExact() :
-     * stripped.doubleValue()} would undergo Java's binary numeric promotion for conditional
-     * expressions (JLS 15.25) -- since one branch is {@code long} and the other {@code double}, the
-     * WHOLE expression's static type becomes {@code double}, silently widening the long branch's
-     * result to a double even when it is the one chosen. Found live: every whole-number computeValue
-     * result (e.g. 10+5) came back as a Double (15.0) instead of a Long (15) until this was an
-     * if/else, each branch autoboxing independently with no cross-branch promotion.
-     */
-    private static Object normalizeComputedNumber(BigDecimal value) {
-        BigDecimal stripped = value.stripTrailingZeros();
-        if (stripped.scale() <= 0) {
-            return stripped.longValueExact();
-        }
-        return stripped.doubleValue();
-    }
-
-    /** REG-86: same {@link #resolveSetValue} literal-vs-{@code $ref} convention as {@link #mapValue}. */
-    private ProcedureStepResult returnValue(ProcedureStep step, Map<String, Object> state) {
-        state.put("return", resolveSetValue(state, step.returnRef(), step.name(), "returnRef"));
-        return ProcedureStepResult.success(step);
-    }
-
-    private ProcedureStepResult executeNestedSteps(
-            ProcedureDefinition definition,
-            List<ProcedureStep> steps,
-            int parentStepIndex,
-            Map<String, Object> state,
-            ExecutionContext context,
-            ProcedureExecutionScope scope,
-            int recursionDepth
-    ) {
-        for (int offset = 0; offset < steps.size(); offset++) {
-            ProcedureStep child = steps.get(offset);
-            ProcedureStepResult childResult = executeStepWithBudget(
-                    definition,
-                    child,
-                    parentStepIndex + offset + 1,
-                    state,
-                    context,
-                    scope,
-                    recursionDepth
-            );
-            if (!childResult.ok()) {
-                return childResult;
-            }
-            if (child.type() == ProcedureStepType.RETURN) {
-                return childResult;
-            }
-        }
-        return ProcedureStepResult.success(new ProcedureStep(
-                definition.name() + ".nested",
-                ProcedureStepType.MAP_VALUE,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                List.of(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                List.of(),
-                List.of(),
-                List.of(),
-                Map.of(),
-                false
-        ));
-    }
 
     private static void putOutput(Map<String, Object> state, String outputKey, Object value) {
         if (outputKey != null && !outputKey.isBlank()) {
@@ -944,20 +454,6 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
             throw new IllegalArgumentException("Procedure step " + stepName + " requires non-blank " + field + ": " + ref);
         }
         return String.valueOf(value).trim();
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> requireMap(Map<String, Object> state, String ref, String stepName, String field) {
-        Object value = resolve(state, ref);
-        if (value instanceof Map<?, ?> rawMap) {
-            Map<String, Object> out = new LinkedHashMap<>();
-            rawMap.forEach((key, item) -> out.put(String.valueOf(key), item));
-            return out;
-        }
-        if (value instanceof ConceptRecord record) {
-            return record.data();
-        }
-        throw new IllegalArgumentException("Procedure step " + stepName + " requires map " + field + ": " + ref);
     }
 
     /**
@@ -1049,22 +545,6 @@ public final class DefaultProcedureExecutor implements ProcedureExecutor {
             super("Procedure step " + stepName + " cannot resolve " + field + " reference " + ref
                     + ": no such path in the current procedure state");
         }
-    }
-
-    private static String correlationId(ExecutionContext context) {
-        String existing = context.correlationId();
-        return existing == null || existing.isBlank() ? UUID.randomUUID().toString() : existing;
-    }
-
-    private static boolean truthy(Object value) {
-        if (value instanceof Boolean bool) {
-            return bool;
-        }
-        if (value == null) {
-            return false;
-        }
-        String text = String.valueOf(value).trim();
-        return "true".equalsIgnoreCase(text) || "yes".equalsIgnoreCase(text) || "1".equals(text);
     }
 
     private static Iterable<?> toIterable(Object value) {

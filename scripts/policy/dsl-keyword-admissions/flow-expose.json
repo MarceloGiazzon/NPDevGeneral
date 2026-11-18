@@ -1,0 +1,39 @@
+{
+ "$comment": "FORM P4-T4 retroactive admission record (the slot predates the budget, so it is also in baselineSlots; this record documents why it earned its place). Written after the fact; apps, probe and teaching line checked against the files on 2026-11-17.",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "flows[].expose",
+ "slots": [
+  "flow.expose"
+ ],
+ "rung": 0,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-17",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "names WHO may start the flow (api | ui | internal); no ordering, no logic"
+  },
+  "notLower": {
+   "value": true,
+   "why": "whether a flow has a public POST route is decided by the platform when it emits the API; a function cannot withhold an endpoint, and an internal flow is reachable only through callFlow"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "NPDevSamples/ride-hailing",
+    "NPDevSamples/dsl-conformance-max",
+    "NPDevSamples/restaurant-saas-multitenant"
+   ]
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevSamples/dsl-conformance-max/behavior-probes/98-one-flow.json"
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "\"expose\":\"api|ui|internal\" (default api; ui and internal flows have no public POST, it answers 404; an internal flow is only started by a callFlow)"
+  }
+ },
+ "replaces": [],
+ "budgetDelta": 0
+}

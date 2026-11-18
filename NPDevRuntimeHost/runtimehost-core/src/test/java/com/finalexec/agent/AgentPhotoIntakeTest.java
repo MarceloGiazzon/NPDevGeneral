@@ -45,7 +45,7 @@ class AgentPhotoIntakeTest {
             {
               "dslVersion": "3.0.0", "namespace": "demo.photo", "version": "1.0",
               "concepts": [
-                { "name": "Cap", "ui": { "label": "Beer cap" }, "fields": [
+                { "name": "Cap", "ui": { "label": "Beer cap" }, "composition": {}, "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "label", "type": "string", "required": true },
                   { "name": "image", "type": "file", "file": { "contentTypes": ["image/jpeg"], "maxSizeBytes": 204800 } },
@@ -54,7 +54,6 @@ class AgentPhotoIntakeTest {
                   { "name": "submittedBy", "type": "string" } ] }
               ],
               "procedures": [ { "name": "Identify", "steps": [ { "name": "done", "type": "return", "value": "$input" } ] } ],
-              "aggregates": [ { "name": "CapAggregate", "root": "Cap" } ],
               "agentAccess": {
                 "channels": { "telegram": { "enabled": true } },
                 "expose": [ { "concept": "Cap", "operations": ["list"] } ]
@@ -115,7 +114,7 @@ class AgentPhotoIntakeTest {
     @Test
     void draftPrecedenceIsDefaultsThenProcedureThenCaptionThenImage() throws Exception {
         AgentPhotoIntake.Target target = AgentPhotoIntake.target(model(INTAKE)).orElseThrow();
-        assertEquals("CapAggregate", target.aggregate());
+        assertEquals("Cap", target.aggregate());
         Map<String, Object> state = Map.of(
                 "label", "AI label", "id", "ignored", "notAField", "x",
                 "suggestion", Map.of("dominantColor", "#C0C0C0", "image", "not-a-handle"));
@@ -142,7 +141,7 @@ class AgentPhotoIntakeTest {
         assertNotNull(reply.confirmId(), reply.text());
         assertTrue(reply.text().contains("New Beer cap from your photo"), reply.text());
         assertTrue(reply.text().contains("dominantColor: #123456"), reply.text());
-        assertEquals(List.of("/api/files/Cap/image", "/api/runtime/aggregate/CapAggregate/invoke/Identify"), paths,
+        assertEquals(List.of("/api/files/Cap/image", "/api/runtime/aggregate/Cap/invoke/Identify"), paths,
                 "nothing is created before Confirm");
         assertEquals("Lech", jsonBodies.get(0).path("label").asText(), "the procedure sees the caption");
         assertEquals("dev/k", jsonBodies.get(0).path("image").path("key").asText(), "and the uploaded handle");

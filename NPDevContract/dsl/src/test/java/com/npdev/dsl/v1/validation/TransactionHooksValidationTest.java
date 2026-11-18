@@ -51,7 +51,8 @@ class TransactionHooksValidationTest {
               "dslVersion": "3.0.0", "namespace": "wms.hooks", "version": "1.0",
               "concepts": [
                 { "name": "Movimento", "fields": [
-                    { "name": "id", "type": "uuid", "id": true, "required": true } ] },
+                    { "name": "id", "type": "uuid", "id": true, "required": true } ],
+                  "composition": { "collections": [ { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned" } ]%s } },
                 { "name": "MovimentoItem", "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "movimentoId", "type": "uuid" } ] }
@@ -61,10 +62,6 @@ class TransactionHooksValidationTest {
                 { "name": "SyncOcupacao", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] },
                 { "name": "DirectValidate", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] },
                 { "name": "DirectCommit", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] }
-              ],
-              "aggregates": [
-                { "name": "Movimento", "root": "Movimento"%s,
-                  "collections": [ { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned" } ] }
               ],
               "autoPanels": [
                 { "aggregate": "Movimento",

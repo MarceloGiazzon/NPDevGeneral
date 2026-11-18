@@ -41,6 +41,9 @@ ENDPOINT = re.compile(r"/api/concepts/([a-z0-9_]+)(?=[\"/?])")
 PAGE_CAP = 100
 # identity pack system concepts, by their REST collection name (used even when the model file cannot be read)
 FALLBACK_SYSTEM_ROUTES = ["credentials", "password_reset_tokens", "user_sessions", "user_mfas"]
+# REG-339: the TYPED controller form of the same concepts is /api/<pack>_<plural> (not /api/concepts/<plural>). It sat open to every
+# signed-in user for weeks because this matrix only probed /api/concepts/*. Any 2xx on one of these is a violation (the route must not exist).
+FALLBACK_TYPED_SYSTEM_ROUTES = ["identity_credentials", "identity_password_reset_tokens", "identity_user_sessions", "identity_user_mfas"]
 
 
 def call(method, url, token=None, body=None):
@@ -93,11 +96,11 @@ def plural_snake(name):
 
 
 def discover(app_dir: Path):
-    """(business routes, system routes) found in the generated app."""
-    routes, system = set(), set(FALLBACK_SYSTEM_ROUTES)
+    """(business routes, system routes, typed system routes) found in the generated app."""
+    routes, system, typed = set(), set(FALLBACK_SYSTEM_ROUTES), set(FALLBACK_TYPED_SYSTEM_ROUTES)
     root = app_dir / "npdev-generated"
     if not root.is_dir():
-        return [], sorted(system)
+        return [], sorted(system), sorted(typed)
     for path in root.rglob("*.json"):
         try:
             text = path.read_text(encoding="utf-8", errors="ignore")
@@ -111,8 +114,11 @@ def discover(app_dir: Path):
                 continue
             for concept in (node.get("concepts") or []) if isinstance(node, dict) else []:
                 if isinstance(concept, dict) and concept.get("system") is True and concept.get("name"):
-                    system.add(plural_snake(str(concept["name"]).split("::")[-1]))
-    return sorted(routes - system), sorted(system)
+                    qualified = str(concept["name"])
+                    system.add(plural_snake(qualified.split("::")[-1]))
+                    prefix, _, local = qualified.rpartition("::")
+                    typed.add((re.sub(r"(?<!^)(?=[A-Z])", "_", prefix).lower() + "_" if prefix else "") + plural_snake(local))
+    return sorted(routes - system), sorted(system), sorted(typed)
 
 
 def login(base, user, password):
@@ -140,7 +146,7 @@ def main(argv):
     admins = set(opts.admin_user or ["admin"])
     base = opts.base.rstrip("/")
     expect = json.loads(Path(opts.expect).read_text(encoding="utf-8")) if opts.expect else {}
-    routes, system_routes = discover(Path(opts.app_dir))
+    routes, system_routes, typed_system_routes = discover(Path(opts.app_dir))
     if not routes:
         print(f"no /api/concepts/<route> found under {opts.app_dir}/npdev-generated -- wrong --app-dir, or not generated",
               file=sys.stderr)
@@ -193,6 +199,13 @@ def main(argv):
                 violations.append(f"{user} cannot read {route} (HTTP {status}), expected some rows")
             if not want and user not in admins and readable and SENSITIVE.search(route):
                 violations.append(f"{user} reads {total} row(s) of sensitive {route}")
+
+    for user in users:
+        for route in typed_system_routes:
+            status, _ = call("GET", f"{base}/api/{route}?size=1", tokens[user])
+            matrix.setdefault("/api/" + route, {})[user] = {"read": status, "rows": 0}
+            if 200 <= status < 300:
+                violations.append(f"{user} gets HTTP {status} from the TYPED system route /api/{route} (it must not exist: 404)")
 
     if opts.write_probe:
         for user in users:

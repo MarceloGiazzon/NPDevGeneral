@@ -77,7 +77,33 @@
             "label": "Hourly rate"
           }
         }
-      ]
+      ],
+      "composition": {
+        "collections": [
+          {
+            "name": "phases",
+            "concept": "Phase",
+            "childField": "projectId",
+            "ownership": "owned",
+            "collections": [
+              {
+                "name": "tasks",
+                "concept": "Task",
+                "childField": "phaseId",
+                "ownership": "owned",
+                "collections": [
+                  {
+                    "name": "subtasks",
+                    "concept": "Subtask",
+                    "childField": "taskId",
+                    "ownership": "owned"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "name": "Phase",
@@ -500,36 +526,6 @@
           "name": "return-ticket",
           "type": "return",
           "value": "$saved"
-        }
-      ]
-    }
-  ],
-  "aggregates": [
-    {
-      "name": "Project",
-      "root": "Project",
-      "collections": [
-        {
-          "name": "phases",
-          "concept": "Phase",
-          "childField": "projectId",
-          "ownership": "owned",
-          "collections": [
-            {
-              "name": "tasks",
-              "concept": "Task",
-              "childField": "phaseId",
-              "ownership": "owned",
-              "collections": [
-                {
-                  "name": "subtasks",
-                  "concept": "Subtask",
-                  "childField": "taskId",
-                  "ownership": "owned"
-                }
-              ]
-            }
-          ]
         }
       ]
     }

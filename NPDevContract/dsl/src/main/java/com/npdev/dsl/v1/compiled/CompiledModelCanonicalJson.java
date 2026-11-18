@@ -72,7 +72,31 @@ public final class CompiledModelCanonicalJson {
         root.set("seeds", toSeeds(model));
         root.set("appShell", toAppShell(model));
         root.set("agentAccess", toAgentAccess(model));
+        // FORM P5-T1: written only when declared, so a model without experiences/screens keeps its exact
+        // canonical JSON (and every hash and golden fixture derived from it).
+        if (!model.getExperiences().isEmpty()) {
+            root.set("experiences", toOpaqueObjects(model.getExperiences(), false));
+        }
+        if (!model.getScreens().isEmpty()) {
+            root.set("screens", toOpaqueObjects(model.getScreens(), true));
+        }
         return root;
+    }
+
+    /** FORM P5-T1: writes the opaque {@code experiences}/{@code screens} objects exactly as authored. Screens are
+     *  sorted by name (their order carries no meaning). Experiences are deliberately NOT sorted: a signed-in user
+     *  lands in the FIRST experience whose {@code for} contains one of their roles, so declaration order is
+     *  load-bearing, and the upstream composition order is already deterministic. */
+    private static ArrayNode toOpaqueObjects(List<JsonNode> source, boolean sortByName) {
+        List<JsonNode> ordered = new ArrayList<>(source);
+        if (sortByName) {
+            ordered.sort(Comparator.comparing(node -> normalize(node.path("name").asText(""))));
+        }
+        ArrayNode out = JsonNodeFactory.instance.arrayNode();
+        for (JsonNode node : ordered) {
+            out.add(node.deepCopy());
+        }
+        return out;
     }
 
     /** Path A P6.3: writes the declared navigation structure + default route, or JSON null if the
@@ -505,14 +529,6 @@ public final class CompiledModelCanonicalJson {
             node.put("locale", safe(settings.getLocale()));
         }
         node.set("strings", toStringMap(settings.getStrings()));
-        ObjectNode ui = JsonNodeFactory.instance.objectNode();
-        if (settings.getPageRows() != null) {
-            ui.put("pageRows", settings.getPageRows());
-        }
-        if (settings.getDateFormat() != null) {
-            ui.put("dateFormat", safe(settings.getDateFormat()));
-        }
-        node.set("ui", ui);
         return node;
     }
 

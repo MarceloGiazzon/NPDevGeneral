@@ -1,0 +1,62 @@
+{
+  "probes": [
+    {
+      "id": "fl-emitevent-resumes-parked-await-after-the-sweep-has-seen-it",
+      "keywords": [
+        "flowStep.event",
+        "flowStep.awaitEvent"
+      ],
+      "description": "REG-340: AwaitPaymentInRound (a timed, payload-matched awaitEvent inside a forEach round, the shape of ride-hailing's offer wait) parks (WAITING_EVENT). The 2 s resume sweep looks at it and finds nothing. 5 s later a SECOND flow (ConfirmPaymentByFlow) resumes it with an emitEvent step carrying the awaited payload reference. The parked execution must be COMPLETED within a couple of seconds, not 20 s later when the sweep reaches it.",
+      "steps": [
+        {
+          "name": "park the awaiting flow",
+          "method": "POST",
+          "path": "/api/flows/AwaitPaymentInRound/execute",
+          "body": {
+            "slots": [
+              1
+            ],
+            "reference": "reg340-ref"
+          },
+          "expect": {
+            "status": 202,
+            "json": {
+              "$.status": "WAITING_EVENT"
+            }
+          },
+          "save": {
+            "execId": "$.executionId"
+          }
+        },
+        {
+          "name": "a second flow emits PaymentConfirmed under that correlation, 5 s after the park",
+          "sleepBeforeSeconds": 5,
+          "method": "POST",
+          "path": "/api/flows/ConfirmPaymentByFlow/execute",
+          "body": {
+            "correlationId": "other-${rand}",
+            "reference": "reg340-ref"
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "name": "the parked flow completed (retries cover only a short, bounded lag)",
+          "method": "GET",
+          "path": "/api/executions/${execId}",
+          "retry": {
+            "attempts": 3,
+            "delaySeconds": 1
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.status": "COMPLETED"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

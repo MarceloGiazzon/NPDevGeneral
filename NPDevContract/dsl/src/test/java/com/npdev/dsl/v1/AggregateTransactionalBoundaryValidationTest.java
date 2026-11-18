@@ -32,14 +32,10 @@ class AggregateTransactionalBoundaryValidationTest {
             "concepts": [
               { "name": "Order", "fields": [
                 { "name": "id", "type": "uuid", "id": true, "required": true },
-                { "name": "total", "type": "integer" } ] },
+                { "name": "total", "type": "integer" } ], "composition": {} },
               { "name": "Customer", "fields": [
                 { "name": "id", "type": "uuid", "id": true, "required": true },
-                { "name": "name", "type": "string" } ] }
-            ],
-            "aggregates": [
-              { "name": "OrderAggregate", "root": "Order" },
-              { "name": "CustomerAggregate", "root": "Customer" }
+                { "name": "name", "type": "string" } ], "composition": {} }
             ],
             """;
 
@@ -66,7 +62,7 @@ class AggregateTransactionalBoundaryValidationTest {
         List<String> errors = validate(json);
 
         assertTrue(errors.stream().anyMatch(e -> e.contains("BadFlow")
-                        && e.contains("OrderAggregate") && e.contains("CustomerAggregate")),
+                        && e.contains("Order") && e.contains("Customer")),
                 "Expected an aggregate-boundary violation naming both aggregates, got: " + errors);
     }
 
@@ -126,11 +122,10 @@ class AggregateTransactionalBoundaryValidationTest {
                   "namespace": "agg.boundary.demo", "dslVersion": "3.0.0", "version": "v1",
                   "concepts": [
                     { "name": "Order", "fields": [
-                      { "name": "id", "type": "uuid", "id": true, "required": true } ] },
+                      { "name": "id", "type": "uuid", "id": true, "required": true } ], "composition": {} },
                     { "name": "AuditLog", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true } ] }
                   ],
-                  "aggregates": [ { "name": "OrderAggregate", "root": "Order" } ],
                   "flows": [ {
                     "name": "GoodFlow",
                     "input": { "concept": "Order", "mode": "create" },

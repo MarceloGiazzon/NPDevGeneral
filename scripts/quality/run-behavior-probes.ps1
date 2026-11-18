@@ -195,6 +195,9 @@ function Invoke-SampleGenerateAndBuild {
 function Start-ProbeApp {
     param([string]$StageSuffix = "")
     Add-ProbeIdentities -AppRoot $appRoot
+    # INT-6: a dummy secret (not a real credential) for ONE inbound door, so a probe can deliver a correctly signed webhook;
+    # every other door stays unconfigured and must fail closed. Set before the app boots, inherited by app and runner.
+    $env:NPDEV_WEBHOOK_PAYMENT_PROCESSOR_SECRET = "behavior-probe-dummy-secret"
     Write-Section "Booting $SampleId on port $Port"
     $bootOut = Join-Path $appRoot "behavior-probes-boot$StageSuffix.stdout.log"
     $bootErr = Join-Path $appRoot "behavior-probes-boot$StageSuffix.stderr.log"

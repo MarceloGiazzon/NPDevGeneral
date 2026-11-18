@@ -1,0 +1,48 @@
+{
+ "$comment": "FORM P5 admission, written 2026-11-18 after a per-keyword audit of both apps' models, the probes and the bundle text (docs/content/authoring-for-ai.yml).",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "experiences[]",
+ "slots": [
+  "experience.name",
+  "experience.title",
+  "experience.for",
+  "experience.device",
+  "experience.home",
+  "experience.navigation",
+  "experience.theme",
+  "experience.backOffice",
+  "pack:experiences"
+ ],
+ "rung": 0,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-18",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "says which roles land where (for), the first screen (home), the entries (navigation, with icon/badge expressions) and the look (device, theme); no ordering, no logic"
+  },
+  "notLower": {
+   "value": true,
+   "why": "where a signed-in user lands is decided by the login shell (/api/x/me picks the first experience whose `for` matches a role); a function or expression cannot route a login, and the mobile manifest/icons are generated from device+theme"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "NPDevSamples/ride-hailing",
+    "NPDevSamples/dsl-conformance-max"
+   ],
+   "note": "experience.theme and experience.backOffice: ride-hailing `dispatch` and dsl-conformance-max `warehouse` (the dsl-conformance-max use was added 2026-11-18 for this record)"
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevSamples/dsl-conformance-max/behavior-probes/19-experience-routes.json",
+   "note": "probe 19 proves /x/<exp>/ and /api/x/me follow `for`; probe 22 (22-experience-manifest.json) proves device -> installable manifest; ExperienceValidationTest rejects bad for/home/navigation/device at model time; theme and backOffice are read by the client (experience-client.test.mjs) but have no server-side probe"
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "`experiences[]` says who lands where ... Experience extras: `title`, `device` (`mobile` = bottom tab bar, max 5 entries, installable; `web`; `both`), `theme` (`\"dark\"`), `backOffice:true` (also link the generated back office), navigation `icon` and `badge`"
+  }
+ },
+ "replaces": [],
+ "budgetDelta": 9
+}

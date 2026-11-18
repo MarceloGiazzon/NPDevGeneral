@@ -60,22 +60,31 @@ class AggregateRuntimeCommitTransactionalTest {
           "concepts": [
             { "name": "Expedicao", "fields": [
               { "name": "id", "type": "string", "id": true, "required": true },
-              { "name": "cliente", "type": "string" } ] },
+              { "name": "cliente", "type": "string" } ],
+  "composition": {
+    "collections": [
+      {
+        "name": "itens",
+        "concept": "ExpedicaoItem",
+        "childField": "expedicaoId",
+        "ownership": "owned",
+        "collections": [
+          {
+            "name": "origens",
+            "concept": "MovtoOrigem",
+            "childField": "itemSeq",
+            "ownership": "owned"
+          }
+        ]
+      }
+    ]
+  } },
             { "name": "ExpedicaoItem", "fields": [
               { "name": "id", "type": "string", "id": true, "required": true },
               { "name": "expedicaoId", "type": "string" }, { "name": "produtoId", "type": "string" } ] },
             { "name": "MovtoOrigem", "fields": [
               { "name": "id", "type": "string", "id": true, "required": true },
               { "name": "itemSeq", "type": "string" }, { "name": "local", "type": "string" } ] }
-          ],
-          "aggregates": [
-            { "name": "Expedicao", "root": "Expedicao",
-              "collections": [
-                { "name": "itens", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned",
-                  "collections": [
-                    { "name": "origens", "concept": "MovtoOrigem", "childField": "itemSeq", "ownership": "owned" }
-                  ] }
-              ] }
           ]
         }
         """;

@@ -8,7 +8,7 @@ an app that no longer builds. So an answer's themes get the generator's own rule
   structure + WCAG contrast of the theme as it will be USED (basedOn flattened, depth <= 3, no cycle).
 
 Which theme the app USES is not decided here: `ui.theme.name` / `ui.theme.choices` live in config.json's `defaults` envelope
-(flat keys), never in model.json (model.schema.json's settings.ui takes only pageRows and dateFormat), and a chat cannot
+(flat keys), never in model.json (model.schema.json has no ui settings at all), and a chat cannot
 write config.json. A selection arrives as a config proposal the owner ticks (npdev_relay_config, T4.5b); a theme the app does
 not select, and that no proposal selects, is saved with a `theme-not-selected` warning that names the setting, and a model
 that carries `settings.ui.theme` is sent back with the way out (see `misplaced_selection`).
@@ -100,7 +100,7 @@ def misplaced_selection(model) -> str | None:
     found = found or any(str(key).startswith("ui.theme") for key in settings)
     if not found:
         return None
-    return ("settings.ui.theme - the theme is not chosen in model.json (settings.ui takes only pageRows and dateFormat); "
+    return ("settings.ui.theme - the theme is not chosen in model.json (model.json has no ui settings); "
             "remove it, send the theme as themes/<id>.json, and say in your note which theme the owner should select")
 
 

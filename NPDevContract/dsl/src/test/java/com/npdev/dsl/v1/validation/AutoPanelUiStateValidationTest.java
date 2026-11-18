@@ -257,22 +257,20 @@ class AutoPanelUiStateValidationTest {
               "concepts": [
                 { "name": "Movimento", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
-                  { "name": "situacao", "type": "string" } ] },
+                  { "name": "situacao", "type": "string" } ],
+                  "composition": { "collections": [
+                    { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId",
+                      "ownership": "owned"%s } ] } },
                 { "name": "MovimentoItem", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "movimentoId", "type": "uuid" },
                   { "name": "quantidade", "type": "integer" } ] }%s
               ],
-              "aggregates": [
-                { "name": "Movimento", "root": "Movimento", "collections": [
-                  { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId",
-                    "ownership": "owned"%s } ] }
-              ],
               "autoPanels": [
                 { "aggregate": "Movimento", "transaction": { %s } }
               ]
             }
-            """.formatted(bandConcept, bandCollection, transactionBody);
+            """.formatted(bandCollection, bandConcept, transactionBody);
     }
 
 }

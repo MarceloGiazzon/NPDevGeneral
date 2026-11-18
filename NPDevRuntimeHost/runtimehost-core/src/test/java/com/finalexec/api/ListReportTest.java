@@ -57,13 +57,13 @@ class ListReportTest {
                     { "name": "amount", "type": "integer" } ],
                   "access": { "read": "ownerId == $user.id" } }
               ],
-              "documents": [
-                { "name": "SalaryByDept", "concept": "Payroll", "kind": "list", "title": "Salary by department",
-                  "columns": [ { "field": "employee", "label": "Employee" }, { "field": "dept" },
+              "screens": [
+                { "name": "SalaryByDept", "kind": "document", "concept": "Payroll", "report": true, "title": "Salary by department",
+                  "printColumns": [ { "field": "employee", "label": "Employee" }, { "field": "dept" },
                                { "field": "salary", "label": "Salary", "total": "sum" } ],
                   "groupBy": ["dept"], "subtotals": true, "grandTotal": true },
-                { "name": "SpendByCategory", "concept": "Expense", "kind": "list",
-                  "columns": [ { "field": "category" }, { "field": "amount", "total": "sum" } ],
+                { "name": "SpendByCategory", "kind": "document", "concept": "Expense", "report": true,
+                  "printColumns": [ { "field": "category" }, { "field": "amount", "total": "sum" } ],
                   "groupBy": ["category"], "subtotals": true, "grandTotal": true }
               ]
             }

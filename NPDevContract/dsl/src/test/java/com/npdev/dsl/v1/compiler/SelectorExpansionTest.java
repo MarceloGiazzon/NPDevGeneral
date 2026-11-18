@@ -13,7 +13,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Verifies a standalone selector expands into a reusable picker panel (P2 slice 3). */
+/** Verifies a picker screen (the old selectors[] entry, P5-T9a) expands into a reusable picker panel (P2 slice 3). */
 class SelectorExpansionTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -35,8 +35,8 @@ class SelectorExpansionTest {
                   { "name": "rua", "type": "string" },
                   { "name": "disponivelQtd", "type": "integer" } ] }
               ],
-              "selectors": [
-                { "name": "SelecionaRuas", "concept": "LocalArmazenagem", "multiSelect": true,
+              "screens": [
+                { "name": "SelecionaRuas", "kind": "picker", "concept": "LocalArmazenagem", "multiSelect": true,
                   "filters": ["area", "rua"], "columns": ["rua", "disponivelQtd"],
                   "returnMapping": { "local": "rua" } }
               ]
@@ -69,7 +69,7 @@ class SelectorExpansionTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "rua", "type": "string" } ] }
               ],
-              "selectors": [ { "name": "PickLocal", "concept": "Local" } ]
+              "screens": [ { "name": "PickLocal", "kind": "picker", "concept": "Local" } ]
             }
             """;
         CompiledModel model = compile(json);
@@ -78,5 +78,18 @@ class SelectorExpansionTest {
         // No columns declared -> defaults to the concept's (normalized) field order.
         assertEquals(List.of("id", "rua"), picker.layout().fields());
         assertEquals(Boolean.FALSE, picker.metadata().get("multiSelect"));
+    }
+
+    @Test
+    void theRemovedTopLevelSelectorsKeyIsRefusedWithTheReplacementNamed() {
+        String json = """
+            {
+              "dslVersion": "3.0.0", "namespace": "wms.sel", "version": "1.0",
+              "concepts": [ { "name": "Local", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
+              "selectors": [ { "name": "PickLocal", "concept": "Local" } ]
+            }
+            """;
+        Exception refused = assertThrows(Exception.class, () -> compile(json));
+        assertTrue(refused.getMessage().contains("selectors"), refused.getMessage());
     }
 }

@@ -39,7 +39,7 @@ class AppShellModelThreadingTest {
                     { "name": "Widget", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] },
                     { "name": "Gadget", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
                   ],
-                  "appShell": {
+                  "backOffice": {
                     "defaultRoute": "Widget",
                     "navigation": [
                       { "label": "Widgets", "target": "Widget", "group": "Operations" },
@@ -117,7 +117,7 @@ class AppShellModelThreadingTest {
                   "concepts": [
                     { "name": "Widget", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
                   ],
-                  "appShell": {
+                  "backOffice": {
                     "defaultRoute": "Widget",
                     "navigation": [
                       { "label": "Widgets", "target": "Widget", "group": "Operations" },
@@ -132,7 +132,7 @@ class AppShellModelThreadingTest {
 
         ValidationResult validation = new SemanticValidator().validateWithWarnings(ast);
         assertTrue(validation.getErrors().stream().anyMatch(error ->
-                        error.contains("appShell.navigation[1]") && error.contains("Gizmos") && error.contains("NoSuchConcept")),
+                        error.contains("backOffice.navigation[1]") && error.contains("Gizmos") && error.contains("NoSuchConcept")),
                 "expected a named refusal for the unresolved nav target, got: " + validation.getErrors());
     }
 
@@ -151,7 +151,7 @@ class AppShellModelThreadingTest {
                   "concepts": [
                     { "name": "Widget", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
                   ],
-                  "appShell": {
+                  "backOffice": {
                     "defaultRoute": "NoSuchConcept",
                     "navigation": [
                       { "label": "Widgets", "target": "Widget", "group": "Operations" }
@@ -165,7 +165,7 @@ class AppShellModelThreadingTest {
 
         ValidationResult validation = new SemanticValidator().validateWithWarnings(ast);
         assertTrue(validation.getErrors().stream().anyMatch(error ->
-                        error.contains("appShell.defaultRoute") && error.contains("NoSuchConcept")),
+                        error.contains("backOffice.defaultRoute") && error.contains("NoSuchConcept")),
                 "expected a named refusal for the unresolved defaultRoute, got: " + validation.getErrors());
     }
 }

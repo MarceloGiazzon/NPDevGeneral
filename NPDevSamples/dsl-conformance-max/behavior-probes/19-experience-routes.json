@@ -1,0 +1,124 @@
+{
+  "probes": [
+    {
+      "id": "ex-shell-me-and-ui-flow-start-follow-the-callers-role",
+      "keywords": ["flow.expose"],
+      "description": "FORM P5-T2: the sample's experience `warehouse` is for role WarehouseManager. The shell /x/<experience>/ serves the static page (unknown experience 404); GET /api/x/me hands the caller the FIRST experience whose `for` matches a role of the caller (WarehouseManager: warehouse + its 3 reachable screens with dataUrl and startUrl; ADMIN and a plain USER: experience null, they keep the back office). POST /api/x/flows/<flow>/execute is the ONLY way an `expose: ui` flow is started from a browser: it answers 200 for a flow that is an action of a screen of the caller's experience (OneFlowUiOnly) and 404 -- indistinguishable from a missing flow -- for an internal flow, for a role outside `for`, and for a flow no experience screen of the caller names. The public flow route still has no start for a ui flow.",
+      "steps": [
+        {
+          "name": "the shell page of a known experience is served without data",
+          "method": "GET",
+          "path": "/x/warehouse/",
+          "auth": "none",
+          "expect": { "status": 200, "text": "/x/app.js" }
+        },
+        {
+          "name": "an unknown experience is 404",
+          "method": "GET",
+          "path": "/x/no-such-experience/",
+          "auth": "none",
+          "expect": { "status": 404 }
+        },
+        {
+          "name": "the client module is a static file",
+          "method": "GET",
+          "path": "/x/app.js",
+          "auth": "none",
+          "expect": { "status": 200 }
+        },
+        {
+          "name": "the custom screen's component is served from web/regions and registers itself",
+          "method": "GET",
+          "path": "/regions/warehouse-hint.js",
+          "auth": "none",
+          "expect": { "status": 200, "text": "npdev.regions.register" }
+        },
+        {
+          "name": "a WarehouseManager lands in the warehouse experience",
+          "method": "GET",
+          "path": "/api/x/me",
+          "apiKey": "${key_warehousemanager}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.experience.name": "warehouse",
+              "$.experience.home": "suppliers",
+              "$.user.roles": { "contains": "WAREHOUSEMANAGER" },
+              "$.screens": { "len": 4 },
+              "$.screens[?name=suppliers].dataUrl": { "matches": "^/api/concepts/widget_supplier" },
+              "$.screens[?name=place-order].actions[0].startUrl": "/api/x/flows/PlaceWidgetOrder/execute"
+            }
+          }
+        },
+        {
+          "name": "ADMIN has no experience: the back office stays",
+          "method": "GET",
+          "path": "/api/x/me",
+          "expect": { "status": 200, "json": { "$.experience": null } }
+        },
+        {
+          "name": "a plain USER has no experience either",
+          "method": "GET",
+          "path": "/api/x/me",
+          "apiKey": "${key_alice}",
+          "expect": { "status": 200, "json": { "$.experience": null } }
+        },
+        {
+          "name": "a ui flow named by a screen action of the caller's experience starts",
+          "method": "POST",
+          "path": "/api/x/flows/OneFlowUiOnly/execute",
+          "apiKey": "${key_warehousemanager}",
+          "body": {},
+          "expect": { "status": 200, "json": { "$.status": "OK" } }
+        },
+        {
+          "name": "the same flow is 404 for a role outside the experience (ADMIN)",
+          "method": "POST",
+          "path": "/api/x/flows/OneFlowUiOnly/execute",
+          "body": {},
+          "expect": { "status": 404 }
+        },
+        {
+          "name": "the same flow is 404 for a plain USER",
+          "method": "POST",
+          "path": "/api/x/flows/OneFlowUiOnly/execute",
+          "apiKey": "${key_alice}",
+          "body": {},
+          "expect": { "status": 404 }
+        },
+        {
+          "name": "an api flow named by the experience is 404 for a role outside it, although the public route would start it",
+          "method": "POST",
+          "path": "/api/x/flows/PlaceWidgetOrder/execute",
+          "apiKey": "${key_alice}",
+          "body": {},
+          "expect": { "status": 404 }
+        },
+        {
+          "name": "an internal flow is never started from a screen",
+          "method": "POST",
+          "path": "/api/x/flows/OneFlowInternalHelper/execute",
+          "apiKey": "${key_warehousemanager}",
+          "body": {},
+          "expect": { "status": 404 }
+        },
+        {
+          "name": "a flow no screen of the caller's experience names is 404",
+          "method": "POST",
+          "path": "/api/x/flows/RecountOrderLines/execute",
+          "apiKey": "${key_warehousemanager}",
+          "body": {},
+          "expect": { "status": 404 }
+        },
+        {
+          "name": "the public flow route still has no start for a ui flow",
+          "method": "POST",
+          "path": "/api/flows/OneFlowUiOnly/execute",
+          "apiKey": "${key_warehousemanager}",
+          "body": {},
+          "expect": { "status": 404 }
+        }
+      ]
+    }
+  ]
+}

@@ -33,16 +33,13 @@ public class BusinessUiEmitterExprEngineTest {
                 {
                   "namespace": "expr.demo", "dslVersion": "3.0.0", "version": "1.0",
                   "concepts": [
-                    { "name": "Ord", "fields": [
+                    { "name": "Ord", "composition": { "collections": [
+                        { "name": "lines", "concept": "Line", "childField": "ordId", "ownership": "owned" } ] }, "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true },
                         { "name": "discount", "type": "integer" } ] },
                     { "name": "Line", "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true },
                         { "name": "ordId", "type": "uuid" }, { "name": "qty", "type": "integer" } ] }
-                  ],
-                  "aggregates": [
-                    { "name": "Ord", "root": "Ord", "collections": [
-                        { "name": "lines", "concept": "Line", "childField": "ordId", "ownership": "owned" } ] }
                   ],
                   "autoPanels": [ { "aggregate": "Ord", "transaction": {
                       "computed": [ { "col": "double", "expr": "qty * 2", "collection": "lines" } ] } } ]

@@ -1,0 +1,45 @@
+{
+ "$comment": "FORM P5 admission, 2026-11-18. screenAction.moveTo (drag-to-column on a board) is NOT admitted: no corpus app uses it yet.",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "screens[].actions[]",
+ "slots": [
+  "screenAction.label",
+  "screenAction.flow",
+  "screenAction.input",
+  "screenAction.confirm",
+  "screenAction.style",
+  "screenAction.then",
+  "screenAction.visibleWhen"
+ ],
+ "rung": 0,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-18",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "a button: label, the flow it starts, its input mapping ($row/$form), an optional confirm question and the screen to open next"
+  },
+  "notLower": {
+   "value": true,
+   "why": "starting a flow from a browser is the one route POST /api/x/flows/<flow>/execute, which only answers for a flow that is an action of a screen of the caller's experience; that gate cannot be written in a flow or function"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "NPDevSamples/ride-hailing",
+    "NPDevSamples/dsl-conformance-max"
+   ]
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevSamples/dsl-conformance-max/behavior-probes/19-experience-routes.json",
+   "note": "probe 19 proves the execute route: 200 for a screen action, 404 for an internal flow, a role outside `for`, or a flow no screen names; ExperienceValidationTest checks the flow exists and is expose ui|api; visibleWhen is evaluated by /api/x/eval (probe 20 covers that endpoint for badges)"
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "`\"actions\":[{\"label\":\"Accept\",\"flow\":\"AcceptOffer\",\"input\":{\"id\":\"$row.id\"}}]` ... every button starts a flow with `\"expose\":\"ui\"` (or `api`) ... button `confirm`/`visibleWhen`/`then`"
+  }
+ },
+ "replaces": [],
+ "budgetDelta": 7
+}

@@ -42,9 +42,10 @@ from .detectors_ui import (  # noqa: F401 - every name the table below reference
 
 FEATURE_DETECTORS = {
     "externalAi": lambda m: "externalAi" in m,
-    # Path A P6.3: declared navigation structure + default route for the generated app's shell
-    # chrome, a new top-level object sibling of settings/externalAi.
-    "appShell": lambda m: "appShell" in m,
+    # Path A P6.3 / FORM P5-T9c: declared navigation structure + default route for the generated app's shell
+    # chrome, now the optional root backOffice.{defaultRoute,navigation} (it was the top-level appShell).
+    "backOffice.shell": lambda m: isinstance(m.get("backOffice"), dict)
+    and ("defaultRoute" in m["backOffice"] or "navigation" in m["backOffice"]),
     "domainTypes": lambda m: _nonempty(m, "domainTypes"),
     # D1 (FIRST_IMPRESSION_PLAN.md I5): field.renamedFrom -- see _has_renamed_field's own docstring.
     "field.renamedFrom": _has_renamed_field,
@@ -54,9 +55,10 @@ FEATURE_DETECTORS = {
     "concept.ui.offlineWrite": _has_concept_offline_write,
     "concept.ui.selectionTools": _has_concept_selection_tools,
     "field.uid": _has_field_uid,
-    "selectors": lambda m: _nonempty(m, "selectors"),
+    # P5-T9a: the old top-level selectors[] key is now a screens[] entry of kind "picker".
+    "screen.picker": lambda m: any(isinstance(s, dict) and s.get("kind") == "picker" for s in (m.get("screens", None) or [])),
     # Wave 3 (RC-B1, MOVE11_RUNTIME_CONFIGURATION_PLAN Part B.1): app-defined role -> permission-
-    # ceiling declarations, a new top-level array sibling of settings/selectors.
+    # ceiling declarations, a new top-level array sibling of settings.
     "roles": lambda m: _nonempty(m, "roles"),
     # Wave 6 (RC-A1, MOVE11_RUNTIME_CONFIGURATION_PLAN Part A.1): the scoped-property cascade's
     # declaration layer -- two new top-level arrays, siblings of roles/settings.
@@ -64,14 +66,20 @@ FEATURE_DETECTORS = {
     "properties": lambda m: _nonempty(m, "properties"),
     "aggregates": lambda m: _nonempty(m, "aggregates"),
     "autoPanels": lambda m: _nonempty(m, "autoPanels"),
-    "documents": lambda m: _nonempty(m, "documents"),
-    "guidePages": lambda m: _nonempty(m, "guidePages"),
+    # P5-T9b: the old top-level documents[] key is now a screens[] entry of kind "document".
+    "screen.document": lambda m: any(isinstance(s, dict) and s.get("kind") == "document" for s in (m.get("screens", None) or [])),
+    # FORM P5-T9c: the old top-level guidePages[] is the root backOffice.pages (a pack: its own backOffice.pages).
+    "backOffice.pages": lambda m: isinstance(m.get("backOffice"), dict) and bool(m["backOffice"].get("pages")),
     # R6.2 / FORM P3-T10: an inbound webhook door is declared on the capability it serves
     # (capabilities[].inbound), generating POST /api/hooks/{path}.
     "capability.inbound": lambda m: any(isinstance(c, dict) and "inbound" in c for c in (m.get("capabilities", None) or [])),
     # R5.3 (Roadmap Collection 2026-08-18): model-declared document-numbering counters -- a new
     # top-level array, allocated by field.defaultExpression: nextNumber('name').
     "sequences": lambda m: _nonempty(m, "sequences"),
+    # FORM P5-T1: who lands where on which device (experiences[]) and the closed set of screen archetypes
+    # they navigate to (screens[]) -- two new top-level arrays, validated by ExperienceValidation.
+    "experiences": lambda m: _nonempty(m, "experiences"),
+    "screens": lambda m: _nonempty(m, "screens"),
     "queries": lambda m: _nonempty(m, "queries"),
     # Move 10 B1 (LC-B1, MOVE10_AI_LOWCODE_PLAN Part B): query.groupBy/aggregates/having --
     # distinct from the top-level "aggregates" (Aggregate Workbench) array above, so named
@@ -268,7 +276,7 @@ FEATURE_DETECTORS = {
     # the same two properties a plain FK field's picker declares, unifying the two picker shapes.
     "bandPicker.filter": _has_band_picker_filter,
     # EDIT-18 (REAL_LIFT_PLAN_2026-09-03 package C2, boundary B16 Step 2): a picker (field or band)
-    # naming a real selectors[] entry by selectorRef -- distinct from the "selectors" feature below,
+    # naming a real picker screen by selectorRef -- distinct from the "screen.picker" feature above,
     # which only proves one is DECLARED, never that anything actually references it.
     "field.picker.selectorRef": _has_picker_selector_ref,
     "aggregate.onCommit": _has_aggregate_on_commit,
@@ -310,7 +318,7 @@ FEATURE_DETECTORS = {
     # gate which surfaces render. Presentation-only; never part of a commit payload.
     "workbench.uiState": _has_workbench_ui_state,
     # Move 6 Move A (docs/MOVE6_TYPED_SURFACE_PLAN.md §2): the typed top-level settings block.
-    "settings": _has_settings,
+    "settings": _has_settings,  # FORM P5-T9g: read from backOffice.locale/strings
     # Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.2): the typed, closed-enum
     # transaction.hooks positions -- each tracked separately so a regression to just one still
     # fails the build, same discipline as aggregate.onCommit/onValidate above.

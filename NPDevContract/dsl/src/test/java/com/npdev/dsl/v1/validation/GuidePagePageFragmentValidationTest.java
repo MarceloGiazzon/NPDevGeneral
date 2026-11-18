@@ -30,11 +30,11 @@ class GuidePagePageFragmentValidationTest {
                 { "name": "Widget", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }
               ],
-              "guidePages": [
+              "backOffice": { "pages": [
                 { "name": "Guide", "default": true, %s
                   "regions": { "right": { "enabled": true } },
                   "gadgets": [ %s ] }
-              ]
+              ] }
             }
             """.formatted(themeJson, gadgetJson);
     }

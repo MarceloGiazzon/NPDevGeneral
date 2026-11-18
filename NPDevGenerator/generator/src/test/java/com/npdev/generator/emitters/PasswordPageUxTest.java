@@ -56,7 +56,8 @@ class PasswordPageUxTest {
         assertTrue(html.contains("autocomplete=\"current-password\""), "autocomplete is kept");
         assertTrue(html.contains("params.get(\"next\")") && html.contains("value.charAt(0) !== \"/\"")
                 && html.contains("value.charAt(1) === \"/\""), "?next= only honours same-origin relative paths");
-        assertTrue(html.contains("window.location.href = returnUrl;"));
+        assertTrue(html.contains("landing(res.body.token, returnUrl).then(function (to) { window.location.href = to; });"),
+                "after sign-in the browser navigates to the landing target resolved from returnUrl");
     }
 
     @Test

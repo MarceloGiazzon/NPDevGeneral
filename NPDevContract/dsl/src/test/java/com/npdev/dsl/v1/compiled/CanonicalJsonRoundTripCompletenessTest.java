@@ -127,7 +127,9 @@ class CanonicalJsonRoundTripCompletenessTest {
 
         Class<?> declaredClass = (Class<?>) resolved;
 
-        if (isScalar(declaredClass) || declaredClass.isEnum() || declaredClass == Object.class) {
+        if (isScalar(declaredClass) || declaredClass.isEnum() || declaredClass == Object.class
+                || com.fasterxml.jackson.databind.JsonNode.class.isAssignableFrom(declaredClass)) {
+            // JsonNode: opaque JSON (experiences/screens), compared structurally by JsonNode.equals.
             if (!java.util.Objects.equals(originalValue, restoredValue)) {
                 mismatches.add(path + ": expected <" + describe(originalValue) + "> but restored <"
                         + describe(restoredValue) + ">");
@@ -339,6 +341,17 @@ class CanonicalJsonRoundTripCompletenessTest {
                     throw new IllegalStateException("ReflectiveValueFactory: enum " + c + " has no constants");
                 }
                 return constants[0];
+            }
+            if (com.fasterxml.jackson.databind.JsonNode.class.isAssignableFrom(c)) {
+                // FORM P5-T1: CompiledModel.experiences/screens are opaque JSON objects, not typed
+                // Compiled* nodes. A nested object + array proves the writer/reader keep the exact
+                // authored structure (and a name, which the writer sorts screens by).
+                com.fasterxml.jackson.databind.node.ObjectNode node =
+                        com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+                node.put("name", "value-" + (++stringCounter));
+                node.putObject("nested").put("key", "value-" + (++stringCounter));
+                node.putArray("items").add("value-" + (++stringCounter));
+                return node;
             }
             if (c == Object.class) {
                 // Generic "any value" slots (CompiledSchema.defaultValue, CompiledProcedureVariable

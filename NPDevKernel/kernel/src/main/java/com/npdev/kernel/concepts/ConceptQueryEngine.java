@@ -93,10 +93,13 @@ public final class ConceptQueryEngine {
             // trimmed, case-insensitive, string-cast comparison, regardless of either side's type.
             case EQ_CI -> actual != null && expected != null
                     && String.valueOf(actual).trim().equalsIgnoreCase(String.valueOf(expected).trim());
-            case LT -> compare(actual, expected) < 0;
-            case LTE -> compare(actual, expected) <= 0;
-            case GT -> compare(actual, expected) > 0;
-            case GTE -> compare(actual, expected) >= 0;
+            // REG-341: an ordered comparison with a missing value is FALSE, as in SQL (NULL >= x is not true). compare()
+            // orders a null LAST for sorting, which made `>` and `>=` match a row that has no value at all -- so
+            // count('WidgetSupplier', listedOn >= today()) counted every supplier with no listedOn on the in-memory store.
+            case LT -> actual != null && expected != null && compare(actual, expected) < 0;
+            case LTE -> actual != null && expected != null && compare(actual, expected) <= 0;
+            case GT -> actual != null && expected != null && compare(actual, expected) > 0;
+            case GTE -> actual != null && expected != null && compare(actual, expected) >= 0;
             case CONTAINS -> actual != null && expected != null
                     && String.valueOf(actual).toLowerCase(java.util.Locale.ROOT)
                             .contains(String.valueOf(expected).toLowerCase(java.util.Locale.ROOT));

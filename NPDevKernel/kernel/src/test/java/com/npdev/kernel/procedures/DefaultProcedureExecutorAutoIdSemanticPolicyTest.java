@@ -58,23 +58,7 @@ class DefaultProcedureExecutorAutoIdSemanticPolicyTest {
                 new ConfiguredConceptGatewaySemanticPolicy(List.of(widget)),
                 record -> { }
         );
-        return new DefaultProcedureExecutor(gateway, (call, state) -> CapabilityResult.success(null), NOOP_EVENT_BUS);
-    }
-
-    @Test
-    void saveConceptWithNoIdRefAutoGeneratesAnIdThatSatisfiesARealRequiredIdField() {
-        DefaultProcedureExecutor executor = newExecutorWithRealSemanticPolicy();
-        ProcedureDefinition definition = new ProcedureDefinition(
-                "CreateWidget",
-                List.of(ProcedureStep.saveConcept("create-widget", "Widget", null, "$widgetData", "saved"))
-        );
-
-        ProcedureExecutionResult result = executor.execute(
-                definition, Map.of("widgetData", Map.of("name", "Gadget")), CTX);
-
-        assertTrue(result.ok(), "a fresh record with no client-supplied id must save through a REAL "
-                + "governed gateway, not be denied CONCEPT_FIELD_REQUIRED for its own auto-generated id: "
-                + result.failureMessage());
+        return new DefaultProcedureExecutor(gateway);
     }
 
     @Test
@@ -94,20 +78,4 @@ class DefaultProcedureExecutorAutoIdSemanticPolicyTest {
                 + "CONCEPT_FIELD_REQUIRED: " + result.failureMessage());
     }
 
-    @Test
-    void saveConceptNeverOverridesAClientSuppliedIdAlreadyPresentInTheData() {
-        DefaultProcedureExecutor executor = newExecutorWithRealSemanticPolicy();
-        ProcedureDefinition definition = new ProcedureDefinition(
-                "CreateWidgetWithExplicitId",
-                List.of(ProcedureStep.saveConcept("create-widget", "Widget", "$explicitId", "$widgetData", "saved"))
-        );
-
-        ProcedureExecutionResult result = executor.execute(
-                definition,
-                Map.of("explicitId", "widget-42", "widgetData", Map.of("id", "widget-42", "name", "Gadget")),
-                CTX);
-
-        assertTrue(result.ok(), result.failureMessage());
-        assertEquals("widget-42", ((ConceptRecord) result.state().get("saved")).id());
-    }
 }

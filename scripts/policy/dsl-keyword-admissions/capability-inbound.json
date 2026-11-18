@@ -1,0 +1,38 @@
+{
+ "$comment": "FORM P4-T4 retroactive admission record (the slot predates the budget, so it is also in baselineSlots; this record documents why it earned its place). Probe, apps and teaching line written and checked against the files on 2026-11-17.",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "capabilities[].inbound",
+ "slots": [
+  "capability.inbound"
+ ],
+ "rung": 0,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-17",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "says what a third party may send (event name, field mapping, idempotency key, signature scheme); no ordering, no logic"
+  },
+  "notLower": {
+   "value": true,
+   "why": "an unauthenticated public route that verifies a signature and publishes into the flow engine can only be provided and secured by the platform; a function or flow cannot open a door"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "NPDevSamples/dsl-conformance-max",
+    "NPDevSamples/ride-hailing"
+   ]
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevSamples/dsl-conformance-max/behavior-probes/18-capability-door-and-adapter.json"
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "A third party that calls you (a payment confirmation) needs an inbound door: a capability entry {\"name\":\"payment-processor\",\"inbound\":{\"eventName\":\"PaymentConfirmed\",...}} serves POST /api/hooks/payment-processor with no NPDev login."
+  }
+ },
+ "replaces": [],
+ "budgetDelta": 0
+}

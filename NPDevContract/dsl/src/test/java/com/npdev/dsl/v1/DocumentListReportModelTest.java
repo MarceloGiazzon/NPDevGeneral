@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * REP-1: {@code documents[].kind: list} (query / columns / groupBy / subtotals / grandTotal) --
+ * REP-1: {@code screens[]} kind {@code document} with {@code report: true} (query / printColumns / groupBy / subtotals / grandTotal) --
  * parse, validate, compile and canonical round trip. A dropped member here is a report that loses its
  * totals on the way to the runtime, silently.
  */
@@ -29,8 +29,8 @@ class DocumentListReportModelTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private static final String GOOD = """
-            "kind": "list", "query": "OpenSales",
-            "columns": [ { "field": "customer", "label": "Customer" }, { "field": "region" },
+            "report": true, "query": "OpenSales",
+            "printColumns": [ { "field": "customer", "label": "Customer" }, { "field": "region" },
                          { "field": "amount", "label": "Amount", "total": "sum" } ],
             "groupBy": ["region"], "subtotals": true, "grandTotal": true,
             """;
@@ -77,38 +77,38 @@ class DocumentListReportModelTest {
     }
 
     @Test
-    void unknownKindIsRejectedBySchema() {
-        assertThrows(Exception.class, () -> parse(model("\"kind\": \"matrix\",")));
+    void aNonBooleanReportIsRejectedBySchema() {
+        assertThrows(Exception.class, () -> parse(model("\"report\": \"yes\",")));
     }
 
     @Test
-    void listMembersWithoutKindListAreRejected() throws Exception {
-        assertError("only apply to a list report", model("\"columns\": [ { \"field\": \"customer\" } ],"));
+    void listMembersWithoutReportTrueAreRejected() throws Exception {
+        assertError("only apply to a list report", model("\"printColumns\": [ { \"field\": \"customer\" } ],"));
     }
 
     @Test
     void aListReportNeedsColumnsOnTheConcept() throws Exception {
-        assertError("at least one column", model("\"kind\": \"list\","));
+        assertError("at least one column", model("\"report\": true,"));
         assertError("column field 'nope' not found on concept 'Sale'",
-                model("\"kind\": \"list\", \"columns\": [ { \"field\": \"nope\" } ],"));
+                model("\"report\": true, \"printColumns\": [ { \"field\": \"nope\" } ],"));
         assertError("duplicate column 'customer'",
-                model("\"kind\": \"list\", \"columns\": [ { \"field\": \"customer\" }, { \"field\": \"customer\" } ],"));
+                model("\"report\": true, \"printColumns\": [ { \"field\": \"customer\" }, { \"field\": \"customer\" } ],"));
     }
 
     @Test
     void groupByAndTotalsAreCheckedBeforeTheyCanPrintAWrongReport() throws Exception {
-        String columns = "\"kind\": \"list\", \"columns\": [ { \"field\": \"customer\" }, { \"field\": \"amount\", \"total\": \"sum\" } ],";
+        String columns = "\"report\": true, \"printColumns\": [ { \"field\": \"customer\" }, { \"field\": \"amount\", \"total\": \"sum\" } ],";
         assertError("groupBy field 'nope' not found", model(columns + "\"groupBy\": [\"nope\"],"));
         assertError("subtotals needs groupBy", model(columns + "\"subtotals\": true,"));
         assertError("need at least one column with a 'total'",
-                model("\"kind\": \"list\", \"columns\": [ { \"field\": \"customer\" } ], \"grandTotal\": true,"));
+                model("\"report\": true, \"printColumns\": [ { \"field\": \"customer\" } ], \"grandTotal\": true,"));
         assertError("WITHOUT a 'total'",
-                model("\"kind\": \"list\", \"columns\": [ { \"field\": \"amount\", \"total\": \"sum\" } ], \"grandTotal\": true,"));
+                model("\"report\": true, \"printColumns\": [ { \"field\": \"amount\", \"total\": \"sum\" } ], \"grandTotal\": true,"));
     }
 
     @Test
     void theNamedQueryMustExistBePlainAndOverTheSameConcept() throws Exception {
-        String columns = "\"kind\": \"list\", \"columns\": [ { \"field\": \"customer\" } ],";
+        String columns = "\"report\": true, \"printColumns\": [ { \"field\": \"customer\" } ],";
         assertError("query not found: Ghost", model(columns + "\"query\": \"Ghost\","));
         assertError("is an aggregate query", model(columns + "\"query\": \"SalesByRegion\","));
         assertError("reads concept 'Customer' but the document's concept is 'Sale'",
@@ -118,7 +118,7 @@ class DocumentListReportModelTest {
     @Test
     void aListReportRefusesAggregateBandsAndLogo() throws Exception {
         assertError("does not support aggregate/bands/logo",
-                model("\"kind\": \"list\", \"columns\": [ { \"field\": \"customer\" } ], \"logo\": { \"field\": \"customer\" },"));
+                model("\"report\": true, \"printColumns\": [ { \"field\": \"customer\" } ], \"logo\": { \"field\": \"customer\" },"));
     }
 
     // ------------------------------------------------------------------------------------------
@@ -155,9 +155,10 @@ class DocumentListReportModelTest {
                     { "name": "SalesByRegion", "concept": "Sale", "groupBy": ["region"],
                       "aggregates": [ { "name": "total", "fn": "sum", "field": "amount" } ] }
                   ],
-                  "documents": [
+                  "screens": [
                     {
                       "name": "SalesReport",
+                      "kind": "document",
                       "concept": "Sale",
                       %s
                       "title": "Sales"

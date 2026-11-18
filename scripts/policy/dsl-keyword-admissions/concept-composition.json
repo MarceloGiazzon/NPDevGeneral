@@ -1,0 +1,57 @@
+{
+ "$comment": "FORM P5-T9e admission, written 2026-11-18: the top-level aggregates[] became concepts[].composition on the ROOT concept (an aggregate has no identity apart from its root; every corpus aggregate was named == root or <Root>Aggregate and no root had two). Same members minus name/root, so the net budget change is -2 slots (aggregate.name, aggregate.root and pack:aggregates out; concept.composition in; the six member slots are renamed aggregate.* -> composition.*).",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "concept.composition",
+ "slots": [
+  "concept.composition",
+  "composition.collections",
+  "composition.invariants",
+  "composition.balances",
+  "composition.onValidate",
+  "composition.onCommit",
+  "composition.metadata"
+ ],
+ "rung": 0,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-18",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "names the owned child collections of a root concept and the cross-collection invariants and balances over the whole draft tree; onValidate/onCommit only NAME a procedure run in the commit transaction; no ordering of steps"
+  },
+  "notLower": {
+   "value": true,
+   "why": "reading and saving a root with its owned children WHOLE in one transaction, with the draft-tree invariants checked before commit, is a runtime capability (/api/v1/runtime/aggregate/<Concept>) that no expression, function or flow step provides"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "NPDevSamples/dsl-conformance-max",
+    "NPDevSamples/pigmentampas",
+    "NPDevSamples/f6-showcase"
+   ],
+   "note": "collections: all three plus AppGen WmsOffice; invariants/balances/onValidate/onCommit: dsl-conformance-max and WmsOffice (the same coverage the old aggregates[] had, tracked by check-dsl-coverage)"
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevSamples/dsl-conformance-max/behavior-probes/89-aggregate-onvalidate-veto.json",
+   "note": "booted probes 30, 85, 88 and 89 drive the aggregate endpoint (invariants, lifecycle, allowed actions, onValidate veto); unit tests AggregateWorkbenchExpansionTest, AggregateBalanceValidationTest and BackOfficeConfigThreadingTest-style threading tests fail if a member stops reaching the compiled model"
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "`composition` on the ROOT concept: `{\"collections\":[{\"name\":\"lines\",\"concept\":\"OrderLine\",\"childField\":\"orderId\"}],\"invariants\":[],\"balances\":[],\"onValidate\":\"<procedure>\",\"onCommit\":\"<procedure>\"}` -- the root and its collections are read and saved whole in one transaction; refer to it as `\"aggregate\":\"<Concept>\"`"
+  }
+ },
+ "replaces": [
+  "aggregate.name",
+  "aggregate.root",
+  "pack:aggregates",
+  "aggregate.collections",
+  "aggregate.invariants",
+  "aggregate.balances",
+  "aggregate.onValidate",
+  "aggregate.onCommit",
+  "aggregate.metadata"
+ ],
+ "budgetDelta": -2
+}

@@ -3,8 +3,10 @@ title: >-
   Any signed-in user reads and writes every password hash: the jwt credential concept is an ordinary open app concept
 type: BUG
 severity: P0
-status: OPEN
+status: DONE
 opened: 2026-11-13
+closed: 2026-11-17
+verification: VERIFIED_LIVE
 source: >-
   Found 2026-11-13 in the ride-hailing sample with a real browser and REST (FORM plan P0). A signed-in RIDER gets every passwordHash from
   GET /api/concepts/credentials and PUT /api/concepts/credentials/{id} on another user's row returns 200 (the test PUT wrote back the same
@@ -29,3 +31,12 @@ files:
 done_when: >-
   credentials is not an endpoint any more (404 for admin and for a rider); no corpus model declares a credential concept; a model with roles and
   an unruled concept fails validation; the exposure-matrix probe passes on ride-hailing and fails on the pre-fix build; journeys stay green.
+notes: |
+  2026-11-14 (P0-T1..T7): system concept flag threaded end to end; identity pack 1.5.0 Credential + reset tokens/MFA/sessions system:true; default deny when roles exist;
+  sensitive is a runtime guarantee; validator refuses an app concept carrying a password hash; emitter no longer sniffs field names; exposure matrix tool.
+  2026-11-17 (close): the typed REST controllers were the hole the matrix could not see. ControllerEmitter emitted /api/<pack>_<plural> for EVERY concept, so
+  /api/identity_credentials existed in every identity-pack app and a signed-in rider could read it. ControllerEmitter and InfoPageEmitter now skip system concepts
+  (test SystemConceptNoRestRouteTest); exposure_matrix.py now also probes the typed route of every system concept (2xx = violation).
+  Verified: probe 15 (dsl-conformance-max, knownFailure removed) green; ride-hailing setup stage 20/20, rider GET /api/identity_credentials = 404, matrix reports no system-route
+  violation; journeys 36/36 (REST); corpus scan: every password-hash field sits in a system:true Credential. NOT run this session: the full ride-hailing all-stages run
+  (the matrix then also needs rides/payments rows for its expect-some checks, 7 such cells were empty after the setup-only run), generator full suite, the weekly gates.

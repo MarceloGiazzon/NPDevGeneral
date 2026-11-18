@@ -1,5 +1,6 @@
 package com.npdev.dsl.v1.ast;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -23,8 +24,6 @@ public final class ModelAst {
     private final List<GuidePageAst> guidePages;
     private final List<AggregateAst> aggregates;
     private final List<AutoPanelAst> autoPanels;
-    private final List<SelectorAst> selectors;
-    private final List<DocumentAst> documents;
     private final List<String> parserWarnings;
     private final ExternalAiAst externalAi;
     private final SettingsAst settings;
@@ -38,6 +37,8 @@ public final class ModelAst {
     private final List<SeedAst> seeds;
     private final AppShellAst appShell;
     private final AgentAccessAst agentAccess;
+    private final List<JsonNode> experiences;
+    private final List<JsonNode> screens;
 
     public ModelAst(String namespace, String version, List<? extends EntityAst> entities) {
         this(namespace, DEFAULT_DSL_VERSION, version, entities, List.of(), List.of(), List.of(), List.of(), List.of());
@@ -173,53 +174,7 @@ public final class ModelAst {
             List<String> parserWarnings
     ) {
         this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates,
-                autoPanels, List.of(), parserWarnings);
-    }
-
-    public ModelAst(
-            String namespace,
-            String dslVersion,
-            String version,
-            List<? extends EntityAst> entities,
-            List<DomainTypeAst> domainTypes,
-            List<CapabilityAst> capabilities,
-            List<EventAst> events,
-            List<FlowAst> flows,
-            List<QueryAst> queries,
-            List<ProcedureAst> procedures,
-            List<PanelAst> panels,
-            List<GuidePageAst> guidePages,
-            List<AggregateAst> aggregates,
-            List<AutoPanelAst> autoPanels,
-            List<SelectorAst> selectors,
-            List<String> parserWarnings
-    ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates,
-                autoPanels, selectors, List.of(), parserWarnings);
-    }
-
-    /** REG-12 Slice 3: canonical constructor, adds {@code documents} (LNCH-10's `document` PAGE kind). */
-    public ModelAst(
-            String namespace,
-            String dslVersion,
-            String version,
-            List<? extends EntityAst> entities,
-            List<DomainTypeAst> domainTypes,
-            List<CapabilityAst> capabilities,
-            List<EventAst> events,
-            List<FlowAst> flows,
-            List<QueryAst> queries,
-            List<ProcedureAst> procedures,
-            List<PanelAst> panels,
-            List<GuidePageAst> guidePages,
-            List<AggregateAst> aggregates,
-            List<AutoPanelAst> autoPanels,
-            List<SelectorAst> selectors,
-            List<DocumentAst> documents,
-            List<String> parserWarnings
-    ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
-                selectors, documents, parserWarnings, null);
+                autoPanels, parserWarnings, null);
     }
 
     /** ADR-0009: adds {@code externalAi} (app-level egress settings). */
@@ -238,13 +193,11 @@ public final class ModelAst {
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
             List<AutoPanelAst> autoPanels,
-            List<SelectorAst> selectors,
-            List<DocumentAst> documents,
             List<String> parserWarnings,
             ExternalAiAst externalAi
     ) {
         this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
-                selectors, documents, parserWarnings, externalAi, null);
+                parserWarnings, externalAi, null);
     }
 
     /** Move 6 Move A: adds {@code settings} (app-level locale/strings/ui). */
@@ -263,14 +216,12 @@ public final class ModelAst {
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
             List<AutoPanelAst> autoPanels,
-            List<SelectorAst> selectors,
-            List<DocumentAst> documents,
             List<String> parserWarnings,
             ExternalAiAst externalAi,
             SettingsAst settings
     ) {
         this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
-                selectors, documents, parserWarnings, externalAi, settings, List.of());
+                parserWarnings, externalAi, settings, List.of());
     }
 
     /** Wave 3 (RC-B1): adds {@code roles} (app-defined role -> permission ceiling declarations). */
@@ -289,15 +240,13 @@ public final class ModelAst {
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
             List<AutoPanelAst> autoPanels,
-            List<SelectorAst> selectors,
-            List<DocumentAst> documents,
             List<String> parserWarnings,
             ExternalAiAst externalAi,
             SettingsAst settings,
             List<RoleAst> roles
     ) {
         this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
-                selectors, documents, parserWarnings, externalAi, settings, roles, List.of(), List.of());
+                parserWarnings, externalAi, settings, roles, List.of(), List.of());
     }
 
     /** Wave 6 (RC-A1): adds {@code propertyScopes} + {@code properties} (the scoped-property
@@ -317,8 +266,6 @@ public final class ModelAst {
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
             List<AutoPanelAst> autoPanels,
-            List<SelectorAst> selectors,
-            List<DocumentAst> documents,
             List<String> parserWarnings,
             ExternalAiAst externalAi,
             SettingsAst settings,
@@ -327,7 +274,7 @@ public final class ModelAst {
             List<PropertyAst> properties
     ) {
         this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
-                selectors, documents, parserWarnings, externalAi, settings, roles, propertyScopes, properties,
+                parserWarnings, externalAi, settings, roles, propertyScopes, properties,
                 List.of());
     }
 
@@ -347,8 +294,6 @@ public final class ModelAst {
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
             List<AutoPanelAst> autoPanels,
-            List<SelectorAst> selectors,
-            List<DocumentAst> documents,
             List<String> parserWarnings,
             ExternalAiAst externalAi,
             SettingsAst settings,
@@ -358,7 +303,7 @@ public final class ModelAst {
             List<ContextAst> contexts
     ) {
         this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
-                selectors, documents, parserWarnings, externalAi, settings, roles, propertyScopes, properties,
+                parserWarnings, externalAi, settings, roles, propertyScopes, properties,
                 contexts, List.of());
     }
 
@@ -379,8 +324,6 @@ public final class ModelAst {
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
             List<AutoPanelAst> autoPanels,
-            List<SelectorAst> selectors,
-            List<DocumentAst> documents,
             List<String> parserWarnings,
             ExternalAiAst externalAi,
             SettingsAst settings,
@@ -391,7 +334,7 @@ public final class ModelAst {
             List<ConversionAst> conversions
     ) {
         this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
-                selectors, documents, parserWarnings, externalAi, settings, roles, propertyScopes, properties,
+                parserWarnings, externalAi, settings, roles, propertyScopes, properties,
                 contexts, conversions, Map.of());
     }
 
@@ -416,8 +359,6 @@ public final class ModelAst {
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
             List<AutoPanelAst> autoPanels,
-            List<SelectorAst> selectors,
-            List<DocumentAst> documents,
             List<String> parserWarnings,
             ExternalAiAst externalAi,
             SettingsAst settings,
@@ -429,7 +370,7 @@ public final class ModelAst {
             Map<String, String> physicalQualifierByConceptName
     ) {
         this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
-                selectors, documents, parserWarnings, externalAi, settings, roles, propertyScopes, properties,
+                parserWarnings, externalAi, settings, roles, propertyScopes, properties,
                 contexts, conversions, physicalQualifierByConceptName, List.of());
     }
 
@@ -450,8 +391,6 @@ public final class ModelAst {
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
             List<AutoPanelAst> autoPanels,
-            List<SelectorAst> selectors,
-            List<DocumentAst> documents,
             List<String> parserWarnings,
             ExternalAiAst externalAi,
             SettingsAst settings,
@@ -464,7 +403,7 @@ public final class ModelAst {
             List<SequenceAst> sequences
     ) {
         this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
-                selectors, documents, parserWarnings, externalAi, settings, roles, propertyScopes, properties,
+                parserWarnings, externalAi, settings, roles, propertyScopes, properties,
                 contexts, conversions, physicalQualifierByConceptName, sequences, List.of());
     }
 
@@ -484,8 +423,6 @@ public final class ModelAst {
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
             List<AutoPanelAst> autoPanels,
-            List<SelectorAst> selectors,
-            List<DocumentAst> documents,
             List<String> parserWarnings,
             ExternalAiAst externalAi,
             SettingsAst settings,
@@ -499,7 +436,7 @@ public final class ModelAst {
             List<SeedAst> seeds
     ) {
         this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
-                selectors, documents, parserWarnings, externalAi, settings, roles, propertyScopes, properties,
+                parserWarnings, externalAi, settings, roles, propertyScopes, properties,
                 contexts, conversions, physicalQualifierByConceptName, sequences, seeds, null);
     }
 
@@ -520,8 +457,6 @@ public final class ModelAst {
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
             List<AutoPanelAst> autoPanels,
-            List<SelectorAst> selectors,
-            List<DocumentAst> documents,
             List<String> parserWarnings,
             ExternalAiAst externalAi,
             SettingsAst settings,
@@ -536,7 +471,7 @@ public final class ModelAst {
             AppShellAst appShell
     ) {
         this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
-                selectors, documents, parserWarnings, externalAi, settings, roles, propertyScopes, properties,
+                parserWarnings, externalAi, settings, roles, propertyScopes, properties,
                 contexts, conversions, physicalQualifierByConceptName, sequences, seeds, appShell, null);
     }
 
@@ -557,8 +492,6 @@ public final class ModelAst {
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
             List<AutoPanelAst> autoPanels,
-            List<SelectorAst> selectors,
-            List<DocumentAst> documents,
             List<String> parserWarnings,
             ExternalAiAst externalAi,
             SettingsAst settings,
@@ -572,6 +505,44 @@ public final class ModelAst {
             List<SeedAst> seeds,
             AppShellAst appShell,
             AgentAccessAst agentAccess
+    ) {
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+                parserWarnings, externalAi, settings, roles, propertyScopes, properties,
+                contexts, conversions, physicalQualifierByConceptName, sequences, seeds, appShell, agentAccess, null, null);
+    }
+
+    /** FORM P5-T1: canonical constructor, adds {@code experiences} and {@code screens} -- carried as opaque
+     *  JSON objects (see {@link #getExperiences()}); a null list means none. */
+    public ModelAst(
+            String namespace,
+            String dslVersion,
+            String version,
+            List<? extends EntityAst> entities,
+            List<DomainTypeAst> domainTypes,
+            List<CapabilityAst> capabilities,
+            List<EventAst> events,
+            List<FlowAst> flows,
+            List<QueryAst> queries,
+            List<ProcedureAst> procedures,
+            List<PanelAst> panels,
+            List<GuidePageAst> guidePages,
+            List<AggregateAst> aggregates,
+            List<AutoPanelAst> autoPanels,
+            List<String> parserWarnings,
+            ExternalAiAst externalAi,
+            SettingsAst settings,
+            List<RoleAst> roles,
+            List<PropertyScopeAst> propertyScopes,
+            List<PropertyAst> properties,
+            List<ContextAst> contexts,
+            List<ConversionAst> conversions,
+            Map<String, String> physicalQualifierByConceptName,
+            List<SequenceAst> sequences,
+            List<SeedAst> seeds,
+            AppShellAst appShell,
+            AgentAccessAst agentAccess,
+            List<JsonNode> experiences,
+            List<JsonNode> screens
     ) {
         this.namespace = namespace;
         this.dslVersion = dslVersion;
@@ -587,8 +558,6 @@ public final class ModelAst {
         this.guidePages = new ArrayList<>(guidePages);
         this.aggregates = new ArrayList<>(aggregates);
         this.autoPanels = new ArrayList<>(autoPanels);
-        this.selectors = new ArrayList<>(selectors);
-        this.documents = new ArrayList<>(documents);
         this.parserWarnings = new ArrayList<>(parserWarnings);
         this.externalAi = externalAi;
         this.settings = settings;
@@ -603,6 +572,23 @@ public final class ModelAst {
         this.seeds = seeds == null ? new ArrayList<>() : new ArrayList<>(seeds);
         this.appShell = appShell;
         this.agentAccess = agentAccess;
+        this.experiences = experiences == null ? new ArrayList<>() : new ArrayList<>(experiences);
+        this.screens = screens == null ? new ArrayList<>() : new ArrayList<>(screens);
+    }
+
+    /**
+     * FORM P5-T1: the model's {@code experiences[]} (who lands where, on which device), exactly as authored --
+     * opaque JSON objects, deliberately not a typed AST: the archetype set is closed but its options evolve, and
+     * the only consumers are {@code ExperienceValidation} and the experience emitter, both of which read the
+     * JSON. Never null.
+     */
+    public List<JsonNode> getExperiences() {
+        return Collections.unmodifiableList(experiences);
+    }
+
+    /** FORM P5-T1: the model's {@code screens[]} (the archetype screens experiences navigate to), opaque JSON; never null. */
+    public List<JsonNode> getScreens() {
+        return Collections.unmodifiableList(screens);
     }
 
     public String getNamespace() { return namespace; }
@@ -662,12 +648,22 @@ public final class ModelAst {
         return Collections.unmodifiableList(autoPanels);
     }
 
+    /**
+     * The compile-time picker declarations: {@code screens[]} entries of kind {@code picker}, in declaration order
+     * (P5-T9a: the top-level {@code selectors[]} key was removed; a picker screen is its authoring form). Derived on
+     * every call from {@link #getScreens()} so there is one source of truth; never null.
+     */
     public List<SelectorAst> getSelectors() {
-        return Collections.unmodifiableList(selectors);
+        return SelectorAst.fromPickerScreens(screens);
     }
 
+    /**
+     * The compile-time document declarations: {@code screens[]} entries of kind {@code document}, in declaration
+     * order (P5-T9b: the top-level {@code documents[]} key was removed; a document screen is its authoring form).
+     * Derived on every call from {@link #getScreens()} so there is one source of truth; never null.
+     */
     public List<DocumentAst> getDocuments() {
-        return Collections.unmodifiableList(documents);
+        return DocumentAst.fromDocumentScreens(screens);
     }
 
     public List<String> getParserWarnings() {

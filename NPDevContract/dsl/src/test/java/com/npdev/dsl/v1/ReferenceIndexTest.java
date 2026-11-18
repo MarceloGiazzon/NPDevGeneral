@@ -385,15 +385,12 @@ class ReferenceIndexTest {
                   "concepts": [
                     { "name": "Order", "ui": { "label": "Order" }, "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true }
-                    ] },
+                    ], "composition": { "collections": [
+                      { "name": "lines", "concept": "OrderLine", "childField": "order" }
+                    ] } },
                     { "name": "OrderLine", "ui": { "label": "Order line" }, "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true },
                       { "name": "order", "type": "reference", "reference": { "target": "Order", "via": "id" } }
-                    ] }
-                  ],
-                  "aggregates": [
-                    { "name": "OrderAggregate", "root": "Order", "collections": [
-                      { "name": "lines", "concept": "OrderLine", "childField": "order" }
                     ] }
                   ]
                 }

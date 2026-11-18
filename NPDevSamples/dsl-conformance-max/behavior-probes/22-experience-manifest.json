@@ -1,0 +1,55 @@
+{
+  "probes": [
+    {
+      "id": "ex-manifest-and-icons-make-a-mobile-experience-installable",
+      "keywords": ["flow.expose"],
+      "description": "FORM P5-T7: the sample's experience `warehouse` has device `both`, so it is installable. GET /x/warehouse/manifest.webmanifest answers the web app manifest (start_url and scope /x/warehouse/, display standalone, four icon entries), GET /x/warehouse/icon-192.png and icon-512.png answer the PNGs the generator wrote at generation time, and an unknown experience is 404 for the manifest and for an icon. The ordinary client-file rule (/x/<experience>/<file.ext>) must not swallow these routes. No service worker is involved: installable only, offline is MOB-2.",
+      "steps": [
+        {
+          "name": "the manifest of an installable experience is served without data",
+          "method": "GET",
+          "path": "/x/warehouse/manifest.webmanifest",
+          "auth": "none",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.start_url": "/x/warehouse/",
+              "$.scope": "/x/warehouse/",
+              "$.display": "standalone",
+              "$.icons": { "len": 4 },
+              "$.icons[0].src": "/x/warehouse/icon-192.png"
+            }
+          }
+        },
+        {
+          "name": "the 192 icon is a PNG",
+          "method": "GET",
+          "path": "/x/warehouse/icon-192.png",
+          "auth": "none",
+          "expect": { "status": 200, "headers": { "Content-Type": "image/png" } }
+        },
+        {
+          "name": "the 512 icon is a PNG",
+          "method": "GET",
+          "path": "/x/warehouse/icon-512.png",
+          "auth": "none",
+          "expect": { "status": 200, "headers": { "Content-Type": "image/png" } }
+        },
+        {
+          "name": "an unknown experience has no manifest",
+          "method": "GET",
+          "path": "/x/no-such-experience/manifest.webmanifest",
+          "auth": "none",
+          "expect": { "status": 404 }
+        },
+        {
+          "name": "an unknown experience has no icon",
+          "method": "GET",
+          "path": "/x/no-such-experience/icon-192.png",
+          "auth": "none",
+          "expect": { "status": 404 }
+        }
+      ]
+    }
+  ]
+}

@@ -148,7 +148,7 @@
         mosaics.forEach(function (m) {
           var el = card(m, signedIn);
           cards.appendChild(el);
-          api.get(PUBLIC + "/aggregate/MosaicAggregate/" + encodeURIComponent(m.id)).then(function (tree) {
+          api.get(PUBLIC + "/aggregate/Mosaic/" + encodeURIComponent(m.id)).then(function (tree) {
             el.replaceChild(renderThumb(tree), el.firstChild);
           }).catch(function () { /* card stays without a thumbnail */ });
         });

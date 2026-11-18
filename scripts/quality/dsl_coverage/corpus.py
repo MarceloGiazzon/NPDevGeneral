@@ -58,6 +58,34 @@ def load_allowlist() -> dict:
 
 
 def _merge_context_fragments(model: dict, base_dir: Path) -> dict:
+    """The shallow view every detector reads: contexts[] arrays unioned in (``_union_context_fragments``), then FORM
+    P5-T9e's derived ``aggregates`` view -- an aggregate is its root concept's ``composition`` now, so the detectors that
+    were written against the old top-level ``aggregates[]`` keep reading ``{name, root, collections, ...}`` entries."""
+    return _derive_aggregates(_union_context_fragments(model, base_dir), base_dir)
+
+
+def _derive_aggregates(model: dict, base_dir: Path) -> dict:
+    concepts = model.get("concepts")
+    if not isinstance(concepts, list):
+        return model
+    aggregates = []
+    for entry in concepts:
+        if isinstance(entry, dict) and set(entry) == {"$ref"} and isinstance(entry["$ref"], str):
+            path = (base_dir / entry["$ref"]).resolve()
+            try:
+                entry = json.loads(path.read_text(encoding="utf-8-sig"))
+            except (OSError, json.JSONDecodeError):
+                continue
+        if isinstance(entry, dict) and isinstance(entry.get("composition"), dict):
+            aggregates.append({"name": entry.get("name"), "root": entry.get("name"), **entry["composition"]})
+    if not aggregates:
+        return model
+    derived = dict(model)
+    derived["aggregates"] = aggregates
+    return derived
+
+
+def _union_context_fragments(model: dict, base_dir: Path) -> dict:
     """S4 (roadmap B27): every detector above only ever saw the ROOT model.json's own top-level
     arrays -- a feature declared exclusively inside a contexts[] fragment file (like S4's own
     groupBy-join corpus witness, which lives in dsl-conformance-max's shipping.json context, not

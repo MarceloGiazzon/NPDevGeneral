@@ -8,7 +8,7 @@
         "flowStep.select",
         "flowStep.createIfMissing"
       ],
-      "description": "FORM P3-T5c: a flow that names no concept runs set (an expression: 3 x 4), map (one object and a list built from select) and updateConcept{id,set,createIfMissing} (a new ShelfLayout, its id minted because createIfMissing found no row), and returns an object built with map.",
+      "description": "FORM P3-T5c: a flow that names no concept runs set (an expression: 3 x 4), map (one object and a list built from select) and updateConcept{id,set,createIfMissing} (a new ShelfLayout, its id minted because createIfMissing found no row), and returns an object built with map. The created row is read back by the name set wrote and carries the literal (rows 1) and the $ref (cols 2) values that `set` gave.",
       "steps": [
         {
           "name": "run the vocabulary flow",
@@ -41,16 +41,29 @@
                 "len": 2
               },
               "$.output.skus[1].sku": "B-2",
-              "$.output.skus[1].quantity": 2
+              "$.output.skus[1].quantity": 2,
+              "$.output.layoutName": {
+                "matches": "^fv-[0-9a-f]{8}$"
+              }
             }
+          },
+          "save": {
+            "lname": "$.output.layoutName"
           }
         },
         {
-          "name": "the layout updateConcept created is there",
+          "name": "the layout updateConcept created holds exactly the fields set named",
           "method": "GET",
-          "path": "/api/shelf_layouts?where=cols:eq:2",
+          "path": "/api/concepts/shelf_layouts?where=name:eq:${lname}",
           "expect": {
-            "status": 200
+            "status": 200,
+            "json": {
+              "$.content": {
+                "len": 1
+              },
+              "$.content[0].rows": 1,
+              "$.content[0].cols": 2
+            }
           }
         }
       ]

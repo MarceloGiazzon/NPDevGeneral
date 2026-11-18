@@ -919,7 +919,7 @@
         "aggregateCollection.concept",
         "aggregateCollection.ownership"
       ],
-      "description": "WidgetOrderAggregate.lines is an owned collection of WidgetOrderLine. Committing the tree stores each line as a WidgetOrderLine row pointing at the root; re-committing the tree without one line deletes that line's row (owned children follow the tree) while the kept line stays.",
+      "description": "WidgetOrder.lines is an owned collection of WidgetOrderLine. Committing the tree stores each line as a WidgetOrderLine row pointing at the root; re-committing the tree without one line deletes that line's row (owned children follow the tree) while the kept line stays.",
       "steps": [
         {
           "name": "audit row (onCommit patches it)",
@@ -939,7 +939,7 @@
         {
           "name": "commit two lines",
           "method": "POST",
-          "path": "/api/runtime/aggregate/WidgetOrderAggregate",
+          "path": "/api/runtime/aggregate/WidgetOrder",
           "body": {
             "id": "${oid}",
             "customerEmail": "developer",
@@ -984,7 +984,7 @@
         {
           "name": "recommit without bb",
           "method": "POST",
-          "path": "/api/runtime/aggregate/WidgetOrderAggregate",
+          "path": "/api/runtime/aggregate/WidgetOrder",
           "body": {
             "id": "${oid}",
             "customerEmail": "developer",
@@ -1049,7 +1049,7 @@
       "keywords": [
         "aggregateCollection.orderBy"
       ],
-      "description": "WidgetOrderAggregate.lines declares orderBy sku. Expected: the committed tree returns its lines sorted by sku (aa, bb, mm, zz) however they were sent. Actual: the lines come back ordered by their ids (the four fixed child ids are chosen so id order is the reverse of sku order: zz, mm, bb, aa) -- orderBy is read by nothing at runtime.",
+      "description": "WidgetOrder.lines declares orderBy sku. Expected: the committed tree returns its lines sorted by sku (aa, bb, mm, zz) however they were sent. Actual: the lines come back ordered by their ids (the four fixed child ids are chosen so id order is the reverse of sku order: zz, mm, bb, aa) -- orderBy is read by nothing at runtime.",
       "steps": [
         {
           "name": "audit row (onCommit patches it)",
@@ -1069,7 +1069,7 @@
         {
           "name": "commit four lines, ids in reverse sku order",
           "method": "POST",
-          "path": "/api/runtime/aggregate/WidgetOrderAggregate",
+          "path": "/api/runtime/aggregate/WidgetOrder",
           "body": {
             "id": "${oid}",
             "customerEmail": "developer",
@@ -1116,7 +1116,7 @@
         {
           "name": "reading the aggregate back is sorted too",
           "method": "GET",
-          "path": "/api/runtime/aggregate/WidgetOrderAggregate/${oid}",
+          "path": "/api/runtime/aggregate/WidgetOrder/${oid}",
           "expect": {
             "status": 200,
             "json": {
@@ -1189,7 +1189,7 @@
         {
           "name": "first commit allocates the number",
           "method": "POST",
-          "path": "/api/runtime/aggregate/WidgetOrderAggregate",
+          "path": "/api/runtime/aggregate/WidgetOrder",
           "body": {
             "id": "${oid}",
             "customerEmail": "developer",
@@ -1219,7 +1219,7 @@
         {
           "name": "second commit of the same order keeps it",
           "method": "POST",
-          "path": "/api/runtime/aggregate/WidgetOrderAggregate",
+          "path": "/api/runtime/aggregate/WidgetOrder",
           "body": {
             "id": "${oid}",
             "customerEmail": "developer",

@@ -46,7 +46,10 @@
     "ModelSyncStatusController",
     "RuntimePluginPackagesController",
     "RuntimeTopologyExplorerController",
-    "SchemaPromotionController"
+    "SchemaPromotionController",
+    "ExperienceController",
+    "ExperienceEvalController",
+    "LiveController"
   ],
   "deferredControllers": [
   ],

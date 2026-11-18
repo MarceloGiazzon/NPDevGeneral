@@ -289,7 +289,14 @@ public final class PackExtensionComposer {
                 app.getPropertyScopes(),
                 app.getProperties(),
                 app.getContexts(),
-                app.getConversions()
+                app.getConversions(),
+                app.getWebhooks(),
+                app.getSequences(),
+                app.getSeeds(),
+                app.getAppShell(),
+                app.getAgentAccess(),
+                app.getExperiences(),
+                app.getScreens()
         );
     }
 
@@ -405,7 +412,14 @@ public final class PackExtensionComposer {
                 app.getPropertyScopes(),
                 app.getProperties(),
                 app.getContexts(),
-                app.getConversions()
+                app.getConversions(),
+                app.getWebhooks(),
+                app.getSequences(),
+                app.getSeeds(),
+                app.getAppShell(),
+                app.getAgentAccess(),
+                app.getExperiences(),
+                app.getScreens()
         );
 
         return new ExtensionComposition(model, originsByConcept);

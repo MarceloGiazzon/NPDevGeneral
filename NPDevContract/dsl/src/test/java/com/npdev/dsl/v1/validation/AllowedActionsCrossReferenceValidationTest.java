@@ -34,16 +34,14 @@ class AllowedActionsCrossReferenceValidationTest {
                       { "value": "aberta", "label": "Aberta", "initial": true%s },
                       { "value": "confirmada", "label": "Confirmada", "terminal": true } ],
                     "transitions": [ { "from": "aberta", "to": "confirmada" } ]
-                  } },
+                  },
+                  "composition": {
+                    "collections": [
+                      { "name": "itens", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned" }
+                    ] } },
                 { "name": "ExpedicaoItem", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "expedicaoId", "type": "uuid" } ] }
-              ],
-              "aggregates": [
-                { "name": "Expedicao", "root": "Expedicao",
-                  "collections": [
-                    { "name": "itens", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned" }
-                  ] }
               ],
               "procedures": [
                 { "name": "GerarDemanda", "steps": [{ "name": "done", "type": "return", "value": "ok" }] },

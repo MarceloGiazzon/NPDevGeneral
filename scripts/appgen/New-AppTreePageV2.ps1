@@ -13,7 +13,7 @@
      Objects / Features / Configs / Tests split, mirroring GeneXus's own KB folder structure
      (Transactions/Web Panels/Procedures as Objects; a Properties/general-config area; a
      tests/checks area). Objects itself splits into Concepts (data shape: concepts, domainTypes,
-     aggregates -- GeneXus's Transaction), Panels (every UI surface: autoPanels/panels/selectors/
+     aggregates -- GeneXus's Transaction), Panels (every UI surface: autoPanels/panels/
      documents/guidePages/pages.json/menu.json, PLUS their implementation source -- widget JS,
      hand-authored web/ pages, untrusted-extension panel HTML -- GeneXus's Web Panel), and Procedures
      (flows/procedures/conversions, PLUS their Java source -- custom-capability
@@ -214,7 +214,6 @@ $ModelKeyToBucket = @{
   # Objects > Panels -- GeneXus Web Panel: UI surfaces.
   autoPanels          = 'Panels'
   panels              = 'Panels'
-  selectors           = 'Panels'
   documents           = 'Panels'
   guidePages          = 'Panels'
   # Objects > Procedures -- GeneXus Procedure: server-side behavior.

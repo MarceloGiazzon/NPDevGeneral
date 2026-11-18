@@ -40,12 +40,11 @@ class AgentPhotoIntakeValidationTest {
                   { "name": "image", "type": "file" },
                   { "name": "rarity", "type": "enum", "enumValues": ["COMMON", "RARE"] },
                   { "name": "secret", "type": "string", "sensitive": true },
-                  { "name": "count", "type": "integer" } ] }
+                  { "name": "count", "type": "integer" } ]%s }
               ],
               "procedures": [
                 { "name": "Identify", "steps": [ { "name": "done", "type": "return", "value": "$input" } ] }
               ],
-              "aggregates": %s,
               "agentAccess": {
                 "channels": %s,
                 "expose": [ { "concept": "Cap", "operations": ["list"] } ],
@@ -56,7 +55,7 @@ class AgentPhotoIntakeValidationTest {
     }
 
     private static final String TELEGRAM = "{ \"telegram\": { \"enabled\": true } }";
-    private static final String CAP_AGGREGATE = "[ { \"name\": \"CapAggregate\", \"root\": \"Cap\" } ]";
+    private static final String CAP_AGGREGATE = ", \"composition\": {}";
     private static final String VALID = """
         { "concept": "Cap", "imageField": "image", "captionField": "label", "procedure": "Identify",
           "defaults": { "rarity": "COMMON", "label": "$user.username" }, "description": "a cap photo" }""";
@@ -114,7 +113,7 @@ class AgentPhotoIntakeValidationTest {
         assertTrue(intakeErrors(model(TELEGRAM,
                 "{ \"concept\": \"Cap\", \"imageField\": \"image\", \"procedure\": \"Nope\" }", CAP_AGGREGATE))
                 .stream().anyMatch(e -> e.contains(".procedure: 'Nope' does not resolve")));
-        assertTrue(intakeErrors(model(TELEGRAM, VALID, "[]"))
+        assertTrue(intakeErrors(model(TELEGRAM, VALID, ""))
                 .stream().anyMatch(e -> e.contains("no aggregate has root 'Cap'")));
     }
 }

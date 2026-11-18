@@ -84,3 +84,6 @@ NPDevSamples/scripts/browser/vendor/axe-core/axe.min.js binary
 
 # THM-10: the Manager hashes these byte for byte (the catalogue index carries a sha256 per file), so git must never rewrite their line endings.
 NPDevManager/fixtures/theme-catalogue/*.json -text
+
+# Vendored third-party files are served byte for byte and pinned by sha256 (check-experience-client.py): never convert line endings.
+NPDevGenerator/generator/src/main/resources/npdev-templates/experience/vendor/** -text

@@ -71,7 +71,11 @@ class AggregateRuntimeOnCommitTest {
                   "name": "ledgerRef",
                   "type": "string"
                 }
-              ]
+              ],
+              "composition": {
+                "onCommit": "SyncLedgerProcedure",
+                "collections": []
+              }
             },
             {
               "name": "Ledger",
@@ -91,14 +95,6 @@ class AggregateRuntimeOnCommitTest {
                   "type": "string"
                 }
               ]
-            }
-          ],
-          "aggregates": [
-            {
-              "name": "Movimento",
-              "root": "Movimento",
-              "onCommit": "SyncLedgerProcedure",
-              "collections": []
             }
           ],
           "flows": [
@@ -170,7 +166,7 @@ class AggregateRuntimeOnCommitTest {
     /** Success path: the aggregate's own root commits AND onCommit's patchConcept updates the sibling. */
     @Test
     void onCommitPatchesSiblingConceptAfterRootCommits() {
-        ProcedureRunner procedureRunner = new ProcedureRunner(model, gateway, null, null);
+        ProcedureRunner procedureRunner = new ProcedureRunner(model, gateway);
         InProcessAcceptanceRunner.attachKernel(procedureRunner, model, null, gateway, null);
         AggregateRuntime runtime = new AggregateRuntime(model, gateway, procedureRunner, transactionManager);
 
@@ -200,7 +196,7 @@ class AggregateRuntimeOnCommitTest {
                     .filter(c -> c.getName().equals("Ledger")).findFirst().orElseThrow().getTableName());
         }
 
-        ProcedureRunner procedureRunner = new ProcedureRunner(model, gateway, null, null);
+        ProcedureRunner procedureRunner = new ProcedureRunner(model, gateway);
         InProcessAcceptanceRunner.attachKernel(procedureRunner, model, null, gateway, null);
         AggregateRuntime runtime = new AggregateRuntime(model, gateway, procedureRunner, transactionManager);
 

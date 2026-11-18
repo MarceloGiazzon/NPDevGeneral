@@ -64,6 +64,26 @@
       "costSeconds": 2
     },
     {
+      "id": "check-dsl-keyword-budget",
+      "tier": "T0",
+      "maxStaleness": "every-run",
+      "invokedBy": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "run": [
+        "{python}",
+        "scripts/quality/check-dsl-keyword-budget.py"
+      ],
+      "description": "FORM P4-T1 (extension ladder): the DSL keyword budget ratchet. The count of schema keyword slots (model.schema.json $defs properties + pack.schema.json top-level) must equal frozenCount in scripts/policy/dsl-keyword-budget.json and may only fall; a new slot needs an admission record in scripts/policy/dsl-keyword-admissions/ with all five answers (declarative, notLower, twice, enforced, taught).",
+      "level": "core",
+      "protects": "correctness",
+      "triggers": [
+        "**/model.schema.json",
+        "**/pack.schema.json",
+        "scripts/policy/dsl-keyword-budget.json",
+        "scripts/policy/dsl-keyword-admissions/**"
+      ],
+      "costSeconds": 2
+    },
+    {
       "id": "model-validate-touched",
       "tier": "T0",
       "maxStaleness": "every-run",
@@ -153,6 +173,22 @@
         "NPDevSamples/dsl-conformance-max/**"
       ],
       "costSeconds": 10
+    },
+    {
+      "id": "check-experience-client",
+      "tier": "T1",
+      "maxStaleness": "1-wave",
+      "invokedBy": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "run": ["{python}", "scripts/quality/check-experience-client.py"],
+      "description": "FORM P5-T3: the experience client modules ship exactly the files files.json lists, contain no markup sink (innerHTML, eval, CDN), and pass their node behaviour test (routing, columns, forms, actions, escaping, auth).",
+      "level": "standard",
+      "protects": "correctness",
+      "triggers": [
+        "NPDevGenerator/generator/src/main/resources/npdev-templates/experience/**",
+        "NPDevGenerator/generator/src/main/resources/npdev-templates/npdev-expr.js.mustache",
+        "NPDevGenerator/generator/src/test/js/**"
+      ],
+      "costSeconds": 5
     },
     {
       "id": "check-twin-pair-consistency",

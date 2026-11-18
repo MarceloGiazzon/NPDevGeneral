@@ -101,20 +101,22 @@
       }
     }
   ],
-  "guidePages": [
-    {
-      "name": "LabelingOverview",
-      "gadgets": [
-        {
-          "name": "labelCount",
-          "type": "kpi",
-          "title": "Labels",
-          "query": "LabelsByColor",
-          "y": "labelCount"
-        }
-      ]
-    }
-  ],
+  "backOffice": {
+    "pages": [
+      {
+        "name": "LabelingOverview",
+        "gadgets": [
+          {
+            "name": "labelCount",
+            "type": "kpi",
+            "title": "Labels",
+            "query": "LabelsByColor",
+            "y": "labelCount"
+          }
+        ]
+      }
+    ]
+  },
   "queries": [
     {
       "name": "LabelsByColor",

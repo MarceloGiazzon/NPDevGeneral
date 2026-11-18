@@ -29,8 +29,8 @@ class AggregateWorkbenchExpansionTest {
               "dslVersion": "3.0.0", "namespace": "wms", "version": "1.0",
               "concepts": [ { "name": "Pedido", "fields": [
                 { "name": "id", "type": "uuid", "id": true, "required": true },
-                { "name": "cliente", "type": "string" } ] } ],
-              "aggregates": [ { "name": "Pedido", "root": "Pedido" } ],
+                { "name": "cliente", "type": "string" } ],
+                  "composition": {} } ],
               "autoPanels": [ { "aggregate": "Pedido"%s } ]
             }
             """;
@@ -66,7 +66,14 @@ class AggregateWorkbenchExpansionTest {
                         "allowedActions": ["GerarDemanda"] },
                       { "value": "confirmada", "label": "Confirmada", "terminal": true } ],
                     "transitions": [ { "from": "aberta", "to": "confirmada", "actionLabel": "Confirmar" } ]
-                  } },
+                  },
+                  "composition": { "collections": [
+                    { "name": "itens", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned",
+                      "collections": [
+                        { "name": "origens", "concept": "MovtoOrigem", "childField": "itemSeq", "ownership": "owned" },
+                        { "name": "destinos", "concept": "MovtoDestino", "childField": "itemSeq", "ownership": "owned" }
+                      ] }
+                  ] } },
                 { "name": "ExpedicaoItem", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "expedicaoId", "type": "uuid" },
@@ -77,16 +84,6 @@ class AggregateWorkbenchExpansionTest {
                 { "name": "MovtoDestino", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "itemSeq", "type": "uuid" }, { "name": "local", "type": "string" } ] }
-              ],
-              "aggregates": [
-                { "name": "Expedicao", "root": "Expedicao",
-                  "collections": [
-                    { "name": "itens", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned",
-                      "collections": [
-                        { "name": "origens", "concept": "MovtoOrigem", "childField": "itemSeq", "ownership": "owned" },
-                        { "name": "destinos", "concept": "MovtoDestino", "childField": "itemSeq", "ownership": "owned" }
-                      ] }
-                  ] }
               ],
               "autoPanels": [ { "aggregate": "Expedicao", "selection": { "filters": ["cliente"] },
                 "transaction": {
@@ -198,16 +195,13 @@ class AggregateWorkbenchExpansionTest {
               "dslVersion": "3.0.0", "namespace": "wms.applyto", "version": "1.0",
               "concepts": [
                 { "name": "Movimento", "fields": [
-                  { "name": "id", "type": "uuid", "id": true, "required": true } ] },
+                  { "name": "id", "type": "uuid", "id": true, "required": true } ],
+                  "composition": { "collections": [
+                    { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned" }
+                  ] } },
                 { "name": "MovimentoItem", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "movimentoId", "type": "uuid" } ] }
-              ],
-              "aggregates": [
-                { "name": "Movimento", "root": "Movimento",
-                  "collections": [
-                    { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned" }
-                  ] }
               ],
               "autoPanels": [ { "aggregate": "Movimento",
                 "transaction": { "actions": [
@@ -257,7 +251,10 @@ class AggregateWorkbenchExpansionTest {
               "dslVersion": "3.0.0", "namespace": "wms.hooks2", "version": "1.0",
               "concepts": [
                 { "name": "Movimento", "fields": [
-                  { "name": "id", "type": "uuid", "id": true, "required": true } ] },
+                  { "name": "id", "type": "uuid", "id": true, "required": true } ],
+                  "composition": { "collections": [
+                    { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned" }
+                  ] } },
                 { "name": "MovimentoItem", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "movimentoId", "type": "uuid" } ] }
@@ -266,12 +263,6 @@ class AggregateWorkbenchExpansionTest {
                 { "name": "SeedContext", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] },
                 { "name": "RecalcularTotais", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] },
                 { "name": "ValidarSugestao", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] }
-              ],
-              "aggregates": [
-                { "name": "Movimento", "root": "Movimento",
-                  "collections": [
-                    { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned" }
-                  ] }
               ],
               "autoPanels": [ { "aggregate": "Movimento",
                 "transaction": { "hooks": {
@@ -307,19 +298,16 @@ class AggregateWorkbenchExpansionTest {
               "dslVersion": "3.0.0", "namespace": "wms.derived2", "version": "1.0",
               "concepts": [
                 { "name": "Movimento", "fields": [
-                  { "name": "id", "type": "uuid", "id": true, "required": true } ] },
+                  { "name": "id", "type": "uuid", "id": true, "required": true } ],
+                  "composition": { "collections": [
+                    { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned" }
+                  ] } },
                 { "name": "MovimentoItem", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "movimentoId", "type": "uuid" } ] }
               ],
               "procedures": [
                 { "name": "CalcularSaldoFiscal", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] }
-              ],
-              "aggregates": [
-                { "name": "Movimento", "root": "Movimento",
-                  "collections": [
-                    { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned" }
-                  ] }
               ],
               "autoPanels": [ { "aggregate": "Movimento",
                 "transaction": { "derivedFields": {
@@ -365,16 +353,13 @@ class AggregateWorkbenchExpansionTest {
               "dslVersion": "3.0.0", "namespace": "wms.afteraction", "version": "1.0",
               "concepts": [
                 { "name": "Movimento", "fields": [
-                  { "name": "id", "type": "uuid", "id": true, "required": true } ] },
+                  { "name": "id", "type": "uuid", "id": true, "required": true } ],
+                  "composition": { "collections": [
+                    { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned" }
+                  ] } },
                 { "name": "MovimentoItem", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "movimentoId", "type": "uuid" } ] }
-              ],
-              "aggregates": [
-                { "name": "Movimento", "root": "Movimento",
-                  "collections": [
-                    { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned" }
-                  ] }
               ],
               "autoPanels": [ { "aggregate": "Movimento",
                 "transaction": { "actions": [
@@ -420,23 +405,20 @@ class AggregateWorkbenchExpansionTest {
               "concepts": [
                 { "name": "Expedicao", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
-                  { "name": "tipo", "type": "string" } ] },
+                  { "name": "tipo", "type": "string" } ],
+                  "composition": { "collections": [
+                    { "name": "itens", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned",
+                      "collections": [
+                        { "name": "origens", "concept": "MovtoOrigem", "childField": "itemSeq", "ownership": "owned" }
+                      ] },
+                    { "name": "avulsos", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned" }
+                  ] } },
                 { "name": "ExpedicaoItem", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "expedicaoId", "type": "uuid" } ] },
                 { "name": "MovtoOrigem", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "itemSeq", "type": "uuid" } ] }
-              ],
-              "aggregates": [
-                { "name": "Expedicao", "root": "Expedicao",
-                  "collections": [
-                    { "name": "itens", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned",
-                      "collections": [
-                        { "name": "origens", "concept": "MovtoOrigem", "childField": "itemSeq", "ownership": "owned" }
-                      ] },
-                    { "name": "avulsos", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned" }
-                  ] }
               ],
               "autoPanels": [ { "aggregate": "Expedicao",
                 "transaction": {
@@ -493,22 +475,19 @@ class AggregateWorkbenchExpansionTest {
               "dslVersion": "3.0.0", "namespace": "wms.regions", "version": "1.0",
               "concepts": [
                 { "name": "Movimento", "fields": [
-                  { "name": "id", "type": "uuid", "id": true, "required": true } ] },
+                  { "name": "id", "type": "uuid", "id": true, "required": true } ],
+                  "composition": { "collections": [
+                    { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned",
+                      "collections": [
+                        { "name": "posicoes", "concept": "Posicao", "childField": "itemId", "ownership": "owned" }
+                      ] }
+                  ] } },
                 { "name": "MovimentoItem", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "movimentoId", "type": "uuid" } ] },
                 { "name": "Posicao", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "itemId", "type": "uuid" } ] }
-              ],
-              "aggregates": [
-                { "name": "Movimento", "root": "Movimento",
-                  "collections": [
-                    { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned",
-                      "collections": [
-                        { "name": "posicoes", "concept": "Posicao", "childField": "itemId", "ownership": "owned" }
-                      ] }
-                  ] }
               ],
               "autoPanels": [ { "aggregate": "Movimento",
                 "transaction": { "regions": {
@@ -554,7 +533,13 @@ class AggregateWorkbenchExpansionTest {
               "concepts": [
                 { "name": "Expedicao", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
-                  { "name": "tipo", "type": "string" } ] },
+                  { "name": "tipo", "type": "string" } ],
+                  "composition": { "collections": [
+                    { "name": "itens", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned",
+                      "collections": [
+                        { "name": "origens", "concept": "MovtoOrigem", "childField": "itemSeq", "ownership": "owned" }
+                      ] }
+                  ] } },
                 { "name": "ExpedicaoItem", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "expedicaoId", "type": "uuid" } ] },
@@ -564,15 +549,6 @@ class AggregateWorkbenchExpansionTest {
               ],
               "procedures": [
                 { "name": "GerarDemanda", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] }
-              ],
-              "aggregates": [
-                { "name": "Expedicao", "root": "Expedicao",
-                  "collections": [
-                    { "name": "itens", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned",
-                      "collections": [
-                        { "name": "origens", "concept": "MovtoOrigem", "childField": "itemSeq", "ownership": "owned" }
-                      ] }
-                  ] }
               ],
               "autoPanels": [ { "aggregate": "Expedicao",
                 "transaction": {
@@ -636,22 +612,19 @@ class AggregateWorkbenchExpansionTest {
               "concepts": [
                 { "name": "Expedicao", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
-                  { "name": "tipo", "type": "string" } ] },
+                  { "name": "tipo", "type": "string" } ],
+                  "composition": { "collections": [
+                    { "name": "itens", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned",
+                      "collections": [
+                        { "name": "origens", "concept": "MovtoOrigem", "childField": "itemSeq", "ownership": "owned" }
+                      ] }
+                  ] } },
                 { "name": "ExpedicaoItem", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "expedicaoId", "type": "uuid" } ] },
                 { "name": "MovtoOrigem", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "itemSeq", "type": "uuid" }, { "name": "local", "type": "string" } ] }
-              ],
-              "aggregates": [
-                { "name": "Expedicao", "root": "Expedicao",
-                  "collections": [
-                    { "name": "itens", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned",
-                      "collections": [
-                        { "name": "origens", "concept": "MovtoOrigem", "childField": "itemSeq", "ownership": "owned" }
-                      ] }
-                  ] }
               ],
               "autoPanels": [ { "aggregate": "Expedicao",
                 "transaction": {
@@ -695,7 +668,11 @@ class AggregateWorkbenchExpansionTest {
             {
               "dslVersion": "3.0.0", "namespace": "f6.depth3", "version": "1.0",
               "concepts": [
-                { "name": "Project", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
+                { "name": "Project", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ],
+                  "composition": { "collections": [
+                  { "name": "phases", "concept": "Phase", "childField": "projectId", "ownership": "owned", "collections": [
+                    { "name": "tasks", "concept": "Task", "childField": "phaseId", "ownership": "owned", "collections": [
+                      { "name": "subtasks", "concept": "Subtask", "childField": "taskId", "ownership": "owned" } ] } ] } ] } },
                 { "name": "Phase", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "projectId", "type": "uuid" }, { "name": "title", "type": "string" } ] },
@@ -705,12 +682,6 @@ class AggregateWorkbenchExpansionTest {
                 { "name": "Subtask", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "taskId", "type": "uuid" }, { "name": "hours", "type": "integer" } ] }
-              ],
-              "aggregates": [
-                { "name": "Project", "root": "Project", "collections": [
-                  { "name": "phases", "concept": "Phase", "childField": "projectId", "ownership": "owned", "collections": [
-                    { "name": "tasks", "concept": "Task", "childField": "phaseId", "ownership": "owned", "collections": [
-                      { "name": "subtasks", "concept": "Subtask", "childField": "taskId", "ownership": "owned" } ] } ] } ] }
               ],
               "autoPanels": [ { "aggregate": "Project" } ]
             }

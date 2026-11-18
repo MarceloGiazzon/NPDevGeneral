@@ -232,9 +232,9 @@
     {
       "id": "meta-aggregate-metadata-served-in-invocations",
       "keywords": [
-        "aggregate.metadata"
+        "composition.metadata"
       ],
-      "description": "ENF-1: an aggregate's free-form metadata reaches the invocations catalog on each of its three entries (read, commit, invoke): WidgetOrderAggregate's purpose is served exactly as declared.",
+      "description": "ENF-1: an aggregate's free-form metadata reaches the invocations catalog on each of its three entries (read, commit, invoke): WidgetOrder's purpose is served exactly as declared.",
       "steps": [
         {
           "name": "invocations catalog",
@@ -243,13 +243,13 @@
           "expect": {
             "status": 200,
             "json": {
-              "$.items[?id=aggregateCommit:WidgetOrderAggregate].metadata.purpose": {
+              "$.items[?id=aggregateCommit:WidgetOrder].metadata.purpose": {
                 "matches": "^Second independent aggregate in the corpus"
               },
-              "$.items[?id=aggregateRead:WidgetOrderAggregate].metadata.purpose": {
+              "$.items[?id=aggregateRead:WidgetOrder].metadata.purpose": {
                 "matches": "^Second independent aggregate in the corpus"
               },
-              "$.items[?id=aggregateInvoke:WidgetOrderAggregate].metadata.purpose": {
+              "$.items[?id=aggregateInvoke:WidgetOrder].metadata.purpose": {
                 "matches": "^Second independent aggregate in the corpus"
               }
             }

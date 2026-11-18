@@ -128,6 +128,18 @@
     return value;
   }
   var returnUrl = safeNext(params.get("next"));
+  // FORM P5-T2: a user whose role has an experience lands in /x/<experience>/; everyone else (ADMIN, a role
+  // without an experience, an app generated without experiences, any failure of this probe) lands exactly where
+  // they did before. An explicit ?next= always wins.
+  function landing(token, target) {
+    if (target !== "/") { return Promise.resolve(target); }
+    return fetch("/api/x/me", { headers: { "Authorization": "Bearer " + token } }).then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(function (me) {
+      return me && me.experience && me.experience.name
+        ? "/x/" + encodeURIComponent(me.experience.name) + "/" : target;
+    }).catch(function () { return target; });
+  }
   // UX: show-password toggle + Caps Lock hint for every password input, and an in-flight guard.
   var PW_SHOW = "Show", PW_HIDE = "Hide", PW_CAPS = "Caps Lock is on";
   function enhancePasswordField(input) {
@@ -299,7 +311,9 @@
         localStorage.setItem("npdev.shell.token", res.body.token);
         localStorage.setItem("npdev.businessUi.apiKey", res.body.token);
         redirecting = true;
-        window.location.href = safeNext(res.body.next || mfaNext || returnUrl);
+        landing(res.body.token, safeNext(res.body.next || mfaNext || returnUrl)).then(function (to) {
+          window.location.href = to;
+        });
       } else {
         var code = res.body && res.body.error ? res.body.error : "sign_in_failed";
         if (code === "mfa_challenge_expired" || code === "too_many_attempts" || code === "invalid_credentials") {
@@ -405,7 +419,7 @@
         localStorage.setItem("npdev.shell.token", res.body.token);
         localStorage.setItem("npdev.businessUi.apiKey", res.body.token);
         redirecting = true;
-        window.location.href = returnUrl;
+        landing(res.body.token, returnUrl).then(function (to) { window.location.href = to; });
       } else {
         showError(res.body && res.body.error ? res.body.error : "sign_in_failed");
       }

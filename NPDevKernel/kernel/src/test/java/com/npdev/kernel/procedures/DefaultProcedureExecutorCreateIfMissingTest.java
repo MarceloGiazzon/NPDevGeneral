@@ -46,29 +46,7 @@ class DefaultProcedureExecutorCreateIfMissingTest {
                     ConceptSpec.of("WidgetLot", "quantity", "other", "label"));
 
     private static DefaultProcedureExecutor newExecutor(ConceptGateway gateway) {
-        return new DefaultProcedureExecutor(gateway, (call, state) -> CapabilityResult.success(null), NOOP_EVENT_BUS);
-    }
-
-    @Test
-    void saveConceptGeneratesAnIdWhenIdRefIsBlank() {
-        ConceptGateway gateway = GOVERNED.get();
-        DefaultProcedureExecutor executor = newExecutor(gateway);
-        ProcedureDefinition definition = new ProcedureDefinition(
-                "CreateWidget",
-                List.of(
-                        ProcedureStep.saveConcept("save-widget", "Widget", null, "payload", "saved"),
-                        ProcedureStep.returnValue("return-saved", "$saved")
-                )
-        );
-
-        ProcedureExecutionResult result = executor.execute(
-                definition, Map.of("payload", Map.of("label", "Widget A")), CTX);
-
-        assertTrue(result.ok(), "saveConcept with a blank idRef must generate an id, not fail: " + result.failureMessage());
-        ConceptRecord saved = (ConceptRecord) result.state().get("saved");
-        assertNotNull(saved.id(), "saveConcept must have assigned a generated id");
-        assertFalse(saved.id().isBlank());
-        assertEquals("Widget A", saved.data().get("label"));
+        return new DefaultProcedureExecutor(gateway);
     }
 
     @Test
@@ -98,7 +76,7 @@ class DefaultProcedureExecutorCreateIfMissingTest {
                         // the real use case: a prior lookup (e.g. listConcepts) found no match.
                         ProcedureStep.patchConcept("ensure-lot", "WidgetLot", "$existingLotId",
                                 Map.of("quantity", "10"), "ensured", true),
-                        ProcedureStep.returnValue("return-ensured", "$ensured")
+                        ProcedureStep.evaluate("return-ensured", "$ensured", "return")
                 )
         );
 

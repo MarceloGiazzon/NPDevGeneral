@@ -29,11 +29,6 @@ import com.npdev.kernel.events.EventEnvelope;
 import com.npdev.kernel.exec.ExecutionSummary;
 import com.npdev.kernel.execution.FlowInstance;
 import com.npdev.kernel.ports.TraceQuery;
-import com.npdev.kernel.procedures.DefaultProcedureExecutor;
-import com.npdev.kernel.procedures.ProcedureDefinition;
-import com.npdev.kernel.procedures.ProcedureExecutionResult;
-import com.npdev.kernel.procedures.ProcedureStep;
-import com.npdev.kernel.procedures.ProcedureStepType;
 import com.npdev.kernel.trace.FlowTrace;
 
 import java.io.IOException;
@@ -134,8 +129,6 @@ public final class NPDevCliMain {
                 case "correlation" -> correlationTimeline(args, runtime);
                 case "list-flows" -> listFlows(args, runtime);
                 case "list-procedures" -> listProcedures(args, runtime);
-                case "run-procedure" -> runProcedure(args, runtime, false);
-                case "debug-procedure" -> runProcedure(args, runtime, true);
                 default -> throw new IllegalArgumentException("Unknown command: " + args.command());
             };
         } finally {
@@ -356,35 +349,6 @@ public final class NPDevCliMain {
         return 0;
     }
 
-    private int runProcedure(ParsedArgs args, CliRuntime runtime, boolean debug) throws IOException {
-        String procedureName = args.required("procedure");
-        Map<String, ProcedureDefinition> procedures = buildProcedureDefinitions(runtime.compiledModel());
-        ProcedureDefinition definition = procedures.get(procedureName);
-        if (definition == null) {
-            err.println("Procedure not found: " + procedureName);
-            return 1;
-        }
-        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
-                runtime.conceptGateway(),
-                runtime.capabilityDispatcher(),
-                event -> runtime.eventStore().append(event),
-                procedures
-        );
-        ExecutionContext context = executionContext(args).withTag("executionMode", "headless");
-        ProcedureExecutionResult result = executor.execute(definition, readJsonObject(args.path("json")), context);
-        if (debug) {
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("procedure", procedureName);
-            payload.put("result", result);
-            payload.put("gatewayTrace", runtime.conceptGateway().explain());
-            payload.put("events", runtime.eventStore().snapshotEvents());
-            printByFormat(args.format(), payload);
-        } else {
-            printByFormat(args.format(), result);
-        }
-        return result.ok() ? 0 : 1;
-    }
-
     private ExecutionContext executionContext(ParsedArgs args) {
         String tenant = args.getOrDefault("tenant", "default");
         String actor = args.getOrDefault("actor", "cli");
@@ -445,8 +409,6 @@ public final class NPDevCliMain {
                   compile-model [--model <path>] [--out <file>] [--format text|json]
                   validate-bundle [--model <path>] [--format text|json]
                   execute --model <path> --flow <name> [--tenant <id>] [--actor <id>] [--roles <csv>] [--permissions <file>] [--json <file>] [--sim <file>] [--store-dir <dir>] [--format text|json]
-                  run-procedure --model <path> --procedure <name> [--tenant <id>] [--actor <id>] [--roles <csv>] [--permissions <file>] [--json <file>] [--sim <file>] [--store-dir <dir>] [--format text|json]
-                  debug-procedure --model <path> --procedure <name> [--tenant <id>] [--actor <id>] [--roles <csv>] [--permissions <file>] [--json <file>] [--sim <file>] [--store-dir <dir>] [--format text|json]
                   publish-event --model <path> --event <name> --correlation <id> [--tenant <id>] [--actor <id>] [--roles <csv>] [--permissions <file>] [--json <file>] [--sim <file>] [--store-dir <dir>] [--format text|json]
                   resume --model <path> --execution <id> [--sim <file>] [--store-dir <dir>] [--format text|json]
                   trace --model <path> --execution <id> [--store-dir <dir>] [--format text|json] [--export <file>]
@@ -457,21 +419,6 @@ public final class NPDevCliMain {
                   list-flows --model <path> [--format text|json]
                   list-procedures --model <path> [--format text|json]
                 """);
-    }
-
-    private static Map<String, ProcedureDefinition> buildProcedureDefinitions(CompiledModel compiledModel) {
-        Map<String, ProcedureDefinition> definitions = new LinkedHashMap<>();
-        for (CompiledProcedure procedure : compiledModel.getProcedures()) {
-            definitions.put(procedure.name(), toProcedureDefinition(procedure));
-        }
-        return Map.copyOf(definitions);
-    }
-
-    private static ProcedureDefinition toProcedureDefinition(CompiledProcedure procedure) {
-        List<ProcedureStep> steps = procedure.steps().stream()
-                .map(NPDevCliMain::toProcedureStep)
-                .toList();
-        return new ProcedureDefinition(procedure.name(), steps, "system".equals(procedure.runAs()));
     }
 
     private static Map<String, Object> procedureSummary(CompiledProcedure procedure) {
@@ -513,115 +460,6 @@ public final class NPDevCliMain {
             collectProcedureStepTypes(step.elseSteps(), types);
             collectProcedureStepTypes(step.steps(), types);
         }
-    }
-
-    private static ProcedureStep toProcedureStep(CompiledProcedureStep step) {
-        ProcedureStepType type = ProcedureStep.parseType(step.type());
-        String target = normalized(step.target());
-        String concept = normalized(step.concept());
-        return switch (type) {
-            case READ_CONCEPT -> ProcedureStep.readConcept(
-                    stepName(step),
-                    concept,
-                    refOf(step.id(), "id"),
-                    target
-            );
-            case LIST_CONCEPTS -> ProcedureStep.listConcepts(stepName(step), concept, target);
-            case RUN_QUERY -> ProcedureStep.runQuery(stepName(step), normalized(step.query()), concept, target).withQueryParams(step.params());
-            case SAVE_CONCEPT -> ProcedureStep.saveConcept(
-                    stepName(step),
-                    concept,
-                    refOf(step.id(), "id"),
-                    dataRef(step),
-                    target
-            );
-            case DELETE_CONCEPT -> ProcedureStep.deleteConcept(stepName(step), concept, refOf(step.id(), "id"));
-            case PATCH_CONCEPT -> ProcedureStep.patchConcept(
-                    stepName(step),
-                    concept,
-                    refOf(step.id(), "id"),
-                    step.set(),
-                    target,
-                    step.createIfMissing()
-            );
-            case CALL_CAPABILITY -> ProcedureStep.callCapability(
-                    stepName(step),
-                    normalized(step.capability()),
-                    "",
-                    "",
-                    normalized(step.operation()),
-                    step.args().values().stream().map(value -> refOf(value, String.valueOf(value))).toList(),
-                    target
-            ).withErrorTarget(normalized(step.errorTarget()));
-            case PUBLISH_EVENT -> ProcedureStep.publishEvent(stepName(step), normalized(step.event()), dataRef(step));
-            case IF -> ProcedureStep.ifThenElse(
-                    stepName(step),
-                    // FORM P3-T3: the condition is an expression, passed through whole (see ProcedureRunner).
-                    normalized(step.condition()),
-                    step.thenSteps().stream().map(NPDevCliMain::toProcedureStep).toList(),
-                    step.elseSteps().stream().map(NPDevCliMain::toProcedureStep).toList()
-            );
-            case FOR_EACH -> ProcedureStep.forEach(
-                    stepName(step),
-                    refOf(step.items(), "items"),
-                    normalized(step.as()) == null ? "item" : normalized(step.as()),
-                    step.steps().stream().map(NPDevCliMain::toProcedureStep).toList()
-            );
-            case MAP_LIST -> ProcedureStep.mapList(
-                    stepName(step),
-                    refOf(step.items(), "items"),
-                    normalized(step.as()) == null ? "item" : normalized(step.as()),
-                    step.select(),
-                    target
-            );
-            case MAP_VALUE -> ProcedureStep.mapValue(stepName(step), literalOrRef(step.value(), "$input"), target);
-            case EVALUATE, BUILD_OBJECT -> throw new IllegalArgumentException(type + " is a flow-only step, not an authored procedure step type");
-            case COMPUTE_VALUE -> ProcedureStep.computeValue(
-                    stepName(step), normalized(step.operation()), step.left(), step.right(), target);
-            case RETURN -> ProcedureStep.returnValue(
-                    stepName(step), literalOrRef(step.value(), target == null ? "$input" : "$" + target));
-        };
-    }
-
-    private static String dataRef(CompiledProcedureStep step) {
-        if (step.data() != null && !step.data().isEmpty()) {
-            Object input = step.data().get("input");
-            if (input != null) {
-                return refOf(input, "input");
-            }
-            Object payload = step.data().get("payload");
-            if (payload != null) {
-                return refOf(payload, "input");
-            }
-        }
-        return "input";
-    }
-
-    private static String refOf(Object value, String fallback) {
-        if (value == null) {
-            return fallback;
-        }
-        String text = String.valueOf(value).trim();
-        if (text.isBlank()) {
-            return fallback;
-        }
-        return text.startsWith("$") ? text.substring(1) : text;
-    }
-
-    /** REG-86: see ProcedureRunner's identical helper -- literal-vs-$ref passthrough for mapValue/return. */
-    private static Object literalOrRef(Object value, String fallbackRef) {
-        if (value == null) {
-            return fallbackRef;
-        }
-        if (value instanceof String s && s.isBlank()) {
-            return fallbackRef;
-        }
-        return value;
-    }
-
-    private static String stepName(CompiledProcedureStep step) {
-        String name = normalized(step.name());
-        return name == null ? "procedure-step" : name;
     }
 
     private static String normalized(String value) {

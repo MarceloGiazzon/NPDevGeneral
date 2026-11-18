@@ -1,0 +1,52 @@
+{
+ "$comment": "FORM P5 admission, 2026-11-18 (documents migrated from documents[] by P5-T9b, identical compiled IR).",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "screens[] kind document",
+ "slots": [
+  "screen.aggregate",
+  "screen.bands",
+  "screen.logo",
+  "screen.pageSize",
+  "screen.marginMm",
+  "screen.metadata",
+  "screen.report",
+  "screen.printColumns",
+  "screen.subtotals",
+  "screen.grandTotal",
+  "screen.groupBy",
+  "screen.query"
+ ],
+ "rung": 0,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-18",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "a printable page: bands read off an aggregate (header, line items), or a grouped report with subtotals and a grand total; page size and margin"
+  },
+  "notLower": {
+   "value": true,
+   "why": "PDF and CSV rendering at /api/documents/<name>/render.pdf|csv is platform output; layout bands over an aggregate cannot be built from a flow"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "NPDevSamples/dsl-conformance-max",
+    "NPDevSamples/pigmentampas",
+    "NPDevSamples/superuser-admin-console"
+   ],
+   "note": "pageSize, marginMm and bands are used by all three apps; report, printColumns, subtotals, grandTotal, logo, query and groupBy by dsl-conformance-max only (four documents there)"
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevSamples/dsl-conformance-max/behavior-probes/50-list-report.json",
+   "note": "probe 50 renders a document report (printColumns/groupBy/subtotals); aggregate, bands, logo and the page keys are proven by the generator and DSL document tests (DocumentBandModelTest, DocumentListReportModelTest) rather than a probe"
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "a printable document (kind `document`: `aggregate`/`bands`/`logo`, or `report: true` with `printColumns`; PDF and CSV at `/api/documents/<name>/render.pdf|csv`) ... Document: `pageSize`, `marginMm`, `metadata`, `aggregate` + `bands`, `logo`, or `report:true` with `printColumns`, `groupBy`, `subtotals`, `grandTotal`."
+  }
+ },
+ "replaces": [],
+ "budgetDelta": 12
+}

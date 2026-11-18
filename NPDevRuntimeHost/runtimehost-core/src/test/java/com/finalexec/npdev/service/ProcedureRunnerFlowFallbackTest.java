@@ -45,7 +45,7 @@ class ProcedureRunnerFlowFallbackTest {
 
     private static ProcedureRunner runner() throws Exception {
         CompiledModel compiled = new ModelCompiler().compile(new JsonModelParser().parse(MAPPER.readTree(MODEL)));
-        return new ProcedureRunner(compiled, new NoopGateway(), null, null);
+        return new ProcedureRunner(compiled, new NoopGateway());
     }
 
     @Test

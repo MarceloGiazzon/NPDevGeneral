@@ -97,6 +97,14 @@ class LoginPageEmitterTest {
         assertTrue(html.contains("email_exists_requires_link"),
                 "the settled collision policy must surface in business language on the page");
         assertTrue(html.contains("reset-password.html"), "the sign-in form must link to the forgot-password page");
+        // FORM P5-T2: password and MFA sign-in both land through the experience probe; /x/<experience>/ only
+        // when the caller has one and no explicit ?next= was given, otherwise the old destination.
+        assertTrue(html.contains("/api/x/me") && html.contains("\"/x/\" + encodeURIComponent(me.experience.name)"),
+                "a user with an experience lands in /x/<experience>/");
+        assertTrue(html.contains("landing(res.body.token, returnUrl)") && html.contains("landing(res.body.token, safeNext("),
+                "both the password and the MFA sign-in go through landing()");
+        assertTrue(html.contains("if (target !== \"/\") { return Promise.resolve(target); }"),
+                "an explicit ?next= always wins over the experience");
     }
 
     @Test

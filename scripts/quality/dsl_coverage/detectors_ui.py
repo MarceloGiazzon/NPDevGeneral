@@ -33,7 +33,7 @@ def _has_field_picker_filter(model: dict) -> bool:
 
 def _has_picker_selector_ref(model: dict) -> bool:
     """EDIT-18 (REAL_LIFT_PLAN_2026-09-03 package C2, boundary B16 Step 2): a field's or a band
-    picker's selectorRef -- the reference this gate's own "selectors" feature (declaring one) never
+    picker's selectorRef -- the reference this gate's own "screen.picker" feature (declaring one) never
     proved was actually consumed anywhere. Checks both surfaces since either one alone would leave
     the other's wiring untested."""
     for concept in (model.get("concepts", None) or []):

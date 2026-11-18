@@ -47,7 +47,7 @@ class DefaultProcedureExecutorRefUnresolvableTest {
             GovernedTestGateways.forConcepts(ConceptSpec.of("Lote", "quantidade"));
 
     private static DefaultProcedureExecutor newExecutor(ConceptGateway gateway) {
-        return new DefaultProcedureExecutor(gateway, (call, state) -> CapabilityResult.success(null), NOOP_EVENT_BUS);
+        return new DefaultProcedureExecutor(gateway);
     }
 
     @Test
@@ -98,76 +98,32 @@ class DefaultProcedureExecutorRefUnresolvableTest {
     }
 
     @Test
-    void mapValueWithAnUnboundTopLevelRefFails() {
-        ConceptGateway gateway = GOVERNED.get();
-        DefaultProcedureExecutor executor = newExecutor(gateway);
-        ProcedureDefinition definition = new ProcedureDefinition(
-                "MapMissing",
-                List.of(ProcedureStep.mapValue("map-missing", "$doesNotExist", "out"))
-        );
-
-        ProcedureExecutionResult result = executor.execute(definition, Map.of(), CTX);
-
-        assertFalse(result.ok(), "a $ref naming a key never bound in state must fail");
-        assertEquals("REF_UNRESOLVABLE", result.failureCode());
-        assertNull(result.state().get("out"));
-    }
-
-    @Test
-    void returnValueWithATypoRefFails() {
-        ConceptGateway gateway = GOVERNED.get();
-        DefaultProcedureExecutor executor = newExecutor(gateway);
-        ProcedureDefinition definition = new ProcedureDefinition(
-                "ReturnMissing",
-                List.of(ProcedureStep.returnValue("return-missing", "$outcomme"))
-        );
-        Map<String, Object> initial = new HashMap<>();
-        initial.put("outcome", "done");
-
-        ProcedureExecutionResult result = executor.execute(definition, initial, CTX);
-
-        assertFalse(result.ok(), "a typo'd returnRef must fail, not silently return null");
-        assertEquals("REF_UNRESOLVABLE", result.failureCode());
-    }
-
-    @Test
-    void computeValueWithAnUnresolvedOperandFailsAsRefUnresolvableNotInvalidOperand() {
-        ConceptGateway gateway = GOVERNED.get();
-        DefaultProcedureExecutor executor = newExecutor(gateway);
-        ProcedureDefinition definition = new ProcedureDefinition(
-                "ComputeMissing",
-                List.of(ProcedureStep.computeValue("compute-missing", "add", "$missingLeft", 1, "sum"))
-        );
-
-        ProcedureExecutionResult result = executor.execute(definition, Map.of(), CTX);
+    void evaluateWithAnUnboundTopLevelRefFails() {
+        ProcedureExecutionResult result = newExecutor(GOVERNED.get()).execute(
+                new ProcedureDefinition("P", List.of(ProcedureStep.evaluate("e", "$nope", "out"))), Map.of(), CTX);
 
         assertFalse(result.ok());
-        assertEquals("REF_UNRESOLVABLE", result.failureCode(),
-                "an unresolvable operand ref is refused before arithmetic ever sees a null operand");
+        assertEquals("REF_UNRESOLVABLE", result.failureCode());
     }
 
-    /**
-     * The control: a key EXPLICITLY bound to {@code null} in state (as opposed to a key that was
-     * never bound at all) is still a legitimately resolved value. This is the distinction X0-6's fix
-     * turns on -- {@code containsKey}, not a null check -- and it must keep working, or the fix would
-     * just trade one silent defect (typo -> null) for a new one (real null -> spurious failure).
-     */
     @Test
-    void mapValueResolvesAnExplicitNullAlreadyInStateWithoutFailing() {
-        ConceptGateway gateway = GOVERNED.get();
-        DefaultProcedureExecutor executor = newExecutor(gateway);
-        ProcedureDefinition definition = new ProcedureDefinition(
-                "MapExplicitNull",
-                List.of(ProcedureStep.mapValue("map-null", "$explicitlyNull", "out"))
-        );
-        Map<String, Object> initial = new HashMap<>();
-        initial.put("explicitlyNull", null);
+    void buildObjectWithATypoRefFails() {
+        ProcedureExecutionResult result = newExecutor(GOVERNED.get()).execute(
+                new ProcedureDefinition("P", List.of(ProcedureStep.buildObject("b", Map.of("x", "$input.typo"), "out"))),
+                Map.of("a", 1), CTX);
 
-        ProcedureExecutionResult result = executor.execute(definition, initial, CTX);
-
-        assertTrue(result.ok(), "an explicit null already bound in state must resolve, not fail: " + result.failureMessage());
-        assertTrue(result.state().containsKey("out"));
-        assertNull(result.state().get("out"));
+        assertFalse(result.ok());
+        assertEquals("REF_UNRESOLVABLE", result.failureCode());
     }
 
+    @Test
+    void evaluateResolvesAnExplicitNullAlreadyInStateWithoutFailing() {
+        Map<String, Object> input = new java.util.LinkedHashMap<>();
+        input.put("maybe", null);
+        ProcedureExecutionResult result = newExecutor(GOVERNED.get()).execute(
+                new ProcedureDefinition("P", List.of(ProcedureStep.buildObject("b", Map.of("x", "$maybe"), "return"))), input, CTX);
+
+        assertTrue(result.ok(), result.failureMessage());
+        assertNull(((Map<?, ?>) result.state().get("return")).get("x"));
+    }
 }

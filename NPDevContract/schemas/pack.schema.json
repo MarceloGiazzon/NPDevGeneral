@@ -184,15 +184,6 @@
         ]
       }
     },
-    "aggregates": {
-      "type": "array",
-      "items": {
-        "oneOf": [
-          { "$ref": "model.schema.json#/$defs/aggregate" },
-          { "$ref": "model.schema.json#/$defs/localModelRef" }
-        ]
-      }
-    },
     "autoPanels": {
       "type": "array",
       "items": {
@@ -202,32 +193,21 @@
         ]
       }
     },
-    "documents": {
-      "type": "array",
-      "items": {
-        "oneOf": [
-          { "$ref": "model.schema.json#/$defs/document" },
-          { "$ref": "model.schema.json#/$defs/localModelRef" }
-        ]
-      }
-    },
-    "selectors": {
-      "type": "array",
-      "items": {
-        "oneOf": [
-          { "$ref": "model.schema.json#/$defs/selector" },
-          { "$ref": "model.schema.json#/$defs/localModelRef" }
-        ]
-      }
-    },
-    "guidePages": {
-      "type": "array",
-      "items": {
-        "oneOf": [
-          { "$ref": "model.schema.json#/$defs/guidePage" },
-          { "$ref": "model.schema.json#/$defs/localModelRef" }
-        ]
-      }
+    "backOffice": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pages": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "$ref": "model.schema.json#/$defs/guidePage" },
+              { "$ref": "model.schema.json#/$defs/localModelRef" }
+            ]
+          }
+        }
+      },
+      "description": "FORM P5-T9c: the back-office guide pages this pack contributes (it was the pack-level guidePages). Composition qualifies each page like any other member (packId::PageName) and appends it, after the model's own pages, to the composed model's root backOffice.pages."
     },
     "roles": {
       "type": "array",
@@ -247,6 +227,39 @@
         ]
       },
       "description": "R5.3: a pack may declare document-numbering counters alongside its other members. `name` is never namespace-qualified by pack composition (see model.schema.json's sequence $def)."
+    },
+    "functions": {
+      "type": "array",
+      "items": {"oneOf": [{"$ref": "model.schema.json#/$defs/function"}, {"$ref": "model.schema.json#/$defs/localModelRef"}]},
+      "description": "FORM P4-T2: named pure functions a pack provides (rung 2 of the extension ladder). Consumers call them as <pack>::<name>; inside the pack the bare name works."
+    },
+    "experiences": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/experience"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      },
+      "description": "FORM P5-T1: a pack may declare experiences/screens alongside its other members. Their `name` is never namespace-qualified by pack composition (see model.schema.json's experiences property); references out of them (roles, concept, query, flow) are."
+    },
+    "screens": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/screen"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      },
+      "description": "FORM P5-T1: a pack may declare experiences/screens alongside its other members. Their `name` is never namespace-qualified by pack composition (see model.schema.json's experiences property); references out of them (roles, concept, query, flow) are."
     },
     "seeds": {
       "type": "array",

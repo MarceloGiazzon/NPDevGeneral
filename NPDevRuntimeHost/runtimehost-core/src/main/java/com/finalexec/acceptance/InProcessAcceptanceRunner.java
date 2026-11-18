@@ -154,7 +154,7 @@ public final class InProcessAcceptanceRunner {
 
         Map<String, Object> input = (Map<String, Object>) when.getOrDefault("input", Map.of());
         Map<String, Object> observed = new LinkedHashMap<>();
-        ProcedureRunner runner = new ProcedureRunner(model, gateway, dispatcher, null);
+        ProcedureRunner runner = new ProcedureRunner(model, gateway);
         KernelRunner kernel = attachKernel(runner, model, store, gateway, dispatcher);
         if (when.containsKey("flow")) {
             ExecutionResult result = kernel.execute(String.valueOf(when.get("flow")), new HashMap<>(input), ctx);

@@ -25,6 +25,10 @@ class RuntimeRequestSizeFilterTest {
 
         assertFalse(filter.publicShouldNotFilter(request("/api/flows/CreateUser/execute")));
         assertFalse(filter.publicShouldNotFilter(request("/api/v1/flows/CreateUser/execute")));
+        // FORM P5-T2: the experience client's flow route carries the same body cap.
+        assertFalse(filter.publicShouldNotFilter(request("/api/x/flows/CreateUser/execute")));
+        // FORM P5-T4: the experience client's server-side expression values route, same cap.
+        assertFalse(filter.publicShouldNotFilter(request("/api/x/eval")));
         assertFalse(filter.publicShouldNotFilter(request("/api/events/publish")));
         assertFalse(filter.publicShouldNotFilter(request("/api/v1/events/publish")));
 

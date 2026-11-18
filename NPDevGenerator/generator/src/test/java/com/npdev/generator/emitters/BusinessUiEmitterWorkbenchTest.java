@@ -38,16 +38,12 @@ public class BusinessUiEmitterWorkbenchTest {
             {
               "dslVersion": "3.0.0", "namespace": "wms", "version": "1.0",
               "concepts": [
-                { "name": "Expedicao", "fields": [
+                { "name": "Expedicao", "composition": { "collections": [ { "name": "itens", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned" } ] }, "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "cliente", "type": "string" } ] },
                 { "name": "ExpedicaoItem", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "expedicaoId", "type": "uuid" } ] }
-              ],
-              "aggregates": [
-                { "name": "Expedicao", "root": "Expedicao",
-                  "collections": [ { "name": "itens", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned" } ] }
               ],
               "autoPanels": [ { "aggregate": "Expedicao" } ]
             }
@@ -103,7 +99,7 @@ public class BusinessUiEmitterWorkbenchTest {
     }
 
     /** Move 6 Move A: the workbench page's STRINGS catalogue merges the platform's English defaults
-     * with any app-declared {@code settings.strings} override -- proving the fault line named in
+     * with any app-declared {@code backOffice.strings} override -- proving the fault line named in
      * docs/MOVE6_TYPED_SURFACE_PLAN.md §2 (a generated app rendering "Save" beside a hardcoded
      * "Adicionar") is closed: nothing is hardcoded in the template anymore. */
     @Test
@@ -112,19 +108,15 @@ public class BusinessUiEmitterWorkbenchTest {
             {
               "dslVersion": "3.0.0", "namespace": "wms", "version": "1.0",
               "concepts": [
-                { "name": "Expedicao", "fields": [
+                { "name": "Expedicao", "composition": { "collections": [ { "name": "itens", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned" } ] }, "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "cliente", "type": "string" } ] },
                 { "name": "ExpedicaoItem", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "expedicaoId", "type": "uuid" } ] }
               ],
-              "aggregates": [
-                { "name": "Expedicao", "root": "Expedicao",
-                  "collections": [ { "name": "itens", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned" } ] }
-              ],
               "autoPanels": [ { "aggregate": "Expedicao" } ],
-              "settings": { "locale": "pt-BR", "strings": { "action.save": "Salvar" } }
+              "backOffice": { "locale": "pt-BR", "strings": { "action.save": "Salvar" } }
             }
             """);
 

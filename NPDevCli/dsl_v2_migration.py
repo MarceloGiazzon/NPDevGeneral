@@ -676,7 +676,7 @@ def migrate_label_locales(doc: dict, locale: str) -> MigrationResult:
     """Widens every label site `migrate_document`'s DSL-2.0 pass does not touch -- a completely
     separate, independently-callable pass (not part of `migrate_document`, and not run by it)
     because it needs one extra piece of information `migrate_document` never requires: which
-    locale the app's EXISTING plain-string text is actually written in. `doc.settings.locale` is
+    locale the app's EXISTING plain-string text is actually written in. `doc.backOffice.locale` is
     deliberately NOT read for this -- its own schema description says it is "informational...
     does not itself select translations", so trusting it here would silently mislabel text for any
     app that set it loosely. The caller (an author, or a future CLI flag) supplies `locale`

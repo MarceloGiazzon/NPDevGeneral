@@ -10,6 +10,7 @@ import com.npdev.dsl.v1.compiler.ModelCompiler;
 import com.npdev.dsl.v1.parser.JsonModelParser;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.concepts.ConceptWriteRequest;
+import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.DefaultConceptGateway;
 import com.npdev.kernel.inproc.InMemoryConceptStore;
 import com.npdev.kernel.procedures.ProcedureExecutionResult;
@@ -56,7 +57,7 @@ class PanelRuntimeOnRowLoadTest {
         private final ProcedureExecutionResult stubbed;
 
         StubProcedureRunner(ProcedureExecutionResult stubbed) {
-            super((CompiledModel) null, null, null, null);
+            super((CompiledModel) null, (ConceptGateway) null);
             this.stubbed = stubbed;
         }
 

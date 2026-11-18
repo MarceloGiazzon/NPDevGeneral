@@ -2,14 +2,8 @@ package com.finalexec.npdev.service;
 
 import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledModel;
-import com.npdev.kernel.CapabilityErrorKind;
-import com.npdev.kernel.CapabilityResult;
 import com.npdev.kernel.ExecutionContext;
-import com.npdev.kernel.capabilities.PolicyEnforcingCapabilityDispatcher;
 import com.npdev.kernel.concepts.ConceptGateway;
-import com.npdev.kernel.ports.CapabilityDispatcher;
-import com.npdev.kernel.ports.CircuitBreakerStateStore;
-import com.npdev.kernel.ports.EventBus;
 import com.npdev.kernel.procedures.DefaultProcedureExecutor;
 import com.npdev.kernel.procedures.ProcedureDefinition;
 import com.npdev.kernel.procedures.ProcedureExecutionResult;
@@ -34,54 +28,23 @@ public class ProcedureRunner {
     // derivation, so no ModelReloadListener is needed: modelHolder.get() alone observes a reload.
     private final ModelHolder modelHolder;
     private final ConceptGateway conceptGateway;
-    private final CapabilityDispatcher capabilityDispatcher;
-    private final EventBus eventBus;
-    // RUN-1: the breaker store flows already share; null (tests, bare hosts) = timeout and retry only.
-    private CircuitBreakerStateStore circuitBreakerStateStore;
     // FORM P3-T5c: runs a flow by name; null (tests, bare hosts) = nothing can be run by name.
     private volatile FlowInvoker flowInvoker;
 
     @Autowired
-    public ProcedureRunner(
-            ModelHolder modelHolder,
-            ObjectProvider<ConceptGateway> conceptGateway,
-            ObjectProvider<CapabilityDispatcher> capabilityDispatcher,
-            ObjectProvider<EventBus> eventBus
-    ) {
-        this(
-                modelHolder,
-                conceptGateway == null ? null : conceptGateway.getIfAvailable(),
-                capabilityDispatcher == null ? null : capabilityDispatcher.getIfAvailable(),
-                eventBus == null ? null : eventBus.getIfAvailable()
-        );
+    public ProcedureRunner(ModelHolder modelHolder, ObjectProvider<ConceptGateway> conceptGateway) {
+        this(modelHolder, conceptGateway == null ? null : conceptGateway.getIfAvailable());
     }
 
     /** Convenience overload for existing call sites (PanelRuntime, tests) with a plain {@link
      * CompiledModel} and no live {@link ModelHolder} -- wraps it in a non-reloading holder. */
-    public ProcedureRunner(
-            CompiledModel compiledModel,
-            ConceptGateway conceptGateway,
-            CapabilityDispatcher capabilityDispatcher,
-            EventBus eventBus
-    ) {
-        this(new ModelHolder(compiledModel), conceptGateway, capabilityDispatcher, eventBus);
+    public ProcedureRunner(CompiledModel compiledModel, ConceptGateway conceptGateway) {
+        this(new ModelHolder(compiledModel), conceptGateway);
     }
 
-    public ProcedureRunner(
-            ModelHolder modelHolder,
-            ConceptGateway conceptGateway,
-            CapabilityDispatcher capabilityDispatcher,
-            EventBus eventBus
-    ) {
+    public ProcedureRunner(ModelHolder modelHolder, ConceptGateway conceptGateway) {
         this.modelHolder = modelHolder;
         this.conceptGateway = conceptGateway;
-        this.capabilityDispatcher = capabilityDispatcher;
-        this.eventBus = eventBus;
-    }
-
-    @Autowired(required = false)
-    void setCircuitBreakerStateStore(CircuitBreakerStateStore circuitBreakerStateStore) {
-        this.circuitBreakerStateStore = circuitBreakerStateStore;
     }
 
     /**
@@ -179,16 +142,9 @@ public class ProcedureRunner {
         }
         DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
                 conceptGateway,
-                capabilityDispatcher == null
-                        ? ProcedureRunner::capabilityUnavailable
-                        // RUN-1: a procedure's capability call obeys the policy its operation declares
-                        // (deadline, retry of transient failures, the shared circuit), like a flow step.
-                        : new PolicyEnforcingCapabilityDispatcher(
-                                capabilityDispatcher, CapabilityOperationPolicies.forModel(modelHolder), circuitBreakerStateStore),
-                eventBus == null ? event -> { } : eventBus,
-                Map.of(),
                 com.npdev.kernel.procedures.ProcedureExecutionLimits.defaults(),
-                buildQueriesByName()
+                buildQueriesByName(),
+                null
         );
         return executor.execute(definition, input == null ? Map.of() : input,
                 context == null ? ExecutionContext.anonymous() : context);
@@ -206,14 +162,5 @@ public class ProcedureRunner {
             queries.put(query.name(), query);
         }
         return Map.copyOf(queries);
-    }
-
-    private static CapabilityResult capabilityUnavailable(com.npdev.kernel.CapabilityCall call, Map<String, Object> state) {
-        return CapabilityResult.failure(
-                "CAPABILITY_UNAVAILABLE",
-                "Procedure execution has no capability dispatcher for " + (call == null ? "" : call.capability()),
-                CapabilityErrorKind.PERMANENT,
-                Map.of()
-        );
     }
 }

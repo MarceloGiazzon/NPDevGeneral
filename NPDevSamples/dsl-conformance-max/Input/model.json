@@ -122,39 +122,6 @@
       "monthlyCostCapUsd": "aiMonthlyBudgetUsd"
     }
   },
-  "settings": {
-    "locale": "en-US",
-    "strings": {
-      "workbench.saved": "Order saved"
-    },
-    "ui": {
-      "pageRows": 25,
-      "dateFormat": "yyyy-MM-dd"
-    }
-  },
-  "appShell": {
-    "defaultRoute": "WidgetOrder",
-    "navigation": [
-      {
-        "label": "Widget Orders",
-        "target": "WidgetOrder",
-        "group": "Operations"
-      },
-      {
-        "label": "Widget Catalog",
-        "target": "WidgetCatalogEntry",
-        "group": "Operations"
-      },
-      {
-        "label": "Widget Showcase",
-        "target": "WidgetShowcase",
-        "group": "Operations"
-      },
-      {
-        "label": "Reference Data"
-      }
-    ]
-  },
   "agentAccess": {
     "assistant": {
       "name": "Widget Bot",
@@ -180,7 +147,7 @@
         "description": "Place a new widget order."
       },
       {
-        "aggregate": "ShelfLayoutAggregate",
+        "aggregate": "ShelfLayout",
         "operations": [
           "get",
           "save"
@@ -447,7 +414,7 @@
           "name": "displayTitle",
           "type": "string",
           "required": false,
-          "defaultExpression": "concat('Shelf ', name)",
+          "defaultExpression": "shelfTitle(name)",
           "ui": {
             "label": "Display title"
           }
@@ -525,6 +492,22 @@
           "ui": {
             "label": "Window length or -1"
           }
+        },
+        {
+          "name": "nameBadge",
+          "type": "string",
+          "derivedExpression": "labeling::badge(name)",
+          "ui": {
+            "label": "Name badge"
+          }
+        },
+        {
+          "name": "areaBandLabel",
+          "type": "string",
+          "derivedExpression": "labeling::areaBand(rows + cols)",
+          "ui": {
+            "label": "Area band"
+          }
         }
       ],
       "invariants": [
@@ -554,6 +537,19 @@
             "rows",
             "cols"
           ]
+        }
+      },
+      "composition": {
+        "collections": [
+          {
+            "name": "slots",
+            "concept": "ShelfSlot",
+            "childField": "shelfLayoutId",
+            "ownership": "owned"
+          }
+        ],
+        "metadata": {
+          "purpose": "P3b (Pigmentampas plan, 2026-10-07): the second cellGrid consumer -- a warehouse shelf map where each painted slot holds a catalogue entry. Square layout, board size from the root's rows/cols."
         }
       }
     },
@@ -788,6 +784,30 @@
       "access": {
         "read": "customerEmail == $user.id",
         "write": "customerEmail == $user.id || $user.isSystem"
+      },
+      "composition": {
+        "onCommit": "AuditWidgetOrderProcedure",
+        "onValidate": "ValidateWidgetOrderProcedure",
+        "collections": [
+          {
+            "name": "lines",
+            "concept": "WidgetOrderLine",
+            "childField": "widgetOrderId",
+            "ownership": "owned",
+            "orderBy": "sku",
+            "collections": [
+              {
+                "name": "notes",
+                "concept": "WidgetOrderLineNote",
+                "childField": "widgetOrderLineId",
+                "ownership": "owned"
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "purpose": "Second independent aggregate in the corpus; WmsOffice and its clone were the only ones. Depth-2 via lines->notes (REG-72, docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md)."
+        }
       }
     },
     {
@@ -1433,6 +1453,13 @@
           "ui": {
             "label": "Name"
           }
+        },
+        {
+          "name": "listedOn",
+          "type": "date",
+          "ui": {
+            "label": "Listed on"
+          }
         }
       ]
     },
@@ -1702,6 +1729,57 @@
             "to": "Committed"
           }
         ]
+      },
+      "composition": {
+        "collections": [
+          {
+            "name": "items",
+            "concept": "StockTransferItem",
+            "childField": "stockTransferId",
+            "ownership": "owned",
+            "collections": [
+              {
+                "name": "positions",
+                "concept": "StockTransferPosition",
+                "childField": "stockTransferItemId",
+                "ownership": "owned",
+                "lookupFields": [
+                  {
+                    "name": "maxQuantity",
+                    "query": "AvailableQuantityQuery",
+                    "joinField": "localId",
+                    "valueField": "disponivel"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "balances": [
+          {
+            "name": "OrigemDestinoBalance",
+            "collection": "items.positions",
+            "groupBy": [
+              "sku",
+              "validity"
+            ],
+            "discriminatorField": "role",
+            "leftValue": "Origem",
+            "rightValue": "Destino",
+            "quantityField": "quantity",
+            "message": "Faltam {delta} unidade(s) de {sku} (validade {validity}) no destino"
+          }
+        ],
+        "invariants": [
+          {
+            "name": "PositionWithinAvailable",
+            "expression": "items.all(i => i.positions.all(p => p.quantity <= p.maxQuantity))",
+            "message": "A quantidade de uma posicao nao pode exceder a quantidade disponivel no local"
+          }
+        ],
+        "metadata": {
+          "purpose": "Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): the fixture for the WmsOffice Movimento->MovimentoItem->MovimentoItemPosicao shape (root->items->positions, depth-2, already-working nesting) combined with the NEW grouped balance primitive (balances[], checklist P4/P5/B1-B4) and the NEW query-sourced per-row bound (items.positions.lookupFields[].maxQuantity, checklist H1/H2). groupBy is [sku, validity] since StockTransferItem carries both, matching WmsOffice's real per-product/per-validity balance requirement, not just a document-wide total."
+        }
       }
     },
     {
@@ -2900,6 +2978,15 @@
       }
     }
   ],
+  "functions": [
+    {
+      "name": "shelfTitle",
+      "description": "FORM P4-T2 (rung 2): the display title every shelf gets by default. Inlined into ShelfLayout.displayTitle's defaultExpression at compile time, so the behaviour probe 12-value-functions-events-audit still sees the evaluated string 'Shelf <name>'.",
+      "params": [ { "name": "label", "type": "string" } ],
+      "returns": "string",
+      "body": "concat('Shelf ', label)"
+    }
+  ],
   "sequences": [
     {
       "name": "orderNumber",
@@ -3174,136 +3261,14 @@
       "concept": "StockLocation",
       "where": "disponivel >= 0",
       "metadata": {
-        "purpose": "Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): backs StockTransferAggregate.items.positions.lookupFields[] (maxQuantity) -- run ONCE per aggregate load (AggregateRuntime.runLookupQueries), never per row and never with a runtime-bound parameter, since no query-execution path in the platform substitutes one into `where` today. Joined to position rows in memory by localId."
-      }
-    }
-  ],
-  "selectors": [
-    {
-      "name": "WidgetCatalogPicker",
-      "concept": "WidgetCatalogEntry",
-      "multiSelect": true,
-      "filters": [
-        "sku",
-        "displayName"
-      ],
-      "columns": [
-        "sku",
-        "displayName",
-        "discontinued"
-      ],
-      "orderBy": [
-        "sku"
-      ],
-      "filter": "discontinued == false",
-      "returnMapping": {
-        "sku": "sku"
-      },
-      "metadata": {
-        "purpose": "Coverage for selectors[] (declaration) and, since EDIT-18 (REAL_LIFT_PLAN_2026-09-03 package C2, boundary B16 Step 2), field.picker.selectorRef -- referenced by WidgetOrderLine.catalogEntryId and WidgetPriceListEntry.catalogEntryId below, proving one named selector's display/search/orderBy/filter resolve identically for two different referencing fields on two different concepts."
-      }
-    }
-  ],
-  "aggregates": [
-    {
-      "name": "ShelfLayoutAggregate",
-      "root": "ShelfLayout",
-      "collections": [
-        {
-          "name": "slots",
-          "concept": "ShelfSlot",
-          "childField": "shelfLayoutId",
-          "ownership": "owned"
-        }
-      ],
-      "metadata": {
-        "purpose": "P3b (Pigmentampas plan, 2026-10-07): the second cellGrid consumer -- a warehouse shelf map where each painted slot holds a catalogue entry. Square layout, board size from the root's rows/cols."
-      }
-    },
-    {
-      "name": "WidgetOrderAggregate",
-      "root": "WidgetOrder",
-      "onCommit": "AuditWidgetOrderProcedure",
-      "onValidate": "ValidateWidgetOrderProcedure",
-      "collections": [
-        {
-          "name": "lines",
-          "concept": "WidgetOrderLine",
-          "childField": "widgetOrderId",
-          "ownership": "owned",
-          "orderBy": "sku",
-          "collections": [
-            {
-              "name": "notes",
-              "concept": "WidgetOrderLineNote",
-              "childField": "widgetOrderLineId",
-              "ownership": "owned"
-            }
-          ]
-        }
-      ],
-      "metadata": {
-        "purpose": "Second independent aggregate in the corpus; WmsOffice and its clone were the only ones. Depth-2 via lines->notes (REG-72, docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md)."
-      }
-    },
-    {
-      "name": "StockTransferAggregate",
-      "root": "StockTransfer",
-      "collections": [
-        {
-          "name": "items",
-          "concept": "StockTransferItem",
-          "childField": "stockTransferId",
-          "ownership": "owned",
-          "collections": [
-            {
-              "name": "positions",
-              "concept": "StockTransferPosition",
-              "childField": "stockTransferItemId",
-              "ownership": "owned",
-              "lookupFields": [
-                {
-                  "name": "maxQuantity",
-                  "query": "AvailableQuantityQuery",
-                  "joinField": "localId",
-                  "valueField": "disponivel"
-                }
-              ]
-            }
-          ]
-        }
-      ],
-      "balances": [
-        {
-          "name": "OrigemDestinoBalance",
-          "collection": "items.positions",
-          "groupBy": [
-            "sku",
-            "validity"
-          ],
-          "discriminatorField": "role",
-          "leftValue": "Origem",
-          "rightValue": "Destino",
-          "quantityField": "quantity",
-          "message": "Faltam {delta} unidade(s) de {sku} (validade {validity}) no destino"
-        }
-      ],
-      "invariants": [
-        {
-          "name": "PositionWithinAvailable",
-          "expression": "items.all(i => i.positions.all(p => p.quantity <= p.maxQuantity))",
-          "message": "A quantidade de uma posicao nao pode exceder a quantidade disponivel no local"
-        }
-      ],
-      "metadata": {
-        "purpose": "Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): the fixture for the WmsOffice Movimento->MovimentoItem->MovimentoItemPosicao shape (root->items->positions, depth-2, already-working nesting) combined with the NEW grouped balance primitive (balances[], checklist P4/P5/B1-B4) and the NEW query-sourced per-row bound (items.positions.lookupFields[].maxQuantity, checklist H1/H2). groupBy is [sku, validity] since StockTransferItem carries both, matching WmsOffice's real per-product/per-validity balance requirement, not just a document-wide total."
+        "purpose": "Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): backs StockTransfer.items.positions.lookupFields[] (maxQuantity) -- run ONCE per aggregate load (AggregateRuntime.runLookupQueries), never per row and never with a runtime-bound parameter, since no query-execution path in the platform substitutes one into `where` today. Joined to position rows in memory by localId."
       }
     }
   ],
   "autoPanels": [
     {
       "name": "ShelfLayoutWorkbench",
-      "aggregate": "ShelfLayoutAggregate",
+      "aggregate": "ShelfLayout",
       "route": "/shelf-layouts",
       "metadata": {
         "purpose": "P3b: corpus witness for transaction.regions render \"cellGrid\" -- the slots collection painted as a square board sized by the root's rows/cols, palette from ActiveCatalogEntries. Also the witness for selection.layout grid: the workbench list renders root rows as cards."
@@ -3335,7 +3300,7 @@
     },
     {
       "name": "WidgetOrderWorkbench",
-      "aggregate": "WidgetOrderAggregate",
+      "aggregate": "WidgetOrder",
       "route": "/widget-orders",
       "metadata": {
         "purpose": "Coverage for autoPanels[] outside WmsOffice, and for the typed transaction.actions[] surface: inputFields (inline mini-form merged into the draft), applyTo (appendRow field mapping, with an action-level visibleWhen) and afterAction (a procedure that folds {draft, result} into a patched draft, subsuming applyTo)."
@@ -3397,7 +3362,7 @@
     },
     {
       "name": "WidgetOrderTypedActionsWorkbench",
-      "aggregate": "WidgetOrderAggregate",
+      "aggregate": "WidgetOrder",
       "route": "/widget-orders-typed",
       "metadata": {
         "purpose": "Move 7 W1 (docs/MOVE7_IMPLEMENTATION_SPEC.md): dsl-conformance-max witness for the TYPED transaction.actions/.visibleWhen/.bandPickers, alongside WidgetOrderWorkbench's existing coverage of the untyped, deprecated transaction.metadata equivalents just above -- both spellings still work this release, but a typo in this typed form now fails at schema time instead of silently doing nothing. lines.notes's visibleWhen (BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 4.3/B16 Step 1) is also the corpus witness for AND-composing a $ui.<name> predicate with a $root.<field> predicate in one expression."
@@ -3460,7 +3425,7 @@
     },
     {
       "name": "WidgetOrderNoPanelPickerWorkbench",
-      "aggregate": "WidgetOrderAggregate",
+      "aggregate": "WidgetOrder",
       "route": "/widget-orders-no-panel-picker",
       "metadata": {
         "purpose": "BOUNDARY_LIFT_PLAN_2026-09-02.md work package 1.1 (B19): dsl-conformance-max witness for a bandPickers entry with NO panel -- filter/multiSelect only, resolving a projection targeting the band's own collection concept (WidgetOrderLineNote) directly through the generic reference-lookup endpoint, instead of a hand-authored Selection panel. Its filter (Wave 4 4.3/B16 Step 1) is also the corpus witness for AND-composing a static clause with a $root.<field> reference, resolved client-side against the aggregate's root record (WidgetOrder) at request-build time."
@@ -3508,7 +3473,7 @@
     },
     {
       "name": "StockTransferWorkbench",
-      "aggregate": "StockTransferAggregate",
+      "aggregate": "StockTransfer",
       "route": "/stock-transfers",
       "metadata": {
         "purpose": "Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): the corpus witness for aggregate.balances[], aggregateCollection.lookupFields[] and workbenchAction.checkBalances -- combined with the already-covered depth-2 rendering (WidgetOrderWorkbench) and, new here, a concept lifecycle actually driving an Aggregate Workbench's editable/allowedActions state (checklist S2/S3: fields read-only and add-row/recalculate buttons hidden once StockTransfer reaches Committed)."
@@ -3781,187 +3746,6 @@
           "metadata": {
             "purpose": "W1.7 (NPDEV_ROADMAP_2026-09-12.md Wave 1): a UI-reachable entry point for an awaitEvent flow, so the browser gate can prove the 202/WAITING + execution.statusRoute-polling behaviour docs/UI_CONTRACT.md's 'a UI that shows Saved! on a 202 is lying' describes end-to-end. Bound to WidgetCatalogEntry rather than WidgetOrder (whose own PlaceWidgetOrder-routed create hits an intentionally-unbound generatedAction coverage step, ScoreWidgetOrderRisk) so creating the row this action needs stays a plain, uncomplicated write."
           }
-        }
-      ]
-    }
-  ],
-  "documents": [
-    {
-      "name": "WidgetOrderSummary",
-      "concept": "WidgetOrder",
-      "title": "Widget order summary",
-      "pageSize": "A4",
-      "marginMm": 18,
-      "metadata": {
-        "purpose": "Coverage for documents[]: only superuser-admin-console declared one."
-      }
-    },
-    {
-      "name": "WidgetOrderInvoice",
-      "concept": "WidgetOrder",
-      "aggregate": "WidgetOrderAggregate",
-      "title": "Widget order invoice",
-      "pageSize": "A4",
-      "marginMm": 15,
-      "logo": {
-        "field": "companyLogo"
-      },
-      "bands": [
-        {
-          "name": "header",
-          "kind": "header",
-          "label": "Order",
-          "fields": [
-            {
-              "field": "orderNumber",
-              "ui": {
-                "label": "Order number"
-              }
-            },
-            {
-              "field": "customerEmail",
-              "ui": {
-                "label": "Customer"
-              }
-            },
-            {
-              "field": "status",
-              "ui": {
-                "label": "Status"
-              }
-            },
-            {
-              "field": "requestedShipDate",
-              "ui": {
-                "label": "Requested ship date"
-              }
-            }
-          ]
-        },
-        {
-          "name": "lines",
-          "kind": "lineItems",
-          "collection": "lines",
-          "label": "Line items",
-          "fields": [
-            {
-              "field": "sku",
-              "ui": {
-                "label": "SKU"
-              }
-            },
-            {
-              "field": "quantity",
-              "ui": {
-                "label": "Qty"
-              }
-            },
-            {
-              "field": "unitPrice",
-              "ui": {
-                "label": "Unit price"
-              }
-            },
-            {
-              "field": "lineTotal",
-              "ui": {
-                "label": "Line total"
-              }
-            }
-          ]
-        }
-      ],
-      "metadata": {
-        "purpose": "R5.7 coverage: an aggregate-bound document with a header band, a lineItems band (WidgetOrderAggregate's 'lines' collection), and a logo bound to a stored image field -- the canonical invoice shape (header + line-item table + logo)."
-      }
-    },
-    {
-      "name": "WidgetCatalogPriceReport",
-      "concept": "WidgetCatalogEntry",
-      "kind": "list",
-      "title": "Widget catalog by owner",
-      "query": "CatalogEntriesOwnedBy",
-      "columns": [
-        {
-          "field": "sku",
-          "label": "SKU"
-        },
-        {
-          "field": "displayName",
-          "label": "Name"
-        },
-        {
-          "field": "unitPrice",
-          "label": "Unit price",
-          "total": "sum"
-        },
-        {
-          "field": "internalNotes",
-          "label": "Internal notes"
-        }
-      ],
-      "groupBy": [
-        "ownerEmail"
-      ],
-      "subtotals": true,
-      "grandTotal": true,
-      "metadata": {
-        "purpose": "REP-1 coverage: a multi-record report (kind list) over a named query, grouped with per-group subtotals and a grand total. internalNotes carries field-level access.read, so it must vanish for a viewer who owns no row -- and no figure may be derived from data the viewer cannot read."
-      }
-    },
-    {
-      "name": "WidgetOrderLinesByStatus",
-      "concept": "WidgetOrder",
-      "kind": "list",
-      "title": "Widget orders by status",
-      "columns": [
-        {
-          "field": "orderNumber",
-          "label": "Order"
-        },
-        {
-          "field": "customerEmail",
-          "label": "Customer"
-        },
-        {
-          "field": "lineCount",
-          "label": "Lines",
-          "total": "sum"
-        }
-      ],
-      "groupBy": [
-        "status"
-      ],
-      "subtotals": true,
-      "grandTotal": true,
-      "metadata": {
-        "purpose": "REP-1 coverage: a plain-concept report (no query) over WidgetOrder, whose access.read row rule must scope every row, subtotal and the grand total to the viewer."
-      }
-    }
-  ],
-  "guidePages": [
-    {
-      "name": "WidgetOrderGuide",
-      "default": true,
-      "regions": {
-        "right": {
-          "enabled": true
-        }
-      },
-      "gadgets": [
-        {
-          "name": "orderHelp",
-          "type": "page-fragment",
-          "title": "How orders work",
-          "url": "/npdev-help/widget-order.html"
-        },
-        {
-          "name": "unitsShareByWarehouse",
-          "type": "donut",
-          "title": "Shipped units by warehouse",
-          "query": "ShippedUnitsByWarehouseMonth",
-          "x": "warehouseId",
-          "y": "totalUnits"
         }
       ]
     }
@@ -5106,6 +4890,87 @@
       ]
     },
     {
+      "name": "AwaitPaymentInRound",
+      "description": "REG-340: the shape of ride-hailing's RequestRide offer wait -- a timed awaitEvent matched on a payload field (not the correlation), inside a forEach round.",
+      "concept": "WidgetOrder",
+      "steps": [
+        {
+          "name": "rounds",
+          "type": "forEach",
+          "collection": "$input.slots",
+          "itemKey": "slot",
+          "maxLoopIterations": 3,
+          "steps": [
+            {
+              "name": "await-payment-in-round",
+              "type": "awaitEvent",
+              "awaitEvent": "PaymentConfirmed",
+              "awaitRef": "paid",
+              "match": {
+                "correlation": false,
+                "payload": {
+                  "reference": "$input.reference"
+                }
+              },
+              "timeout": 20,
+              "task": {
+                "title": "Confirm payment ${input.reference}",
+                "description": "REG-340: a human task on the wait, as ride-hailing's offer has.",
+                "assignee": {
+                  "roles": [
+                    "WarehouseManager"
+                  ]
+                },
+                "outcomeField": "decision",
+                "outcomes": [
+                  {
+                    "value": "APPROVED",
+                    "label": "Approve"
+                  },
+                  {
+                    "value": "REJECTED",
+                    "label": "Reject"
+                  }
+                ],
+                "record": "$input"
+              },
+              "onTimeout": [
+                {
+                  "name": "mark-timed-out",
+                  "type": "set",
+                  "value": "timed-out",
+                  "output": "outcome"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "return-round-outcome",
+          "type": "return",
+          "value": "$input"
+        }
+      ]
+    },
+    {
+      "name": "ConfirmPaymentByFlow",
+      "description": "REG-340: a second flow resumes a parked AwaitPaymentConfirmation by emitting PaymentConfirmed under the same correlation id.",
+      "concept": "WidgetOrder",
+      "steps": [
+        {
+          "name": "emit-payment-confirmed",
+          "type": "emitEvent",
+          "event": "PaymentConfirmed",
+          "from": "$input"
+        },
+        {
+          "name": "return-emitted",
+          "type": "return",
+          "value": "$input"
+        }
+      ]
+    },
+    {
       "name": "AwaitCatalogEntryApproval",
       "concept": "WidgetCatalogEntry",
       "steps": [
@@ -5695,7 +5560,7 @@
     },
     {
       "name": "AuditWidgetOrderProcedure",
-      "description": "Coverage for aggregate.onCommit + the patchConcept procedure step (Move 4, docs/MOVE4_CROSS_RECORD_WRITE_PLAN.md). Runs after WidgetOrderAggregate commits (input is the freshly reloaded tree) and patches a SIBLING record -- WidgetOrderAudit, outside the aggregate's own tree -- with the order's current lineCount/status, preserving every other field on that audit row. set values resolve like every other *Ref field: a literal by default, a leading '$' resolves against procedure state.",
+      "description": "Coverage for aggregate.onCommit + the patchConcept procedure step (Move 4, docs/MOVE4_CROSS_RECORD_WRITE_PLAN.md). Runs after WidgetOrder commits (input is the freshly reloaded tree) and patches a SIBLING record -- WidgetOrderAudit, outside the aggregate's own tree -- with the order's current lineCount/status, preserving every other field on that audit row. set values resolve like every other *Ref field: a literal by default, a leading '$' resolves against procedure state.",
       "expose": "ui",
       "steps": [
         {
@@ -5977,6 +5842,303 @@
     },
     {
       "$ref": "fragments/auditLog.json"
+    }
+  ],
+  "backOffice": {
+    "defaultRoute": "WidgetOrder",
+    "navigation": [
+      {
+        "label": "Widget Orders",
+        "target": "WidgetOrder",
+        "group": "Operations"
+      },
+      {
+        "label": "Widget Catalog",
+        "target": "WidgetCatalogEntry",
+        "group": "Operations"
+      },
+      {
+        "label": "Widget Showcase",
+        "target": "WidgetShowcase",
+        "group": "Operations"
+      },
+      {
+        "label": "Reference Data"
+      }
+    ],
+    "pages": [
+      {
+        "name": "WidgetOrderGuide",
+        "default": true,
+        "regions": {
+          "right": {
+            "enabled": true
+          }
+        },
+        "gadgets": [
+          {
+            "name": "orderHelp",
+            "type": "page-fragment",
+            "title": "How orders work",
+            "url": "/npdev-help/widget-order.html"
+          },
+          {
+            "name": "unitsShareByWarehouse",
+            "type": "donut",
+            "title": "Shipped units by warehouse",
+            "query": "ShippedUnitsByWarehouseMonth",
+            "x": "warehouseId",
+            "y": "totalUnits"
+          }
+        ]
+      }
+    ],
+    "locale": "en-US",
+    "strings": {
+      "workbench.saved": "Order saved"
+    }
+  },
+  "experiences": [
+    {
+      "name": "warehouse",
+      "title": "Warehouse",
+      "for": ["WarehouseManager"],
+      "device": "both",
+      "theme": "dark",
+      "backOffice": true,
+      "home": "suppliers",
+      "navigation": [
+        { "screen": "suppliers", "label": "Suppliers", "icon": "list", "badge": "count('WidgetSupplier')" },
+        { "screen": "place-order", "label": "New order", "icon": "plus", "badge": "count('WidgetOrder', status == 'NEW')" },
+        { "screen": "warehouse-hint", "label": "Tips", "icon": "bell", "badge": "count('WidgetSupplier', listedOn >= today())" }
+      ]
+    }
+  ],
+  "screens": [
+    {
+      "name": "warehouse-hint",
+      "title": "Warehouse tips",
+      "kind": "custom",
+      "component": "warehouse-hint"
+    },
+    {
+      "name": "suppliers",
+      "title": "Suppliers",
+      "kind": "list",
+      "concept": "WidgetSupplier",
+      "where": "displayName != ''",
+      "orderBy": "displayName",
+      "live": true,
+      "columns": ["supplierCode", { "value": "displayName", "label": "Name" }],
+      "empty": { "text": "No suppliers yet." }
+    },
+    {
+      "name": "supplier-detail",
+      "title": "Supplier",
+      "kind": "detail",
+      "concept": "WidgetSupplier",
+      "pick": "first",
+      "fields": ["supplierCode", { "value": "displayName", "label": "Name" }],
+      "actions": [
+        { "label": "Run the UI-only check", "flow": "OneFlowUiOnly", "visibleWhen": "$row.displayName != ''" }
+      ]
+    },
+    {
+      "name": "place-order",
+      "title": "New order",
+      "kind": "form",
+      "visibleWhen": "$user.roles.contains('WAREHOUSEMANAGER')",
+      "concept": "WidgetOrder",
+      "fields": ["customerEmail", "requestedShipDate"],
+      "actions": [
+        {
+          "label": "Place order",
+          "flow": "PlaceWidgetOrder",
+          "style": "primary",
+          "confirm": "Place this order?",
+          "input": { "customerEmail": "$form.customerEmail", "status": "'NEW'", "lineCount": "0" },
+          "then": "suppliers"
+        }
+      ]
+    },
+    {
+      "name": "WidgetCatalogPicker",
+      "kind": "picker",
+      "title": "Catalog entries",
+      "concept": "WidgetCatalogEntry",
+      "multiSelect": true,
+      "filters": [
+        "sku",
+        "displayName"
+      ],
+      "columns": [
+        "sku",
+        "displayName",
+        "discontinued"
+      ],
+      "returnMapping": {
+        "sku": "sku"
+      },
+      "orderBy": [
+        "sku"
+      ],
+      "where": "discontinued == false"
+    },
+    {
+      "name": "WidgetOrderSummary",
+      "kind": "document",
+      "concept": "WidgetOrder",
+      "title": "Widget order summary",
+      "pageSize": "A4",
+      "marginMm": 18,
+      "metadata": {
+        "purpose": "Coverage for documents[]: only superuser-admin-console declared one."
+      }
+    },
+    {
+      "name": "WidgetOrderInvoice",
+      "kind": "document",
+      "concept": "WidgetOrder",
+      "aggregate": "WidgetOrder",
+      "title": "Widget order invoice",
+      "pageSize": "A4",
+      "marginMm": 15,
+      "logo": {
+        "field": "companyLogo"
+      },
+      "bands": [
+        {
+          "name": "header",
+          "kind": "header",
+          "label": "Order",
+          "fields": [
+            {
+              "field": "orderNumber",
+              "ui": {
+                "label": "Order number"
+              }
+            },
+            {
+              "field": "customerEmail",
+              "ui": {
+                "label": "Customer"
+              }
+            },
+            {
+              "field": "status",
+              "ui": {
+                "label": "Status"
+              }
+            },
+            {
+              "field": "requestedShipDate",
+              "ui": {
+                "label": "Requested ship date"
+              }
+            }
+          ]
+        },
+        {
+          "name": "lines",
+          "kind": "lineItems",
+          "collection": "lines",
+          "label": "Line items",
+          "fields": [
+            {
+              "field": "sku",
+              "ui": {
+                "label": "SKU"
+              }
+            },
+            {
+              "field": "quantity",
+              "ui": {
+                "label": "Qty"
+              }
+            },
+            {
+              "field": "unitPrice",
+              "ui": {
+                "label": "Unit price"
+              }
+            },
+            {
+              "field": "lineTotal",
+              "ui": {
+                "label": "Line total"
+              }
+            }
+          ]
+        }
+      ],
+      "metadata": {
+        "purpose": "R5.7 coverage: an aggregate-bound document with a header band, a lineItems band (WidgetOrder's 'lines' collection), and a logo bound to a stored image field -- the canonical invoice shape (header + line-item table + logo)."
+      }
+    },
+    {
+      "name": "WidgetCatalogPriceReport",
+      "kind": "document",
+      "concept": "WidgetCatalogEntry",
+      "report": true,
+      "title": "Widget catalog by owner",
+      "query": "CatalogEntriesOwnedBy",
+      "printColumns": [
+        {
+          "field": "sku",
+          "label": "SKU"
+        },
+        {
+          "field": "displayName",
+          "label": "Name"
+        },
+        {
+          "field": "unitPrice",
+          "label": "Unit price",
+          "total": "sum"
+        },
+        {
+          "field": "internalNotes",
+          "label": "Internal notes"
+        }
+      ],
+      "groupBy": [
+        "ownerEmail"
+      ],
+      "subtotals": true,
+      "grandTotal": true,
+      "metadata": {
+        "purpose": "REP-1 coverage: a multi-record report (kind list) over a named query, grouped with per-group subtotals and a grand total. internalNotes carries field-level access.read, so it must vanish for a viewer who owns no row -- and no figure may be derived from data the viewer cannot read."
+      }
+    },
+    {
+      "name": "WidgetOrderLinesByStatus",
+      "kind": "document",
+      "concept": "WidgetOrder",
+      "report": true,
+      "title": "Widget orders by status",
+      "printColumns": [
+        {
+          "field": "orderNumber",
+          "label": "Order"
+        },
+        {
+          "field": "customerEmail",
+          "label": "Customer"
+        },
+        {
+          "field": "lineCount",
+          "label": "Lines",
+          "total": "sum"
+        }
+      ],
+      "groupBy": [
+        "status"
+      ],
+      "subtotals": true,
+      "grandTotal": true,
+      "metadata": {
+        "purpose": "REP-1 coverage: a plain-concept report (no query) over WidgetOrder, whose access.read row rule must scope every row, subtotal and the grand total to the viewer."
+      }
     }
   ],
   "metadata": {

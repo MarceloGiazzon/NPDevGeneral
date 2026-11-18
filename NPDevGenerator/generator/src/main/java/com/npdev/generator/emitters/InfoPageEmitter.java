@@ -174,6 +174,10 @@ public final class InfoPageEmitter extends AbstractEmitter {
             if (concept == null || concept.getName() == null) {
                 continue;
             }
+            if (concept.isSystem()) {
+                // REG-339: a system concept has no REST route, so the info page must not advertise one.
+                continue;
+            }
             String tableName = concept.getTableName();
             if (tableName == null || tableName.isBlank()) {
                 continue;

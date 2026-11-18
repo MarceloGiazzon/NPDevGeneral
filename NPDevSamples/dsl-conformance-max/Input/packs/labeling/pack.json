@@ -101,20 +101,22 @@
       }
     }
   ],
-  "guidePages": [
-    {
-      "name": "LabelingOverview",
-      "gadgets": [
-        {
-          "name": "labelCount",
-          "type": "kpi",
-          "title": "Labels",
-          "query": "LabelsByColor",
-          "y": "labelCount"
-        }
-      ]
-    }
-  ],
+  "backOffice": {
+    "pages": [
+      {
+        "name": "LabelingOverview",
+        "gadgets": [
+          {
+            "name": "labelCount",
+            "type": "kpi",
+            "title": "Labels",
+            "query": "LabelsByColor",
+            "y": "labelCount"
+          }
+        ]
+      }
+    ]
+  },
   "queries": [
     {
       "name": "LabelsByColor",
@@ -128,6 +130,22 @@
           "fn": "count"
         }
       ]
+    }
+  ],
+  "functions": [
+    {
+      "name": "badge",
+      "description": "FORM P4-T2 (rung 2): a pack-contributed pure function. A consumer calls it as labeling::badge(x); the call is inlined into the consumer's expression at resolve time.",
+      "params": [ { "name": "label", "type": "string" } ],
+      "returns": "string",
+      "body": "concat('[', uppercase(label), ']')"
+    },
+    {
+      "name": "areaBand",
+      "description": "Argument-substitution witness: the body multiplies its parameter, so a call with a compound argument (rows + cols) must keep its grouping.",
+      "params": [ { "name": "cells", "type": "integer" } ],
+      "returns": "string",
+      "body": "cells * 2 > 20 ? 'wide' : 'narrow'"
     }
   ],
   "seeds": [

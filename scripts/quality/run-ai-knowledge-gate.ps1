@@ -381,6 +381,14 @@ try {
         $failures += "the browser expression engine disagrees with the shared fixture: see scripts/quality/check-client-expr-parity.py output above -- fix npdev-expr.js.mustache to match ComputedExpression, or correct the fixture (NPDevContract/dsl/src/test/resources/expr-parity.json) and the Java engine together"
     }
 
+    # FORM P5-T3: the experience client (npdev-templates/experience) -- files.json matches the directory, no markup
+    # sinks, and its node behaviour test (stub DOM + fetch, no npm). Skips without node locally; CI=true fails.
+    Write-Host "Checking the experience client contract and behaviour test..."
+    & $py "scripts/quality/check-experience-client.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "the experience client check failed: see scripts/quality/check-experience-client.py output above (files.json vs the directory, a markup sink, or a failing node test in NPDevGenerator/generator/src/test/js/experience-client.test.mjs)"
+    }
+
     # ENF-1: coverage proves a DSL keyword APPEARS in a model; this proves a runtime probe WITNESSES that the
     # booted app obeys it (or that the gap is allowlisted with a reason and a ledger id, ratcheted down).
     # The probes themselves boot an app, so they run in scripts/quality/run-behavior-probes.ps1 (T1/T2).
@@ -397,6 +405,14 @@ try {
     & $py "scripts/quality/check-concept-map.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "the concept map and model.schema.json disagree: see scripts/quality/check-concept-map.py output above -- add or fix the key in scripts/policy/concept-map.json (ADR-0013)"
+    }
+
+    # FORM P4-T1 (extension ladder): the DSL keyword budget. The number of schema keyword slots may only fall; a new
+    # slot needs an admission record (scripts/policy/dsl-keyword-admissions/) answering the five admission questions.
+    Write-Host "Checking the DSL keyword budget (no new keyword without an admission record)..."
+    & $py "scripts/quality/check-dsl-keyword-budget.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "the DSL keyword budget was exceeded or is stale: see scripts/quality/check-dsl-keyword-budget.py output above and scripts/policy/dsl-keyword-budget.json (add an admission record, or lower frozenCount)"
     }
 
     # ENGM-1: an engine support claim may only stand on a CI job that exists. The matrix lists engines x capabilities,

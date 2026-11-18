@@ -28,7 +28,7 @@
   "calls": [
     "/api/public/concepts/Cap",
     "/api/public/concepts/Mosaic",
-    "/api/public/aggregate/MosaicAggregate",
+    "/api/public/aggregate/Mosaic",
     "/api/public/concepts/Cap/{id}/image/image"
   ],
   "slotOf": null,

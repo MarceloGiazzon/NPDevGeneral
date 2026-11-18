@@ -1,0 +1,39 @@
+{
+ "$comment": "FORM P5 admission, 2026-11-18.",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "screens[] kind custom + component",
+ "slots": [
+  "screen.component"
+ ],
+ "rung": 0,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-18",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "kind custom mounts the app's own region by name"
+  },
+  "notLower": {
+   "value": true,
+   "why": "what a hand-written page draws is app code the platform cannot generate; the platform provides only the registry, the script load and the narrow api"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "NPDevSamples/dsl-conformance-max"
+   ],
+   "note": "ONE APP ONLY: dsl-conformance-max `warehouse-hint` (web/regions/warehouse-hint.js), added 2026-11-18. The keyword had a validator and no renderer until custom.js was written the same day."
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevSamples/dsl-conformance-max/behavior-probes/19-experience-routes.json",
+   "note": "probe 19 proves the region file is served (/regions/warehouse-hint.js) and the experience now has 4 screens; ExperienceValidationTest requires component on custom and refuses it elsewhere; experience-client.test.mjs mounts a region with the frozen api and rejects a component that never registers. The mount in a REAL browser has NOT been driven."
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "Your own page (`kind:\"custom\"`): `\"component\":\"<name>\"` mounts `web/regions/<name>.js`, which calls `window.npdev.regions.register(\"<name>\",{mount(el,api)})`; the api is `{screen,user,get(url),refresh()}`."
+  }
+ },
+ "replaces": [],
+ "budgetDelta": 1
+}

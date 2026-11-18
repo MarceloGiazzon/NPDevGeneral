@@ -98,7 +98,7 @@ public class BusinessUiEmitterLocaleManifestTest {
     private static final String PORTUGUESE_APP = """
             {
               "namespace": "locale.pt", "dslVersion": "3.0.0", "version": "1.0",
-              "settings": { "locale": "pt-BR" },
+              "backOffice": { "locale": "pt-BR" },
               "concepts": [
                 { "name": "Note", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
               ]

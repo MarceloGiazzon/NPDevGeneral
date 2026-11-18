@@ -353,6 +353,9 @@
     "scripts/quality/check-concept-map.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-dsl-keyword-budget.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-config-schema.py": {
       "invocation": "ci-gate"
     },
@@ -396,6 +399,9 @@
       "invocation": "ci-gate"
     },
     "scripts/quality/check-dsl-behavior-witness.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-experience-client.py": {
       "invocation": "ci-gate"
     },
     "scripts/quality/check-dsl-conformance-generates.py": {

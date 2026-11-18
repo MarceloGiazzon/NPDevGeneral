@@ -96,17 +96,12 @@ final class PanelValidation {
             Set.of("conceptquery", "conceptmutation", "procedure", "flow");
 
     static void validateSelectors(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors, List<String> warnings) {
+        // FORM P5-T9a: a selector is a screens[] entry of kind "picker" (ModelAst.getSelectors() derives them).
+        // Duplicate names and the concept's existence are screen-level rules, reported once by
+        // ExperienceValidation; what stays here is the selectorRef -> picker-screen resolution below.
         Map<String, String> selectorNamesByNormalized = new HashMap<>();
         for (SelectorAst selector : modelAst.getSelectors()) {
-            String here = "Selector " + selector.name();
-            if (selectorNamesByNormalized.put(normalize(selector.name()), selector.name()) != null) {
-                errors.add(here + ": duplicate selector name");
-            }
-            if (!hasText(selector.concept())) {
-                errors.add(here + ": concept is required");
-            } else if (!entitiesByLower.containsKey(normalize(selector.concept()))) {
-                errors.add(here + ": concept not found: " + selector.concept());
-            }
+            selectorNamesByNormalized.putIfAbsent(normalize(selector.name()), selector.name());
         }
         validateSelectorReferences(modelAst, selectorNamesByNormalized, errors, warnings);
     }
@@ -123,7 +118,7 @@ final class PanelValidation {
     private static void validateSelectorReferences(
             ModelAst modelAst, Map<String, String> selectorNamesByNormalized, List<String> errors, List<String> warnings) {
         // No early return on an empty selectorNamesByNormalized: a selectorRef declared anywhere
-        // while zero selectors[] exist is STILL an undeclared-selector error, not a no-op.
+        // while zero picker screens exist is STILL an undeclared-selector error, not a no-op.
         Set<String> referenced = new HashSet<>();
         for (ConceptAst concept : modelAst.getConcepts()) {
             for (FieldAst field : concept.getFields()) {
@@ -148,7 +143,7 @@ final class PanelValidation {
         }
         for (Map.Entry<String, String> entry : selectorNamesByNormalized.entrySet()) {
             if (!referenced.contains(entry.getKey())) {
-                warnings.add("Selector " + entry.getValue() + ": declared but not referenced by any "
+                warnings.add("Picker screen " + entry.getValue() + ": declared but not referenced by any "
                         + "field.picker.selectorRef or transaction.bandPickers.*.selectorRef -- suggestedFix: "
                         + "reference it from a picker, or remove the unused declaration");
             }
@@ -163,8 +158,8 @@ final class PanelValidation {
         }
         String normalized = normalize(selectorRef);
         if (!selectorNamesByNormalized.containsKey(normalized)) {
-            errors.add(label + " names undeclared selector '" + selectorRef
-                    + "' -- suggestedFix: declare it in selectors[], or choose one of "
+            errors.add(label + " names undeclared picker screen '" + selectorRef
+                    + "' -- suggestedFix: declare it in screens[] as {\"kind\": \"picker\"}, or choose one of "
                     + (selectorNamesByNormalized.isEmpty() ? "none declared" : new TreeSet<>(selectorNamesByNormalized.values())));
             return;
         }
@@ -1471,7 +1466,7 @@ final class PanelValidation {
         if (hasText(appShell.getDefaultRoute())
                 && !entitiesByLower.containsKey(normalize(appShell.getDefaultRoute()))
                 && !panelNames.contains(normalize(appShell.getDefaultRoute()))) {
-            errors.add("appShell.defaultRoute: '" + appShell.getDefaultRoute()
+            errors.add("backOffice.defaultRoute: '" + appShell.getDefaultRoute()
                     + "' does not resolve to a declared concept or Panel"
                     + " -- suggestedFix: point defaultRoute at a declared concept name or Panel name");
         }
@@ -1481,7 +1476,7 @@ final class PanelValidation {
             if (hasText(target)
                     && !entitiesByLower.containsKey(normalize(target))
                     && !panelNames.contains(normalize(target))) {
-                errors.add("appShell.navigation[" + index + "] (\"" + item.getLabel() + "\"): target '"
+                errors.add("backOffice.navigation[" + index + "] (\"" + item.getLabel() + "\"): target '"
                         + target + "' does not resolve to a declared concept or Panel"
                         + " -- suggestedFix: point this item's target at a declared concept name or"
                         + " Panel name, or remove target to make it a group-header-only row");

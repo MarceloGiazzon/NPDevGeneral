@@ -477,8 +477,16 @@ public final class QueryPredicateGrammar {
                 }
                 throw refuse(where, "an expression cannot be pushed down into a query where");
             }
-            case "call":
-                throw refuse(where, "function '" + node.get("name") + "' cannot be pushed down into a query where");
+            case "call": {
+                String function = String.valueOf(node.get("name")).toLowerCase(java.util.Locale.ROOT);
+                Object callArgs = node.get("args");
+                boolean noArguments = callArgs instanceof List<?> list && list.isEmpty();
+                if (noArguments && CLOCK_FUNCTIONS.contains(function)) {
+                    return new Operand.Lit(new PredicateLiteral.Clock(function));
+                }
+                throw refuse(where, "function '" + node.get("name") + "' cannot be pushed down into a query where"
+                        + " (only today() and now() can be, as a value to compare a field with)");
+            }
             default:
                 throw refuse(where, "a " + kindName(kind) + " cannot be pushed down into a query where");
         }
@@ -658,6 +666,15 @@ public final class QueryPredicateGrammar {
         record UserRef(String reference) implements PredicateLiteral {
         }
 
+        /**
+         * REG-341: {@code today()} / {@code now()} on the right-hand side of a comparison
+         * ({@code createdAt >= today()}). Like {@link UserRef} it is resolved by the caller every time the
+         * predicate is compiled for a request (kernel {@code ConceptQueryPredicateCompiler}), never frozen here:
+         * {@code function} is the lower-case name.
+         */
+        record Clock(String function) implements PredicateLiteral {
+        }
+
         /** The right-hand side of an {@link PredicateOperator#IN} clause. */
         record Values(List<PredicateLiteral> values) implements PredicateLiteral {
             public Values {
@@ -701,6 +718,9 @@ public final class QueryPredicateGrammar {
      */
     public record PredicateClause(GroupByJoinGrammar.Target path, PredicateOperator operator, PredicateLiteral literal) {
     }
+
+    /** The zero-argument date functions a {@code where} may compare a field with ({@link PredicateLiteral.Clock}). */
+    public static final java.util.Set<String> CLOCK_FUNCTIONS = java.util.Set.of("today", "now");
 
     /** The caller values a v2 {@code where} may name on the right-hand side ({@link PredicateLiteral.UserRef}). */
     public static final java.util.Set<String> USER_REFERENCES =

@@ -17,6 +17,9 @@ Stages (each assumes the earlier ones ran in the SAME invocation -- `setup` is a
   cancel   objective 6b: cancellation flags + rates
   notify   objective 6c: in-app notifications (+ push gateway when --push is given)
   route    objective 4: road distance via the OSRM mock, fallback to estimate
+  experience  FORM P5-T8: the screens of the three experiences (rider, driver, dispatch) over REST: /api/x/me lands each role
+              in its experience; the ui flows behind the buttons (RequestRide, AcceptRideOffer, DeclineRideOffer, StartTrip,
+              CompleteRide, RateDriver, SetDriverStatus) work for the right user and are refused for the wrong one
 
 Endpoints are the platform's (verified 2026-11-11 from the source; re-check in SPIKE S-01 if a call 404s):
   POST /api/auth/bootstrap-admin, POST /api/auth/login, POST /api/auth/create-user (roleNames[])
@@ -455,9 +458,256 @@ def stage_route(r: Run):
     r.check("route: no route -> falls back to 'estimate' (straight line x 1.3)", ride0.get("distanceMethod") == "estimate", ride0)
 
 
+def xflow(r: Run, name, payload, who):
+    """Starts a flow the way a screen button does (POST /api/x/flows/<flow>/execute)."""
+    return r.call("POST", f"/api/x/flows/{name}/execute", payload, who)
+
+
+def x_eval(r: Run, who, exprs):
+    s, b = r.call("POST", "/api/x/eval", {"expressions": exprs}, who)
+    return b.get("values", {}) if s == 200 else {}
+
+
+def rows_of(lst):
+    items = (lst.get("content") or lst.get("items") or []) if isinstance(lst, dict) else (lst if isinstance(lst, list) else [])
+    return [i.get("data", i) for i in items]
+
+
+def my_rides(r: Run, who):
+    return rows_of(r.call("GET", r.coll("rides"), None, who)[1])
+
+
+def offers_of(r: Run, who, ride_id=None):
+    rows = rows_of(r.call("GET", r.coll("ride_offers"), None, who)[1])
+    return [o for o in rows if ride_id is None or o.get("ride") == ride_id]
+
+
+def wait_offer(r: Run, who, ride_id, seconds=10):
+    end = time.time() + seconds
+    while time.time() < end:
+        found = [o for o in offers_of(r, who, ride_id) if o.get("status") == "OFFERED"]
+        if found:
+            return found[0]
+        time.sleep(1)
+    return None
+
+
+def x_request(r: Run, rider):
+    """The ride-now form: RequestRide through the screen route with only the two points. Returns (status, body, ride)."""
+    before = {x["id"] for x in my_rides(r, rider)}
+    s, b = xflow(r, "RequestRide", {"pickupLat": -23.5505, "pickupLng": -46.6339, "dropoffLat": -23.5614, "dropoffLng": -46.6544}, rider)
+    fresh = [x for x in my_rides(r, rider) if x["id"] not in before]
+    ride = fresh[-1] if fresh else {}
+    if ride.get("id"):
+        r.seen_rides.add(ride["id"])
+    return s, b, ride
+
+
+def stage_experience(r: Run):
+    # ---- clean slate: no open offers, every driver OFFLINE and parked where stage setup put them
+    end = time.time() + 30
+    while time.time() < end and any(o.get("status") == "OFFERED" for o in offers_of(r, "disp1")):
+        time.sleep(1)
+    spots = {"driver1": (-23.5520, -46.6350), "driver2": (-23.5600, -46.6400), "driver3": (-23.5700, -46.6500)}
+    for d, (lat, lng) in spots.items():
+        r.set_driver(d, lat, lng, "OFFLINE")
+    r.update("riders", r.ids["rider1"], {"paymentToken": "tok_ok"})
+    r.update("riders", r.ids["rider2"], {"paymentToken": "tok_ok"})
+
+    # ---- 1. routing: every role lands in its own experience, ADMIN keeps the back office
+    for who, want, home in (("rider1", "rider", "ride-now"), ("driver1", "driver", "offers"), ("disp1", "dispatch", "dispatch-board")):
+        s, b = r.call("GET", "/api/x/me", None, who)
+        exp = (b or {}).get("experience") or {}
+        r.check(f"experience: /api/x/me puts {who} in the '{want}' experience (home {home})",
+                s == 200 and exp.get("name") == want and exp.get("home") == home, f"{s} {str(b)[:300]}")
+    s, b = r.call("GET", "/api/x/me", None, "rider1")
+    names = [x.get("name") for x in (b or {}).get("screens", [])]
+    r.check("experience: the rider's screens are the rider's (no offers/dispatch-board)",
+            "ride-now" in names and "my-ride" in names and "offers" not in names and "dispatch-board" not in names, names)
+    s, b = r.call("GET", "/api/x/me", None, "driver1")
+    names = [x.get("name") for x in (b or {}).get("screens", [])]
+    r.check("experience: the driver's screens include the inbox and the ride", "offers" in names and "active-ride" in names, names)
+    s, b = r.call("GET", "/api/x/me", None, "admin")
+    r.check("experience: ADMIN has no experience (keeps the generated back office)", s == 200 and (b or {}).get("experience") is None, f"{s} {str(b)[:200]}")
+
+    # ---- 2. who may start which flow from a screen
+    s, _ = xflow(r, "AcceptRideOffer", {"offerId": str(uuid.uuid4())}, "rider1")
+    r.check("experience: a rider can NOT start AcceptRideOffer (404, not on any rider screen)", s == 404, s)
+    s, _ = xflow(r, "SetDriverStatus", {"id": r.ids["driver1"], "status": "AVAILABLE"}, "rider1")
+    r.check("experience: a rider can NOT start SetDriverStatus (404)", s == 404, s)
+    s, _ = xflow(r, "RateDriver", {"id": str(uuid.uuid4()), "driverStars": 5}, "driver1")
+    r.check("experience: a driver can NOT start RateDriver (404)", s == 404, s)
+    s, _ = xflow(r, "AcceptRideOffer", {"offerId": str(uuid.uuid4())}, "disp1")
+    r.check("experience: the dispatcher can NOT start AcceptRideOffer (404)", s == 404, s)
+    s, _ = xflow(r, "AcceptRideOffer", {"offerId": str(uuid.uuid4())}, "admin")
+    r.check("experience: ADMIN (no experience) can NOT start a screen flow (404)", s == 404, s)
+    s, _ = r.flow("AcceptRideOffer", {"offerId": str(uuid.uuid4())}, "driver1")
+    r.check("experience: the public flow route refuses an expose:ui flow (AcceptRideOffer)", s in (403, 404), s)
+    s, _ = r.flow("AcceptOffer", {"id": r.ids.get("rideA", str(uuid.uuid4()))}, "driver1")
+    r.check("experience: the internal AcceptOffer stays unreachable for a driver (403/404)", s in (403, 404), s)
+
+    # ---- 3. SetDriverStatus (the driver's Me screen)
+    s, b = xflow(r, "SetDriverStatus", {"id": r.ids["driver1"], "status": "AVAILABLE"}, "driver1")
+    r.check("experience: driver1 goes online through SetDriverStatus", s == 200, f"{s} {str(b)[:300]}")
+    s, d = r.get("drivers", r.ids["driver1"])
+    r.check("experience: ...and the Driver row is AVAILABLE", (d.get("data", d)).get("status") == "AVAILABLE", d)
+    s, b = xflow(r, "SetDriverStatus", {"id": r.ids["driver1"], "status": "BUSY"}, "driver1")
+    r.check("experience: a driver can NOT mark self BUSY through it (lifecycle guard)", s in (400, 403, 409, 422), f"{s} {str(b)[:200]}")
+    s, b = xflow(r, "SetDriverStatus", {"id": r.ids["driver2"], "status": "AVAILABLE"}, "driver1")
+    r.check("experience: driver1 can NOT change driver2's status through it", s in (403, 404, 422), f"{s} {str(b)[:200]}")
+    s, d = r.get("drivers", r.ids["driver2"])
+    r.check("experience: ...driver2 stayed OFFLINE", (d.get("data", d)).get("status") == "OFFLINE", d)
+
+    # ---- 3b. the dispatcher's status board (kind board, drag-to-column = SetDriverStatus) and the driver's query screen
+    s, b = r.call("GET", "/api/x/me", None, "disp1")
+    screens = {x.get("name"): x for x in (b or {}).get("screens", [])}
+    r.check("experience: the dispatcher has the drivers-board and its two move actions (moveTo AVAILABLE / OFFLINE)",
+            "drivers-board" in screens and sorted(a.get("moveTo") for a in screens["drivers-board"].get("actions", [])) == ["AVAILABLE", "OFFLINE"],
+            list(screens))
+    r.check("experience: the drivers-map names its own tile source (map.tiles -> tilesUrl)",
+            "tile.openstreetmap.fr" in str((screens.get("drivers-map") or {}).get("map", {}).get("tilesUrl", "")), (screens.get("drivers-map") or {}).get("map"))
+    s, b = r.call("GET", "/api/x/me", None, "rider1")
+    r.check("experience: the rider does NOT get the drivers-board", "drivers-board" not in [x.get("name") for x in (b or {}).get("screens", [])], s)
+    s, b = xflow(r, "SetDriverStatus", {"id": r.ids["driver2"], "status": "AVAILABLE"}, "disp1")
+    r.check("experience: the dispatcher moves driver2 to AVAILABLE through the board's flow", s == 200, f"{s} {str(b)[:300]}")
+    s, d = r.get("drivers", r.ids["driver2"])
+    r.check("experience: ...and the Driver row is AVAILABLE", (d.get("data", d)).get("status") == "AVAILABLE", d)
+    s, b = xflow(r, "SetDriverStatus", {"id": r.ids["driver2"], "status": "OFFLINE"}, "disp1")
+    r.check("experience: ...and back to OFFLINE (the drag the other way)", s == 200, f"{s} {str(b)[:300]}")
+    s, b = r.call("GET", "/api/x/me", None, "driver1")
+    drv = {x.get("name"): x for x in (b or {}).get("screens", [])}
+    r.check("experience: the driver's my-driver-rides is a query screen with params {account: $user.id}",
+            "my-driver-rides" in drv and drv["my-driver-rides"].get("dataUrl") == "/api/queries/RidesOfDriver"
+            and drv["my-driver-rides"].get("params") == {"account": "$user.id"}, drv.get("my-driver-rides"))
+
+    # ---- 4. the rider's form: RequestRide from the screen sends only the two points
+    s, b, ride = x_request(r, "rider1")
+    r.check("experience: rider1's ride-now form starts RequestRide with just the two points (it parks on the offer)", s in (200, 201, 202), f"{s} {str(b)[:400]}")
+    rid = ride.get("id")
+    r.check("experience: the ride belongs to the signed-in rider (riderAccount + Rider row)",
+            ride.get("riderAccount") == "rider1" and ride.get("rider") == r.ids["rider1"], ride)
+    r.check("experience: the ride has a createdAt instant", bool(ride.get("createdAt")), ride)
+    if not rid:
+        return
+    r.ids["xRide1"] = rid
+    offer = wait_offer(r, "driver1", rid)
+    r.check("experience: the driver's inbox data has the offer (OFFERED) with createdAt, distances and fare",
+            offer and offer.get("createdAt") and offer.get("pickupDistanceKm") is not None and offer.get("tripDistanceKm") is not None
+            and offer.get("fareCents") is not None, offer)
+    if not offer:
+        return
+    s, _ = r.call("GET", r.item("ride_offers", offer["id"]), None, "driver2")
+    r.check("experience: driver2 can NOT read driver1's offer (403/404)", s in (403, 404), s)
+    s, b = xflow(r, "AcceptRideOffer", {"offerId": offer["id"]}, "driver2")
+    r.check("experience: driver2 can NOT answer driver1's offer through AcceptRideOffer (4xx)", s in (403, 404, 422), f"{s} {str(b)[:300]}")
+    s, b = xflow(r, "DeclineRideOffer", {"offerId": offer["id"]}, "driver2")
+    r.check("experience: ...nor DECLINE it through DeclineRideOffer (4xx)", s in (403, 404, 422), f"{s} {str(b)[:300]}")
+    now = r.ride(rid)
+    still = [o for o in offers_of(r, "disp1", rid) if o["id"] == offer["id"]]
+    r.check("experience: ...and the ride is still ASSIGNED to driver1 with its offer still OFFERED",
+            now.get("status") == "ASSIGNED" and now.get("driverAccount") == "driver1" and still and still[0].get("status") == "OFFERED", now)
+    time.sleep(4)  # the kernel's waiting-flow sweep has touched the parked flow by now: the answer must still resume it at once
+    s, b = xflow(r, "AcceptRideOffer", {"offerId": offer["id"]}, "driver1")
+    r.check("experience: driver1 accepts through AcceptRideOffer", s == 200, f"{s} {str(b)[:400]}")
+    now = r.wait_ride(rid, lambda x: x.get("status") == "ACCEPTED", 6)
+    r.check("experience: the parked RequestRide flow resumed (within 6 s, answered 4 s after the offer): ride ACCEPTED with driver1's plate on it",
+            now.get("status") == "ACCEPTED" and now.get("driverAccount") == "driver1" and now.get("driverPlate"), now)
+    o = [x for x in offers_of(r, "disp1", rid) if x["id"] == offer["id"]]
+    r.check("experience: ...and the offer row is ACCEPTED", o and o[0].get("status") == "ACCEPTED", o)
+    # the my-driver-rides screen calls /api/queries/RidesOfDriver?account=<$user.id>: its own rows, and row access on top
+    def ride_ids(who, account):
+        s2, b2 = r.call("GET", f"/api/queries/RidesOfDriver?account={account}&limit=100", None, who)
+        rows = (b2 or {}).get("rows", []) if isinstance(b2, dict) else []  # a named query answers {query, rows, total, ...}
+        return s2, [str((x.get("data", x)).get("id")) for x in rows]
+    s, mine = ride_ids("driver1", "driver1")
+    r.check("experience: RidesOfDriver?account=driver1 as driver1 lists the accepted ride", s == 200 and rid in mine, f"{s} {mine[:5]}")
+    s, _ = r.call("GET", "/api/queries/RidesOfDriver", None, "driver1")
+    r.check("experience: ...the query refuses a call without its required account parameter (400), so an unevaluable param is never silently widened", s == 400, s)
+    s, theirs = ride_ids("driver2", "driver1")
+    r.check("experience: ...driver2 asking for account=driver1 gets none of driver1's rides (row access still applies)", rid not in theirs, f"{s} {theirs[:5]}")
+    s, b = xflow(r, "AcceptRideOffer", {"offerId": offer["id"]}, "driver1")
+    r.check("experience: answering the same offer twice is refused (already answered)", s in (403, 404, 422), f"{s} {str(b)[:200]}")
+    left = r.tasks("driver1")
+    r.check("experience: no stale offer task is left open for driver1", not [t for t in left if rid in str(t)], left)
+
+    # ---- 5. the active-ride screen: start, complete (through the screen flows), then the rider rates
+    s, b = xflow(r, "StartTrip", {"id": rid}, "driver2")
+    r.check("experience: driver2 can NOT start driver1's trip (4xx)", s in (403, 404, 422), f"{s} {str(b)[:200]}")
+    s, b = xflow(r, "StartTrip", {"id": rid}, "driver1")
+    r.check("experience: driver1 starts the trip through StartTrip", s == 200, f"{s} {str(b)[:300]}")
+    now = r.ride(rid)
+    r.check("experience: ...ride IN_PROGRESS", now.get("status") == "IN_PROGRESS", now)
+    s, b = xflow(r, "RateDriver", {"id": rid, "driverStars": 5}, "rider1")
+    r.check("experience: rating before the ride is COMPLETED is refused (invariant)", s in (400, 403, 409, 422), f"{s} {str(b)[:200]}")
+    s, b = xflow(r, "CompleteRide", {"id": rid, "status": "COMPLETED"}, "driver1")
+    r.check("experience: driver1 completes the ride through CompleteRide (pays, then waits for the rate reminder)", s in (200, 201, 202), f"{s} {str(b)[:300]}")
+    now = r.wait_ride(rid, lambda x: x.get("status") == "COMPLETED", 15)
+    r.check("experience: ride COMPLETED", now.get("status") == "COMPLETED", now)
+    s, b = xflow(r, "RateDriver", {"id": rid, "driverStars": 9}, "rider1")
+    r.check("experience: RateDriver refuses 9 stars (1..5)", s in (400, 409, 422), f"{s} {str(b)[:200]}")
+    s, b = xflow(r, "RateDriver", {"id": rid, "driverStars": 5}, "rider2")
+    r.check("experience: another rider can NOT rate this ride (4xx)", s in (403, 404, 422), f"{s} {str(b)[:200]}")
+    s, b = xflow(r, "RateDriver", {"id": rid, "driverStars": 5}, "rider1")
+    r.check("experience: rider1 rates the driver 5 stars on their own COMPLETED ride", s == 200, f"{s} {str(b)[:300]}")
+    now = r.ride(rid)
+    r.check("experience: ...driverStars is 5", now.get("driverStars") == 5, now)
+
+    # ---- 6. decline: driver2 is the only one online
+    for d in ("driver1", "driver3"):
+        r.set_driver(d, *spots[d], "OFFLINE")
+    xflow(r, "SetDriverStatus", {"id": r.ids["driver2"], "status": "AVAILABLE"}, "driver2")
+    _, _, ride2 = x_request(r, "rider2")
+    rid2 = ride2.get("id")
+    offer2 = wait_offer(r, "driver2", rid2) if rid2 else None
+    r.check("experience: rider2's ride is offered to driver2 (an inbox row)", offer2, rid2)
+    if offer2:
+        s, b = xflow(r, "DeclineRideOffer", {"offerId": offer2["id"]}, "driver2")
+        r.check("experience: driver2 declines through DeclineRideOffer", s == 200, f"{s} {str(b)[:300]}")
+        now = r.wait_ride(rid2, lambda x: x.get("status") in ("NO_DRIVER", "ACCEPTED"), 15)
+        r.check("experience: after DECLINE with nobody else online the ride ends NO_DRIVER", now.get("status") == "NO_DRIVER", now)
+        o = [x for x in offers_of(r, "disp1", rid2) if x["id"] == offer2["id"]]
+        r.check("experience: ...the offer row is DECLINED", o and o[0].get("status") == "DECLINED", o)
+        s, d = r.get("drivers", r.ids["driver2"])
+        r.check("experience: ...and driver2 is AVAILABLE again", (d.get("data", d)).get("status") == "AVAILABLE", d)
+
+    # ---- 7. an expired offer is refused
+    r.set_driver("driver2", *spots["driver2"], "OFFLINE")
+    r.set_driver("driver3", *spots["driver3"], "AVAILABLE")
+    _, _, ride3 = x_request(r, "rider2")
+    rid3 = ride3.get("id")
+    offer3 = wait_offer(r, "driver3", rid3) if rid3 else None
+    r.check("experience: a third ride is offered to driver3", offer3, rid3)
+    if offer3:
+        now = r.wait_ride(rid3, lambda x: x.get("status") in ("NO_DRIVER", "ACCEPTED"), OFFER_WINDOW_S + TICK_SLACK_S + 5)
+        r.check("experience: driver3 lets it run out: the offer EXPIRES and the ride ends NO_DRIVER", now.get("status") == "NO_DRIVER", now)
+        s, b = xflow(r, "AcceptRideOffer", {"offerId": offer3["id"]}, "driver3")
+        r.check("experience: accepting the EXPIRED offer is refused (4xx)", s in (403, 404, 422), f"{s} {str(b)[:200]}")
+        now = r.ride(rid3)
+        r.check("experience: ...and the ride stays NO_DRIVER", now.get("status") == "NO_DRIVER", now)
+        o = [x for x in offers_of(r, "disp1", rid3) if x["id"] == offer3["id"]]
+        r.check("experience: ...the offer row is EXPIRED", o and o[0].get("status") == "EXPIRED", o)
+    r.set_driver("driver3", *spots["driver3"], "OFFLINE")
+
+    # ---- 8. the dispatcher's board: counts are evaluated for the caller, and the data screens have rows
+    vals = x_eval(r, "disp1", {"waiting": "count('Ride', status == 'REQUESTED')", "road": "count('Ride', status == 'IN_PROGRESS')",
+                               "avail": "count('Driver', status == 'AVAILABLE')",
+                               "nodriver": "count('Ride', status == 'NO_DRIVER' && createdAt >= today())"})
+    r.check("experience: the dispatcher's board tiles evaluate (the NO_DRIVER-today count includes this stage's rides: createdAt >= today() is a number, REG-341)",
+            all(isinstance(vals.get(k), (int, float)) for k in ("waiting", "road", "avail", "nodriver")) and vals.get("nodriver", 0) >= 2, vals)
+    s, lst = r.call("GET", r.coll("rides") + "?sort=createdAt&direction=desc&size=5", None, "disp1")
+    rows = rows_of(lst)
+    r.check("experience: the rides screen's newest-first read works for the dispatcher", s == 200 and rows and rows[0].get("createdAt"), f"{s} {str(lst)[:200]}")
+    s, lst = r.call("GET", r.coll("drivers"), None, "disp1")
+    rows = rows_of(lst)
+    r.check("experience: the drivers map has rows with lat/lng", s == 200 and rows and all("lat" in d for d in rows), f"{s}")
+    mine = x_eval(r, "rider1", {"active": "count('Ride', riderAccount == $user.id && status in ['REQUESTED','ASSIGNED','ACCEPTED','IN_PROGRESS'])"})
+    r.check("experience: the rider's 'Current' badge evaluates for the rider", isinstance(mine.get("active"), (int, float)), mine)
+
+
 STAGES = {"setup": stage_setup, "roles": stage_roles, "offer": stage_offer, "pay": stage_pay, "paymore": stage_paymore,
-          "price": stage_price, "rate": stage_rate, "cancel": stage_cancel, "notify": stage_notify, "route": stage_route}
-ORDER = ["setup", "roles", "offer", "pay", "paymore", "price", "rate", "cancel", "notify", "route"]
+          "price": stage_price, "rate": stage_rate, "cancel": stage_cancel, "notify": stage_notify, "route": stage_route,
+          "experience": stage_experience}
+ORDER = ["setup", "roles", "offer", "pay", "paymore", "price", "rate", "cancel", "notify", "route", "experience"]
 
 
 def main(argv=None) -> int:

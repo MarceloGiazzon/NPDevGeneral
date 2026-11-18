@@ -35,7 +35,10 @@ class ComputedCollectionColumnsTest {
               "concepts": [
                 { "name": "Ord", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
-                  { "name": "discount", "type": "integer" } ] },
+                  { "name": "discount", "type": "integer" } ],
+                  "composition": { "collections": [
+                    { "name": "lines", "concept": "Line", "childField": "ordId", "ownership": "owned", "collections": [
+                      { "name": "parts", "concept": "Part", "childField": "lineId", "ownership": "owned" } ] } ] } },
                 { "name": "Line", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "ordId", "type": "uuid" },
@@ -43,11 +46,6 @@ class ComputedCollectionColumnsTest {
                 { "name": "Part", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "lineId", "type": "uuid" }, { "name": "qty", "type": "integer" } ] }
-              ],
-              "aggregates": [
-                { "name": "Ord", "root": "Ord", "collections": [
-                  { "name": "lines", "concept": "Line", "childField": "ordId", "ownership": "owned", "collections": [
-                    { "name": "parts", "concept": "Part", "childField": "lineId", "ownership": "owned" } ] } ] }
               ],
               "autoPanels": [ { "aggregate": "Ord", "transaction": { "computed": %s%s } } ]
             }

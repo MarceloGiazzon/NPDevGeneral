@@ -82,15 +82,13 @@ class CanonicalJsonIdempotenceTest {
           "concepts": [
             { "name": "Movimento", "fields": [
               { "name": "id", "type": "uuid", "id": true, "required": true },
-              { "name": "situacao", "type": "string" } ] },
+              { "name": "situacao", "type": "string" } ],
+              "composition": { "collections": [
+                { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned" } ] } },
             { "name": "MovimentoItem", "fields": [
               { "name": "id", "type": "uuid", "id": true, "required": true },
               { "name": "movimentoId", "type": "uuid" },
               { "name": "quantidade", "type": "integer" } ] }
-          ],
-          "aggregates": [
-            { "name": "Movimento", "root": "Movimento", "collections": [
-              { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned" } ] }
           ],
           "autoPanels": [
             { "aggregate": "Movimento", "transaction": {

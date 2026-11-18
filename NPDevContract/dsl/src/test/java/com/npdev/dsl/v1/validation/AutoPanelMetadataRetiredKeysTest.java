@@ -27,10 +27,8 @@ class AutoPanelMetadataRetiredKeysTest {
               "dslVersion": "3.0.0", "namespace": "wms.d2.deprecation", "version": "1.0",
               "concepts": [
                 { "name": "Movimento", "fields": [
-                  { "name": "id", "type": "uuid", "id": true, "required": true } ] }
-              ],
-              "aggregates": [
-                { "name": "Movimento", "root": "Movimento", "collections": [] }
+                  { "name": "id", "type": "uuid", "id": true, "required": true } ],
+                  "composition": { "collections": [] } }
               ],
               "autoPanels": [ { "aggregate": "Movimento",
                 "transaction": { "metadata": %s } } ]

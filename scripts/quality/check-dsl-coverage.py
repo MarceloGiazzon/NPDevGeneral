@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 r"""F8 (docs/FINAL_OPEN_ITEMS_PLAN.md): the corpus-parse gate answers "does every model parse?".
 Nothing answered "is every DSL feature exercised by at least one model?" -- the gap that let 7
-schema features (`selectors`, `externalAi`, step `forEach`, step `generatedAction`, `onFailure`
+schema features (`selectors` -- now `screen.picker` --, `externalAi`, step `forEach`, step `generatedAction`, `onFailure`
 compensation, `flow.schedule`, `flow.hooks`) sit at zero coverage until the 2026-07-29 measurement
 that produced NPDevSamples/dsl-conformance-max: a change breaking any of those would have passed the
 corpus-parse gate 29/29, because nothing used them. The fixture closes today's gaps; this gate is why
@@ -134,7 +134,7 @@ def calibrate() -> int:
 
         print("Calibration -- must catch a zero-coverage feature, pass a covered one:")
         report("step.forEach (used by the fixture above)", "step.forEach", expect_fail=False)
-        report("selectors (unused by the fixture above)", "selectors", expect_fail=True)
+        report("screen.picker (unused by the fixture above)", "screen.picker", expect_fail=True)
         report("field.picker.selectorRef (used by the picker_selector_ref fixture)",
                "field.picker.selectorRef", expect_fail=False)
         for feature in ("panel.layout.slots", "panel.layout.console", "panel.layout.dashboard",

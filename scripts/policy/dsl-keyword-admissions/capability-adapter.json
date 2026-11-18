@@ -1,0 +1,38 @@
+{
+ "$comment": "FORM P4-T4 retroactive admission record (the slot predates the budget, so it is also in baselineSlots; this record documents why it earned its place). Probe, apps and teaching line written and checked against the files on 2026-11-17.",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "capabilities[].adapter",
+ "slots": [
+  "capability.adapter"
+ ],
+ "rung": 0,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-17",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "names WHICH adapter serves a capability (geo-inproc, http-connector, webhook-http, externalAi); no ordering, no logic"
+  },
+  "notLower": {
+   "value": true,
+   "why": "binding a capability to an installed adapter picks code the platform ships and secures (secrets, egress, retries); an expression cannot choose it"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "NPDevSamples/dsl-conformance-max",
+    "NPDevSamples/ride-hailing"
+   ]
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevSamples/dsl-conformance-max/behavior-probes/18-capability-door-and-adapter.json"
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "{\"name\":\"geo\",\"type\":\"GeoCapability\",\"adapter\":\"geo-inproc\",\"operations\":[\"distanceKm\",\"closest\"]}"
+  }
+ },
+ "replaces": [],
+ "budgetDelta": 0
+}

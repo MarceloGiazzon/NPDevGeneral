@@ -1,0 +1,96 @@
+{
+  "probes": [
+    {
+      "id": "ex-eval-count-compares-a-date-field-with-today",
+      "keywords": [
+        "flow.expose"
+      ],
+      "description": "REG-341: today() on the right of a comparison is pushed into the server-side count() behind POST /api/x/eval (it answered null before: the pushable grammar had no date terms). The warehouse experience's Tips badge is count('WidgetSupplier', listedOn >= today()). A supplier listed in the past does not change it; one listed in 2999 adds exactly one. The value is a number, never null, and is evaluated at request time.",
+      "steps": [
+        {
+          "name": "baseline: the badge is the number 0 (no supplier carries a listedOn yet)",
+          "method": "POST",
+          "path": "/api/x/eval",
+          "apiKey": "${key_warehousemanager}",
+          "body": {
+            "expressions": {
+              "tips": "count('WidgetSupplier', listedOn >= today())"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.values.tips": 0
+            }
+          }
+        },
+        {
+          "name": "setup: a supplier listed in the past",
+          "method": "POST",
+          "path": "/api/widget_suppliers",
+          "body": {
+            "supplierCode": "d341p-${rand}",
+            "displayName": "Past supplier",
+            "listedOn": "2020-01-01"
+          },
+          "expect": {
+            "status": [
+              200,
+              201
+            ]
+          }
+        },
+        {
+          "name": "the past supplier does not count",
+          "method": "POST",
+          "path": "/api/x/eval",
+          "apiKey": "${key_warehousemanager}",
+          "body": {
+            "expressions": {
+              "tips": "count('WidgetSupplier', listedOn >= today())"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.values.tips": 0
+            }
+          }
+        },
+        {
+          "name": "setup: a supplier listed far in the future",
+          "method": "POST",
+          "path": "/api/widget_suppliers",
+          "body": {
+            "supplierCode": "d341f-${rand}",
+            "displayName": "Future supplier",
+            "listedOn": "2999-01-01"
+          },
+          "expect": {
+            "status": [
+              200,
+              201
+            ]
+          }
+        },
+        {
+          "name": "the future supplier counts: exactly 1",
+          "method": "POST",
+          "path": "/api/x/eval",
+          "apiKey": "${key_warehousemanager}",
+          "body": {
+            "expressions": {
+              "tips": "count('WidgetSupplier', listedOn >= today())"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.values.tips": 1
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

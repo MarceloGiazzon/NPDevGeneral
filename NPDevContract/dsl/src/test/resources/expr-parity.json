@@ -66,7 +66,16 @@
     { "expr": "0.1 + 0.2", "vars": {}, "expect": 0.3 },
     { "expr": "0.1 + 0.2 == 0.3", "vars": {}, "expect": true },
     { "expr": "0.3 - 0.1", "vars": {}, "expect": 0.2 },
-    { "expr": "price * qty", "vars": { "price": 19.99, "qty": 3 }, "expect": 59.97 }
+    { "expr": "price * qty", "vars": { "price": 19.99, "qty": 3 }, "expect": 59.97 },
+    { "expr": "a > 1 ? 'big' : 'small'", "vars": { "a": 2 }, "expect": "big" },
+    { "expr": "a > 1 ? 'big' : 'small'", "vars": { "a": 1 }, "expect": "small" },
+    { "expr": "a > 1 ? (b > 5 ? 'x' : 'y') : 'z'", "vars": { "a": 2, "b": 9 }, "expect": "x" },
+    { "expr": "x ?? 7", "vars": { "x": null }, "expect": 7 },
+    { "expr": "x ?? 7", "vars": { "x": 3 }, "expect": 3 },
+    { "expr": "n in [1, 2, 3]", "vars": { "n": 2 }, "expect": true },
+    { "expr": "n in [1, 2, 3]", "vars": { "n": 5 }, "expect": false },
+    { "expr": "n not in [1, 2]", "vars": { "n": 5 }, "expect": true },
+    { "expr": "s in ['open', 'held']", "vars": { "s": "held" }, "expect": true }
   ],
   "parseError": [
     "", "1 +", "(1", ")", "1 2", "a = 1", "'unterminated", "1.2.3", "@", "i => i", "a b", "1 +* 2"

@@ -328,6 +328,10 @@ public final class ConceptQueryPredicateCompiler {
         if (literal instanceof PredicateLiteral.Value value) {
             return value.value();
         }
+        if (literal instanceof PredicateLiteral.Clock clock) {
+            // REG-341: evaluated now, on every compile -- a query compiled per request never sees yesterday's date.
+            return com.npdev.dsl.v1.expr.StdlibFunctions.apply(clock.function(), List.of());
+        }
         if (literal instanceof PredicateLiteral.UserRef user) {
             if (caller == null) {
                 throw new UnsupportedPredicateException(where,

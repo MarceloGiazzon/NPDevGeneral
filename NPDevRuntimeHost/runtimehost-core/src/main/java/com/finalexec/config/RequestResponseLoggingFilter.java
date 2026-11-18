@@ -31,7 +31,9 @@ public class RequestResponseLoggingFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         // Log only API calls (adjust if needed)
         String uri = request.getRequestURI();
-        return uri == null || !uri.startsWith("/api/");
+        // FORM P5-T5: GET /api/live is a server-sent-events stream; ContentCachingResponseWrapper would buffer it until the
+        // request ended, so it is never wrapped.
+        return uri == null || !uri.startsWith("/api/") || "/api/live".equals(uri);
     }
 
     @Override

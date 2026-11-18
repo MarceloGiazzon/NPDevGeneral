@@ -62,6 +62,12 @@
       "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
       "movedToWeekly": false
     },
+    "check-experience-client.py": {
+      "classification": "product",
+      "reason": "FORM P5-T3: proves the experience client modules (npdev-templates/experience) ship exactly the files files.json lists, cannot turn data into markup and pass their node behaviour test -- a runtime-correctness and XSS guard for the generated experience pages, not documentation.",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
     "check-dsl-conformance-generates.py": {
       "classification": "product",
       "reason": "Proves a DSL feature survives actual code GENERATION, not just parsing -- the emit-side twin of check-dsl-coverage.py.",

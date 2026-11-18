@@ -675,7 +675,10 @@ public final class ModelCompiler {
                 toCompiledSequences(modelAst.getSequences()),
                 toCompiledSeeds(modelAst.getSeeds()),
                 toCompiledAppShell(modelAst.getAppShell()),
-                toCompiledAgentAccess(modelAst.getAgentAccess())
+                toCompiledAgentAccess(modelAst.getAgentAccess()),
+                // FORM P5-T1: opaque JSON, copied through untouched -- the AST already holds the validated shape.
+                modelAst.getExperiences(),
+                modelAst.getScreens()
         );
     }
 
@@ -793,9 +796,7 @@ public final class ModelCompiler {
         if (settingsAst == null) {
             return CompiledSettings.defaults();
         }
-        return new CompiledSettings(
-                settingsAst.getLocale(), settingsAst.getStrings(), settingsAst.getPageRows(),
-                settingsAst.getDateFormat());
+        return new CompiledSettings(settingsAst.getLocale(), settingsAst.getStrings());
     }
 
     /** B20 (S2): compiles the declared bounded-context registry (name + $ref). The qualification

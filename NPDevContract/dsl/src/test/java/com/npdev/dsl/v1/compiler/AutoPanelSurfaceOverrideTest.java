@@ -27,12 +27,12 @@ class AutoPanelSurfaceOverrideTest {
           "concepts": [
             { "name": "Pedido", "fields": [
               { "name": "id", "type": "uuid", "id": true, "required": true },
-              { "name": "cliente", "type": "string" } ] },
+              { "name": "cliente", "type": "string" } ],
+              "composition": {} },
             { "name": "Item", "fields": [
               { "name": "id", "type": "uuid", "id": true, "required": true },
               { "name": "nome", "type": "string" } ] }
           ],
-          "aggregates": [ { "name": "Pedido", "root": "Pedido" } ],
           "panels": [
             { "name": "PedidoPickerPanel", "route": "/pedido-picker", "title": "Picker",
               "dataSources": [ { "name": "rows", "concept": "Pedido" } ] },

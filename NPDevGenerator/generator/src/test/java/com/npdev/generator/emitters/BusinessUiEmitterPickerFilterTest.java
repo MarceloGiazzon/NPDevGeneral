@@ -189,10 +189,10 @@ class BusinessUiEmitterPickerFilterTest {
     // ----------------------------------------------------------------------------------------
 
     private static final String WIDGET_PICKER_SELECTOR = """
-            , "selectors": [
-              { "name": "WidgetPicker", "concept": "Widget", "multiSelect": false,
+            , "screens": [
+              { "name": "WidgetPicker", "kind": "picker", "concept": "Widget", "multiSelect": false,
                 "filters": ["name"], "columns": ["name", "ativo"], "orderBy": ["name"],
-                "filter": "ativo == true" }
+                "where": "ativo == true" }
             ]
             """;
 

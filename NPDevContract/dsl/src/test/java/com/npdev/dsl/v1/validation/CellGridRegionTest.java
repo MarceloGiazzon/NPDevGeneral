@@ -43,7 +43,9 @@ class CellGridRegionTest {
                 { "name": "Board", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "rows", "type": "integer" },
-                  { "name": "cols", "type": "integer" } ] },
+                  { "name": "cols", "type": "integer" } ],
+                  "composition": {
+                    "collections": [ { "name": "cells", "concept": "Cell", "childField": "boardId", "ownership": "owned" } ] } },
                 { "name": "Cap", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "label", "type": "string" },
@@ -61,11 +63,7 @@ class CellGridRegionTest {
                 { "name": "Caps", "concept": "Cap" },
                 { "name": "Breweries", "concept": "Brewery" }
               ],
-              "aggregates": [
-                { "name": "BoardAggregate", "root": "Board",
-                  "collections": [ { "name": "cells", "concept": "Cell", "childField": "boardId", "ownership": "owned" } ] }
-              ],
-              "autoPanels": [ { "name": "Boards", "aggregate": "BoardAggregate",
+              "autoPanels": [ { "name": "Boards", "aggregate": "Board",
                 "transaction": { "regions": %s } } ]
             }
             """.formatted(regionsJson);

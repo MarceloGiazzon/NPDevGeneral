@@ -1,0 +1,39 @@
+{
+ "$comment": "FORM P4-T4 retroactive admission record (the slot predates the budget, so it is also in baselineSlots; this record documents why it earned its place). Written after the fact; apps and probe checked against the files on 2026-11-17.",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "flows[].trigger",
+ "slots": [
+  "flow.trigger"
+ ],
+ "rung": 0,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-17",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "names WHICH event starts the flow (optional condition); says when, not how"
+  },
+  "notLower": {
+   "value": true,
+   "why": "a function cannot start a flow, and the event store, not user code, must deliver it exactly once"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "NPDevSamples/canonical-demo",
+    "NPDevSamples/restaurant-saas-multitenant",
+    "NPDevSamples/dsl-conformance-max"
+   ]
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevSamples/dsl-conformance-max/behavior-probes/99-event-trigger-flow.json"
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "Event-triggered flow: flows[] with trigger = {\"event\":\"X\"} (optional condition) runs by itself whenever X is published"
+  }
+ },
+ "replaces": [],
+ "budgetDelta": 0
+}

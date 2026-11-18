@@ -1,0 +1,39 @@
+{
+ "$comment": "FORM P5 admission, 2026-11-18.",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "screens[].map.tiles",
+ "slots": [
+  "mapSpec.tiles"
+ ],
+ "rung": 0,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-18",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "names the property holding this map's own tile URL template (and optionally <property>Attribution)"
+  },
+  "notLower": {
+   "value": true,
+   "why": "the tile source is app configuration (a property), and the generator resolves it into tilesUrl/attribution at generation time; a map cannot compute its own tiles"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "NPDevSamples/ride-hailing"
+   ],
+   "note": "ONE APP ONLY: ride-hailing `drivers-map` with property driversTilesUrl (+ driversTilesUrlAttribution), added 2026-11-18."
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/ExperienceEmitterTest.java",
+   "note": "ExperienceEmitterTest asserts the emitted map.tilesUrl; drive_s2.py asserts the drivers-map carries the property's URL. The tiles themselves loading in a browser (Leaflet) has NOT been checked for this property."
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "Maps: `\"map\":{...,\"tiles\":\"<property>\",...}`"
+  }
+ },
+ "replaces": [],
+ "budgetDelta": 1
+}

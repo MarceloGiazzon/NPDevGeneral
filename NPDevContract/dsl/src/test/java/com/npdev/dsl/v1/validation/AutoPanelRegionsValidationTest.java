@@ -29,22 +29,20 @@ class AutoPanelRegionsValidationTest {
               "dslVersion": "3.0.0", "namespace": "wms.regions.validation", "version": "1.0",
               "concepts": [
                 { "name": "Movimento", "fields": [
-                  { "name": "id", "type": "uuid", "id": true, "required": true } ] },
+                  { "name": "id", "type": "uuid", "id": true, "required": true } ],
+                  "composition": {
+                    "collections": [
+                      { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned",
+                        "collections": [
+                          { "name": "posicoes", "concept": "Posicao", "childField": "itemId", "ownership": "owned" }
+                        ] }
+                    ] } },
                 { "name": "MovimentoItem", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "movimentoId", "type": "uuid" } ] },
                 { "name": "Posicao", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "itemId", "type": "uuid" } ] }
-              ],
-              "aggregates": [
-                { "name": "Movimento", "root": "Movimento",
-                  "collections": [
-                    { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned",
-                      "collections": [
-                        { "name": "posicoes", "concept": "Posicao", "childField": "itemId", "ownership": "owned" }
-                      ] }
-                  ] }
               ],
               "autoPanels": [ { "aggregate": "Movimento",
                 "transaction": { "regions": %s } } ]

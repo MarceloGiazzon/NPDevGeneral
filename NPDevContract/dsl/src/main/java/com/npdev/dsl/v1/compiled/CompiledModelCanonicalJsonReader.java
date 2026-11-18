@@ -169,8 +169,20 @@ public final class CompiledModelCanonicalJsonReader {
                 sequences,
                 seeds,
                 appShell,
-                agentAccess
+                agentAccess,
+                opaqueObjects(root, "experiences"),
+                opaqueObjects(root, "screens")
         );
+    }
+
+    /** FORM P5-T1: reads the optional {@code experiences}/{@code screens} arrays back as opaque JSON objects
+     *  (absent = none, which is what a model without them writes). */
+    private static List<JsonNode> opaqueObjects(JsonNode root, String key) {
+        List<JsonNode> out = new ArrayList<>();
+        for (JsonNode node : array(root, key)) {
+            out.add(node.deepCopy());
+        }
+        return out;
     }
 
     /** Wave 3 (RC-B1): reads a single app-defined role -> permission-ceiling declaration. */
@@ -370,11 +382,7 @@ public final class CompiledModelCanonicalJsonReader {
         if (node == null || node.isNull()) {
             return CompiledSettings.defaults();
         }
-        JsonNode uiNode = node.get("ui");
-        Integer pageRows = uiNode == null ? null : optionalIntegerObject(uiNode.get("pageRows"));
-        String dateFormat = uiNode == null ? null : optionalText(uiNode, "dateFormat");
-        return new CompiledSettings(
-                optionalText(node, "locale"), toStringMap(node.get("strings")), pageRows, dateFormat);
+        return new CompiledSettings(optionalText(node, "locale"), toStringMap(node.get("strings")));
     }
 
     /** Path A P6.3: reads the optional {@code appShell} block; null if absent. */

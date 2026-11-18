@@ -211,7 +211,7 @@ public class PanelRuntime {
         this.capabilityDispatcher = capabilityDispatcher;
         this.eventBus = eventBus;
         this.aggregateRuntime = aggregateRuntime;
-        this.procedureRunner = new ProcedureRunner(modelHolder, conceptGateway, capabilityDispatcher, eventBus);
+        this.procedureRunner = new ProcedureRunner(modelHolder, conceptGateway);
         // FORM P3-T5c: a panel action/data source that names a procedure which became a flow runs the flow
         if (kernelFacade != null) {
             this.procedureRunner.setFlowInvoker(kernelFacade::executeFlow);

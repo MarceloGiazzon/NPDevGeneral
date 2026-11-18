@@ -1391,7 +1391,7 @@
       "id": "qil-aggregate-balance-check-exact-per-group",
       "description": "POST .../check-balances/OrigemDestinoBalance on a two-sku draft reports each [sku, validity] group separately with exact left/right totals and delta (A1: Origem 5 vs Destino 3 => delta 2, unbalanced, templated message 'Faltam 2 unidade(s) de A1 (validade 2027-01-01) no destino'; B2: 4 vs 4 => balanced) and does not persist anything.",
       "keywords": [
-        "aggregate.balances",
+        "composition.balances",
         "aggregateBalance.groupBy",
         "aggregateBalance.discriminatorField",
         "aggregateBalance.leftValue",
@@ -1425,7 +1425,7 @@
         {
           "name": "check",
           "method": "POST",
-          "path": "/api/runtime/aggregate/StockTransferAggregate/check-balances/OrigemDestinoBalance",
+          "path": "/api/runtime/aggregate/StockTransfer/check-balances/OrigemDestinoBalance",
           "body": {
             "reference": "agg-${loc}",
             "status": "Draft",
@@ -1518,9 +1518,9 @@
     },
     {
       "id": "qil-aggregate-invariant-vetoes-commit",
-      "description": "Committing a StockTransferAggregate draft whose position quantity (50) exceeds the available stock (10, from the AvailableQuantityQuery lookup field) is vetoed by the aggregate invariant PositionWithinAvailable (message names the rule) and nothing is persisted - not even the root. (Status code of the veto is tracked separately: qil-aggregate-veto-status-is-client-error.)",
+      "description": "Committing a StockTransfer draft whose position quantity (50) exceeds the available stock (10, from the AvailableQuantityQuery lookup field) is vetoed by the aggregate invariant PositionWithinAvailable (message names the rule) and nothing is persisted - not even the root. (Status code of the veto is tracked separately: qil-aggregate-veto-status-is-client-error.)",
       "keywords": [
-        "aggregate.invariants",
+        "composition.invariants",
         "aggregateInvariant.name",
         "aggregateInvariant.expression",
         "aggregateInvariant.message",
@@ -1550,7 +1550,7 @@
         {
           "name": "over-available commit",
           "method": "POST",
-          "path": "/api/runtime/aggregate/StockTransferAggregate",
+          "path": "/api/runtime/aggregate/StockTransfer",
           "body": {
             "reference": "agg-${loc}",
             "status": "Draft",
@@ -1619,7 +1619,7 @@
       "id": "qil-aggregate-balance-vetoes-commit",
       "description": "Committing an unbalanced draft (Origem 5, Destino 3, both within available stock) is vetoed server-side by the balance rule with its templated shortfall message, and nothing is persisted - the server never trusts the client's check-balances.",
       "keywords": [
-        "aggregate.balances",
+        "composition.balances",
         "aggregateBalance.message",
         "aggregateBalance.name"
       ],
@@ -1647,7 +1647,7 @@
         {
           "name": "unbalanced commit",
           "method": "POST",
-          "path": "/api/runtime/aggregate/StockTransferAggregate",
+          "path": "/api/runtime/aggregate/StockTransfer",
           "body": {
             "reference": "agg-${loc}",
             "status": "Draft",
@@ -1716,13 +1716,12 @@
       "id": "qil-aggregate-commit-persists-tree-and-attaches-lookup-field",
       "description": "A balanced, within-stock draft commits (200): the root and both positions are persisted with generated ids and the childField links (items.stockTransferId, positions.stockTransferItemId), and each position carries the query-sourced lookup field maxQuantity = 10 (from StockLocation.disponivel via AvailableQuantityQuery joined on localId). The root is then readable through the plain concept endpoint.",
       "keywords": [
-        "aggregate.name",
         "aggregateCollection.name",
         "aggregateCollection.collections",
-        "aggregate.collections",
+        "composition.collections",
         "aggregateCollection.childField",
         "aggregateCollection.lookupFields",
-        "aggregate.root"
+        "concept.composition"
       ],
       "steps": [
         {
@@ -1748,7 +1747,7 @@
         {
           "name": "commit",
           "method": "POST",
-          "path": "/api/runtime/aggregate/StockTransferAggregate",
+          "path": "/api/runtime/aggregate/StockTransfer",
           "body": {
             "reference": "agg-${loc}",
             "status": "Draft",
@@ -1778,7 +1777,7 @@
           "expect": {
             "status": 200,
             "json": {
-              "$.aggregate": "StockTransferAggregate",
+              "$.aggregate": "StockTransfer",
               "$.status": "Draft",
               "$.items": {
                 "len": 1
@@ -1819,7 +1818,7 @@
         {
           "name": "load aggregate",
           "method": "GET",
-          "path": "/api/runtime/aggregate/StockTransferAggregate/${tid}",
+          "path": "/api/runtime/aggregate/StockTransfer/${tid}",
           "expect": {
             "status": 200,
             "json": {
@@ -1869,7 +1868,7 @@
       "description": "The aggregate commit path honours the root concept's lifecycle: re-committing a Committed StockTransfer with status Draft (balanced, within stock) does not change the stored status - the row stays Committed and no child rows are written. (The HTTP status of that refusal is tracked in qil-aggregate-lifecycle-refusal-is-client-error.)",
       "keywords": [
         "lifecycle.transitions",
-        "aggregate.root"
+        "concept.composition"
       ],
       "steps": [
         {
@@ -1927,7 +1926,7 @@
         {
           "name": "aggregate commit back to Draft",
           "method": "POST",
-          "path": "/api/runtime/aggregate/StockTransferAggregate",
+          "path": "/api/runtime/aggregate/StockTransfer",
           "body": {
             "reference": "agg-${loc}",
             "status": "Draft",
@@ -1998,10 +1997,10 @@
     },
     {
       "id": "qil-aggregate-veto-status-is-client-error",
-      "description": "DEFECT: an aggregate invariant/balance veto is a client error, but POST /api/runtime/aggregate/StockTransferAggregate answers 503 Service Unavailable (AggregateApiController maps every IllegalStateException to 503, including the veto thrown by assertAggregateInvariants/assertAggregateBalances). Request: draft with quantity 50 > disponivel 10. Actual: 503 {\"message\":\"Aggregate StockTransferAggregate invariant(s) violated: PositionWithinAvailable -- ...\"}. Expected: 4xx (400/409/422).",
+      "description": "DEFECT: an aggregate invariant/balance veto is a client error, but POST /api/runtime/aggregate/StockTransfer answers 503 Service Unavailable (AggregateApiController maps every IllegalStateException to 503, including the veto thrown by assertAggregateInvariants/assertAggregateBalances). Request: draft with quantity 50 > disponivel 10. Actual: 503 {\"message\":\"Aggregate StockTransfer invariant(s) violated: PositionWithinAvailable -- ...\"}. Expected: 4xx (400/409/422).",
       "keywords": [
-        "aggregate.invariants",
-        "aggregate.balances"
+        "composition.invariants",
+        "composition.balances"
       ],
       "steps": [
         {
@@ -2027,7 +2026,7 @@
         {
           "name": "over-available commit",
           "method": "POST",
-          "path": "/api/runtime/aggregate/StockTransferAggregate",
+          "path": "/api/runtime/aggregate/StockTransfer",
           "body": {
             "reference": "agg-${loc}",
             "status": "Draft",
@@ -2066,7 +2065,7 @@
         {
           "name": "unbalanced commit",
           "method": "POST",
-          "path": "/api/runtime/aggregate/StockTransferAggregate",
+          "path": "/api/runtime/aggregate/StockTransfer",
           "body": {
             "reference": "agg-${loc}",
             "status": "Draft",
@@ -2112,10 +2111,10 @@
     },
     {
       "id": "qil-aggregate-lifecycle-refusal-is-client-error",
-      "description": "DEFECT: committing an aggregate draft that moves the root Committed->Draft is refused (row unchanged) but answers a bare 500 Internal Server Error {\"status\":500,\"error\":\"Internal Server Error\",\"path\":\"/api/runtime/aggregate/StockTransferAggregate\"} - the single-record endpoints answer 422 CONCEPT_LIFECYCLE_TRANSITION_INVALID. Expected a 4xx.",
+      "description": "DEFECT: committing an aggregate draft that moves the root Committed->Draft is refused (row unchanged) but answers a bare 500 Internal Server Error {\"status\":500,\"error\":\"Internal Server Error\",\"path\":\"/api/runtime/aggregate/StockTransfer\"} - the single-record endpoints answer 422 CONCEPT_LIFECYCLE_TRANSITION_INVALID. Expected a 4xx.",
       "keywords": [
         "lifecycle.transitions",
-        "aggregate.root"
+        "concept.composition"
       ],
       "steps": [
         {
@@ -2170,7 +2169,7 @@
         {
           "name": "aggregate commit back to Draft",
           "method": "POST",
-          "path": "/api/runtime/aggregate/StockTransferAggregate",
+          "path": "/api/runtime/aggregate/StockTransfer",
           "body": {
             "reference": "agg-${loc}",
             "status": "Draft",
@@ -2223,10 +2222,10 @@
     },
     {
       "id": "qil-aggregate-oncommit-failure-rolls-back-tree",
-      "description": "DEFECT: AggregateRuntime.commit documents that a failing onCommit procedure rolls back every prior write of the commit (root and children). Request: POST /api/runtime/aggregate/WidgetOrderAggregate with an explicit root id and one line while no WidgetOrderAudit row exists, so AuditWidgetOrderProcedure fails (503 'onCommit procedure ... failed: CONCEPT_NOT_FOUND'). Actual: after the 503 the WidgetOrder (GET /api/widget_orders/<id> 200) and its WidgetOrderLine are still stored. Expected: both 404. (Uses throwaway StockTransfer ids as uuid sources.)",
+      "description": "DEFECT: AggregateRuntime.commit documents that a failing onCommit procedure rolls back every prior write of the commit (root and children). Request: POST /api/runtime/aggregate/WidgetOrder with an explicit root id and one line while no WidgetOrderAudit row exists, so AuditWidgetOrderProcedure fails (503 'onCommit procedure ... failed: CONCEPT_NOT_FOUND'). Actual: after the 503 the WidgetOrder (GET /api/widget_orders/<id> 200) and its WidgetOrderLine are still stored. Expected: both 404. (Uses throwaway StockTransfer ids as uuid sources.)",
       "keywords": [
-        "aggregate.onCommit",
-        "aggregate.collections"
+        "composition.onCommit",
+        "composition.collections"
       ],
       "steps": [
         {
@@ -2264,7 +2263,7 @@
         {
           "name": "commit with failing onCommit",
           "method": "POST",
-          "path": "/api/runtime/aggregate/WidgetOrderAggregate",
+          "path": "/api/runtime/aggregate/WidgetOrder",
           "body": {
             "id": "${oid}",
             "customerEmail": "developer",

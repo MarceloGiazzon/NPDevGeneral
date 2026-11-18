@@ -44,20 +44,31 @@ class AggregateRuntimeInvariantsTest {
           "concepts": [
             { "name": "Order", "fields": [
               { "name": "id", "type": "uuid", "id": true, "required": true },
-              { "name": "totalQty", "type": "int" } ] },
+              { "name": "totalQty", "type": "int" } ],
+  "composition": {
+    "collections": [
+      {
+        "name": "lines",
+        "concept": "OrderLine",
+        "childField": "orderId"
+      }
+    ],
+    "invariants": [
+      {
+        "name": "positive-line-qty",
+        "expression": "lines.all(l => l.qty > 0)",
+        "message": "every line must have a positive qty"
+      },
+      {
+        "name": "lines-within-total",
+        "expression": "lines.sum(qty) <= totalQty"
+      }
+    ]
+  } },
             { "name": "OrderLine", "fields": [
               { "name": "id", "type": "uuid", "id": true, "required": true },
               { "name": "orderId", "type": "uuid" },
               { "name": "qty", "type": "int" } ] }
-          ],
-          "aggregates": [
-            { "name": "Order", "root": "Order",
-              "collections": [ { "name": "lines", "concept": "OrderLine", "childField": "orderId" } ],
-              "invariants": [
-                { "name": "positive-line-qty", "expression": "lines.all(l => l.qty > 0)",
-                  "message": "every line must have a positive qty" },
-                { "name": "lines-within-total", "expression": "lines.sum(qty) <= totalQty" }
-              ] }
           ]
         }
         """;

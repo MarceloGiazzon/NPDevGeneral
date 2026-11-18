@@ -46,7 +46,7 @@ import generate_dsl_reference as gdr  # noqa: E402
 MIN_FLOWSTEP_TYPES = 10
 MIN_PROCEDURESTEP_TYPES = 15
 MIN_CONCEPT_FIELDS = 8
-MIN_DISCRIMINATED_FIELDS = 15  # 19 as of this writing (F5/c0ecd84) -- see check_breadth's own guard
+MIN_DISCRIMINATED_FIELDS = 11  # 19 at F5/c0ecd84; 15 before FORM P5-T9b/c/e removed root documents/guidePages/aggregates/selectors (BREAKING.md 2026-11-17/18) -- see check_breadth's own guard
 
 
 def discriminated_array_fields(schema: dict) -> list[str]:

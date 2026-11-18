@@ -17,33 +17,33 @@ class AggregateDepthWarningTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private static String concept(String name, String parentField) {
+    private static String concept(String name, String parentField, String composition) {
         return """
             { "name": "%s", "fields": [
-              { "name": "id", "type": "uuid", "id": true, "required": true }%s ] }""".formatted(name,
-                parentField.isEmpty() ? "" : ", { \"name\": \"" + parentField + "\", \"type\": \"uuid\" }");
+              { "name": "id", "type": "uuid", "id": true, "required": true }%s ]%s }""".formatted(name,
+                parentField.isEmpty() ? "" : ", { \"name\": \"" + parentField + "\", \"type\": \"uuid\" }",
+                composition.isEmpty() ? "" : ", \"composition\": { \"collections\": [" + composition + "] }");
     }
 
     private static List<String> warningsFor(int levels) throws Exception {
         String[] names = {"Root", "L1", "L2", "L3", "L4"};
-        StringBuilder concepts = new StringBuilder(concept("Root", ""));
-        for (int i = 1; i <= levels; i++) {
-            concepts.append(",").append(concept(names[i], "parentId"));
-        }
         String nested = "";
         for (int i = levels; i >= 1; i--) {
             nested = """
                 { "name": "c%d", "concept": "%s", "childField": "parentId", "ownership": "owned"%s }""".formatted(i, names[i],
                     nested.isEmpty() ? "" : ", \"collections\": [" + nested + "]");
         }
+        StringBuilder concepts = new StringBuilder(concept("Root", "", nested));
+        for (int i = 1; i <= levels; i++) {
+            concepts.append(",").append(concept(names[i], "parentId", ""));
+        }
         String json = """
             {
               "dslVersion": "3.0.0", "namespace": "f6.depthwarn", "version": "1.0",
               "concepts": [ %s ],
-              "aggregates": [ { "name": "Root", "root": "Root", "collections": [ %s ] } ],
               "autoPanels": [ { "aggregate": "Root" } ]
             }
-            """.formatted(concepts, nested);
+            """.formatted(concepts);
         return new SemanticValidator().validateWithWarnings(new JsonModelParser().parse(MAPPER.readTree(json))).getWarnings();
     }
 

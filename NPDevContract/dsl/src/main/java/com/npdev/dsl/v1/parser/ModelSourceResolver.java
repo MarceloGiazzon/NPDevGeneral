@@ -55,6 +55,14 @@ public final class ModelSourceResolver {
             "procedures",
             "conversions",
             "panels",
+            // FORM P5-T9c: `guidePages` is NO LONGER an authoring key (the back office's pages are declared under
+            // the root backOffice.pages in a model and under a pack-level backOffice.pages in a pack). It stays in
+            // this set as the COMPOSITION kind only: every place that merges, qualifies (`labeling::LabelingOverview`),
+            // de-duplicates and rewrites references (gadget `query`, panel.guidePage) already walks this set, so the
+            // authored pages are lifted into a transient `guidePages` array first (liftBackOfficePages /
+            // liftPackBackOfficePages) and folded back under the composed model's root
+            // backOffice.pages at the end of resolveRoot (foldBackOfficePages). The composed model.json is
+            // therefore authoring-shaped again (it re-validates against model.schema.json and re-parses unchanged).
             "guidePages",
             // Move 13 (REG-108): roles/propertyScopes/properties are top-level arrays exactly like
             // the ones above, but were never added here when they shipped (RC-A1/RC-B1) -- a pack
@@ -68,7 +76,7 @@ public final class ModelSourceResolver {
             "properties",
             // PACK-11 (2026-08-17): the same omission as the three above, four more keys later.
             // Measured by machine-diffing this set against the real top-level schema keys:
-            // aggregates/autoPanels/documents/selectors were missing from BOTH this set and
+            // aggregates/autoPanels/documents/selectors (the last two since folded into screens[], P5-T9b/T9a) were missing from BOTH this set and
             // pack.schema.json, so a pack declaring one was refused outright; `guidePages` was the
             // asymmetric case -- already merged here, still rejected by the schema, which is the
             // shape that tells you the two lists were never checked against each other.
@@ -76,10 +84,10 @@ public final class ModelSourceResolver {
             // Added HERE FIRST and to the schema second, deliberately. Relaxing the schema alone
             // would accept the file and drop its content in silence, which is REG-108's X0 shape
             // and strictly worse than the refusal it replaces.
-            "aggregates",
+            //
+            // FORM P5-T9e: `aggregates` is NO LONGER a kind -- an aggregate is its root concept's `composition`, which
+            // rides inside the concept (qualified with it); the walker below rewrites composition.collections[].concept.
             "autoPanels",
-            "documents",
-            "selectors",
             // R5.3 (2026-08-19): sequences[] threaded the same way. Unlike every other kind in this
             // set, its own `name` field is deliberately EXCLUDED from mergeQualifiedNonConceptArrays'
             // generic pack-qualification (see that method's own "sequences" check) -- a sequence is
@@ -105,7 +113,23 @@ public final class ModelSourceResolver {
             // not a silent cross-pack fix. A seed record also has no `name` field, so it never
             // participates in the generic name-qualification/duplicate-name-within-a-pack check
             // every sibling kind above gets for free.
-            "seeds"
+            "seeds",
+            // FORM P4-T2 (extension ladder rung 2): named pure functions. Merged and pack-qualified like every kind
+            // above (`pricing::surgeMultiplier`), then CONSUMED by FunctionInlining at the end of resolveRoot: each
+            // call in an expression string is replaced by the function's body, so `functions` never reaches
+            // JsonModelParser, the compiler or the canonical writer (REG-108's four places do not apply).
+            "functions",
+            // FORM P5-T1: experiences[] (who lands where, on which device) and screens[] (the closed set of screen
+            // archetypes they navigate to), threaded the same way. Like `sequences`, their own `name` is deliberately
+            // NOT pack-qualified by mergeQualifiedNonConceptArrays: an experience name is a wire-visible identity (the
+            // URL segment /x/<name>/) and screen names are referenced by plain name from experience `home`/`navigation`
+            // and from other screens, none of which the rewrite machinery should have to chase. ExperienceValidation
+            // instead requires global uniqueness across the fully-resolved model. What IS rewritten is every reference
+            // OUT of them (roles in `for`, a screen's `concept`/`query`, an action's `flow`), see
+            // rewriteKnownMemberReferenceFields -- otherwise a pack-contributed screen over a pack-qualified concept
+            // would compose and then fail validation.
+            "experiences",
+            "screens"
     );
     private static final Set<String> ROOT_SCALAR_KEYS = orderedSet(
             "$schema",
@@ -147,6 +171,10 @@ public final class ModelSourceResolver {
         Set<String> keys = new LinkedHashSet<>(MODEL_ARRAY_KEYS);
         keys.add("metadata");
         keys.add("fragments");
+        // FORM P5-T9c: a pack fragment declares its back-office pages as `backOffice.pages`; the composition-only
+        // `guidePages` kind (in MODEL_ARRAY_KEYS) is not an authoring key any more.
+        keys.remove("guidePages");
+        keys.add("backOffice");
         FRAGMENT_KEYS = Set.copyOf(keys);
     }
 
@@ -292,12 +320,24 @@ public final class ModelSourceResolver {
             throw error(sourceFile, "/metadata", "metadata must be an object");
         }
 
+        // FORM P5-T9c: refuse the removed keys here too (JsonModelParser refuses them on the raw root first with a
+        // DeprecationException; this covers a caller that only runs the resolver, e.g. ModelCanonicalizeMain).
+        if (root.has("guidePages")) {
+            throw error(sourceFile, "/guidePages", "Root 'guidePages' was removed (FORM P5-T9c): declare the pages under "
+                    + "the root backOffice.pages (a pack declares a pack-level backOffice.pages)");
+        }
+        if (root.has("appShell")) {
+            throw error(sourceFile, "/appShell", "Root 'appShell' was removed (FORM P5-T9c): declare defaultRoute and navigation under "
+                    + "the root backOffice");
+        }
+
         for (String key : MODEL_ARRAY_KEYS) {
             JsonNode array = root.get(key);
-            if (array != null) {
+            if (array != null && !"guidePages".equals(key)) {
                 resolved.set(key, resolveArray(key, array, sourceFile, state, 0, new ArrayDeque<>()));
             }
         }
+        liftBackOfficePages(root, resolved, sourceFile, state);
 
         if (root.has("fragments")) {
             throw error(sourceFile, "/fragments", "Root 'fragments' was removed: put {\"$ref\": \"file.json\"} entries in the "
@@ -323,6 +363,7 @@ public final class ModelSourceResolver {
         }
 
         resolveUnqualifiedReferences(resolved, sourceFile, state);
+        foldBackOfficePages(resolved);
 
         if (rootMetadata != null) {
             resolved.set("metadata", rootMetadata.deepCopy());
@@ -335,6 +376,11 @@ public final class ModelSourceResolver {
                 resolved.set(entry.getKey(), entry.getValue().deepCopy());
             }
         });
+        try {
+            FunctionInlining.apply(resolved);
+        } catch (FunctionInlining.Problem problem) {
+            throw error(sourceFile, problem.path(), problem.getMessage());
+        }
         return resolved;
     }
 
@@ -1027,7 +1073,8 @@ public final class ModelSourceResolver {
                     // comment for why (nextNumber('name') references it as an opaque literal inside
                     // a defaultExpression string the reference-rewriting machinery cannot reach).
                     // The duplicate-within-this-pack check above still applies unconditionally.
-                    if (!"sequences".equals(key)) {
+                    // FORM P5-T1: experiences[]/screens[] are excluded for the same reason (see MODEL_ARRAY_KEYS).
+                    if (!"sequences".equals(key) && !"experiences".equals(key) && !"screens".equals(key)) {
                         ((ObjectNode) rewritten).put("name", qualifierId + "::" + localName);
                     }
                 }
@@ -1068,7 +1115,7 @@ public final class ModelSourceResolver {
      * self-reference or an attempt at a cross-pack one) is deliberately NOT specially unwrapped --
      * {@code localConcepts} is keyed by bare local names only, so it never matches and always fails
      * ownership, the same simple, safe default every other MODEL_ARRAY_KEYS kind's OWN-concept-only
-     * fields (documents/selectors) leave to plain bare-name authoring.
+     * fields (documents) leave to plain bare-name authoring.
      */
     private static void rewriteSeedConceptOwnership(
             String kindLabel,
@@ -1277,7 +1324,8 @@ public final class ModelSourceResolver {
             // with "concept not found: Label" -- the concept IS in the model, as `labeling::Label`.
             if (parentKey.isBlank()) {
                 rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
-                rewriteTextField(object, "aggregate", resolverFor(rewriteMaps, ambiguousNames, "aggregates"), qualifiedReferenceValidator);
+                // FORM P5-T9e: an aggregate IS its root concept now, so the reference is a concept name.
+                rewriteTextField(object, "aggregate", conceptRewriteMap, qualifiedReferenceValidator);
             }
             // `procedure` on a surface's dataSource, on each workbench action, and on every
             // transaction hook. Rewritten at any depth for the same reason flowStep.scope is: it is
@@ -1293,22 +1341,9 @@ public final class ModelSourceResolver {
         } else if ("guidePages".equals(rootKey)) {
             // PACK-11: every chart/KPI gadget binds to a named query.
             rewriteTextField(object, "query", resolverFor(rewriteMaps, ambiguousNames, "queries"), qualifiedReferenceValidator);
-        } else if ("selectors".equals(rootKey) || "documents".equals(rootKey)) {
-            // PACK-11: both name exactly one concept, on the member object itself.
-            if (parentKey.isBlank()) {
-                rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
-                if ("documents".equals(rootKey)) {
-                    // REP-1: a kind:list document names a queries[] member in `query`; without this a
-                    // pack-contributed report kept the bare name while the query was pack-qualified.
-                    rewriteTextField(object, "query", resolverFor(rewriteMaps, ambiguousNames, "queries"), qualifiedReferenceValidator);
-                }
-            }
-        } else if ("aggregates".equals(rootKey)) {
-            // PACK-11: the aggregate root, plus each collection's own concept (nested arbitrarily
-            // deep -- an aggregateCollection may contain further collections).
-            if (parentKey.isBlank()) {
-                rewriteTextField(object, "root", conceptRewriteMap, qualifiedReferenceValidator);
-            }
+        } else if ("concepts".equals(rootKey) && "collections".equals(parentKey)) {
+            // PACK-11 / FORM P5-T9e: each composition collection's own concept (nested arbitrarily deep -- a
+            // collection may contain further collections). The root is the concept itself and needs no rewrite.
             rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
         } else if ("events".equals(rootKey)) {
             rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
@@ -1318,6 +1353,21 @@ public final class ModelSourceResolver {
             // `inbound.path` itself is deliberately NOT rewritten -- a third party posts to a fixed URL, so
             // qualifying it would make POST /api/hooks/{path} depend on pack composition order.
             rewriteTextField(object, "eventName", resolverFor(rewriteMaps, ambiguousNames, "events"), qualifiedReferenceValidator);
+        } else if ("experiences".equals(rootKey)) {
+            // FORM P5-T1: an experience names the roles it serves.
+            if (parentKey.isBlank()) {
+                rewriteTextArrayField(object, "for", resolverFor(rewriteMaps, ambiguousNames, "roles"), qualifiedReferenceValidator);
+            }
+        } else if ("screens".equals(rootKey)) {
+            // FORM P5-T1: a screen is driven by a concept or a query (top level only: `params` entries and
+            // `map`/`widgets` members never use these keys for a reference), and each action starts a flow.
+            if (parentKey.isBlank()) {
+                rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
+                rewriteTextField(object, "aggregate", conceptRewriteMap, qualifiedReferenceValidator);
+                rewriteTextField(object, "query", resolverFor(rewriteMaps, ambiguousNames, "queries"), qualifiedReferenceValidator);
+            } else if ("actions".equals(parentKey)) {
+                rewriteTextField(object, "flow", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
+            }
         } else if ("properties".equals(rootKey) && parentKey.isBlank()) {
             rewriteTextArrayField(object, "settableAt", resolverFor(rewriteMaps, ambiguousNames, "propertyScopes"), qualifiedReferenceValidator);
         } else if ("concepts".equals(rootKey) && "transitions".equals(parentKey)) {
@@ -1502,11 +1552,19 @@ public final class ModelSourceResolver {
                 resolvedPack.set(key, rawPack.get(key).deepCopy());
             }
         }
+        if (rawPack.has("guidePages")) {
+            throw error(packFile, "/guidePages", "Pack 'guidePages' was removed (FORM P5-T9c): declare the pages as "
+                    + "\"backOffice\": {\"pages\": [...]} (same entries)");
+        }
         for (String key : MODEL_ARRAY_KEYS) {
             JsonNode value = rawPack.get(key);
-            if (value != null) {
+            if (value != null && !"guidePages".equals(key)) {
                 resolvedPack.set(key, resolvePackArray(key, value, packFile, packDirectory, state, depth, stack));
             }
+        }
+        ArrayNode packPages = liftPackBackOfficePages(rawPack.get("backOffice"), packFile, packDirectory, state, depth, stack);
+        if (packPages != null) {
+            resolvedPack.set("guidePages", packPages);
         }
         if (rawPack.has("metadata")) {
             resolvedPack.set("metadata", rawPack.get("metadata").deepCopy());
@@ -1563,6 +1621,68 @@ public final class ModelSourceResolver {
         return resolvedPack;
     }
 
+    /** FORM P5-T9c: copies the model's root {@code backOffice} ({@code defaultRoute}, {@code navigation}) into the
+     *  composed model and lifts its OWN {@code pages} (resolving {@code $ref} page includes on the way) into the
+     *  transient composition array {@code resolved.guidePages}. Packs/contexts append their own pages to the same
+     *  array afterwards, so the compiled order stays "model pages, then pack pages" exactly as before the move. */
+    private void liftBackOfficePages(ObjectNode root, ObjectNode resolved, Path sourceFile, ResolutionState state)
+            throws IOException {
+        JsonNode backOffice = root.get("backOffice");
+        if (backOffice == null) {
+            return;
+        }
+        if (!backOffice.isObject()) {
+            throw error(sourceFile, "/backOffice", "backOffice must be an object {defaultRoute, navigation, pages}");
+        }
+        ObjectNode copy = ((ObjectNode) backOffice).deepCopy();
+        JsonNode pages = copy.remove("pages");
+        resolved.set("backOffice", copy);
+        if (pages != null) {
+            ArrayNode lifted = resolveArray("guidePages", pages, sourceFile, state, 0, new ArrayDeque<>());
+            if (!lifted.isEmpty()) {
+                resolved.set("guidePages", lifted);
+            }
+        }
+    }
+
+    /** FORM P5-T9c: the pack/context/fragment side of liftBackOfficePages. A pack declares its pages as a pack-level
+     *  {@code backOffice: {pages: [...]}} (the pack schema allows nothing else under it); they become the pack's
+     *  {@code guidePages} composition array, which mergeQualifiedNonConceptArrays then qualifies
+     *  ({@code packId::Name}) and reference-rewrites like any other member kind. */
+    private ArrayNode liftPackBackOfficePages(
+            JsonNode rawBackOffice,
+            Path sourceFile,
+            Path packDirectory,
+            ResolutionState state,
+            int depth,
+            ArrayDeque<Path> stack
+    ) throws IOException {
+        if (rawBackOffice == null) {
+            return null;
+        }
+        if (!rawBackOffice.isObject()) {
+            throw error(sourceFile, "/backOffice", "backOffice must be an object {pages: [...]}");
+        }
+        JsonNode pages = rawBackOffice.get("pages");
+        return pages == null ? null : resolvePackArray("guidePages", pages, sourceFile, packDirectory, state, depth, stack);
+    }
+
+    /** FORM P5-T9c: writes the composed {@code guidePages} array (own pages first, then every pack's) back as
+     *  {@code backOffice.pages} of the composed model -- creating the root {@code backOffice} object when only a pack
+     *  contributed pages -- and removes the transient key, so the composed JSON is authoring-shaped
+     *  (model.schema.json has no top-level {@code guidePages}). */
+    private void foldBackOfficePages(ObjectNode resolved) {
+        JsonNode composed = resolved.remove("guidePages");
+        if (composed == null || !composed.isArray() || composed.isEmpty()) {
+            return;
+        }
+        JsonNode existing = resolved.get("backOffice");
+        ObjectNode backOffice = existing != null && existing.isObject()
+                ? (ObjectNode) existing
+                : resolved.putObject("backOffice");
+        backOffice.set("pages", composed);
+    }
+
     private ObjectNode resolvePackFragment(
             Ref ref,
             Path referencingFile,
@@ -1590,9 +1710,14 @@ public final class ModelSourceResolver {
         ObjectNode out = JsonNodeFactory.instance.objectNode();
         for (String key : MODEL_ARRAY_KEYS) {
             JsonNode value = fragmentObject.get(key);
-            if (value != null) {
+            if (value != null && !"guidePages".equals(key)) {
                 out.set(key, resolvePackArray(key, value, fragmentFile, packDirectory, state, depth + 1, childStack));
             }
+        }
+        ArrayNode fragmentPages = liftPackBackOfficePages(
+                fragmentObject.get("backOffice"), fragmentFile, packDirectory, state, depth + 1, childStack);
+        if (fragmentPages != null) {
+            out.set("guidePages", fragmentPages);
         }
         if (fragmentObject.has("metadata")) {
             out.set("metadata", fragmentObject.get("metadata").deepCopy());
@@ -1925,6 +2050,7 @@ public final class ModelSourceResolver {
                 || MODEL_ARRAY_KEYS.contains(key)
                 || "metadata".equals(key)
                 || "packs".equals(key)
+                || "backOffice".equals(key)
                 || "modules".equals(key);
     }
 

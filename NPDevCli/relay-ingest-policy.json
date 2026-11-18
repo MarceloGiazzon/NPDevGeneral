@@ -49,8 +49,9 @@
     "_comment": "F4/T4.2 (npdev_relay_elements.py reads ONLY this section for what an element upsert may touch). identityKeys = root arrays of model.schema.json whose elements REQUIRE `name` (test_relay_elements pins that against the schema, so a schema change that drops it fails there). wholeFileOnly = root arrays that cannot be sent as upserts, with the reason shown to the AI. A key in neither list is unknown. shrinkWarnRatio: a replaced element whose JSON is smaller than this share of the old one earns an `element-shrank` warning (an AI that thinks an upsert MERGES sends only the changed fields).",
     "identityKeys": [
       "concepts", "domainTypes", "capabilities", "customCapabilities", "events", "flows",
-      "queries", "procedures", "panels", "documents", "guidePages", "aggregates",
-      "selectors", "roles", "propertyScopes", "properties", "sequences"
+      "queries", "procedures", "panels",
+      "roles", "propertyScopes", "properties", "sequences",
+      "functions", "experiences", "screens"
     ],
     "wholeFileOnly": {
       "conversions": "its elements are identified by id, not name",
@@ -85,7 +86,7 @@
       "shell.js", "shell.css", "npdev-review.js", "npdev-xlsx.js", "npdev-expr.js", "info.html", "info.json",
       "model-surface.html", "model-authoring.html", "npdev-theme.js", "npdev-a11y.css", "npdev-display.js"
     ],
-    "reservedDirectories": ["npdev-business-ui", "npdev-workbench", "themes"],
+    "reservedDirectories": ["npdev-business-ui", "npdev-workbench", "themes", "x"],
     "globalCssFiles": ["theme.css"],
     "externalReferencePatterns": [
       { "id": "attribute-url", "regex": "\\b(?:src|href|action|data|poster|srcset)\\s*=\\s*[\"']?\\s*(?:https?:)?//([^/\"'\\s>)]+)" },

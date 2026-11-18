@@ -1,0 +1,39 @@
+{
+ "$comment": "FORM P4-T4 retroactive admission record (the slot predates the budget, so it is also in baselineSlots; this record documents why it earned its place). Written after the fact; apps and probe checked against the files on 2026-11-17.",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "flows[].runAs",
+ "slots": [
+  "flow.runAs"
+ ],
+ "rung": 0,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-17",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "names WHO the flow acts as (caller or system); no ordering, no logic"
+  },
+  "notLower": {
+   "value": true,
+   "why": "a function is pure and has no principal; the principal decides which access rules apply, so only the platform can enforce it"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "NPDevSamples/ride-hailing",
+    "NPDevSamples/dsl-conformance-max",
+    "NPDevSamples/restaurant-saas-multitenant"
+   ]
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevSamples/dsl-conformance-max/behavior-probes/96-run-as-system.json"
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "flows[].runAs: caller|system"
+  }
+ },
+ "replaces": [],
+ "budgetDelta": 0
+}

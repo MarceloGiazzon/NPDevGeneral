@@ -1,0 +1,39 @@
+{
+ "$comment": "FORM P5 admission, 2026-11-18.",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "screens[].params",
+ "slots": [
+  "screen.params"
+ ],
+ "rung": 0,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-18",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "names the values a query screen sends its named query: each is an expression over $user, sent as ?name=value"
+  },
+  "notLower": {
+   "value": true,
+   "why": "the browser has no other way to fill a query's $params; a flow cannot parameterise a screen's own data source"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "NPDevSamples/ride-hailing"
+   ],
+   "note": "ONE APP ONLY: ride-hailing `my-driver-rides` (query RidesOfDriver, params {account: $user.id}), added 2026-11-18. Before that the client validated `params` and never sent them; core.js listQuery now does."
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevSamples/ride-hailing/drive_s2.py",
+   "note": "ride-hailing's drive_s2.py experience stage asserts the screen's dataUrl/params from /api/x/me and that RidesOfDriver?account=driver1 lists driver1's ride while driver2 asking for account=driver1 gets none (row access still applies); experience-client.test.mjs covers listQuery's params. Not browser-driven."
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "`query` + `params` (a named query instead of `concept`; `\"params\":{\"account\":\"$user.id\"}` fills the query's `$params.account`)"
+  }
+ },
+ "replaces": [],
+ "budgetDelta": 1
+}

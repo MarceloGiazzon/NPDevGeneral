@@ -1,0 +1,39 @@
+id: REG-340
+title: >-
+  An emitEvent step inside a flow does not resume a flow parked on awaitEvent once about 2 s have passed since it parked
+type: BUG
+severity: MEDIUM
+status: DONE
+closed: 2026-11-18
+verification: VERIFIED_LIVE
+opened: 2026-11-18
+source: >-
+  Found 2026-11-18 while building the ride-hailing driver experience (FORM P5-T8). A ui flow that answered an offer with an emitEvent step
+  (RideOfferAnswered, same correlation and payload as the human-task path) returned HTTP 200 but left the parked RequestRide waiting when the
+  driver answered 3 s, 5 s or 8 s after the offer; answering at 1.5 s worked. The task path (completing the human task) resumes the same flow at 8 s.
+  The flow only resumed 20 s or more later, when the kernel's own waiting-flow sweep reached it, which can lose the 20 s offer-timeout race.
+surface: kernel/flow-engine (ResumeCoordinator, EmitEventStep), runtimehost/execution
+detail: |
+  Evidence: the emitted event's payload and correlation id were identical to the task path's, and the offer task stayed open after the 200.
+  Likely cause, NOT proven: in ResumeCoordinator / EmitEventStep the synchronous resume attempt does not see the just-emitted event once the
+  waiting instance has been parked for a short while (a visibility or ordering problem between the event store write and the resume lookup).
+  Workaround in use (NPDevSamples/ride-hailing): AcceptRideOffer / DeclineRideOffer use scheduleEvent with delaySeconds 1 and a dedupeKey, which is
+  published like an external event and resumes reliably, with a ~3 s lag. A residual race remains for an answer scheduled close to the 20 s deadline,
+  so the inbox countdown locks at 17 s.
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel
+  - NPDevSamples/ride-hailing/Input/model.json
+done_when: >-
+  A probe (dsl-conformance-max, AwaitPaymentConfirmation-style flow) parks a flow, waits 5 s, then a SECOND flow resumes it with an emitEvent step
+  carrying the awaited correlation, and the first flow completes within 2 s; the ride-hailing answer flows can then use emitEvent and the 17 s
+  countdown lock can return to 20 s.
+notes: |
+  2026-11-18 (closed): root cause found live on ride-hailing with a temporary debug print (removed). It was NOT the waiting-flow sweep and NOT visibility:
+  the parked flow's persisted state holds ids as strings (it has been through JSON) while the live emitEvent envelope still carried the id as a
+  java.util.UUID read from a concept, and KernelRunner.matchesAwaitPayload compared them with Objects.equals(String, UUID) = false. An event that
+  arrived BEFORE the flow parked, or one the sweep re-read from the store (strings), matched; that is the "works at 1.5 s, resumes 20 s later" shape.
+  Fix: KernelRunner.awaitValuesEqual (equal value, same number whatever the boxed type, or an id and its canonical text; a string never equals a number).
+  Test KernelRunnerAwaitPayloadMatchTest; behaviour probe 101-emit-event-resume (a timed, payload-matched awaitEvent in a forEach, resumed 5 s later by a
+  second flow's emitEvent; note it passes on the old kernel because dsl-conformance-max payloads are strings, so the unit test is what pins the fix).
+  Ride-hailing: AcceptRideOffer and DeclineRideOffer use emitEvent again, the inbox countdown is 20 s; live: answer at 5 s and 8 s -> ACCEPTED in 0.1 s
+  (was ASSIGNED for 20 s+); full run-ride-hailing 141/141 incl. the exposure matrix.

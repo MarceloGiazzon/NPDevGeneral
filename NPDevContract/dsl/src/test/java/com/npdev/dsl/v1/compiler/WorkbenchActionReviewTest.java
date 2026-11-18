@@ -34,9 +34,8 @@ class WorkbenchActionReviewTest {
               "concepts": [
                 { "name": "Cap", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
-                  { "name": "finish", "type": "string" } ] }
+                  { "name": "finish", "type": "string" } ], "composition": {} }
               ],
-              "aggregates": [ { "name": "Cap", "root": "Cap" } ],
               "procedures": [
                 { "name": "Identify", "steps": [ { "name": "r", "type": "return", "value": "$input" } ] },
                 { "name": "Fold", "steps": [ { "name": "r", "type": "return", "value": "$input" } ] }

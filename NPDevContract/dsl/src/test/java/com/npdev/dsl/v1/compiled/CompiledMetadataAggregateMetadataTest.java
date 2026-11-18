@@ -16,15 +16,14 @@ class CompiledMetadataAggregateMetadataTest {
     @Test
     void aggregateMetadataIsServedOnEveryAggregateInvocation() throws Exception {
         JsonNode model = MAPPER.readTree("{\"dslVersion\":\"3.0.0\",\"namespace\":\"aggmeta.test\",\"version\":\"1.0\","
-                + "\"concepts\":[{\"name\":\"Order\",\"fields\":[{\"name\":\"id\",\"type\":\"uuid\",\"id\":true,\"required\":true}]}],"
-                + "\"aggregates\":[{\"name\":\"OrderAggregate\",\"root\":\"Order\","
-                + "\"metadata\":{\"purpose\":\"one order tree\"}}]}");
+                + "\"concepts\":[{\"name\":\"Order\",\"fields\":[{\"name\":\"id\",\"type\":\"uuid\",\"id\":true,\"required\":true}],"
+                + "\"composition\":{\"metadata\":{\"purpose\":\"one order tree\"}}}]}");
         CompiledModel compiled = new ModelCompiler().compile(new JsonModelParser().parse(model));
 
         JsonNode invocations = MAPPER.readTree(CompiledMetadataCanonicalJson.toJson(model, compiled))
                 .path("catalogs").path("invocations");
-        for (String id : new String[] {"aggregateRead:OrderAggregate", "aggregateCommit:OrderAggregate",
-                "aggregateInvoke:OrderAggregate"}) {
+        for (String id : new String[] {"aggregateRead:Order", "aggregateCommit:Order",
+                "aggregateInvoke:Order"}) {
             JsonNode entry = null;
             for (JsonNode candidate : invocations) {
                 if (id.equals(candidate.path("id").asText())) {

@@ -31,7 +31,13 @@ class AutoPanelWorkbenchTypedSurfaceValidationTest {
               "dslVersion": "3.0.0", "namespace": "wms.typed7.validation", "version": "1.0",
               "concepts": [
                 { "name": "Movimento", "fields": [
-                  { "name": "id", "type": "uuid", "id": true, "required": true } ] },
+                  { "name": "id", "type": "uuid", "id": true, "required": true } ],
+                  "composition": { "collections": [
+                    { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned",
+                      "collections": [
+                        { "name": "posicoes", "concept": "Posicao", "childField": "itemId", "ownership": "owned" }
+                      ] }
+                  ] } },
                 { "name": "MovimentoItem", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "movimentoId", "type": "uuid" } ] },
@@ -41,15 +47,6 @@ class AutoPanelWorkbenchTypedSurfaceValidationTest {
               ],
               "procedures": [
                 { "name": "RealProcedure", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] }
-              ],
-              "aggregates": [
-                { "name": "Movimento", "root": "Movimento",
-                  "collections": [
-                    { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId", "ownership": "owned",
-                      "collections": [
-                        { "name": "posicoes", "concept": "Posicao", "childField": "itemId", "ownership": "owned" }
-                      ] }
-                  ] }
               ],
               "autoPanels": [ { "aggregate": "Movimento",
                 "transaction": %s } ]

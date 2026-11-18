@@ -1,5 +1,9 @@
 package com.npdev.dsl.v1.ast;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.npdev.dsl.v1.parser.JsonModelParser;
+
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -28,6 +32,15 @@ import java.util.Map;
  * by those concept fields, {@code subtotals} prints a total row per group and {@code grandTotal} a
  * final one. All six are optional and additive; a document without {@code kind} behaves exactly as
  * before.
+ *
+ * <p><b>FORM P5-T9b:</b> the top-level {@code documents[]} key no longer exists. The authoring form is a
+ * {@code screens[]} entry of kind {@code document}; this record is now the compile-time IR that
+ * {@link #fromDocumentScreens(List)} derives from such screens ({@code ModelCompiler} compiles each exactly as
+ * before, so the compiled {@code documents} section, the generated back office toolbar and the server-side
+ * {@code /api/documents/{name}/render.pdf|csv} renderers are unchanged). Property mapping: {@code name, concept, title,
+ * pageSize, marginMm, metadata, aggregate, bands, logo, query, groupBy, subtotals, grandTotal} map 1:1;
+ * {@code report: true} is {@code kind: "list"}; {@code printColumns} is {@code columns} (a screen's own
+ * {@code columns} is capped at 7, which a printable report must not inherit).
  */
 public record DocumentAst(
         String name,
@@ -85,5 +98,18 @@ public record DocumentAst(
             Map<String, Object> metadata
     ) {
         this(name, concept, title, pageSize, marginMm, metadata, null, List.of(), null);
+    }
+
+    /**
+     * The document declarations among {@code screens} (entries with {@code kind: "document"}, a name and a concept), in
+     * order. A document screen without a concept is skipped here: {@code ExperienceValidation} reports it. The parser
+     * has already run this once on the same input ({@code JsonModelParser}), so the checked exception cannot occur.
+     */
+    public static List<DocumentAst> fromDocumentScreens(List<JsonNode> screens) {
+        try {
+            return JsonModelParser.parseDocumentScreens(screens);
+        } catch (IOException e) {
+            throw new IllegalStateException("document screens were validated at parse time: " + e.getMessage(), e);
+        }
     }
 }

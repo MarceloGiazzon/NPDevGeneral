@@ -30,7 +30,11 @@ public class RuntimeRequestSizeFilter extends OncePerRequestFilter {
         if (uri == null) {
             return true;
         }
-        boolean flowExecute = uri.startsWith("/api/flows/") || uri.startsWith("/api/v1/flows/");
+        // FORM P5-T2: the experience client starts its flows through /api/x/flows/<flow>/execute -- same body cap.
+        boolean flowExecute = uri.startsWith("/api/flows/") || uri.startsWith("/api/v1/flows/")
+                || uri.startsWith("/api/x/flows/")
+                // FORM P5-T4: POST /api/x/eval (server-side expression values) -- same body cap.
+                || "/api/x/eval".equals(uri);
         boolean eventPublish = "/api/events/publish".equals(uri) || "/api/v1/events/publish".equals(uri);
         return !(flowExecute || eventPublish);
     }

@@ -28,66 +28,43 @@ class DefaultProcedureExecutorLiteralValueTest {
 
     private static DefaultProcedureExecutor newExecutor() {
         ConceptGateway gateway = new DefaultConceptGateway(new InMemoryConceptStore());
-        return new DefaultProcedureExecutor(gateway, (call, state) -> CapabilityResult.success(null), NOOP_EVENT_BUS);
+        return new DefaultProcedureExecutor(gateway);
     }
 
     @Test
-    void returnAcceptsALiteralArrayWithNoCapabilityRoundTrip() {
-        DefaultProcedureExecutor executor = newExecutor();
-        ProcedureDefinition definition = new ProcedureDefinition(
-                "ReturnLiteralList",
-                List.of(ProcedureStep.returnValue("return-literal-list", List.of("a", "b", "c")))
-        );
-
-        ProcedureExecutionResult result = executor.execute(definition, Map.of(), CTX);
+    void aLiteralArrayPassesThroughUnchanged() {
+        ProcedureExecutionResult result = newExecutor().execute(new ProcedureDefinition(
+                "Literal", List.of(ProcedureStep.buildObject("b", Map.of("list", List.of("a", "b", "c")), "return"))), Map.of(), CTX);
 
         assertTrue(result.ok(), result.failureMessage());
-        assertEquals(List.of("a", "b", "c"), result.state().get("return"));
+        assertEquals(Map.of("list", List.of("a", "b", "c")), result.state().get("return"));
     }
 
     @Test
-    void mapValueAcceptsALiteralObject() {
-        DefaultProcedureExecutor executor = newExecutor();
-        ProcedureDefinition definition = new ProcedureDefinition(
-                "MapLiteralObject",
-                List.of(
-                        ProcedureStep.mapValue("map-literal", Map.of("createdCount", 3L), "summary"),
-                        ProcedureStep.returnValue("return-summary", "$summary")
-                )
-        );
-
-        ProcedureExecutionResult result = executor.execute(definition, Map.of(), CTX);
+    void aLiteralObjectPassesThroughUnchanged() {
+        ProcedureExecutionResult result = newExecutor().execute(new ProcedureDefinition(
+                "LiteralObject", List.of(ProcedureStep.buildObject("b", Map.of("summary", Map.of("createdCount", 3L)), "return"))), Map.of(), CTX);
 
         assertTrue(result.ok(), result.failureMessage());
-        assertEquals(Map.of("createdCount", 3L), result.state().get("return"));
+        assertEquals(Map.of("summary", Map.of("createdCount", 3L)), result.state().get("return"));
     }
 
     @Test
     void dollarRefsStillResolveAgainstState() {
-        DefaultProcedureExecutor executor = newExecutor();
-        ProcedureDefinition definition = new ProcedureDefinition(
-                "ReturnRef",
-                List.of(ProcedureStep.returnValue("return-ref", "$items"))
-        );
-
-        ProcedureExecutionResult result = executor.execute(
-                definition, Map.of("items", List.of(1, 2, 3)), CTX);
+        ProcedureExecutionResult result = newExecutor().execute(new ProcedureDefinition(
+                "Ref", List.of(ProcedureStep.buildObject("b", Map.of("items", "$items"), "return"))),
+                Map.of("items", List.of(1, 2, 3)), CTX);
 
         assertTrue(result.ok(), result.failureMessage());
-        assertEquals(List.of(1, 2, 3), result.state().get("return"));
+        assertEquals(Map.of("items", List.of(1, 2, 3)), result.state().get("return"));
     }
 
     @Test
     void doubleDollarEscapesToALiteralStringStartingWithDollar() {
-        DefaultProcedureExecutor executor = newExecutor();
-        ProcedureDefinition definition = new ProcedureDefinition(
-                "ReturnEscaped",
-                List.of(ProcedureStep.returnValue("return-escaped", "$$notARef"))
-        );
-
-        ProcedureExecutionResult result = executor.execute(definition, Map.of(), CTX);
+        ProcedureExecutionResult result = newExecutor().execute(new ProcedureDefinition(
+                "Escaped", List.of(ProcedureStep.buildObject("b", Map.of("v", "$$notARef"), "return"))), Map.of(), CTX);
 
         assertTrue(result.ok(), result.failureMessage());
-        assertEquals("$notARef", result.state().get("return"));
+        assertEquals(Map.of("v", "$notARef"), result.state().get("return"));
     }
 }

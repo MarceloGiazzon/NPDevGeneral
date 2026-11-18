@@ -1883,11 +1883,40 @@ final EventBus eventBus;
         for (Map.Entry<String, String> match : payloadMatchRefs.entrySet()) {
             Object expected = resolveReference(match.getValue(), state, input);
             Object actual = payloadMap.get(match.getKey());
-            if (!Objects.equals(expected, actual)) {
+            if (!awaitValuesEqual(expected, actual)) {
                 return false;
             }
         }
         return true;
+    }
+
+    /**
+     * REG-340: the two sides of an await payload match come from different places. The expected value is read from
+     * the PARKED flow's state, which has been through JSON (ids are strings, whole numbers are Long); the actual value
+     * is read from the event envelope, which for a synchronous resume by an {@code emitEvent} step is still the live
+     * in-memory payload (a {@code UUID} read from a concept, an {@code Integer}). {@code Objects.equals} then said
+     * "no match" for the very same id and the parked flow only moved on when the scheduled sweep re-read the event
+     * from the store, 20 s or more later. Equal means: the same value, a number of the same numeric value, or an id
+     * and its canonical text.
+     */
+    static boolean awaitValuesEqual(Object expected, Object actual) {
+        if (Objects.equals(expected, actual)) {
+            return true;
+        }
+        if (expected == null || actual == null) {
+            return false;
+        }
+        if (expected instanceof Number left && actual instanceof Number right) {
+            try {
+                return new java.math.BigDecimal(left.toString()).compareTo(new java.math.BigDecimal(right.toString())) == 0;
+            } catch (NumberFormatException notFinite) {
+                return false;
+            }
+        }
+        if (expected instanceof java.util.UUID || actual instanceof java.util.UUID) {
+            return expected.toString().equalsIgnoreCase(actual.toString());
+        }
+        return false;
     }
 
     static Object buildEventPayload(FlowStepDefinition step, Map<String, Object> state, Object input) {

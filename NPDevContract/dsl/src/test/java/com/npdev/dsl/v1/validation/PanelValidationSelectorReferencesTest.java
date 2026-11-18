@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * REAL_LIFT_PLAN_2026-09-03 package C2 (boundary B16 Step 2, EDIT-18): {@code
  * PanelValidation.validateSelectorReferences} -- a {@code selectorRef} naming an undeclared
  * selector is an ERROR (mirrors {@code PropertyValidation}'s {@code settableAt} existence-check
- * pattern), and a {@code selectors[]} entry referenced by nothing is a WARNING, not an error.
+ * pattern), and a picker screen ({@code screens[]} kind {@code picker}) referenced by nothing is a WARNING, not an error.
  */
 class PanelValidationSelectorReferencesTest {
 
@@ -41,8 +41,8 @@ class PanelValidationSelectorReferencesTest {
     void aSelectorRefNamingARealDeclaredSelectorValidatesClean() throws Exception {
         ModelAst ast = parse(
                 """
-                , "selectors": [
-                  { "name": "WidgetPicker", "concept": "Widget", "columns": ["id"] }
+                , "screens": [
+                  { "name": "WidgetPicker", "kind": "picker", "concept": "Widget", "columns": ["id"] }
                 ]
                 """,
                 ", \"picker\": { \"selectorRef\": \"WidgetPicker\" }");
@@ -69,8 +69,8 @@ class PanelValidationSelectorReferencesTest {
     void aDeclaredSelectorReferencedByNothingIsAWarningNotAnError() throws Exception {
         ModelAst ast = parse(
                 """
-                , "selectors": [
-                  { "name": "UnusedPicker", "concept": "Widget", "columns": ["id"] }
+                , "screens": [
+                  { "name": "UnusedPicker", "kind": "picker", "concept": "Widget", "columns": ["id"] }
                 ]
                 """,
                 "");

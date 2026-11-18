@@ -475,11 +475,11 @@ def _has_procedure_create_if_missing(model: dict) -> bool:
 
 
 def _has_settings(model: dict) -> bool:
-    # Move 6 Move A (docs/MOVE6_TYPED_SURFACE_PLAN.md §2): the typed top-level app settings block
-    # (locale/strings/ui) -- retires the untyped mix of platform-default English and hardcoded
-    # Portuguese literal fallbacks a generated app's Aggregate Workbench page used to render.
-    settings = model.get("settings")
-    return isinstance(settings, dict) and len(settings) > 0
+    # Move 6 Move A (docs/MOVE6_TYPED_SURFACE_PLAN.md §2), FORM P5-T9g: the app's typed locale/strings, now the
+    # root backOffice.locale / backOffice.strings -- retires the untyped mix of platform-default English and
+    # hardcoded Portuguese literal fallbacks a generated app's Aggregate Workbench page used to render.
+    back_office = model.get("backOffice")
+    return isinstance(back_office, dict) and bool(back_office.get("locale") or back_office.get("strings"))
 
 
 def _has_on_failure(model: dict) -> bool:

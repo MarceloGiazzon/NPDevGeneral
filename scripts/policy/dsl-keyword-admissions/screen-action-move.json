@@ -1,0 +1,39 @@
+{
+ "$comment": "FORM P5 admission, 2026-11-18.",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "screens[].actions[].moveTo",
+ "slots": [
+  "screenAction.moveTo"
+ ],
+ "rung": 0,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-18",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "a board action with style move names the column (a groupBy value) a dragged card moves to; the button's flow does the move"
+  },
+  "notLower": {
+   "value": true,
+   "why": "a drag-to-column is a gesture the shell owns; what the move DOES stays a flow, so lifecycle guards and access still decide"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "NPDevSamples/ride-hailing"
+   ],
+   "note": "ONE APP ONLY: ride-hailing `drivers-board` (board of Driver by status, two move actions onto SetDriverStatus), added 2026-11-18."
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevSamples/ride-hailing/drive_s2.py",
+   "note": "drive_s2.py asserts the board's two moveTo actions arrive from /api/x/me and that the dispatcher moves a driver AVAILABLE and back through the flow (the Driver lifecycle guard allows a Dispatcher); experience-client.test.mjs covers the drag only for style move + moveTo, with a stub DOM. The drag gesture itself has NOT been driven in a real browser."
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "a board `groupBy` (an enum field) with a button `style:\"move\"` + `moveTo`"
+  }
+ },
+ "replaces": [],
+ "budgetDelta": 1
+}

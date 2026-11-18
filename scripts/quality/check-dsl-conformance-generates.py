@@ -16,8 +16,8 @@ Compiled representation differs from the authored model.json in ways that matter
 directly against a real generation run before writing these assertions):
   - aggregates/autoPanels/documents/domainTypes/externalAi/guidePages survive as non-empty top-level
     keys in compiled-model.json, same shape as the source.
-  - a `selectors` entry has no top-level key of its own in the compiled output -- it fully expands
-    into an ordinary `panels[]` entry; the compiled marker is that panel's
+  - a picker screen (the old `selectors` entry) is expanded by ModelCompiler into an ordinary `panels[]` entry
+    (it also stays in the compiled `screens[]`); the compiled marker is that panel's
     `metadata.generatedBy == "selector"`.
   - step kinds forEach/generatedAction survive as literal `steps[].type` values.
   - onFailure compensation survives as a non-empty `steps[].onFailureSteps` list (the compiled name;
@@ -104,7 +104,7 @@ ASSERTIONS = {
     "domainTypes": lambda m: _nonempty(m, "domainTypes"),
     "externalAi": lambda m: _nonempty(m, "externalAi"),
     "guidePages": lambda m: _nonempty(m, "guidePages"),
-    "selectors (as a panel)": _has_selector_panel,
+    "picker screen (as a panel)": _has_selector_panel,
     "step.forEach": lambda m: _has_step_type(m, "forEach"),
     "step.generatedAction": lambda m: _has_step_type(m, "generatedAction"),
     "step.onFailureSteps": _has_on_failure_steps,

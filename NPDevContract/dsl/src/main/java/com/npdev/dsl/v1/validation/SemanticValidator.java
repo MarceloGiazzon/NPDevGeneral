@@ -75,7 +75,7 @@ import java.util.stream.Collectors;
  * {@link FlowValidation}, {@link PanelValidation}
  * (+ {@link UxMetadataValidation}), {@link AggregateValidation}, {@link DocumentValidation},
  * {@link PackValidation}, {@link RoleValidation}, {@link WebhookValidation},
- * {@link SequenceValidation}, {@link SeedValidation}, and {@link ExpressionValidation}. {@link #normalize} and
+ * {@link SequenceValidation}, {@link SeedValidation}, {@link ExperienceValidation}, and {@link ExpressionValidation}. {@link #normalize} and
  * {@link #hasText} remain here as the shared string-normalization utilities every section uses.
  */
 public final class SemanticValidator {
@@ -159,6 +159,8 @@ public final class SemanticValidator {
         ConversionValidation.validateConversions(effectiveModel, entitiesByLower, errors);
         PropertyValidation.validatePropertyScopesAndProperties(effectiveModel, errors);
         AgentAccessValidation.validateAgentAccess(effectiveModel, entitiesByLower, errors);
+        // FORM P5-T1: experiences[] / screens[] reference roles, concepts, queries and flows, so they run last.
+        ExperienceValidation.validate(effectiveModel, entitiesByLower, errors);
         errors = canonicalizeConceptTerminology(errors);
         semanticWarnings = canonicalizeConceptTerminology(semanticWarnings);
         for (String semanticWarning : semanticWarnings) {

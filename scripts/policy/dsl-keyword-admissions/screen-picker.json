@@ -1,0 +1,41 @@
+{
+ "$comment": "FORM P5 admission, 2026-11-18.",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "screens[] kind picker",
+ "slots": [
+  "screen.multiSelect",
+  "screen.filters",
+  "screen.returnMapping"
+ ],
+ "rung": 0,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-18",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "a reusable row chooser: which fields are searchable, whether one or many rows can be picked, and what each pick hands back"
+  },
+  "notLower": {
+   "value": true,
+   "why": "what a pick returns is a mapping of named fields; the dialog, search and selection state are client runtime the platform ships"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "NPDevSamples/dsl-conformance-max"
+   ],
+   "note": "ONE APP ONLY: dsl-conformance-max WidgetCatalogPicker (migrated from selectors[] on 2026-11-17 with identical compiled IR). There is no second picker in the corpus."
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/BusinessUiEmitterPickerFilterTest.java",
+   "note": "this is a generator test, not a behaviour probe: it proves picker filters are emitted; ExperienceValidationTest rejects a returnMapping naming a missing field; the client's picker.js is covered by experience-client.test.mjs and the real-browser smoke"
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "Picker (`kind:\"picker\"`): `multiSelect`, `filters` (searchable fields), `returnMapping` (`{returnedName:field}`)."
+  }
+ },
+ "replaces": [],
+ "budgetDelta": 3
+}

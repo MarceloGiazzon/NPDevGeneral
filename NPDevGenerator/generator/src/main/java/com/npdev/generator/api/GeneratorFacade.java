@@ -369,6 +369,8 @@ public final class GeneratorFacade {
         // scaffolding/import-export capability -- also unconditional, also independent of
         // UI_GENERATE_BUSINESS_UI, for the same reason as ModelSurfaceEmitter above.
         new ModelAuthoringEmitter(templates, writer).emit(model);
+        // FORM P5-T2: the resolved experiences/screens (+ the client files) -- writes nothing for a model without them.
+        new com.npdev.generator.emitters.ExperienceEmitter(templates, writer).emit(model);
         // Wave 2.2: widget reference page, also unconditional -- it describes the widget SYSTEM
         // (FieldWidgetDefaults.catalogue()), not this app's own panels.
         new WidgetCatalogueEmitter(templates, writer).emit(model);
@@ -542,7 +544,14 @@ public final class GeneratorFacade {
                 model.getPropertyScopes(),
                 model.getProperties(),
                 model.getContexts(),
-                model.getConversions()
+                model.getConversions(),
+                model.getWebhooks(),
+                model.getSequences(),
+                model.getSeeds(),
+                model.getAppShell(),
+                model.getAgentAccess(),
+                model.getExperiences(),
+                model.getScreens()
         );
     }
 

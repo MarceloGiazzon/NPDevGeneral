@@ -5,19 +5,6 @@
   "type": "object",
   "description": "A model fragment: any subset of the model's top-level member arrays, composed into the model root by `fragments[]`. PACK-12 (2026-08-17): this file previously declared 14 keys and NOT `concepts`, while setting additionalProperties:false -- so as written it rejected the most ordinary fragment there is. It had no consumer, which is exactly why it could be wrong unnoticed; `resolve_split_model` now validates every fragment file against it. The property list is generated from the composer's own key set (npdev_cli.MODEL_ARRAY_KEYS) rather than typed, because typing it is how it went stale.",
   "properties": {
-    "aggregates": {
-      "type": "array",
-      "items": {
-        "oneOf": [
-          {
-            "$ref": "model.schema.json#/$defs/aggregate"
-          },
-          {
-            "$ref": "model.schema.json#/$defs/localModelRef"
-          }
-        ]
-      }
-    },
     "autoPanels": {
       "type": "array",
       "items": {
@@ -96,19 +83,6 @@
         ]
       }
     },
-    "documents": {
-      "type": "array",
-      "items": {
-        "oneOf": [
-          {
-            "$ref": "model.schema.json#/$defs/document"
-          },
-          {
-            "$ref": "model.schema.json#/$defs/localModelRef"
-          }
-        ]
-      }
-    },
     "domainTypes": {
       "type": "array",
       "items": {
@@ -148,17 +122,23 @@
         ]
       }
     },
-    "guidePages": {
-      "type": "array",
-      "items": {
-        "oneOf": [
-          {
-            "$ref": "model.schema.json#/$defs/guidePage"
-          },
-          {
-            "$ref": "model.schema.json#/$defs/localModelRef"
+    "backOffice": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pages": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "model.schema.json#/$defs/guidePage"
+              },
+              {
+                "$ref": "model.schema.json#/$defs/localModelRef"
+              }
+            ]
           }
-        ]
+        }
       }
     },
     "panels": {
@@ -232,19 +212,6 @@
         "oneOf": [
           {
             "$ref": "model.schema.json#/$defs/role"
-          },
-          {
-            "$ref": "model.schema.json#/$defs/localModelRef"
-          }
-        ]
-      }
-    },
-    "selectors": {
-      "type": "array",
-      "items": {
-        "oneOf": [
-          {
-            "$ref": "model.schema.json#/$defs/selector"
           },
           {
             "$ref": "model.schema.json#/$defs/localModelRef"

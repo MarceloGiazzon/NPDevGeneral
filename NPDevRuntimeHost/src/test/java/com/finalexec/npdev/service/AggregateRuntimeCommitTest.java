@@ -45,7 +45,25 @@ class AggregateRuntimeCommitTest {
                   "name": "cliente",
                   "type": "string"
                 }
-              ]
+              ],
+              "composition": {
+                "collections": [
+                  {
+                    "name": "itens",
+                    "concept": "ExpedicaoItem",
+                    "childField": "expedicaoId",
+                    "ownership": "owned",
+                    "collections": [
+                      {
+                        "name": "origens",
+                        "concept": "MovtoOrigem",
+                        "childField": "itemSeq",
+                        "ownership": "owned"
+                      }
+                    ]
+                  }
+                ]
+              }
             },
             {
               "name": "ExpedicaoItem",
@@ -82,28 +100,6 @@ class AggregateRuntimeCommitTest {
                 {
                   "name": "local",
                   "type": "string"
-                }
-              ]
-            }
-          ],
-          "aggregates": [
-            {
-              "name": "Expedicao",
-              "root": "Expedicao",
-              "collections": [
-                {
-                  "name": "itens",
-                  "concept": "ExpedicaoItem",
-                  "childField": "expedicaoId",
-                  "ownership": "owned",
-                  "collections": [
-                    {
-                      "name": "origens",
-                      "concept": "MovtoOrigem",
-                      "childField": "itemSeq",
-                      "ownership": "owned"
-                    }
-                  ]
                 }
               ]
             }
@@ -289,7 +285,7 @@ class AggregateRuntimeCommitTest {
     }
 
     private static ProcedureRunner wired(CompiledModel model, ConceptGateway gateway) {
-        ProcedureRunner runner = new ProcedureRunner(model, gateway, null, null);
+        ProcedureRunner runner = new ProcedureRunner(model, gateway);
         InProcessAcceptanceRunner.attachKernel(runner, model, null, gateway, null);
         return runner;
     }

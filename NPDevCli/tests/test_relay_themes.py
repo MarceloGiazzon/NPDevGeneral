@@ -98,10 +98,11 @@ class WhereTheThemeIsChosenTests(unittest.TestCase):
     def test_the_selection_is_a_flat_config_default_and_model_json_cannot_hold_it(self):
         config_schema = json.loads((REPO / "NPDevContract" / "schemas" / "config.schema.json").read_text(encoding="utf-8"))
         self.assertIn("string", config_schema["properties"]["defaults"]["additionalProperties"]["type"])
-        ui = json.loads((REPO / "NPDevContract" / "schemas" / "model.schema.json").read_text(encoding="utf-8")
-                        )["$defs"]["settings"]["properties"]["ui"]
-        self.assertFalse(ui["additionalProperties"])
-        self.assertNotIn("theme", ui["properties"])
+        back_office = json.loads((REPO / "NPDevContract" / "schemas" / "model.schema.json").read_text(encoding="utf-8")
+                                 )["$defs"]["backOffice"]
+        self.assertFalse(back_office["additionalProperties"])
+        self.assertNotIn("theme", back_office["properties"])
+        self.assertNotIn("ui", back_office["properties"])
         java = (REPO / "NPDevContract" / "dsl" / "src" / "main" / "java" / "com" / "npdev" / "dsl" / "v1" / "settings"
                 / "NpdevSettings.java").read_text(encoding="utf-8")
         self.assertIn(f'"{themes.SETTING_NAME}"', java)

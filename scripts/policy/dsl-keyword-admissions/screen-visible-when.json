@@ -1,0 +1,40 @@
+{
+ "$comment": "FORM P5 admission, 2026-11-18.",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "screens[].visibleWhen",
+ "slots": [
+  "screen.visibleWhen"
+ ],
+ "rung": 0,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-18",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "an expression over $user; false hides the screen and its navigation entry"
+  },
+  "notLower": {
+   "value": true,
+   "why": "hiding a nav entry and showing 'not available' is shell behaviour the platform owns; it is a convenience, never security -- the server still enforces access on every call"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "NPDevSamples/ride-hailing",
+    "NPDevSamples/dsl-conformance-max"
+   ],
+   "note": "ride-hailing `drivers-board` ($user.roles.contains('DISPATCHER')) and dsl-conformance-max `place-order` ($user.roles.contains('WAREHOUSEMANAGER')); both added 2026-11-18. Roles reach the client UPPER-CASED."
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/ExperienceValidationTest.java",
+   "note": "ExperienceValidationTest rejects an expression that does not parse; core.js isVisible is covered by experience-client.test.mjs. Neither app asserts a screen being HIDDEN: both expressions are true for the role the experience is for, so the proof is that the screen stays reachable (dsl-conformance-max probe 19: 4 screens; ride-hailing experience stage). It is UI only and deliberately not a security control."
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "`visibleWhen` (expression; false hides the screen)"
+  }
+ },
+ "replaces": [],
+ "budgetDelta": 1
+}

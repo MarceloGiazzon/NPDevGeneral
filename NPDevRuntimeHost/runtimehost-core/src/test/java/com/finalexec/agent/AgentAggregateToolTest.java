@@ -37,7 +37,9 @@ class AgentAggregateToolTest {
             {
               "dslVersion": "3.0.0", "namespace": "demo.mosaic", "version": "1.0",
               "concepts": [
-                { "name": "Mosaic", "ui": { "label": "Mosaic" }, "fields": [
+                { "name": "Mosaic", "ui": { "label": "Mosaic" },
+                  "composition": { "collections": [ { "name": "cells", "concept": "MosaicCell", "childField": "mosaicId", "ownership": "owned" } ] },
+                  "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "title", "type": "string", "required": true },
                   { "name": "rows", "type": "integer", "required": true },
@@ -50,13 +52,9 @@ class AgentAggregateToolTest {
                   { "name": "row", "type": "integer", "required": true },
                   { "name": "capId", "type": "string" } ] }
               ],
-              "aggregates": [
-                { "name": "MosaicAggregate", "root": "Mosaic",
-                  "collections": [ { "name": "cells", "concept": "MosaicCell", "childField": "mosaicId", "ownership": "owned" } ] }
-              ],
               "agentAccess": {
                 "channels": { "mcp": { "enabled": true } },
-                "expose": [ { "aggregate": "MosaicAggregate", "operations": %s, "description": "Cap mosaics." } ]
+                "expose": [ { "aggregate": "Mosaic", "operations": %s, "description": "Cap mosaics." } ]
               }
             }
             """.formatted(operations);
@@ -73,7 +71,7 @@ class AgentAggregateToolTest {
                 bodies.add(MAPPER.readTree(in));
             }
             byte[] out = """
-                {"aggregate":"MosaicAggregate","id":"m1","title":"Flag","rows":2,
+                {"aggregate":"Mosaic","id":"m1","title":"Flag","rows":2,
                  "cells":[{"id":"c1","mosaicId":"m1","row":0,"capId":"k1"},{"id":"c2","mosaicId":"m1","row":1,"capId":null}]}"""
                     .getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
@@ -99,7 +97,7 @@ class AgentAggregateToolTest {
     @Test
     void offersGetAndSaveWithTheWholeTreeInTheSaveSchema() throws Exception {
         List<AgentToolCatalog.AgentTool> tools = AgentToolCatalog.toolsFor(model("[\"get\", \"save\"]"), Set.of());
-        assertEquals(List.of("get_MosaicAggregate", "save_MosaicAggregate"),
+        assertEquals(List.of("get_Mosaic", "save_Mosaic"),
                 tools.stream().map(AgentToolCatalog.AgentTool::name).toList());
 
         AgentToolCatalog.AgentTool save = tools.get(1);
@@ -124,7 +122,7 @@ class AgentAggregateToolTest {
     void defaultsToGetOnly() throws Exception {
         CompiledModel compiled = new ModelCompiler().compile(
                 new JsonModelParser().parse(MAPPER.readTree(modelJsonWithoutOperations())));
-        assertEquals(List.of("get_MosaicAggregate"),
+        assertEquals(List.of("get_Mosaic"),
                 AgentToolCatalog.toolsFor(compiled, Set.of()).stream().map(AgentToolCatalog.AgentTool::name).toList());
     }
 
@@ -132,9 +130,8 @@ class AgentAggregateToolTest {
         return """
             {
               "dslVersion": "3.0.0", "namespace": "demo.mosaic", "version": "1.0",
-              "concepts": [ { "name": "Mosaic", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
-              "aggregates": [ { "name": "MosaicAggregate", "root": "Mosaic" } ],
-              "agentAccess": { "channels": { "mcp": { "enabled": true } }, "expose": [ { "aggregate": "MosaicAggregate" } ] }
+              "concepts": [ { "name": "Mosaic", "composition": {}, "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
+              "agentAccess": { "channels": { "mcp": { "enabled": true } }, "expose": [ { "aggregate": "Mosaic" } ] }
             }
             """;
     }
@@ -144,7 +141,7 @@ class AgentAggregateToolTest {
         AgentToolCatalog.AgentTool get = AgentToolCatalog.toolsFor(model("[\"get\"]"), Set.of()).get(0);
         AgentApiExecutor.Outcome outcome = executor().execute(get, Map.of("id", "m1"), CREDS);
 
-        assertEquals(List.of("GET /api/runtime/aggregate/MosaicAggregate/m1"), requests);
+        assertEquals(List.of("GET /api/runtime/aggregate/Mosaic/m1"), requests);
         JsonNode body = MAPPER.readTree(outcome.body());
         assertEquals("m1", body.get("id").asText());
         assertEquals("Flag", body.get("title").asText());
@@ -163,7 +160,7 @@ class AgentAggregateToolTest {
         AgentApiExecutor.Outcome outcome = executor().execute(save, draft, CREDS);
 
         assertTrue(outcome.ok());
-        assertEquals(List.of("POST /api/runtime/aggregate/MosaicAggregate"), requests);
+        assertEquals(List.of("POST /api/runtime/aggregate/Mosaic"), requests);
         assertEquals(2, bodies.get(0).get("cells").size());
         JsonNode body = MAPPER.readTree(outcome.body());
         assertEquals("m1", body.get("id").asText());
@@ -176,8 +173,8 @@ class AgentAggregateToolTest {
         executor().execute(save, Map.of("id", "m1", "title", "Renamed",
                 "cells", List.of(Map.of("row", 0, "capId", "k9"))), CREDS);
 
-        assertEquals(List.of("GET /api/runtime/aggregate/MosaicAggregate/m1",
-                "POST /api/runtime/aggregate/MosaicAggregate"), requests);
+        assertEquals(List.of("GET /api/runtime/aggregate/Mosaic/m1",
+                "POST /api/runtime/aggregate/Mosaic"), requests);
         JsonNode posted = bodies.get(0);
         assertEquals("Renamed", posted.get("title").asText(), "what the agent sent wins");
         assertEquals(2, posted.get("rows").asInt(), "an omitted root field keeps its stored value");

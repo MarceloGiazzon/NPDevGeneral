@@ -88,6 +88,23 @@ class AggregateRuntimeInProcAtomicityAndVetoTest {
                     "to": "Committed"
                   }
                 ]
+              },
+              "composition": {
+                "onCommit": "SyncLedgerProcedure",
+                "collections": [
+                  {
+                    "name": "lines",
+                    "concept": "OrdLine",
+                    "childField": "ordId",
+                    "ownership": "owned"
+                  }
+                ],
+                "invariants": [
+                  {
+                    "name": "lines-within-total",
+                    "expression": "lines.sum(qty) <= totalQty"
+                  }
+                ]
               }
             },
             {
@@ -139,27 +156,6 @@ class AggregateRuntimeInProcAtomicityAndVetoTest {
               ]
             }
           ],
-          "aggregates": [
-            {
-              "name": "OrdAggregate",
-              "root": "Ord",
-              "onCommit": "SyncLedgerProcedure",
-              "collections": [
-                {
-                  "name": "lines",
-                  "concept": "OrdLine",
-                  "childField": "ordId",
-                  "ownership": "owned"
-                }
-              ],
-              "invariants": [
-                {
-                  "name": "lines-within-total",
-                  "expression": "lines.sum(qty) <= totalQty"
-                }
-              ]
-            }
-          ],
           "flows": [
             {
               "name": "SyncLedgerProcedure",
@@ -195,7 +191,7 @@ class AggregateRuntimeInProcAtomicityAndVetoTest {
         ModelAst ast = new JsonModelParser().parse(MAPPER.readTree(MODEL));
         CompiledModel model = new ModelCompiler().compile(ast);
         gateway = DefaultConceptGateway.governedBy(new InMemoryConceptStore(model), model);
-        ProcedureRunner procedureRunner = new ProcedureRunner(model, gateway, null, null);
+        ProcedureRunner procedureRunner = new ProcedureRunner(model, gateway);
         InProcessAcceptanceRunner.attachKernel(procedureRunner, model, null, gateway, null);
         runtime = new AggregateRuntime(model, gateway, procedureRunner, null, new CelInvariantEngine());
     }
@@ -219,7 +215,7 @@ class AggregateRuntimeInProcAtomicityAndVetoTest {
     void failingOnCommitProcedureRollsBackRootAndChildrenOnTheInProcStore() {
         // No Ledger "missing" row exists, so the onCommit patchConcept fails AFTER root + line were written.
         assertThrows(IllegalStateException.class,
-                () -> runtime.commit("OrdAggregate", draft("Draft", 10, "missing", "A", 1), ctx));
+                () -> runtime.commit("Ord", draft("Draft", 10, "missing", "A", 1), ctx));
 
         assertEquals(Optional.empty(), gateway.read(new ConceptReadRequest("Ord", "O1", null), ctx),
                 "the root must be rolled back with the failed onCommit");
@@ -230,7 +226,7 @@ class AggregateRuntimeInProcAtomicityAndVetoTest {
     @Test
     void failingOnCommitIsStillAnUnavailableStyleIllegalStateNotAVeto() {
         IllegalStateException thrown = assertThrows(IllegalStateException.class,
-                () -> runtime.commit("OrdAggregate", draft("Draft", 10, "missing", "A", 1), ctx));
+                () -> runtime.commit("Ord", draft("Draft", 10, "missing", "A", 1), ctx));
         assertTrue(thrown.getMessage().contains("onCommit procedure"));
         assertTrue(!(thrown instanceof AggregateCommitVetoException),
                 "a failing onCommit procedure is not a client veto -- the controller keeps answering 503");
@@ -239,7 +235,7 @@ class AggregateRuntimeInProcAtomicityAndVetoTest {
     @Test
     void successfulCommitKeepsEverythingWithTheJournalActive() {
         gateway.save(new ConceptWriteRequest("Ledger", "L1", "trial", Map.of("id", "L1", "synced", "false")), ctx);
-        runtime.commit("OrdAggregate", draft("Draft", 10, "L1", "A", 1, "B", 2), ctx);
+        runtime.commit("Ord", draft("Draft", 10, "L1", "A", 1, "B", 2), ctx);
         assertEquals(2, gateway.list(new ConceptListRequest("OrdLine", "trial", null, null), ctx).size());
         assertEquals("true", gateway.read(new ConceptReadRequest("Ledger", "L1", null), ctx)
                 .orElseThrow().data().get("synced"));
@@ -248,7 +244,7 @@ class AggregateRuntimeInProcAtomicityAndVetoTest {
     @Test
     void invariantVetoIsTheClientErrorSubtype() {
         AggregateCommitVetoException thrown = assertThrows(AggregateCommitVetoException.class,
-                () -> runtime.commit("OrdAggregate", draft("Draft", 10, "L1", "A", 7, "B", 5), ctx));
+                () -> runtime.commit("Ord", draft("Draft", 10, "L1", "A", 7, "B", 5), ctx));
         assertTrue(thrown.getMessage().contains("lines-within-total"));
         assertEquals(Optional.empty(), gateway.read(new ConceptReadRequest("Ord", "O1", null), ctx));
     }
@@ -256,13 +252,13 @@ class AggregateRuntimeInProcAtomicityAndVetoTest {
     @Test
     void illegalLifecycleTransitionInTheTreeSurfacesTheGatewayCodeAndLeavesTheRowUnchanged() {
         gateway.save(new ConceptWriteRequest("Ledger", "L1", "trial", Map.of("id", "L1", "synced", "false")), ctx);
-        runtime.commit("OrdAggregate", draft("Draft", 10, "L1", "A", 1), ctx);
+        runtime.commit("Ord", draft("Draft", 10, "L1", "A", 1), ctx);
         // Draft -> Committed is the only declared transition; Committed -> Draft is illegal.
         gateway.save(new ConceptWriteRequest("Ord", "O1", "trial",
                 Map.of("id", "O1", "status", "Committed", "totalQty", 10, "ledgerRef", "L1")), ctx);
 
         ConceptGatewaySemanticException thrown = assertThrows(ConceptGatewaySemanticException.class,
-                () -> runtime.commit("OrdAggregate", draft("Draft", 10, "L1", "A", 1), ctx));
+                () -> runtime.commit("Ord", draft("Draft", 10, "L1", "A", 1), ctx));
 
         assertEquals("CONCEPT_LIFECYCLE_TRANSITION_INVALID", thrown.code());
         assertEquals("Committed", gateway.read(new ConceptReadRequest("Ord", "O1", null), ctx)
@@ -274,7 +270,7 @@ class AggregateRuntimeInProcAtomicityAndVetoTest {
         gateway.save(new ConceptWriteRequest("Ledger", "L1", "trial", Map.of("id", "L1", "synced", "false")), ctx);
         // two lines with the same (ordId, sku) pair
         assertThrows(ConceptStoreUniqueViolationException.class,
-                () -> runtime.commit("OrdAggregate", draft("Draft", 10, "L1", "A", 1, "A", 2), ctx));
+                () -> runtime.commit("Ord", draft("Draft", 10, "L1", "A", 1, "A", 2), ctx));
         assertEquals(Optional.empty(), gateway.read(new ConceptReadRequest("Ord", "O1", null), ctx),
                 "the root written before the colliding line must be undone");
     }

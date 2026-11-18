@@ -1,0 +1,160 @@
+{
+  "probes": [
+    {
+      "id": "ex-eval-evaluates-only-the-callers-own-experience-expressions-as-the-caller",
+      "keywords": [
+        "flow.expose"
+      ],
+      "description": "FORM P5-T4: POST /api/x/eval answers server-side values for the expressions the caller's OWN experience declares. A WarehouseManager asks the `suppliers` navigation badge count('WidgetSupplier') -> a number (concept access applies as for the REST API). The `place-order` badge count('WidgetOrder', status == 'NEW') is in the experience too, but WarehouseManager has no access to WidgetOrder, so the gateway denies the count and the value is null (never an error, never a message). Text that is NOT written in the experience (another count, or plain arithmetic) is null without being evaluated. ADMIN and a plain USER have no experience, so even the exact badge text is null. More than 25 expressions in one request is a 400. Needs no flows; keyword witness is the experience's flow.expose surface (the same experience P5-T2 probes). WidgetOrder has the row rule access.read: customerEmail == $user.id, so a WarehouseManager may list the concept but reads none of the other customer's rows: count('WidgetOrder', status == 'NEW') is 0 for it although a NEW order exists (an unscoped count would be at least 1).",
+      "steps": [
+        {
+          "name": "a badge of the caller's experience is evaluated to a number",
+          "method": "POST",
+          "path": "/api/x/eval",
+          "apiKey": "${key_warehousemanager}",
+          "body": {
+            "expressions": {
+              "supplierBadge": "count('WidgetSupplier')"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.values.supplierBadge": {
+                "gt": -1
+              }
+            }
+          }
+        },
+        {
+          "name": "setup: an order of ANOTHER customer in state NEW exists (readable only by its owner)",
+          "method": "POST",
+          "path": "/api/widget_orders",
+          "body": {
+            "customerEmail": "developer",
+            "status": "NEW",
+            "lineCount": 1
+          },
+          "expect": {
+            "status": [
+              200,
+              201
+            ]
+          }
+        },
+        {
+          "name": "a declared badge over a row-scoped concept counts only the caller's own readable rows",
+          "method": "POST",
+          "path": "/api/x/eval",
+          "apiKey": "${key_warehousemanager}",
+          "body": {
+            "expressions": {
+              "orderBadge": "count('WidgetOrder', status == 'NEW')"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.values.orderBadge": 0
+            }
+          }
+        },
+        {
+          "name": "text that the experience does not declare is null even when it is harmless",
+          "method": "POST",
+          "path": "/api/x/eval",
+          "apiKey": "${key_warehousemanager}",
+          "body": {
+            "expressions": {
+              "other": "count('WidgetSupplier', displayName == 'x')",
+              "arith": "1 + 1",
+              "badge": "count('WidgetSupplier')"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.values.other": null,
+              "$.values.arith": null,
+              "$.values.badge": {
+                "gt": -1
+              }
+            }
+          }
+        },
+        {
+          "name": "ADMIN has no experience: the exact badge text is null",
+          "method": "POST",
+          "path": "/api/x/eval",
+          "body": {
+            "expressions": {
+              "supplierBadge": "count('WidgetSupplier')"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.values.supplierBadge": null
+            }
+          }
+        },
+        {
+          "name": "a plain USER has no experience either",
+          "method": "POST",
+          "path": "/api/x/eval",
+          "apiKey": "${key_alice}",
+          "body": {
+            "expressions": {
+              "supplierBadge": "count('WidgetSupplier')"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.values.supplierBadge": null
+            }
+          }
+        },
+        {
+          "name": "more than 25 expressions in one request is refused",
+          "method": "POST",
+          "path": "/api/x/eval",
+          "apiKey": "${key_warehousemanager}",
+          "body": {
+            "expressions": {
+              "k0": "count('WidgetSupplier')",
+              "k1": "count('WidgetSupplier')",
+              "k2": "count('WidgetSupplier')",
+              "k3": "count('WidgetSupplier')",
+              "k4": "count('WidgetSupplier')",
+              "k5": "count('WidgetSupplier')",
+              "k6": "count('WidgetSupplier')",
+              "k7": "count('WidgetSupplier')",
+              "k8": "count('WidgetSupplier')",
+              "k9": "count('WidgetSupplier')",
+              "k10": "count('WidgetSupplier')",
+              "k11": "count('WidgetSupplier')",
+              "k12": "count('WidgetSupplier')",
+              "k13": "count('WidgetSupplier')",
+              "k14": "count('WidgetSupplier')",
+              "k15": "count('WidgetSupplier')",
+              "k16": "count('WidgetSupplier')",
+              "k17": "count('WidgetSupplier')",
+              "k18": "count('WidgetSupplier')",
+              "k19": "count('WidgetSupplier')",
+              "k20": "count('WidgetSupplier')",
+              "k21": "count('WidgetSupplier')",
+              "k22": "count('WidgetSupplier')",
+              "k23": "count('WidgetSupplier')",
+              "k24": "count('WidgetSupplier')",
+              "k25": "count('WidgetSupplier')"
+            }
+          },
+          "expect": {
+            "status": 400
+          }
+        }
+      ]
+    }
+  ]
+}

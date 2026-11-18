@@ -37,18 +37,17 @@
     {
       "id": "pack-composition-four-place",
       "citedBy": "REG-108",
-      "description": "A top-level model array field contributed by a pack/fragment (not just the app's own root) must be threaded through ModelSourceResolver.MODEL_ARRAY_KEYS, BOTH copies of pack.schema.json, ModelResolver.resolve(), and the CompiledModelCanonicalJson/Reader pair -- CLAUDE.md's own documented four-place rule. PACK-11 (2026-08-17) extended this to aggregates/autoPanels/documents/guidePages (`selectors` has its own rule -- it is expanded, not serialized), found by machine-diffing the composer's key set against the real top-level schema keys: four were missing from BOTH the composer and pack.schema.json, and guidePages was the asymmetric case -- merged by the composer, rejected by the schema. R6.2 (2026-08-19) added `webhooks` (inbound webhook doors) the same way; FORM P3-T10 (2026-11-16) removed that root key again -- a door is now `capabilities[].inbound` (rule capability-inbound-live-path). R5.3 (2026-08-19) added `sequences` (document-numbering counters) the same way too, WITHOUT a rewriteKnownMemberReferenceFields entry -- unlike a reference-carrying field such as an event name, a sequence's `name` is referenced as an opaque literal argument to nextNumber('name') embedded inside another field's defaultExpression TEXT, which that mechanism cannot reach (it rewrites discrete JSON fields, not substrings inside an expression string); see SequenceAst's javadoc and mergeQualifiedNonConceptArrays' own `sequences` exclusion for the reasoning. Note the FIFTH place this rule does not cover: a member kind that carries references of its own also needs entries in ModelSourceResolver.rewriteKnownMemberReferenceFields, or it composes and then fails validation because its own `concept`/`query` stayed unqualified. That one fails loudly, which is why it is not tracked here.",
+      "description": "A top-level model array field contributed by a pack/fragment (not just the app's own root) must be threaded through ModelSourceResolver.MODEL_ARRAY_KEYS, BOTH copies of pack.schema.json, ModelResolver.resolve(), and the CompiledModelCanonicalJson/Reader pair -- CLAUDE.md's own documented four-place rule. PACK-11 (2026-08-17) extended this to aggregates/autoPanels/documents/guidePages (`selectors` and, since FORM P5-T9b, `documents` are no longer root keys: both are screens[] kinds -- see rules picker-screen-selector-expansion and document-screen-expansion; since FORM P5-T9c `guidePages` is no longer an authoring key either: a pack declares a pack-level `backOffice.pages` -- see rule back-office-pack-lift), found by machine-diffing the composer's key set against the real top-level schema keys: four were missing from BOTH the composer and pack.schema.json, and guidePages was the asymmetric case -- merged by the composer, rejected by the schema. R6.2 (2026-08-19) added `webhooks` (inbound webhook doors) the same way; FORM P3-T10 (2026-11-16) removed that root key again -- a door is now `capabilities[].inbound` (rule capability-inbound-live-path). R5.3 (2026-08-19) added `sequences` (document-numbering counters) the same way too, WITHOUT a rewriteKnownMemberReferenceFields entry -- unlike a reference-carrying field such as an event name, a sequence's `name` is referenced as an opaque literal argument to nextNumber('name') embedded inside another field's defaultExpression TEXT, which that mechanism cannot reach (it rewrites discrete JSON fields, not substrings inside an expression string); see SequenceAst's javadoc and mergeQualifiedNonConceptArrays' own `sequences` exclusion for the reasoning. Note the FIFTH place this rule does not cover: a member kind that carries references of its own also needs entries in ModelSourceResolver.rewriteKnownMemberReferenceFields, or it composes and then fails validation because its own `concept`/`query` stayed unqualified. That one fails loudly, which is why it is not tracked here.",
       "kind": "field-in-all-files",
       "trackedFields": [
         "roles",
         "propertyScopes",
         "properties",
         "conversions",
-        "aggregates",
         "autoPanels",
-        "documents",
-        "guidePages",
-        "sequences"
+        "sequences",
+        "experiences",
+        "screens"
       ],
       "caseSensitive": false,
       "files": [
@@ -66,7 +65,9 @@
       "description": "A new AST-level field needs a live path through parser -> compiler -> canonical writer+reader -> ModelResolver, or it survives parsing but silently never reaches the generator/runtime (REG-104's shape: RolePermissions.toRole() had no diagnostic for an app-declared role because roles[] did not yet exist end to end).",
       "kind": "field-in-all-files",
       "trackedFields": [
-        "roles"
+        "roles",
+        "guidePages",
+        "appShell"
       ],
       "caseSensitive": false,
       "files": [
@@ -460,20 +461,67 @@
       ]
     },
     {
-      "id": "selector-expansion-four-place",
-      "citedBy": "PACK-11",
-      "description": "`selectors` is threaded like every other pack-contributable array EXCEPT at the last step: it never reaches the canonical compiled JSON, because ModelCompiler expands each selector into a picker panel and the PANEL is what round-trips. So its fourth place is the expansion loop in ModelCompiler, not CompiledModelCanonicalJson. Tracked separately rather than exempted from pack-composition-four-place: an exemption would leave the key looking guarded while nothing checked it, and this way deleting the expansion breaks the gate instead of silently producing a model whose selectors vanish.",
+      "id": "experience-screen-ast-compiled-four-place",
+      "citedBy": "FORM P5-T1",
+      "description": "experiences[] and screens[] (experiences per role) are carried as opaque JSON objects, so they need the same live path sequences[]/seeds[] need -- parser, compiler, ModelResolver and the canonical writer+reader pair -- or a declared experience parses and validates clean and silently never reaches the experience emitter. The pack-composition half (MODEL_ARRAY_KEYS, both pack.schema.json) is tracked in pack-composition-four-place. Not guarded here: NPDevCli/npdev_cli.py's own MODEL_ARRAY_KEYS copy, pinned instead by NPDevCli/tests/test_root_keys_match_schema.py against model.schema.json.",
       "kind": "field-in-all-files",
       "trackedFields": [
-        "selectors"
+        "experiences",
+        "screens"
       ],
       "caseSensitive": false,
       "files": [
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java"
+      ]
+    },
+    {
+      "id": "back-office-pack-lift",
+      "citedBy": "FORM P5-T9c (the appShell/guidePages counterpart of picker-screen-selector-expansion)",
+      "description": "The top-level `appShell` and `guidePages` keys are gone: the back-office menu and pages are the optional ROOT `backOffice` {defaultRoute, navigation, pages} (independent of experiences and roles), and a pack/fragment contributes pages as a pack-level `backOffice.pages`. The IR (AppShellAst + guidePages -> CompiledAppShell / CompiledGuidePage) is unchanged: JsonModelParser.parseBackOffice reads the root object into it, and ModelSourceResolver lifts every authored page into the transient composition kind `guidePages` (so pack qualification `pack::Page`, gadget `query` and panel.guidePage rewriting keep working) and folds the composed list (own pages first) back into the root backOffice.pages at the end of resolveRoot. Dropping `backOffice` from the resolver, either pack.schema.json copy or the parser means a pack's pages silently vanish or a schema refuses them.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "backOffice"
+      ],
+      "caseSensitive": true,
+      "files": [
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
         "NPDevContract/schemas/pack.schema.json",
         "NPDevContract/dsl/src/main/resources/schema/pack.schema.json",
-        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java",
-        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java"
+        "NPDevContract/schemas/model.schema.json",
+        "NPDevContract/dsl/src/main/resources/schema/model.schema.json"
+      ]
+    },
+    {
+      "id": "picker-screen-selector-expansion",
+      "citedBy": "FORM P5-T9a (replaces PACK-11's selector-expansion-four-place)",
+      "description": "The top-level `selectors` key is gone: a selector is a screens[] entry of kind \"picker\", which travels as opaque screen JSON (ExperienceValidation checks it) and is turned back into the compile-time SelectorAst by SelectorAst.fromPickerScreens, called from ModelAst.getSelectors(). ModelCompiler expands each one into the same picker panel the old key produced, so the PANEL is what round-trips. Drop the factory or its caller and every picker.selectorRef silently resolves to nothing -- the exact shape this registry exists to catch.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "fromPickerScreens"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/SelectorAst.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/ModelAst.java"
+      ]
+    },
+    {
+      "id": "document-screen-expansion",
+      "citedBy": "FORM P5-T9b (the documents counterpart of picker-screen-selector-expansion)",
+      "description": "The top-level `documents` key is gone: a document is a screens[] entry of kind \"document\", which travels as opaque screen JSON (ExperienceValidation checks the screen, DocumentValidation the derived documents) and is turned back into the compile-time DocumentAst by DocumentAst.fromDocumentScreens (-> JsonModelParser.parseDocumentScreens), called from ModelAst.getDocuments(). ModelCompiler compiles each exactly as before, so the compiled `documents` section, the back-office toolbar and the /api/documents/{name}/render.pdf|csv renderers are unchanged. Drop the factory or its caller and every declared document silently disappears from the compiled model -- the exact shape this registry exists to catch.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "fromDocumentScreens"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/DocumentAst.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/ModelAst.java"
       ]
     },
     {
@@ -653,7 +701,7 @@
     {
       "id": "document-list-report-four-place",
       "citedBy": "REP-1 (reports beyond one record, 2026-10-20)",
-      "description": "documents[].kind:list adds members INSIDE the existing document def (subtotals/grandTotal/columns/groupBy/query), so the REG-108 pack-composition rule never sees them. Each must be threaded through parser -> compiler -> canonical writer + reader, or a declared report silently loses its totals on the way to the runtime (the canonical JSON is all the generator and the runtime host ever read). The pack-contributed half -- a report's `query` naming a pack-qualified queries[] member -- lives in ModelSourceResolver.rewriteKnownMemberReferenceFields (documents branch) and fails loudly in validation when forgotten.",
+      "description": "a document screen with report:true (the old documents[].kind:list; FORM P5-T9b) adds members INSIDE the screen (subtotals/grandTotal/printColumns/groupBy/query), so the REG-108 pack-composition rule never sees them. Each must be threaded through the document-screen parser (JsonModelParser.parseDocumentScreens) -> compiler -> canonical writer + reader, or a declared report silently loses its totals on the way to the runtime (the canonical JSON is all the generator and the runtime host ever read). The pack-contributed half -- a report's `query` naming a pack-qualified queries[] member -- lives in ModelSourceResolver.rewriteKnownMemberReferenceFields (screens branch) and fails loudly in validation when forgotten.",
       "kind": "field-in-all-files",
       "trackedFields": [
         "subtotals",

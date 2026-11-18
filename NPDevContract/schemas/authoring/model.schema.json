@@ -211,57 +211,6 @@
         }
       }
     },
-    "documents": {
-      "type": "array",
-      "items": {
-        "if": {
-          "type": "object",
-          "required": [
-            "$ref"
-          ]
-        },
-        "then": {
-          "$ref": "#/$defs/localModelRef"
-        },
-        "else": {
-          "$ref": "#/$defs/document"
-        }
-      }
-    },
-    "guidePages": {
-      "type": "array",
-      "items": {
-        "if": {
-          "type": "object",
-          "required": [
-            "$ref"
-          ]
-        },
-        "then": {
-          "$ref": "#/$defs/localModelRef"
-        },
-        "else": {
-          "$ref": "#/$defs/guidePage"
-        }
-      }
-    },
-    "aggregates": {
-      "type": "array",
-      "items": {
-        "if": {
-          "type": "object",
-          "required": [
-            "$ref"
-          ]
-        },
-        "then": {
-          "$ref": "#/$defs/localModelRef"
-        },
-        "else": {
-          "$ref": "#/$defs/aggregate"
-        }
-      }
-    },
     "autoPanels": {
       "type": "array",
       "items": {
@@ -276,23 +225,6 @@
         },
         "else": {
           "$ref": "#/$defs/autoPanel"
-        }
-      }
-    },
-    "selectors": {
-      "type": "array",
-      "items": {
-        "if": {
-          "type": "object",
-          "required": [
-            "$ref"
-          ]
-        },
-        "then": {
-          "$ref": "#/$defs/localModelRef"
-        },
-        "else": {
-          "$ref": "#/$defs/selector"
         }
       }
     },
@@ -333,9 +265,6 @@
     "externalAi": {
       "$ref": "#/$defs/externalAi"
     },
-    "settings": {
-      "$ref": "#/$defs/settings"
-    },
     "roles": {
       "type": "array",
       "items": {
@@ -370,6 +299,25 @@
       },
       "description": "R5.3: model-declared document-numbering counters (e.g. INV-2026-0001). A field's defaultExpression can call nextNumber('name') to atomically allocate the next value, formatted per this sequence's format template."
     },
+    "functions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/function"},
+      "description": "FORM P4-T2 (extension ladder rung 2): named pure functions callable from any expression, e.g. surgeMultiplier(open, free). Each call is replaced by the function body at compile time, so functions cost no runtime. A pack's functions are called as pack::name."
+    },
+    "experiences": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/experience"
+      },
+      "description": "FORM P5-T1: experiences per role -- who lands where, on which device. Order matters: a signed-in user lands in the first experience whose `for` contains one of their roles. See screens[]."
+    },
+    "screens": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/screen"
+      },
+      "description": "FORM P5-T1: the screens experiences navigate to, each one archetype from a closed set (list, detail, form, status, inbox, board, map, dashboard, workbench, document, picker, custom). Screen names are unique across the model."
+    },
     "seeds": {
       "type": "array",
       "items": {
@@ -377,8 +325,8 @@
       },
       "description": "R8.8: model/pack-declared seed rows, reusing the existing app-level seed record shape (NPDevContract/schemas/seed.schema.json's $defs/record). Applied once, automatically, at first boot through the same governed ConceptGateway.save path every other write uses (see com.finalexec.seed.ModelSeedRunner in NPDevRuntimeHost); regenerating/restarting the app does not duplicate rows. A pack/context-declared seed's concept must name a concept the SAME pack/context owns -- rewritten to its pack-qualified form at composition time, and a seed naming a concept the pack does not own is a compile error (see ModelSourceResolver's seeds handling and SeedValidation)."
     },
-    "appShell": {
-      "$ref": "#/$defs/appShell"
+    "backOffice": {
+      "$ref": "#/$defs/backOffice"
     },
     "agentAccess": {
       "$ref": "#/$defs/agentAccess"
@@ -507,6 +455,547 @@
         }
       },
       "additionalProperties": false
+    },
+    "function": {
+      "type": "object",
+      "required": ["name", "returns", "body"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][A-Za-z0-9_]*$",
+          "description": "Lower-case identifier; must not reuse the name of a built-in function. Pack composition qualifies it as pack::name."
+        },
+        "params": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "type"],
+            "properties": {
+              "name": {"type": "string", "pattern": "^[a-z][A-Za-z0-9_]*$"},
+              "type": {"type": "string", "enum": ["integer", "decimal", "string", "boolean", "date", "datetime", "array"]}
+            },
+            "additionalProperties": false
+          },
+          "description": "Typed parameters, in call order."
+        },
+        "returns": {
+          "type": "string",
+          "enum": ["integer", "decimal", "string", "boolean", "date", "datetime", "array"],
+          "description": "The type of the value the body produces; checked against the body."
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1,
+          "description": "An expression over the parameters, $ references (e.g. $prop.cap) and other functions. It may not read a row field and may not call itself, directly or through others."
+        },
+        "description": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "experience": {
+      "type": "object",
+      "required": [
+        "name",
+        "for",
+        "home"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "URL segment: the experience is served at /x/<name>/."
+        },
+        "title": {
+          "type": "string"
+        },
+        "for": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          },
+          "description": "Role names (roles[].name). A signed-in user lands in the FIRST experience whose 'for' contains one of their roles. ADMIN with no experience lands in the generated back office."
+        },
+        "device": {
+          "enum": [
+            "web",
+            "mobile",
+            "both"
+          ],
+          "default": "both",
+          "description": "mobile = phone-first layout, bottom tab bar (max 5 navigation entries), installable (PWA manifest)."
+        },
+        "home": {
+          "type": "string",
+          "description": "Screen name shown first."
+        },
+        "navigation": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "required": [
+              "screen"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "screen": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "icon": {
+                "type": "string",
+                "description": "One word from the built-in icon set (EXPERIENCES.md)."
+              },
+              "badge": {
+                "type": "string",
+                "description": "Expression giving a number, e.g. count('RideOffer', status == 'OFFERED')."
+              }
+            }
+          }
+        },
+        "theme": {
+          "type": "string",
+          "description": "Theme id from config/themes; default = the app theme."
+        },
+        "backOffice": {
+          "type": "boolean",
+          "default": false,
+          "description": "true = this experience ALSO shows a link to the generated back office (operators). The back office itself (menu, dashboards) is configured by the optional ROOT backOffice object."
+        }
+      },
+      "description": "FORM P5-T1: what one group of roles sees when it signs in -- which device it targets, the screen it lands on and its navigation. A signed-in user lands in the FIRST experience (declaration order) whose `for` contains one of their roles; a role with no experience lands in the generated back office."
+    },
+    "screen": {
+      "type": "object",
+      "required": [
+        "name",
+        "kind"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z][a-zA-Z0-9-]*$",
+          "description": "The screen's name: its URL segment and what experiences and `picker.selectorRef` refer to it by. Starts with a letter; a picker keeps the PascalCase name its selectorRef already uses."
+        },
+        "title": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "list",
+            "detail",
+            "form",
+            "status",
+            "inbox",
+            "board",
+            "map",
+            "dashboard",
+            "workbench",
+            "document",
+            "picker",
+            "custom"
+          ]
+        },
+        "concept": {
+          "type": "string"
+        },
+        "query": {
+          "type": "string",
+          "description": "queries[] name; params below."
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "description": "expression"
+          }
+        },
+        "where": {
+          "type": "string",
+          "description": "Extra row filter (expression). Row-level access ALWAYS applies on top; this never widens it. On kind \"picker\" it is a picker predicate (clauses joined by &&, each `field == literal` or `field != literal`), the old selector `filter`."
+        },
+        "multiSelect": {
+          "type": "boolean",
+          "description": "picker only: true lets the user pick several rows, false (the default) exactly one."
+        },
+        "filters": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "picker only: the field names the user can search by."
+        },
+        "returnMapping": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "picker only: what the pick hands back, {returnedName: fieldName} -- each value names a field of the picker's concept."
+        },
+        "pick": {
+          "enum": [
+            "first",
+            "latest",
+            "only"
+          ],
+          "description": "status/detail without an id in the URL: which row of the filtered set to show."
+        },
+        "orderBy": {
+          "type": [
+            "string",
+            "array"
+          ],
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "A field name; a picker may also give a list of field names (first sorts first)."
+        },
+        "columns": {
+          "type": "array",
+          "maxItems": 7,
+          "items": {
+            "$ref": "#/$defs/column"
+          },
+          "description": "list/board/inbox. Hard cap 7: a screen is not a spreadsheet; the back office still has all fields."
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/column"
+          },
+          "description": "detail/status/form: which fields, in order."
+        },
+        "groupBy": {
+          "type": [
+            "string",
+            "array"
+          ],
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "board: the enum/lifecycle field that makes the columns (a string). document with report: the concept fields to group the rows by, first entry = outermost group (an array); grouping and totals are computed over the rows the viewer may read, never over hidden data."
+        },
+        "map": {
+          "$ref": "#/$defs/mapSpec"
+        },
+        "widgets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/widget"
+          }
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/screenAction"
+          }
+        },
+        "live": {
+          "type": "boolean",
+          "default": false,
+          "description": "Refresh when a row this screen shows changes (server-sent events). Replaces polling."
+        },
+        "countdown": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "until": {
+              "type": "string",
+              "description": "expression giving an instant"
+            },
+            "label": {
+              "type": "string"
+            }
+          }
+        },
+        "empty": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "action": {
+              "type": "string",
+              "description": "name of one of this screen's actions"
+            }
+          }
+        },
+        "component": {
+          "type": "string",
+          "description": "kind=custom only: name registered with window.npdev.regions.register (the existing regionMount contract)."
+        },
+        "pageSize": {
+          "type": "string",
+          "enum": [
+            "A4",
+            "Letter"
+          ],
+          "description": "document only: the printed page size (default A4)."
+        },
+        "marginMm": {
+          "type": "number",
+          "minimum": 0,
+          "description": "document only: the printed page margin in millimetres."
+        },
+        "metadata": {
+          "type": "object",
+          "description": "document only: free-form notes about the document; carried into the compiled model unchanged."
+        },
+        "aggregate": {
+          "type": "string",
+          "minLength": 1,
+          "description": "document only. R5.7: optional aggregate binding. When set, must equal the aggregate's root concept (enforced by DocumentValidation, not schema) -- 'bands' may then bind the aggregate's header and top-level collections."
+        },
+        "bands": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/documentBand"
+          },
+          "description": "document only. R5.7: header/line-item bands read off the bound aggregate's tree (root fields plus named top-level collections, the same shape AggregateRuntime.load() produces). Requires 'aggregate' to be set."
+        },
+        "logo": {
+          "$ref": "#/$defs/documentLogo"
+        },
+        "report": {
+          "type": "boolean",
+          "description": "document only. REP-1 (the old document `kind: list`): true makes this document a multi-record REPORT over 'concept' (rendered to PDF at /api/documents/{name}/render.pdf and to CSV at render.csv from this one definition). Absent/false = the one-record / aggregate document."
+        },
+        "printColumns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/documentColumn"
+          },
+          "description": "document only, with report: the printed columns, in order -- each a property of 'concept' (the old document `columns`; a screen's own `columns` stays capped at 7, a printed report is not). A column the viewer may not read (hidden field / field access.read) is omitted from the output, never printed blank."
+        },
+        "subtotals": {
+          "type": "boolean",
+          "description": "document only, with report: print a subtotal row per group (needs groupBy and at least one printColumns entry with 'total')."
+        },
+        "grandTotal": {
+          "type": "boolean",
+          "description": "document only, with report: print a grand-total row after the last group (needs at least one printColumns entry with 'total')."
+        },
+        "visibleWhen": {
+          "type": "string",
+          "description": "expression; false hides the screen (and its nav entry)."
+        }
+      },
+      "description": "FORM P5-T1: one screen of a closed set of archetypes (`kind`). Driven by a concept or query plus expressions; every button starts a flow. A screen never widens access: `where` only narrows what row-level access already allows."
+    },
+    "column": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "field name"
+        },
+        {
+          "type": "object",
+          "required": [
+            "value"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "value": {
+              "type": "string",
+              "description": "field name or expression"
+            },
+            "label": {
+              "type": "string"
+            },
+            "format": {
+              "enum": [
+                "text",
+                "money",
+                "number",
+                "date",
+                "datetime",
+                "relative-time",
+                "stars",
+                "badge",
+                "distance",
+                "duration"
+              ]
+            },
+            "currency": {
+              "type": "string"
+            },
+            "unitScale": {
+              "type": "number",
+              "description": "e.g. 0.01 for a value stored in cents"
+            }
+          }
+        }
+      ]
+    },
+    "screenAction": {
+      "type": "object",
+      "required": [
+        "label",
+        "flow"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "flow": {
+          "type": "string",
+          "description": "flows[] name with expose 'ui' or 'api'. The button is hidden when the user's roles may not start it."
+        },
+        "input": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "description": "expression; $row is the shown row, $form the screen's form values"
+          }
+        },
+        "confirm": {
+          "type": "string",
+          "description": "Question shown in an in-page confirmation step."
+        },
+        "visibleWhen": {
+          "type": "string"
+        },
+        "style": {
+          "enum": [
+            "primary",
+            "secondary",
+            "danger",
+            "move"
+          ],
+          "default": "secondary",
+          "description": "move = a drag-to-column move on a board (see moveTo)."
+        },
+        "moveTo": {
+          "type": "string",
+          "description": "A value or an expression naming the board column (groupBy value) this action moves the row to; the flow receives it as input."
+        },
+        "then": {
+          "type": "string",
+          "description": "screen name to open after success (default: stay and refresh)"
+        }
+      }
+    },
+    "mapSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lat": {
+          "type": "string"
+        },
+        "lng": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "pickPoints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "lat",
+              "lng"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "lat": {
+                "type": "string",
+                "description": "form field that receives the latitude"
+              },
+              "lng": {
+                "type": "string"
+              }
+            }
+          },
+          "description": "form+map: the user taps the map to fill these form fields (pick-up, drop-off)."
+        },
+        "center": {
+          "type": "string",
+          "description": "'me' (browser location, asked politely) or 'lat,lng'"
+        },
+        "tiles": {
+          "type": "string",
+          "description": "property name holding the tile URL template; default the OSM property with attribution"
+        }
+      }
+    },
+    "widget": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "tile",
+            "chart",
+            "table",
+            "map",
+            "list"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "value": {
+          "description": "tile: an aggregate expression, e.g. count('Ride', status == 'REQUESTED'). chart: either an object {label: expression} or an array of {label, value} (value = expression), one data point each.",
+          "oneOf": [
+            {"type": "string"},
+            {"type": "object", "additionalProperties": {"type": "string"}},
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["label", "value"],
+                "additionalProperties": false,
+                "properties": {
+                  "label": {"type": "string"},
+                  "value": {"type": "string", "description": "expression"}
+                }
+              }
+            }
+          ]
+        },
+        "groupBy": {
+          "type": "string",
+          "description": "chart over the rows of the embedded 'screen': a field of that screen's concept; one data point per value, counted."
+        },
+        "screen": {
+          "type": "string",
+          "description": "table/list/map: embed this screen"
+        },
+        "chart": {
+          "enum": [
+            "bar",
+            "line",
+            "donut"
+          ]
+        },
+        "span": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        }
+      }
     },
     "seed": {
       "type": "object",
@@ -666,19 +1155,19 @@
       },
       "additionalProperties": false
     },
-    "settings": {
+    "backOffice": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Move 6 Move A: app-level locale/string-catalogue/ui settings. Absent entirely = the platform's own English string catalogue and defaults apply everywhere -- the fix for a fault line where generated apps mixed platform-default English with literal-fallback Portuguese baked into the compiler/templates (docs/MOVE6_TYPED_SURFACE_PLAN.md).",
+      "description": "FORM P5-T9c: the OPTIONAL configuration of the generated back office (it replaces the top-level appShell, guidePages and settings; independent of experiences and roles). Omit it entirely unless you want a grouped menu or your own dashboards: absent = the shell's default behavior (nav derived from concepts/panels, default route = the first visible concept by declaration order, the built-in guide pages). Structural plumbing only -- neither defaultRoute nor a nav item's target is validated against an actual concept/panel name yet.",
       "properties": {
         "locale": {
           "type": "string",
           "minLength": 1,
-          "description": "Informational locale tag (e.g. \"pt-BR\"); does not itself select translations -- `strings` below is what actually overrides text."
+          "description": "Informational locale tag of the back office (e.g. \"pt-BR\"); does not itself select translations -- `strings` below is what actually overrides text."
         },
         "strings": {
           "type": "object",
-          "description": "Overrides a subset of the platform's closed string-id catalogue. An id not listed here keeps the platform's English default.",
+          "description": "Overrides a subset of the platform's closed string-id catalogue (FORM P5-T9g: formerly the root settings.strings). An id not listed here keeps the platform's English default.",
           "additionalProperties": {
             "type": "string",
             "minLength": 1
@@ -713,27 +1202,6 @@
             ]
           }
         },
-        "ui": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "pageRows": {
-              "type": "integer",
-              "minimum": 1
-            },
-            "dateFormat": {
-              "type": "string",
-              "minLength": 1
-            }
-          }
-        }
-      }
-    },
-    "appShell": {
-      "type": "object",
-      "additionalProperties": false,
-      "description": "Path A P6.3: declared navigation structure and default route for the generated app's shell chrome. Absent entirely = the shell's existing default behavior (nav derived purely from concepts/panels, default route = the first visible concept by declaration order). Structural plumbing only -- neither defaultRoute nor a nav item's target is validated against an actual concept/panel name yet.",
-      "properties": {
         "defaultRoute": {
           "type": "string",
           "minLength": 1,
@@ -745,6 +1213,24 @@
             "$ref": "#/$defs/appShellNavItem"
           },
           "description": "Declared navigation entries, in display order. Absent/empty = the shell's existing default nav (one entry per visible concept, in declaration order, no grouping)."
+        },
+        "pages": {
+          "type": "array",
+          "items": {
+            "if": {
+              "type": "object",
+              "required": [
+                "$ref"
+              ]
+            },
+            "then": {
+              "$ref": "#/$defs/localModelRef"
+            },
+            "else": {
+              "$ref": "#/$defs/guidePage"
+            }
+          },
+          "description": "The back office's guide pages (dashboards of gadgets), the same entries the removed guidePages[] held. A page named by a concept/panel guidePage resolves here; a pack contributes its pages through its own pack-level backOffice.pages (qualified pack::Page)."
         }
       }
     },
@@ -998,21 +1484,10 @@
         }
       }
     },
-    "aggregate": {
+    "composition": {
       "type": "object",
-      "required": [
-        "name",
-        "root"
-      ],
+      "description": "FORM P5-T9e: the concept's composition. The concept is the ROOT of an aggregate whose owned child collections are read and saved WHOLE in one transaction (this is the old top-level aggregates[]; its name is the concept's name, so the runtime address is /api/v1/runtime/aggregate/<Concept>). collections[] are the owned children, invariants[] and balances[] run across the whole draft tree before commit, onValidate / onCommit name procedures run inside that transaction.",
       "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "root": {
-          "type": "string",
-          "minLength": 1
-        },
         "collections": {
           "type": "array",
           "items": {
@@ -1505,7 +1980,7 @@
         "selectorRef": {
           "type": "string",
           "minLength": 1,
-          "description": "EDIT-18 (REAL_LIFT_PLAN_2026-09-03 package C2, boundary B16 Step 2): names a top-level selectors[] entry whose columns/filters/orderBy/filter are adopted wholesale; this picker's own filter (above), if also declared, AND-composes with the selector's."
+          "description": "EDIT-18 (REAL_LIFT_PLAN_2026-09-03 package C2, boundary B16 Step 2): names a screens[] entry of kind \"picker\" whose columns/filters/orderBy/where are adopted wholesale; this picker's own filter (above), if also declared, AND-composes with the picker screen's."
         }
       }
     },
@@ -1650,60 +2125,6 @@
           "description": "Seeded on load. Defaults to values[0] when absent."
         }
       }
-    },
-    "selector": {
-      "type": "object",
-      "required": [
-        "name",
-        "concept"
-      ],
-      "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "concept": {
-          "type": "string",
-          "minLength": 1
-        },
-        "multiSelect": {
-          "type": "boolean"
-        },
-        "filters": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "columns": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "returnMapping": {
-          "type": "object"
-        },
-        "metadata": {
-          "type": "object"
-        },
-        "orderBy": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "description": "EDIT-18 (REAL_LIFT_PLAN_2026-09-03 package C2): display field names, sort order -- adopted wholesale by any picker.selectorRef naming this selector."
-        },
-        "filter": {
-          "type": "string",
-          "minLength": 1,
-          "description": "EDIT-18 (REAL_LIFT_PLAN_2026-09-03 package C2): an AND-composed predicate, same grammar as field.picker.filter -- distinct from this selector's own filters[] above, which are searchable field NAMES, not a predicate. AND-composed with a picker.selectorRef's own local filter when both are declared."
-        }
-      },
-      "additionalProperties": false
     },
     "concept": {
       "type": "object",
@@ -1861,6 +2282,9 @@
         },
         "lifecycle": {
           "$ref": "#/$defs/lifecycle"
+        },
+        "composition": {
+          "$ref": "#/$defs/composition"
         },
         "ui": {
           "$ref": "#/$defs/presentationMetadata"
@@ -2072,7 +2496,7 @@
             "selectorRef": {
               "type": "string",
               "minLength": 1,
-              "description": "EDIT-18 (REAL_LIFT_PLAN_2026-09-03 package C2, boundary B16 Step 2): names a top-level selectors[] entry whose columns/filters/orderBy/filter are adopted wholesale; this picker's own filter (above), if also declared, AND-composes with the selector's."
+              "description": "EDIT-18 (REAL_LIFT_PLAN_2026-09-03 package C2, boundary B16 Step 2): names a screens[] entry of kind \"picker\" whose columns/filters/orderBy/where are adopted wholesale; this picker's own filter (above), if also declared, AND-composes with the picker screen's."
             }
           }
         },
@@ -5238,92 +5662,6 @@
           "type": "string",
           "minLength": 1,
           "description": "Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md): required with resultAs: download -- the MIME type served in the Content-Type header, e.g. text/csv."
-        }
-      },
-      "additionalProperties": false
-    },
-    "document": {
-      "type": "object",
-      "required": [
-        "name",
-        "concept"
-      ],
-      "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "concept": {
-          "type": "string",
-          "minLength": 1
-        },
-        "title": {
-          "type": "string",
-          "minLength": 1
-        },
-        "pageSize": {
-          "type": "string",
-          "enum": [
-            "A4",
-            "Letter"
-          ]
-        },
-        "marginMm": {
-          "type": "number",
-          "minimum": 0
-        },
-        "metadata": {
-          "type": "object"
-        },
-        "aggregate": {
-          "type": "string",
-          "minLength": 1,
-          "description": "R5.7: optional aggregate binding. When set, must equal the aggregate's root concept (enforced by DocumentValidation, not schema) -- 'bands' may then bind the aggregate's header and top-level collections."
-        },
-        "bands": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/documentBand"
-          },
-          "description": "R5.7: header/line-item bands read off the bound aggregate's tree (root fields plus named top-level collections, the same shape AggregateRuntime.load() produces). Requires 'aggregate' to be set."
-        },
-        "logo": {
-          "$ref": "#/$defs/documentLogo"
-        },
-        "kind": {
-          "type": "string",
-          "enum": [
-            "list"
-          ],
-          "description": "REP-1: 'list' makes this document a multi-record REPORT over 'concept' (rendered to PDF at /api/documents/{name}/render.pdf and to CSV at render.csv from this one definition). Absent = the pre-REP-1 one-record / aggregate document."
-        },
-        "query": {
-          "type": "string",
-          "minLength": 1,
-          "description": "REP-1 (kind list only): optional name of a plain queries[] entry over the same concept; its where/orderBy/limit/parameters narrow and order the rows. Parameters are bound from the request query string, exactly as GET /api/queries/{name} binds them."
-        },
-        "columns": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/documentColumn"
-          },
-          "description": "REP-1 (kind list only): the printed columns, in order -- each a property of 'concept'. A column the viewer may not read (hidden field / field access.read) is omitted from the output, never printed blank."
-        },
-        "groupBy": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "description": "REP-1 (kind list only): concept fields to group the rows by (first entry = outermost group). Grouping and totals are computed over the rows the viewer is allowed to read, never over hidden data."
-        },
-        "subtotals": {
-          "type": "boolean",
-          "description": "REP-1 (kind list only): print a subtotal row per group (needs groupBy and at least one column with 'total')."
-        },
-        "grandTotal": {
-          "type": "boolean",
-          "description": "REP-1 (kind list only): print a grand-total row after the last group (needs at least one column with 'total')."
         }
       },
       "additionalProperties": false

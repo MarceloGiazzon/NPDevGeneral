@@ -8,7 +8,7 @@ import java.util.Map;
 /**
  * REAL_LIFT_PLAN_2026-09-03 package C2 (boundary B16 Step 2, EDIT-18): resolves {@code
  * field.picker.selectorRef} / {@code transaction.bandPickers.<name>.selectorRef} against a
- * top-level {@code selectors[]} entry, shared by both compile-time consumers ({@link
+ * picker screen ({@code screens[]} kind {@code picker}, as a {@code SelectorAst}), shared by both compile-time consumers ({@link
  * ModelCompiler#toCompiledFieldPicker} for a plain FK field, {@link ModelCompiler}'s band-picker
  * compilation for a band collection) so the merge logic exists exactly once -- REG-205's own
  * "eliminate hand-copied duplication" precedent.

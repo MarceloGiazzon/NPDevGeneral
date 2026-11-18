@@ -46,10 +46,10 @@ class AutoPanelExpanderTest {
                 { "name": "text", "type": "string" }
             ] }
           ],
-          "selectors": [
-            { "name": "NotePicker", "concept": "Note", "multiSelect": true,
+          "screens": [
+            { "name": "NotePicker", "kind": "picker", "concept": "Note", "multiSelect": true,
               "filters": ["text"], "columns": ["id", "text"], "orderBy": ["text"],
-              "filter": "text != ''" }
+              "where": "text != ''" }
           ],
           "autoPanels": [
             { "name": "NoteWorkbench", "concept": "Note", "aggregate": "NoteAggregate",

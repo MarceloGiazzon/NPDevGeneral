@@ -7,7 +7,6 @@ import com.npdev.dsl.v1.ast.ConceptAccessAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
 import com.npdev.dsl.v1.ast.ActionMetadataAst;
 import com.npdev.dsl.v1.ast.ConceptAst;
-import com.npdev.dsl.v1.ast.DocumentAst;
 import com.npdev.dsl.v1.ast.DomainTypeAst;
 import com.npdev.dsl.v1.ast.DomainTypeUiAst;
 import com.npdev.dsl.v1.ast.EventAst;
@@ -66,8 +65,6 @@ public final class ModelResolver {
         resolvedPanels.sort(Comparator.comparing(panel -> normalize(panel.name())));
         List<GuidePageAst> resolvedGuidePages = new ArrayList<>(source.getGuidePages());
         resolvedGuidePages.sort(Comparator.comparing(page -> normalize(page.name())));
-        List<DocumentAst> resolvedDocuments = new ArrayList<>(source.getDocuments());
-        resolvedDocuments.sort(Comparator.comparing(document -> normalize(document.name())));
 
         ModelAst resolvedAst = new ModelAst(
                 source.getNamespace(),
@@ -84,8 +81,6 @@ public final class ModelResolver {
                 resolvedGuidePages,
                 source.getAggregates(),
                 source.getAutoPanels(),
-                source.getSelectors(),
-                resolvedDocuments,
                 source.getParserWarnings(),
                 source.getExternalAi(),
                 source.getSettings(),
@@ -119,7 +114,11 @@ public final class ModelResolver {
                 // AGENT-1: whole-object pass-through, same reasoning -- agentAccess is an app-level
                 // declaration (concept/flow names, not fields) with no `extends`/specialization
                 // concept of its own for this resolver to expand.
-                source.getAgentAccess()
+                source.getAgentAccess(),
+                // FORM P5-T1: whole-list pass-through of the opaque experiences/screens JSON -- nothing here
+                // for this resolver to expand or rename (pack composition already qualified references).
+                source.getExperiences(),
+                source.getScreens()
         );
         return ResolvedModel.from(resolvedAst);
     }

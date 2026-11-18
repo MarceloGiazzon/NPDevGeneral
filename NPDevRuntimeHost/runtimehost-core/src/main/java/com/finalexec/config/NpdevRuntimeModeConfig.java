@@ -267,24 +267,33 @@ public class NpdevRuntimeModeConfig {
         return new TracingPackBridge(sideChannel.dataSource());
     }
 
+    /** FORM P5-T5: the tenant-keyed "row changed" hub behind GET /api/live (publishers: the store decorator below). */
+    @Bean(destroyMethod = "shutdown")
+    public com.finalexec.live.LiveChangeHub liveChangeHub() {
+        return new com.finalexec.live.LiveChangeHub();
+    }
+
     @Bean
     @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "in-memory", matchIfMissing = true)
-    public ConceptStore inMemoryConceptStore(ModelHolder modelHolder) {
+    public ConceptStore inMemoryConceptStore(ModelHolder modelHolder, com.finalexec.live.LiveChangeHub liveChangeHub) {
         InMemoryConceptStore store = new InMemoryConceptStore(modelHolder.get());
         // REG-208 (B28 lift): repoints the store at the reloaded model IN PLACE -- every already-
         // stored record survives (see InMemoryConceptStore.setModel's own javadoc); only the
         // delete-cascade rules a later delete enforces change.
         modelHolder.addReloadListener((before, after) -> store.setModel(after));
-        return new com.finalexec.db.RollupConceptStoreDecorator(store, modelHolder::get);
+        return new com.finalexec.db.RollupConceptStoreDecorator(
+                new com.finalexec.live.LiveChangeStoreDecorator(store, liveChangeHub), modelHolder::get);
     }
 
     @Bean
     @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
-    public ConceptStore jdbcConceptStore(DataSource dataSource, ModelHolder modelHolder) {
+    public ConceptStore jdbcConceptStore(DataSource dataSource, ModelHolder modelHolder, com.finalexec.live.LiveChangeHub liveChangeHub) {
         // P8 prelude: every ConceptStore write funnels through here, so concept rollups[] are
         // maintained once for CRUD, flows, aggregate commits and agent writes alike.
+        // FORM P5-T5: the live decorator sits INSIDE the rollup one so a rollup's parent write is announced too.
         return new com.finalexec.db.RollupConceptStoreDecorator(
-                new JdbcBusinessConceptStore(dataSource, modelHolder), modelHolder::get);
+                new com.finalexec.live.LiveChangeStoreDecorator(new JdbcBusinessConceptStore(dataSource, modelHolder), liveChangeHub),
+                modelHolder::get);
     }
 
     @Bean

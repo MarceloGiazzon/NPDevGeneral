@@ -13,10 +13,8 @@ import java.util.Map;
 public final class CompiledSettings {
     private final String locale;
     private final Map<String, String> strings;
-    private final Integer pageRows;
-    private final String dateFormat;
 
-    public CompiledSettings(String locale, Map<String, String> strings, Integer pageRows, String dateFormat) {
+    public CompiledSettings(String locale, Map<String, String> strings) {
         this.locale = locale;
         Map<String, String> merged = new LinkedHashMap<>(PlatformStrings.DEFAULTS);
         merged.putAll(PlatformStrings.localeDefaults(locale));
@@ -24,18 +22,14 @@ public final class CompiledSettings {
             merged.putAll(strings);
         }
         this.strings = Collections.unmodifiableMap(merged);
-        this.pageRows = pageRows;
-        this.dateFormat = dateFormat;
     }
 
-    /** The platform-defaults-only settings a model with no declared {@code settings} block gets. */
+    /** The platform-defaults-only settings a model declaring no backOffice locale/strings gets. */
     public static CompiledSettings defaults() {
-        return new CompiledSettings(null, Map.of(), null, null);
+        return new CompiledSettings(null, Map.of());
     }
 
     public String getLocale() { return locale; }
     public Map<String, String> getStrings() { return strings; }
     public String resolveString(String id) { return strings.get(id); }
-    public Integer getPageRows() { return pageRows; }
-    public String getDateFormat() { return dateFormat; }
 }

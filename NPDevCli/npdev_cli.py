@@ -432,13 +432,10 @@ MODEL_ARRAY_KEYS = {
     # real top-level key list). Found 2026-08-15 when `inspect bonds` refused a real model
     # (WmsOffice) over its `aggregates` key. roles/propertyScopes/properties are the exact three
     # REG-108 named on the Java side; conversions/documents/guidePages/aggregates/autoPanels/
-    # selectors/contexts were never added here at all.
+    # contexts were never added here at all. (selectors and documents: folded into screens[], P5-T9a/T9b;
+    # guidePages: now the root backOffice.pages, P5-T9c -- a PACK's pages are composed below.)
     "conversions",
-    "documents",
-    "guidePages",
-    "aggregates",
     "autoPanels",
-    "selectors",
     "roles",
     "propertyScopes",
     "properties",
@@ -452,7 +449,16 @@ MODEL_ARRAY_KEYS = {
     # refused models that validate everywhere else. Now pinned by test_root_keys_match_schema.py
     # against model.schema.json itself, not a hand-kept list.
     "sequences",
+    # FORM P4-T2: `functions[]` (extension-ladder rung 2) joined ModelSourceResolver.MODEL_ARRAY_KEYS and
+    # is inlined at resolve time; the build-free path only needs to accept the key.
+    "functions",
+    # FORM P5-T1: `experiences[]` and `screens[]` joined ModelSourceResolver.MODEL_ARRAY_KEYS (their names are
+    # NOT pack-qualified there -- see the comment on that set; compose_qualified below skips them too).
+    "experiences",
+    "screens",
 }
+UNQUALIFIED_NAME_KEYS = ("experiences", "screens")
+PACK_PAGES_KEY = "__packBackOfficePages"  # transient: pack-contributed back-office pages awaiting the root backOffice
 ROOT_SCALAR_KEYS = {
     "$schema", "schemaVersion", "dslVersion", "namespace", "version",
     # Same drift fix as MODEL_ARRAY_KEYS above, for the object-shaped (not array-shaped) top-level
@@ -461,7 +467,7 @@ ROOT_SCALAR_KEYS = {
     # `{"$ref", "as"}` entries) -- REG-186 added the separate composition of pack-CONTRIBUTED
     # members into the model's own arrays below, which is a different thing from passing the
     # declaration through.
-    "packs", "provides", "externalAi", "settings", "appShell", "agentAccess",
+    "packs", "provides", "externalAi", "backOffice", "agentAccess",
 }
 
 # REG-186: the two top-level arrays whose entries are a $ref PLUS identity keys, rather than the
@@ -744,11 +750,23 @@ def resolve_split_model(path: Path, collect_sources: set[Path] | None = None,
                 members = resolve_array(member_key, content[member_key], child_path, 1, [root_path])
                 qualified = []
                 for member in members:
-                    if isinstance(member, dict) and isinstance(member.get("name"), str):
+                    if (isinstance(member, dict) and isinstance(member.get("name"), str)
+                            and member_key not in UNQUALIFIED_NAME_KEYS):
                         member = dict(member)
                         member["name"] = qualifier + QUALIFIER_SEPARATOR + member["name"]
                     qualified.append(member)
                 resolved.setdefault(member_key, []).extend(qualified)
+
+            # FORM P5-T9c: a pack/context contributes back-office pages as a pack-level `backOffice.pages`
+            # (npdev-backoffice-pages-lift mirrors ModelSourceResolver.liftPackBackOfficePages/foldBackOfficePages):
+            # qualified `qualifier::Page` here, then appended after the model's own pages in the root `backOffice.pages`.
+            pack_back_office = content.get("backOffice")
+            if isinstance(pack_back_office, dict) and isinstance(pack_back_office.get("pages"), list):
+                for page in resolve_array("guidePages", pack_back_office["pages"], child_path, 1, [root_path]):
+                    if isinstance(page, dict) and isinstance(page.get("name"), str):
+                        page = dict(page)
+                        page["name"] = qualifier + QUALIFIER_SEPARATOR + page["name"]
+                    resolved.setdefault(PACK_PAGES_KEY, []).append(page)
 
             # The registry entry keeps ONLY the declaration keys, never the composed body -- the
             # members are already merged above, and model.schema.json's `context`/`packRef` defs are
@@ -773,6 +791,10 @@ def resolve_split_model(path: Path, collect_sources: set[Path] | None = None,
     if "fragments" in raw:
         fail(str(root_path), "root 'fragments' was removed: put {\"$ref\": \"file.json\"} entries in the arrays "
                              "themselves (capabilities, flows, ...); an included file's same-named array is spliced in")
+    for moved_key in ("appShell", "guidePages"):
+        if moved_key in raw:
+            fail(str(root_path), f"root '{moved_key}' was removed (FORM P5-T9c): declare it in the root backOffice "
+                                 "(defaultRoute, navigation, pages); `python NPDevCli/appshell_guidepages_to_backoffice_codemod.py` moves it")
     unsupported = set(raw.keys()) - (ROOT_SCALAR_KEYS | MODEL_ARRAY_KEYS | {"metadata"})
     if unsupported:
         fail(str(root_path), "unsupported model top-level key: " + sorted(unsupported)[0])
@@ -788,6 +810,11 @@ def resolve_split_model(path: Path, collect_sources: set[Path] | None = None,
     for key in QUALIFIED_COMPOSITION_KEYS:
         if key in raw:
             resolved[key] = compose_qualified(key, raw[key], resolved)
+    pack_pages = resolved.pop(PACK_PAGES_KEY, [])
+    if pack_pages:
+        back_office = dict(resolved.get("backOffice") or {})
+        back_office["pages"] = list(back_office.get("pages") or []) + pack_pages
+        resolved["backOffice"] = back_office
     if "metadata" in raw and not isinstance(raw["metadata"], dict):
         fail(str(root_path), "metadata must be an object")
     if "metadata" in raw:
@@ -1801,7 +1828,7 @@ def run_migrate_assign_uids(args: argparse.Namespace) -> int:
     if not has_concepts and not any(
             isinstance(doc.get(key), list)
             for key in ("capabilities", "customCapabilities", "events", "flows",
-                        "procedures", "panels", "queries", "aggregates")
+                        "procedures", "panels", "queries")
     ):
         print(f"npdev migrate assign-uids: {model_path} has no concepts[] array -- nothing to stamp")
         return 0
@@ -17247,7 +17274,7 @@ def build_parser() -> argparse.ArgumentParser:
     migrate_label_locales.add_argument(
         "--locale", required=True,
         help="the locale tag the file's EXISTING plain-string label text is written in, e.g. "
-             "en or pt-BR -- not read from doc.settings.locale (informational only, per its own "
+             "en or pt-BR -- not read from doc.backOffice.locale (informational only, per its own "
              "schema description); every widened site is tagged with this value verbatim.",
     )
     migrate_label_locales.add_argument(

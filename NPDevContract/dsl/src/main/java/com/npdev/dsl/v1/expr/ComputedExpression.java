@@ -989,6 +989,171 @@ public final class ComputedExpression {
 
     // ---- Tokenizer ---------------------------------------------------------
 
+    /**
+     * FORM P4-T2 (extension ladder, rung 2): a named pure function. {@code body} is an ordinary expression over
+     * {@code params}, {@code $} references (such as {@code $prop.cap}) and other functions; it never reads a row field.
+     */
+    public record UserFunction(String name, List<String> params, String body) {
+    }
+
+    /**
+     * Expand every call to a user function in {@code expression} by substituting the (already expanded) arguments into
+     * the function body, and return the result as expression text. The expanded text is a plain expression, so the
+     * Java evaluator, the CEL matcher, the client evaluator and SQL pushdown all receive something they already
+     * understand -- functions cost no runtime. Throws {@link ExpressionException} on a wrong argument count, a
+     * recursive call chain ({@code a -> b -> a}) or a record-style use of a parameter bound to a non-field argument.
+     * An expression that calls no user function comes back unchanged (same text).
+     */
+    public static String inlineFunctions(String expression, java.util.function.Function<String, UserFunction> lookup) {
+        Node before = parse(expression);
+        Node after = inlineNode(before, lookup, new ArrayList<>(), Map.of());
+        return after == before ? expression : text(after);
+    }
+
+    /** Like {@link #inlineFunctions} for a function's own body, with the function already on the call stack. */
+    public static String inlineFunctionBody(UserFunction function, java.util.function.Function<String, UserFunction> lookup) {
+        List<String> stack = new ArrayList<>();
+        stack.add(function.name());
+        return text(inlineNode(parse(function.body()), lookup, stack, Map.of()));
+    }
+
+    private static Node inlineNode(Node node, java.util.function.Function<String, UserFunction> lookup,
+                                   List<String> stack, Map<String, Node> subst) {
+        if (node instanceof Var v) {
+            return substituteVar(v, subst);
+        }
+        if (node instanceof Unary u) {
+            Node operand = inlineNode(u.operand(), lookup, stack, subst);
+            return operand == u.operand() ? u : new Unary(u.op(), operand);
+        }
+        if (node instanceof Binary b) {
+            Node l = inlineNode(b.left(), lookup, stack, subst);
+            Node r = inlineNode(b.right(), lookup, stack, subst);
+            return l == b.left() && r == b.right() ? b : new Binary(b.op(), l, r);
+        }
+        if (node instanceof Ternary t) {
+            Node c = inlineNode(t.cond(), lookup, stack, subst);
+            Node a = inlineNode(t.whenTrue(), lookup, stack, subst);
+            Node o = inlineNode(t.whenFalse(), lookup, stack, subst);
+            return c == t.cond() && a == t.whenTrue() && o == t.whenFalse() ? t : new Ternary(c, a, o);
+        }
+        if (node instanceof ListLiteral list) {
+            List<Node> items = new ArrayList<>();
+            boolean changed = false;
+            for (Node item : list.items()) {
+                Node mapped = inlineNode(item, lookup, stack, subst);
+                changed |= mapped != item;
+                items.add(mapped);
+            }
+            return changed ? new ListLiteral(items) : list;
+        }
+        if (node instanceof Lambda lambda) {
+            Map<String, Node> inner = new java.util.HashMap<>(subst);
+            inner.remove(lambda.param());
+            Node body = inlineNode(lambda.body(), lookup, stack, inner);
+            return body == lambda.body() ? lambda : new Lambda(lambda.param(), body);
+        }
+        if (node instanceof Call call) {
+            List<Node> args = new ArrayList<>();
+            boolean changed = false;
+            for (Node arg : call.args()) {
+                Node mapped = inlineNode(arg, lookup, stack, subst);
+                changed |= mapped != arg;
+                args.add(mapped);
+            }
+            UserFunction function = lookup.apply(call.name());
+            if (function == null) {
+                return changed ? new Call(call.name(), args) : call;
+            }
+            if (args.size() != function.params().size()) {
+                throw new ExpressionException("function " + function.name() + " takes " + function.params().size()
+                        + " argument(s) (" + String.join(", ", function.params()) + ") but was called with " + args.size());
+            }
+            if (stack.contains(function.name())) {
+                throw new ExpressionException("function " + function.name() + " calls itself: "
+                        + String.join(" -> ", stack) + " -> " + function.name());
+            }
+            Map<String, Node> bind = new java.util.LinkedHashMap<>();
+            for (int i = 0; i < args.size(); i++) {
+                bind.put(function.params().get(i), args.get(i));
+            }
+            stack.add(function.name());
+            try {
+                return inlineNode(parse(function.body()), lookup, stack, bind);
+            } finally {
+                stack.remove(stack.size() - 1);
+            }
+        }
+        return node;
+    }
+
+    private static Node substituteVar(Var v, Map<String, Node> subst) {
+        if (subst.isEmpty()) {
+            return v;
+        }
+        Node direct = subst.get(v.name());
+        if (direct != null) {
+            return direct;
+        }
+        int dot = v.name().indexOf('.');
+        if (dot > 0) {
+            Node base = subst.get(v.name().substring(0, dot));
+            if (base != null) {
+                if (base instanceof Var field) {
+                    return new Var(field.name() + v.name().substring(dot));
+                }
+                throw new ExpressionException("parameter '" + v.name().substring(0, dot) + "' is read as a record ('"
+                        + v.name() + "') but the argument is not a field reference");
+            }
+        }
+        return v;
+    }
+
+    /** A faithful, fully parenthesised rendering of a parsed tree: it parses back to the same tree. */
+    private static String text(Node node) {
+        if (node instanceof Literal literal) {
+            Object v = literal.value();
+            if (v == null) {
+                return "null";
+            }
+            if (v instanceof String str) {
+                return str.indexOf('\'') >= 0 ? "\"" + str + "\"" : "'" + str + "'";
+            }
+            if (v instanceof Number num) {
+                return new java.math.BigDecimal(num.toString()).toPlainString();
+            }
+            return String.valueOf(v);
+        }
+        if (node instanceof Var v) {
+            return v.name();
+        }
+        if (node instanceof Unary u) {
+            return u.op() + atom(u.operand());
+        }
+        if (node instanceof Binary b) {
+            return atom(b.left()) + " " + b.op() + " " + atom(b.right());
+        }
+        if (node instanceof Ternary t) {
+            return atom(t.cond()) + " ? " + atom(t.whenTrue()) + " : " + atom(t.whenFalse());
+        }
+        if (node instanceof ListLiteral list) {
+            return "[" + list.items().stream().map(ComputedExpression::text).collect(java.util.stream.Collectors.joining(", ")) + "]";
+        }
+        if (node instanceof Lambda lambda) {
+            return lambda.param() + " => " + text(lambda.body());
+        }
+        if (node instanceof Call call) {
+            return call.name() + "(" + call.args().stream().map(ComputedExpression::text).collect(java.util.stream.Collectors.joining(", ")) + ")";
+        }
+        return node.render();
+    }
+
+    private static String atom(Node node) {
+        boolean simple = node instanceof Var || node instanceof Call || node instanceof ListLiteral
+                || (node instanceof Literal literal && !(literal.value() instanceof Number n && n.doubleValue() < 0));
+        return simple ? text(node) : "(" + text(node) + ")";
+    }
+
     private record Token(String type, String text) {
     }
 
@@ -1033,6 +1198,14 @@ public final class ComputedExpression {
                 }
                 while (i < n && (Character.isLetterOrDigit(s.charAt(i)) || s.charAt(i) == '_')) {
                     i++;
+                }
+                // FORM P4-T2: a pack function is namespaced `pack::name` -- one identifier, never a dotted path.
+                while (c != '$' && i + 2 < n && s.charAt(i) == ':' && s.charAt(i + 1) == ':'
+                        && (Character.isLetter(s.charAt(i + 2)) || s.charAt(i + 2) == '_')) {
+                    i += 2;
+                    while (i < n && (Character.isLetterOrDigit(s.charAt(i)) || s.charAt(i) == '_')) {
+                        i++;
+                    }
                 }
                 // Dotted field path: consume ".segment" chains (cliente.tipo), but not a
                 // trailing '.' with nothing after it (leave that as a syntax error downstream).

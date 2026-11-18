@@ -39,7 +39,25 @@ class AggregateRuntimeLookupQueryPermissionTest {
         {
           "dslVersion": "3.0.0", "namespace": "t", "version": "1.0",
           "concepts": [
-            { "name": "Box", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
+            { "name": "Box", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ],
+  "composition": {
+    "collections": [
+      {
+        "name": "slots",
+        "concept": "Slot",
+        "childField": "boxId",
+        "ownership": "owned",
+        "lookupFields": [
+          {
+            "name": "available",
+            "query": "AuditedStock",
+            "joinField": "localId",
+            "valueField": "onHand"
+          }
+        ]
+      }
+    ]
+  } },
             { "name": "Slot", "fields": [
                 { "name": "id", "type": "uuid", "id": true, "required": true },
                 { "name": "boxId", "type": "uuid" },
@@ -51,11 +69,6 @@ class AggregateRuntimeLookupQueryPermissionTest {
           ],
           "queries": [
             { "name": "AuditedStock", "concept": "Stock", "permissionRequirements": [ "stock.audit" ] }
-          ],
-          "aggregates": [
-            { "name": "BoxAggregate", "root": "Box",
-              "collections": [ { "name": "slots", "concept": "Slot", "childField": "boxId", "ownership": "owned",
-                "lookupFields": [ { "name": "available", "query": "AuditedStock", "joinField": "localId", "valueField": "onHand" } ] } ] }
           ]
         }
         """;
@@ -89,7 +102,7 @@ class AggregateRuntimeLookupQueryPermissionTest {
 
     @Test
     void aCallerHoldingTheRequirementGetsTheLookupValue() {
-        Map<String, Object> loaded = runtime.load("BoxAggregate", "B1", caller("auditor"));
+        Map<String, Object> loaded = runtime.load("Box", "B1", caller("auditor"));
         List<?> slots = (List<?>) loaded.get("slots");
         assertEquals(7, ((Map<?, ?>) slots.get(0)).get("available"));
     }
@@ -97,7 +110,7 @@ class AggregateRuntimeLookupQueryPermissionTest {
     @Test
     void aCallerLackingTheRequirementIsRefusedTheLoad() {
         ConceptGatewayAccessDeniedException denied = assertThrows(ConceptGatewayAccessDeniedException.class,
-                () -> runtime.load("BoxAggregate", "B1", caller("clerk")));
+                () -> runtime.load("Box", "B1", caller("clerk")));
         assertTrue(denied.getMessage().contains("stock.audit"), denied.getMessage());
     }
 }

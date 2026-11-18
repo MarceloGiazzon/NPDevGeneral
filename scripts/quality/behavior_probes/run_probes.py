@@ -34,14 +34,14 @@ substrings. LIVE-1: a step may set "auth": "superUser" (sends X-Super-User-Key f
 and "reloadRevision": {"file": "<f>.json", "revision": "<name>"} (the body becomes {"modelPath": <scratch copy of the
 sample's Input/ with that revision's addField/removeField ops applied>}, see model-revisions/); json rule op
 {"contains": x} checks list/string/dict membership. A step may carry "retry": {"attempts": N, "delaySeconds": S}: it is re-sent until its expectations hold (for asynchronous effects such as a
-scheduler tick); the last attempt's result is the one reported. Json rule ops also include {"secondsFromNow": [lo, hi]} (an ISO timestamp lo..hi seconds ahead) and a `[??k=v]` path selector
+scheduler tick); the last attempt's result is the one reported. A step may carry "sleepBeforeSeconds": S to wait S seconds before it is sent (REG-340: park a flow, outlive the 2 s resume sweep, then resume it). Json rule ops also include {"secondsFromNow": [lo, hi]} (an ISO timestamp lo..hi seconds ahead) and a `[??k=v]` path selector
 that returns every matching array element (count them with {"len": n}). A step may send "multipart": {"fields": {...}, "file": {"field",
 "filename", "contentType", "content" | "repeatBytes"}} instead of a JSON body. ENF-1 batch C: a probe with
 "requires": ["restart"] and "restartRevision": {"file", "revision"} spans TWO boots (run-behavior-probes.ps1
 -RestartRevisionVariant): --phase beforeRestart runs its steps not marked "phase": "afterRestart" and writes saved
 values/failures to --state-file; the app is regenerated from that revision (--materialize-revision) into the same
 Output, so App/data survives, and rebooted without a wipe; --phase afterRestart runs the rest and gives the verdict.
-Any other run skips it. REG-308: a step may carry "concurrent": {"copies": N, "statuses": {"200": 1, "409": N-1}}: the
+A step may carry "sign": {"secretEnv": "<ENV>", "header": "X-Npdev-Webhook-Signature", "prefix": "sha256="} to HMAC-SHA256 its exact body with the secret in that environment variable (a signed inbound webhook, INT-6). Any other run skips it. REG-308: a step may carry "concurrent": {"copies": N, "statuses": {"200": 1, "409": N-1}}: the
 step's request is sent N times at once from N threads released together, and the multiset of answers must match
 "statuses" exactly (status -> how many copies got it) -- the way to prove a check-then-act window is closed, which no
 sequential step can. Exit code is 0 only when every probe is green.
@@ -49,6 +49,8 @@ sequential step can. Exit code is 0 only when every probe is green.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -253,6 +255,16 @@ class Probe:
         elif "body" in step:
             data = json.dumps(self.subst(step["body"])).encode("utf-8")
             headers["Content-Type"] = "application/json"
+        if step.get("sign"):
+            # INT-6: a signed webhook delivery. {"sign": {"secretEnv": "NPDEV_WEBHOOK_X_SECRET", "header": "X-Npdev-Webhook-Signature",
+            # "prefix": "sha256="}} sets header = prefix + hex(HMAC-SHA256(secret, exact request body bytes)); the secret is read from
+            # the RUNNER's environment (run-behavior-probes.ps1 sets a dummy one for the app and the runner alike), never from a probe file.
+            sign = step["sign"]
+            secret = os.environ.get(sign["secretEnv"], "")
+            if not secret:
+                raise RuntimeError(f"step needs sign.secretEnv {sign['secretEnv']} but it is not set in the runner environment")
+            digest = hmac.new(secret.encode("utf-8"), data or b"", hashlib.sha256).hexdigest()
+            headers[sign.get("header", "X-Npdev-Webhook-Signature")] = sign.get("prefix", "sha256=") + digest
         request = urllib.request.Request(url, data=data, method=method, headers=headers)
         try:
             with urllib.request.urlopen(request, timeout=60) as resp:
@@ -420,6 +432,8 @@ class Probe:
             if "concurrent" in step:
                 failures += self.call_concurrent(step, label)
                 continue
+            if step.get("sleepBeforeSeconds"):
+                time.sleep(float(step["sleepBeforeSeconds"]))  # e.g. let a parked flow outlive the 2 s resume sweep
             retry = step.get("retry") or {}
             attempts = max(1, int(retry.get("attempts", 1)))
             try:

@@ -51,11 +51,12 @@ def _sample_model() -> dict:
         ],
         # Every real top-level schema key this whitelist was missing before the fix -- present
         # (even if mostly empty) so a stale whitelist would reject this model outright, the same
-        # way it rejected WmsOffice's `aggregates` key.
-        "conversions": [], "documents": [], "guidePages": [], "aggregates": [],
-        "autoPanels": [], "selectors": [], "roles": [], "propertyScopes": [], "properties": [],
+        # way it rejected WmsOffice's old root `aggregates` key (removed in FORM P5-T9e: an aggregate is
+        # now a concept's `composition`, so the key is no longer a real top-level key).
+        "conversions": [],
+        "autoPanels": [], "roles": [], "propertyScopes": [], "properties": [],
         "modules": [],
-        "provides": {}, "externalAi": {}, "settings": {},
+        "provides": {}, "externalAi": {},
         # A pack reference with the `as` alias -- must not trip the generic $ref-shape validator.
         "packs": [{"$ref": "packs/identity/pack.json", "as": "identity"}],
     }

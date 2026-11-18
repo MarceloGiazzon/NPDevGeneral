@@ -459,9 +459,8 @@ class NPDevCliMainTest {
     }
 
     @Test
-    void validateBundleAndRunProcedureAreScriptable() throws Exception {
+    void validateBundleAndListProceduresAreScriptable() throws Exception {
         Path model = writeText(procedureModelJson(), "model-procedure", ".json");
-        Path input = writeJson(Map.of("hello", "world"), "procedure-input", ".json");
 
         CommandResult validate = runCli(
                 "validate-bundle",
@@ -481,21 +480,6 @@ class NPDevCliMainTest {
         assertEquals(0, list.exitCode());
         assertTrue(list.stdout().contains("EchoInput"));
         assertTrue(list.stdout().contains("assign"));
-
-        CommandResult run = runCli(
-                "run-procedure",
-                "--model", model.toString(),
-                "--procedure", "EchoInput",
-                "--json", input.toString(),
-                "--format", "json"
-        );
-
-        assertEquals(0, run.exitCode());
-        Map<String, Object> payload = parseObject(run.stdout());
-        assertEquals(Boolean.TRUE, payload.get("ok"));
-        @SuppressWarnings("unchecked")
-        Map<String, Object> state = (Map<String, Object>) payload.get("state");
-        assertEquals(Map.of("hello", "world"), state.get("return"));
     }
 
     private static Path modelPath() {

@@ -1,0 +1,39 @@
+{
+ "$comment": "FORM P4-T4 retroactive admission record (the slot predates the budget, so it is also in baselineSlots; this record documents why it earned its place). Probe strengthened, apps and teaching line checked against the files on 2026-11-17. The slot is the `set` PROPERTY of an updateConcept step, not the step type `set`.",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "flows[].steps[].set",
+ "slots": [
+  "flowStep.set"
+ ],
+ "rung": 0,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-17",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "lists which fields an updateConcept step writes and with what (a literal or a $ref); no ordering, no logic"
+  },
+  "notLower": {
+   "value": true,
+   "why": "a persisted field write goes through the platform's checks (access, invariants, lifecycle, audit); an expression only computes a value, it cannot write a row"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "NPDevSamples/dsl-conformance-max",
+    "NPDevSamples/ride-hailing",
+    "NPDevSamples/pigmentampas"
+   ]
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevSamples/dsl-conformance-max/behavior-probes/100-flow-vocabulary.json"
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "An updateConcept may write chosen fields instead of $input: {\"type\":\"updateConcept\",\"scope\":\"Ticket\",\"id\":\"$input.id\",\"set\":{\"status\":\"CLOSED\",\"note\":\"$input.note\"},\"createIfMissing\":true,\"output\":\"$row\"}"
+  }
+ },
+ "replaces": [],
+ "budgetDelta": 0
+}

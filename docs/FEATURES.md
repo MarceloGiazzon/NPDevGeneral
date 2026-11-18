@@ -76,7 +76,7 @@ processes, screens, permissions, and how it all changes over time.
 | **`lookups` + `computed` on a grouped query** | bring a second concept's per-key total into each grouped row and do arithmetic over the columns — "cells needed minus caps I own" in one query, with `having`/`orderBy` on the result |
 | **`permissionRequirements` per query** | a query carries its own access rule, so it cannot be exposed by accident |
 | **Audit trail** | every concept create/update/delete/restore is logged automatically with actor, timestamp and a field-level before/after diff — not opt-in, not a model setting |
-| **`selectors`** | reusable pickers/lookups shared across screens |
+| **Picker screens** (`screens[]` kind `picker`, named by `picker.selectorRef`) | reusable pickers/lookups shared across screens: searchable, single or multi-select, with a declared return mapping |
 
 ## 4. Business logic
 
@@ -106,13 +106,13 @@ processes, screens, permissions, and how it all changes over time.
 | **`panels`** | declared screens with a real `route`, multiple `dataSources`, layout, field bindings, and actions |
 | **Dashboards and consoles** | a panel with `layout.type: "dashboard"` or `"console"` renders declared `widgets[]`: `tile` (one aggregate number), `chart` (bar, line or donut per `groupBy` value), `table`, `actions` and `history`. Example: `NPDevSamples/f6-showcase` |
 | **Panel `slots`** | mount your own component `above`, `below` or instead of (`replace`) a generated panel body |
-| **`appShell`** | your own navigation tree and default route for the app's shell |
-| **`settings.strings` / `settings.locale`, themes** | replace any of the platform's UI text in your language, and pick a built-in theme or your own `themes/<id>.json` (`ui.theme.name`, plus `ui.theme.choices` for an end-user picker) — see `NPDEV_FEATURE_GUIDE.md` §11 |
+| **Back-office menu** (optional root `backOffice`: `defaultRoute`, `navigation`) | your own navigation tree and default route for the app's shell |
+| **`backOffice.strings` / `backOffice.locale`, themes** | replace any of the platform's UI text in your language, and pick a built-in theme or your own `themes/<id>.json` (`ui.theme.name`, plus `ui.theme.choices` for an end-user picker) — see `NPDEV_FEATURE_GUIDE.md` §11 |
 | **`visibility` / `enabledWhen`** | show and enable things conditionally, by rule rather than by JavaScript |
 | **`actions`** | buttons that call flows or procedures, including ones that **stream a generated file back** |
-| **`aggregates` (workbenches)** | master-detail-detail screens editing a root and its collections **in one transaction**, with `onValidate` and `onCommit` hooks |
-| **`documents`** | generated documents and printable output: one-record and aggregate documents, and `kind: list` multi-record reports (named query, columns, grouping, subtotals, grand total) as PDF and CSV, computed over what the viewer may read |
-| **`guidePages` / `explainability`** | attach guidance to a screen so users are told what it is for — in the model, beside the thing it explains |
+| **`concepts[].composition` (workbenches)** | master-detail-detail screens editing a root and its collections **in one transaction**, with `onValidate` and `onCommit` hooks |
+| **Document screens** (`screens[]` kind `document`) | generated documents and printable output: one-record and aggregate documents (`aggregate`, `bands`, `logo`), and `report: true` multi-record reports (named query, `printColumns`, grouping, subtotals, grand total) as PDF and CSV, computed over what the viewer may read |
+| **Guide pages** (`backOffice.pages`) **/ `explainability`** | attach guidance to a screen so users are told what it is for — in the model, beside the thing it explains |
 | **Widget catalogue** | field types map to appropriate inputs, validated for compatibility at authoring time |
 | **Paintable boards (`render: "cellGrid"`)** | a workbench collection drawn as a square or hex board instead of a row grid: each child row is one painted cell (row, col, value), the palette is a query's rows (label, image, colour), with paint/fill/erase/undo/zoom, and Save still commits the whole aggregate in one transaction. Examples: Pigmentampas `Mosaics` (20×33 hex mosaic of caps), `dsl-conformance-max` `ShelfLayoutWorkbench` (warehouse shelf map) |
 | **Hand-made pages (`web/*.html`)** | when no declaration fits — a drawing board, a map — write the page yourself beside the model. It is copied into the app on every generate, wrapped by the shell (nav, sign-in, roles), listed in the menu from `pages.json`, and talks to the app through `NPDevShell.api` (`get`/`post`/`fileUrl`, same token and errors as the generated UI). Example: `NPDevSamples/pigmentampas/Input/web/studio.html`; how-to: [reference/HAND_MADE_PAGES.md](reference/HAND_MADE_PAGES.md) |

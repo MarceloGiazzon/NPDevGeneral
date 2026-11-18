@@ -1,0 +1,53 @@
+{
+ "$comment": "FORM P5 admission, 2026-11-18. The honest limits are written into twice.note and enforced.note. mapSpec.tiles is NOT admitted (no model sets it).",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "screens[] map, countdown and dashboard widgets",
+ "slots": [
+  "screen.map",
+  "screen.countdown",
+  "screen.widgets",
+  "mapSpec.lat",
+  "mapSpec.lng",
+  "mapSpec.label",
+  "mapSpec.center",
+  "mapSpec.pickPoints",
+  "widget.kind",
+  "widget.title",
+  "widget.value",
+  "widget.screen",
+  "widget.span",
+  "widget.chart",
+  "widget.groupBy"
+ ],
+ "rung": 0,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-18",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "a map is where two fields are; a dashboard is tiles (an expression each), charts (a field to group by) and embedded screens; a countdown is the expiry field of an inbox row"
+  },
+  "notLower": {
+   "value": true,
+   "why": "widget values are server-side aggregates evaluated through /api/x/eval under the caller's access, and the map/countdown/SSE behaviour is client runtime the platform ships; none of it is expressible in a flow or function"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "NPDevSamples/ride-hailing"
+   ],
+   "note": "ONE APP ONLY: ride-hailing, but several distinct demands there -- map on ride-now (pickPoints), my-ride/active-ride (route), drivers-map (center me), tiles + table + map + chart widgets on dispatch-board, countdown on the driver offers inbox. widget.chart/groupBy got their use on 2026-11-18. No second app yet."
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevSamples/ride-hailing/exposure-expect.json",
+   "note": "BROWSER-PROVEN ONLY: the ride-hailing browser stage (23/23) and the real-browser smoke (9/9) drove map, countdown, live and the dashboard, and experience-client.test.mjs (60 node tests) covers the renderers; ExperienceValidationTest checks lat/lng/groupBy against the concept; /api/x/eval has probe 20. There is no behaviour probe of a map, a countdown or a chart. The `probe` path above is the ride-hailing exposure matrix, which only pins the routes."
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "Maps: `\"map\":{\"lat\":\"pickupLat\",\"lng\":\"pickupLng\",\"label\":\"..\",\"center\":\"me\",\"tiles\":\"<property>\",\"pickPoints\":{..}}` ... Screen extras: `countdown` (inbox rows that expire), `widgets:[{\"kind\":\"tile|chart|table|map|list\",\"title\":\"..\",\"value\":\"count(..)\",\"screen\":\"<screen>\",\"groupBy\":\"status\",\"chart\":\"bar|line|donut\",\"span\":2}]`"
+  }
+ },
+ "replaces": [],
+ "budgetDelta": 15
+}

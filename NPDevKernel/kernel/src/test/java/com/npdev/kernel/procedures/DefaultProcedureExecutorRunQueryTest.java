@@ -42,8 +42,7 @@ class DefaultProcedureExecutorRunQueryTest {
                         "OrdersByCliente", "Order", "cliente == 'acme'", List.of(), null, List.of(), List.of(), Map.of(),
                         List.of(), List.of(), null)
         );
-        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
-                seededGateway(), NOOP_DISPATCHER, NOOP_BUS, Map.of(), ProcedureExecutionLimits.defaults(), queries);
+        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(seededGateway(), queries);
 
         ProcedureDefinition definition = new ProcedureDefinition(
                 "ListAcmeOrders",
@@ -66,8 +65,7 @@ class DefaultProcedureExecutorRunQueryTest {
                         "OrdersByCliente", "Order", "cliente == 'acme'", List.of("total desc"), null,
                         List.of(), List.of(), Map.of(), List.of(), List.of(), null)
         );
-        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
-                seededGateway(), NOOP_DISPATCHER, NOOP_BUS, Map.of(), ProcedureExecutionLimits.defaults(), queries);
+        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(seededGateway(), queries);
 
         ProcedureDefinition definition = new ProcedureDefinition(
                 "ListAcmeOrders",
@@ -89,8 +87,7 @@ class DefaultProcedureExecutorRunQueryTest {
                         "AllOrders", "Order", null, List.of(), 1, List.of(), List.of(), Map.of(),
                         List.of(), List.of(), null)
         );
-        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
-                seededGateway(), NOOP_DISPATCHER, NOOP_BUS, Map.of(), ProcedureExecutionLimits.defaults(), queries);
+        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(seededGateway(), queries);
 
         ProcedureDefinition definition = new ProcedureDefinition(
                 "ListOrders",
@@ -121,8 +118,7 @@ class DefaultProcedureExecutorRunQueryTest {
      */
     @Test
     void runQueryWithUnknownQueryNameIsRefusedInsteadOfReturningEveryRow() {
-        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
-                seededGateway(), NOOP_DISPATCHER, NOOP_BUS, Map.of(), ProcedureExecutionLimits.defaults(), Map.of());
+        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(seededGateway(), Map.of());
 
         ProcedureDefinition definition = new ProcedureDefinition(
                 "ListOrders",
@@ -140,8 +136,7 @@ class DefaultProcedureExecutorRunQueryTest {
     /** The control: no query name declared at all is still a plain list, unchanged by LC-P0. */
     @Test
     void runQueryWithoutAQueryNameIsStillAPlainUnfilteredList() {
-        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
-                seededGateway(), NOOP_DISPATCHER, NOOP_BUS, Map.of(), ProcedureExecutionLimits.defaults(), Map.of());
+        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(seededGateway(), Map.of());
 
         ProcedureDefinition definition = new ProcedureDefinition(
                 "ListOrders",

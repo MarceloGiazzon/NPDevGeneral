@@ -298,6 +298,12 @@
           "required": true
         },
         {
+          "name": "createdAt",
+          "type": "datetime",
+          "defaultExpression": "now()",
+          "description": "When the rider asked for the ride (filled by the platform; the dispatcher board sorts and counts by it)."
+        },
+        {
           "name": "pickupLat",
           "type": "decimal",
           "required": true,
@@ -349,7 +355,7 @@
         {
           "name": "fareCents",
           "type": "decimal",
-          "derivedExpression": "(300 + 120 * tripDistanceKm + 25 * tripMinutes) * surgeMultiplier",
+          "derivedExpression": "fareFor(tripDistanceKm, tripMinutes, surgeMultiplier)",
           "description": "Base R$3.00 + R$1.20/km + R$0.25/min, times the surge. tripMinutes is filled by the road route (stage 70); before that it counts as 0."
         },
         {
@@ -615,6 +621,10 @@
         {
           "name": "CancelFlagsOnlyWhenCancelled",
           "expr": "(cancelledByRiderFlag == 0 && cancelledByDriverFlag == 0) || status == 'CANCELLED'"
+        },
+        {
+          "name": "StarsInRange",
+          "expr": "(driverStars == null || (driverStars >= 1 && driverStars <= 5)) && (riderStars == null || (riderStars >= 1 && riderStars <= 5))"
         }
       ]
     },
@@ -649,6 +659,21 @@
           "required": true
         },
         {
+          "name": "pickupDistanceKm",
+          "type": "decimal",
+          "description": "Copy of the ride's pick-up distance for THIS driver, written when the offer is made (the driver's inbox reads flat fields)."
+        },
+        {
+          "name": "tripDistanceKm",
+          "type": "decimal",
+          "description": "Copy of the ride's trip distance at offer time."
+        },
+        {
+          "name": "fareCents",
+          "type": "decimal",
+          "description": "The fare the ride showed when the offer was made (a snapshot, not the live derived price)."
+        },
+        {
           "name": "status",
           "type": "enum",
           "enumValues": [
@@ -658,6 +683,12 @@
             "EXPIRED"
           ],
           "required": true
+        },
+        {
+          "name": "createdAt",
+          "type": "datetime",
+          "defaultExpression": "now()",
+          "description": "When the offer was made. The driver's inbox counts down 20 seconds from here (the awaiting flow's timeout is the real deadline)."
         },
         {
           "name": "expiredFlag",
@@ -954,6 +985,23 @@
       "name": "OpenRides",
       "concept": "Ride",
       "where": "status == 'REQUESTED' || status == 'ASSIGNED'"
+    },
+    {
+      "name": "MyRider",
+      "concept": "Rider",
+      "where": "account == $user.id"
+    },
+    {
+      "name": "RidesOfDriver",
+      "concept": "Ride",
+      "where": "driverAccount == $params.account",
+      "parameters": [
+        {
+          "name": "account",
+          "type": "string",
+          "required": true
+        }
+      ]
     }
   ],
   "flows": [
@@ -966,10 +1014,52 @@
       },
       "steps": [
         {
+          "name": "my-rider",
+          "type": "runQuery",
+          "query": "MyRider",
+          "scope": "Rider",
+          "output": "mine"
+        },
+        {
+          "name": "pick-rider",
+          "type": "forEach",
+          "collection": "$mine",
+          "itemKey": "me",
+          "maxLoopIterations": 1,
+          "steps": [
+            {
+              "name": "remember-rider",
+              "type": "set",
+              "value": "$me.id",
+              "output": "riderId"
+            },
+            {
+              "name": "remember-account",
+              "type": "set",
+              "value": "$me.account",
+              "output": "riderAccount"
+            }
+          ]
+        },
+        {
+          "name": "shape",
+          "type": "map",
+          "select": {
+            "rider": "$riderId",
+            "riderAccount": "$riderAccount",
+            "status": "REQUESTED",
+            "pickupLat": "$input.pickupLat",
+            "pickupLng": "$input.pickupLng",
+            "dropoffLat": "$input.dropoffLat",
+            "dropoffLng": "$input.dropoffLng"
+          },
+          "output": "rideIn"
+        },
+        {
           "name": "save",
           "type": "createConcept",
           "scope": "Ride",
-          "input": "$input",
+          "input": "$rideIn",
           "output": "$created"
         },
         {
@@ -1113,7 +1203,8 @@
           "type": "return",
           "value": "$final"
         }
-      ]
+      ],
+      "description": "Asks for a ride and offers it to up to three drivers, one after another. The rider is the signed-in user's own Rider row (MyRider), never a value the client names, so a form needs only the two points. Parks on each driver offer until the driver answers (a human task, or the AcceptRideOffer/DeclineRideOffer screen flows) or 20 s pass."
     },
     {
       "name": "CompleteRide",
@@ -1530,7 +1621,10 @@
                     "driver": "$best.id",
                     "driverAccount": "$chosen.account",
                     "status": "OFFERED",
-                    "expiredFlag": 0
+                    "expiredFlag": 0,
+                    "pickupDistanceKm": "$best.distanceKm",
+                    "tripDistanceKm": "$ride.tripDistanceKm",
+                    "fareCents": "$ride.fareCents"
                   },
                   "createIfMissing": true,
                   "output": "offer"
@@ -2497,69 +2591,15 @@
           "output": "freeHit"
         },
         {
-          "name": "free-at-least-1",
-          "type": "set",
-          "value": "max($freeHit.withinCount, 1)",
-          "output": "freeN"
-        },
-        {
-          "name": "ratio",
-          "type": "set",
-          "value": "$openHit.withinCount / $freeN",
-          "output": "ratio"
-        },
-        {
-          "name": "excess",
-          "type": "set",
-          "value": "$ratio - 1",
-          "output": "excess"
-        },
-        {
-          "name": "half-excess",
-          "type": "set",
-          "value": "$excess * 0.5",
-          "output": "halfExcess"
-        },
-        {
-          "name": "demand-raw",
-          "type": "set",
-          "value": "$halfExcess + 1",
-          "output": "demandRaw"
-        },
-        {
-          "name": "demand-floor",
-          "type": "set",
-          "value": "max($demandRaw, 1)",
-          "output": "demandFloor"
-        },
-        {
           "name": "demand",
           "type": "set",
-          "value": "min($demandFloor, 2.5)",
+          "value": "demandFactor($openHit.withinCount, $freeHit.withinCount)",
           "output": "demand"
         },
         {
-          "name": "zone-x-peak",
+          "name": "surge",
           "type": "set",
-          "value": "$zoneMult * $peakMult",
-          "output": "zp"
-        },
-        {
-          "name": "times-demand",
-          "type": "set",
-          "value": "$zp * $demand",
-          "output": "surgeRaw"
-        },
-        {
-          "name": "cap",
-          "type": "set",
-          "value": "min($surgeRaw, 3)",
-          "output": "surgeCapped"
-        },
-        {
-          "name": "round",
-          "type": "set",
-          "value": "round($surgeCapped, 2)",
+          "value": "surgeFactor($zoneMult, $peakMult, $demand)",
           "output": "surge"
         },
         {
@@ -2884,6 +2924,238 @@
           "value": "$ride"
         }
       ]
+    },
+    {
+      "name": "AcceptRideOffer",
+      "description": "The screen's Accept button. Runs AS THE DRIVER: the offer is read with the driver's own access (RideOffer rows are visible to the driver they were made to, so another driver's offer is simply not found), it must still be OFFERED and still be the ride's current offer, and the answer is then emitted as the RideOfferAnswered event the parked RequestRide flow awaits -- the event completing the offer's human task publishes -- so the parked flow moves on inside this call (an emitEvent used to be missed by a flow parked for more than about 2 s: REG-340, a UUID in the event never equalled the same id as text in the parked state). A second tap finds the offer no longer OFFERED and is refused. A refusal is a failed read of a ride that does not exist (CONCEPT_NOT_FOUND, 422), the same veto idiom as ValidateWidgetOrderProcedure.",
+      "expose": "ui",
+      "input": {
+        "concept": "RideOffer",
+        "mode": "query"
+      },
+      "steps": [
+        {
+          "name": "read-offer",
+          "type": "readConcept",
+          "scope": "RideOffer",
+          "id": "$input.offerId",
+          "output": "offer"
+        },
+        {
+          "name": "still-open",
+          "type": "branch",
+          "condition": "$offer.status == 'OFFERED'",
+          "then": [
+            {
+              "name": "read-ride",
+              "type": "readConcept",
+              "scope": "Ride",
+              "id": "$offer.ride",
+              "output": "ride"
+            },
+            {
+              "name": "is-current",
+              "type": "branch",
+              "condition": "$ride.currentOfferId == $offer.id",
+              "then": [
+                {
+                  "name": "answer-data",
+                  "type": "map",
+                  "select": {
+                    "rideId": "$ride.id",
+                    "answer": "ACCEPT"
+                  },
+                  "output": "answerData"
+                },
+                {
+                  "name": "answer",
+                  "type": "emitEvent",
+                  "event": "RideOfferAnswered",
+                  "from": "$answerData"
+                }
+              ],
+              "else": [
+                {
+                  "name": "refuse-stale-offer",
+                  "type": "readConcept",
+                  "scope": "Ride",
+                  "id": "00000000-0000-0000-0000-000000000000",
+                  "output": "never"
+                }
+              ]
+            }
+          ],
+          "else": [
+            {
+              "name": "refuse-answered-offer",
+              "type": "readConcept",
+              "scope": "Ride",
+              "id": "00000000-0000-0000-0000-000000000000",
+              "output": "never"
+            }
+          ]
+        },
+        {
+          "name": "return-answer",
+          "type": "return",
+          "value": "$offer"
+        }
+      ]
+    },
+    {
+      "name": "DeclineRideOffer",
+      "description": "The screen's Decline button: the same checks and the same emitted answer as AcceptRideOffer, answering DECLINE (the parked RequestRide flow releases the driver and offers the ride to the next one).",
+      "expose": "ui",
+      "input": {
+        "concept": "RideOffer",
+        "mode": "query"
+      },
+      "steps": [
+        {
+          "name": "read-offer",
+          "type": "readConcept",
+          "scope": "RideOffer",
+          "id": "$input.offerId",
+          "output": "offer"
+        },
+        {
+          "name": "still-open",
+          "type": "branch",
+          "condition": "$offer.status == 'OFFERED'",
+          "then": [
+            {
+              "name": "read-ride",
+              "type": "readConcept",
+              "scope": "Ride",
+              "id": "$offer.ride",
+              "output": "ride"
+            },
+            {
+              "name": "is-current",
+              "type": "branch",
+              "condition": "$ride.currentOfferId == $offer.id",
+              "then": [
+                {
+                  "name": "answer-data",
+                  "type": "map",
+                  "select": {
+                    "rideId": "$ride.id",
+                    "answer": "DECLINE"
+                  },
+                  "output": "answerData"
+                },
+                {
+                  "name": "answer",
+                  "type": "emitEvent",
+                  "event": "RideOfferAnswered",
+                  "from": "$answerData"
+                }
+              ],
+              "else": [
+                {
+                  "name": "refuse-stale-offer",
+                  "type": "readConcept",
+                  "scope": "Ride",
+                  "id": "00000000-0000-0000-0000-000000000000",
+                  "output": "never"
+                }
+              ]
+            }
+          ],
+          "else": [
+            {
+              "name": "refuse-answered-offer",
+              "type": "readConcept",
+              "scope": "Ride",
+              "id": "00000000-0000-0000-0000-000000000000",
+              "output": "never"
+            }
+          ]
+        },
+        {
+          "name": "return-answer",
+          "type": "return",
+          "value": "$offer"
+        }
+      ]
+    },
+    {
+      "name": "RateDriver",
+      "description": "The rider rates the driver of their own COMPLETED ride (1-5). Runs as the rider: Ride.driverStars is writable only by the ride's rider or a Dispatcher, and the invariant RateOnlyCompletedRides refuses a ride that is not COMPLETED.",
+      "expose": "ui",
+      "input": {
+        "concept": "Ride",
+        "mode": "update"
+      },
+      "steps": [
+        {
+          "name": "rate",
+          "type": "updateConcept",
+          "scope": "Ride",
+          "id": "$input.id",
+          "set": {
+            "driverStars": "$input.driverStars"
+          },
+          "output": "rated"
+        },
+        {
+          "name": "return-rated",
+          "type": "return",
+          "value": "$rated"
+        }
+      ]
+    },
+    {
+      "name": "SetDriverStatus",
+      "description": "A driver goes online (AVAILABLE) or offline (OFFLINE). Runs as the driver: the Driver lifecycle guard lets a driver make only these two moves on their own row (BUSY belongs to the platform and the Dispatcher).",
+      "expose": "ui",
+      "input": {
+        "concept": "Driver",
+        "mode": "update"
+      },
+      "steps": [
+        {
+          "name": "set-status",
+          "type": "updateConcept",
+          "scope": "Driver",
+          "id": "$input.id",
+          "set": {
+            "status": "$input.status"
+          },
+          "output": "driver"
+        },
+        {
+          "name": "return-driver",
+          "type": "return",
+          "value": "$driver"
+        }
+      ]
+    },
+    {
+      "name": "StartTrip",
+      "description": "The driver starts the trip of their accepted ride (ACCEPTED -> IN_PROGRESS). Runs as the driver: the Ride lifecycle guard requires driverAccount == the caller.",
+      "expose": "ui",
+      "input": {
+        "concept": "Ride",
+        "mode": "update"
+      },
+      "steps": [
+        {
+          "name": "start",
+          "type": "updateConcept",
+          "scope": "Ride",
+          "id": "$input.id",
+          "set": {
+            "status": "IN_PROGRESS"
+          },
+          "output": "ride"
+        },
+        {
+          "name": "return-ride",
+          "type": "return",
+          "value": "$ride"
+        }
+      ]
     }
   ],
   "capabilities": [
@@ -3055,6 +3327,64 @@
       "as": "identity"
     }
   ],
+  "functions": [
+    {
+      "name": "demandFactor",
+      "description": "Demand pressure: half of the excess of open rides over free drivers within reach, never below 1 and capped at 2.5.",
+      "params": [
+        {
+          "name": "openNearby",
+          "type": "integer"
+        },
+        {
+          "name": "freeNearby",
+          "type": "integer"
+        }
+      ],
+      "returns": "decimal",
+      "body": "min(max((openNearby / max(freeNearby, 1) - 1) * 0.5 + 1, 1), 2.5)"
+    },
+    {
+      "name": "surgeFactor",
+      "description": "The ride's surge multiplier: zone x peak x demand, capped at 3, rounded to 2 decimals.",
+      "params": [
+        {
+          "name": "zone",
+          "type": "decimal"
+        },
+        {
+          "name": "peak",
+          "type": "decimal"
+        },
+        {
+          "name": "demand",
+          "type": "decimal"
+        }
+      ],
+      "returns": "decimal",
+      "body": "round(min(zone * peak * demand, 3), 2)"
+    },
+    {
+      "name": "fareFor",
+      "description": "Base R$3.00 + R$1.20/km + R$0.25/min, times the surge (all in cents).",
+      "params": [
+        {
+          "name": "km",
+          "type": "decimal"
+        },
+        {
+          "name": "minutes",
+          "type": "decimal"
+        },
+        {
+          "name": "surge",
+          "type": "decimal"
+        }
+      ],
+      "returns": "decimal",
+      "body": "(300 + 120 * km + 25 * minutes) * surge"
+    }
+  ],
   "roles": [
     {
       "name": "Rider",
@@ -3184,6 +3514,636 @@
       "type": "string",
       "default": "http://127.0.0.1:8703",
       "label": "OSRM route service base URL (the mock by default)"
+    },
+    {
+      "name": "driversTilesUrl",
+      "type": "string",
+      "default": "https://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png",
+      "label": "Tile source of the dispatcher's drivers map (Humanitarian OSM style)"
+    },
+    {
+      "name": "driversTilesUrlAttribution",
+      "type": "string",
+      "default": "Map tiles: Humanitarian OpenStreetMap Team, OpenStreetMap contributors",
+      "label": "Attribution shown under the drivers map"
+    }
+  ],
+  "experiences": [
+    {
+      "name": "rider",
+      "title": "Ride",
+      "for": [
+        "Rider"
+      ],
+      "device": "mobile",
+      "home": "ride-now",
+      "navigation": [
+        {
+          "screen": "ride-now",
+          "label": "Ride",
+          "icon": "car"
+        },
+        {
+          "screen": "my-ride",
+          "label": "Current",
+          "icon": "clock",
+          "badge": "count('Ride', riderAccount == $user.id && status in ['REQUESTED','ASSIGNED','ACCEPTED','IN_PROGRESS'])"
+        },
+        {
+          "screen": "my-trips",
+          "label": "Trips",
+          "icon": "list"
+        }
+      ]
+    },
+    {
+      "name": "driver",
+      "title": "Drive",
+      "for": [
+        "Driver"
+      ],
+      "device": "mobile",
+      "home": "offers",
+      "navigation": [
+        {
+          "screen": "offers",
+          "label": "Offers",
+          "icon": "bell",
+          "badge": "count('RideOffer', driverAccount == $user.id && status == 'OFFERED')"
+        },
+        {
+          "screen": "active-ride",
+          "label": "Ride",
+          "icon": "car"
+        },
+        {
+          "screen": "my-driver-rides",
+          "label": "Trips",
+          "icon": "list"
+        },
+        {
+          "screen": "me-driver",
+          "label": "Me",
+          "icon": "user"
+        }
+      ]
+    },
+    {
+      "name": "dispatch",
+      "title": "Dispatch",
+      "for": [
+        "Dispatcher"
+      ],
+      "device": "web",
+      "theme": "dark",
+      "home": "dispatch-board",
+      "backOffice": true,
+      "navigation": [
+        {
+          "screen": "dispatch-board",
+          "label": "Today",
+          "icon": "chart"
+        },
+        {
+          "screen": "rides-all",
+          "label": "Rides",
+          "icon": "list"
+        },
+        {
+          "screen": "drivers-map",
+          "label": "Drivers",
+          "icon": "map"
+        },
+        {
+          "screen": "drivers-board",
+          "label": "Status",
+          "icon": "board"
+        }
+      ]
+    }
+  ],
+  "screens": [
+    {
+      "name": "ride-now",
+      "title": "Where to?",
+      "kind": "form",
+      "concept": "Ride",
+      "fields": [
+        "pickupLat",
+        "pickupLng",
+        "dropoffLat",
+        "dropoffLng"
+      ],
+      "map": {
+        "center": "me",
+        "pickPoints": [
+          {
+            "name": "pickup",
+            "label": "Pick-up",
+            "lat": "pickupLat",
+            "lng": "pickupLng"
+          },
+          {
+            "name": "dropoff",
+            "label": "Drop-off",
+            "lat": "dropoffLat",
+            "lng": "dropoffLng"
+          }
+        ]
+      },
+      "actions": [
+        {
+          "label": "Request ride",
+          "flow": "RequestRide",
+          "style": "primary",
+          "input": {
+            "pickupLat": "$form.pickupLat",
+            "pickupLng": "$form.pickupLng",
+            "dropoffLat": "$form.dropoffLat",
+            "dropoffLng": "$form.dropoffLng"
+          },
+          "then": "my-ride"
+        }
+      ]
+    },
+    {
+      "name": "my-ride",
+      "title": "Your ride",
+      "kind": "status",
+      "concept": "Ride",
+      "where": "riderAccount == $user.id",
+      "pick": "latest",
+      "orderBy": "createdAt desc",
+      "live": true,
+      "fields": [
+        {
+          "value": "status",
+          "format": "badge"
+        },
+        {
+          "value": "driverName",
+          "label": "Driver"
+        },
+        {
+          "value": "driverPlate",
+          "label": "Plate"
+        },
+        {
+          "value": "etaMinutes",
+          "label": "Arrives in",
+          "format": "duration"
+        },
+        {
+          "value": "fareCents",
+          "format": "money",
+          "currency": "BRL",
+          "unitScale": 0.01,
+          "label": "Fare"
+        },
+        {
+          "value": "surgeMultiplier",
+          "label": "Surge",
+          "format": "number"
+        },
+        {
+          "value": "driverStars",
+          "label": "Your rating",
+          "format": "stars"
+        }
+      ],
+      "map": {
+        "lat": "pickupLat",
+        "lng": "pickupLng",
+        "label": "'Pick-up'"
+      },
+      "actions": [
+        {
+          "label": "Cancel ride",
+          "flow": "CancelRide",
+          "style": "danger",
+          "confirm": "Cancel this ride? A fee may apply after a driver accepted.",
+          "input": {
+            "id": "$row.id",
+            "status": "'CANCELLED'",
+            "cancelledByRiderFlag": "1"
+          },
+          "visibleWhen": "$row.status in ['REQUESTED','ASSIGNED','ACCEPTED']"
+        },
+        {
+          "label": "5 ★",
+          "flow": "RateDriver",
+          "style": "primary",
+          "input": {
+            "id": "$row.id",
+            "driverStars": "5"
+          },
+          "visibleWhen": "$row.status == 'COMPLETED' && $row.driverStars == null"
+        },
+        {
+          "label": "4 ★",
+          "flow": "RateDriver",
+          "style": "secondary",
+          "input": {
+            "id": "$row.id",
+            "driverStars": "4"
+          },
+          "visibleWhen": "$row.status == 'COMPLETED' && $row.driverStars == null"
+        },
+        {
+          "label": "3 ★",
+          "flow": "RateDriver",
+          "style": "secondary",
+          "input": {
+            "id": "$row.id",
+            "driverStars": "3"
+          },
+          "visibleWhen": "$row.status == 'COMPLETED' && $row.driverStars == null"
+        },
+        {
+          "label": "2 ★",
+          "flow": "RateDriver",
+          "style": "secondary",
+          "input": {
+            "id": "$row.id",
+            "driverStars": "2"
+          },
+          "visibleWhen": "$row.status == 'COMPLETED' && $row.driverStars == null"
+        },
+        {
+          "label": "1 ★",
+          "flow": "RateDriver",
+          "style": "secondary",
+          "input": {
+            "id": "$row.id",
+            "driverStars": "1"
+          },
+          "visibleWhen": "$row.status == 'COMPLETED' && $row.driverStars == null"
+        }
+      ],
+      "empty": {
+        "text": "No ride in progress."
+      }
+    },
+    {
+      "name": "my-trips",
+      "title": "Trips",
+      "kind": "list",
+      "concept": "Ride",
+      "where": "riderAccount == $user.id",
+      "orderBy": "createdAt desc",
+      "columns": [
+        {
+          "value": "createdAt",
+          "label": "When",
+          "format": "relative-time"
+        },
+        {
+          "value": "status",
+          "format": "badge"
+        },
+        {
+          "value": "driverName",
+          "label": "Driver"
+        },
+        {
+          "value": "tripDistanceKm",
+          "label": "Distance",
+          "format": "distance"
+        },
+        {
+          "value": "fareCents",
+          "format": "money",
+          "currency": "BRL",
+          "unitScale": 0.01,
+          "label": "Fare"
+        }
+      ],
+      "empty": {
+        "text": "Your trips will show up here."
+      }
+    },
+    {
+      "name": "offers",
+      "title": "Ride offers",
+      "kind": "inbox",
+      "concept": "RideOffer",
+      "where": "driverAccount == $user.id && status == 'OFFERED'",
+      "orderBy": "createdAt desc",
+      "live": true,
+      "countdown": {
+        "until": "addSeconds(createdAt, 20)",
+        "label": "Answer within"
+      },
+      "columns": [
+        {
+          "value": "pickupDistanceKm",
+          "label": "To pick-up",
+          "format": "distance"
+        },
+        {
+          "value": "tripDistanceKm",
+          "label": "Trip",
+          "format": "distance"
+        },
+        {
+          "value": "fareCents",
+          "format": "money",
+          "currency": "BRL",
+          "unitScale": 0.01,
+          "label": "Fare"
+        }
+      ],
+      "actions": [
+        {
+          "label": "Accept",
+          "flow": "AcceptRideOffer",
+          "style": "primary",
+          "input": {
+            "offerId": "$row.id"
+          },
+          "then": "active-ride"
+        },
+        {
+          "label": "Decline",
+          "flow": "DeclineRideOffer",
+          "input": {
+            "offerId": "$row.id"
+          }
+        }
+      ],
+      "empty": {
+        "text": "Waiting for ride offers. Stay online."
+      }
+    },
+    {
+      "name": "active-ride",
+      "title": "Current ride",
+      "kind": "status",
+      "concept": "Ride",
+      "where": "driverAccount == $user.id && status in ['ACCEPTED','IN_PROGRESS']",
+      "pick": "latest",
+      "orderBy": "createdAt desc",
+      "live": true,
+      "fields": [
+        {
+          "value": "status",
+          "format": "badge"
+        },
+        {
+          "value": "pickupDistanceKm",
+          "label": "To pick-up",
+          "format": "distance"
+        },
+        {
+          "value": "fareCents",
+          "format": "money",
+          "currency": "BRL",
+          "unitScale": 0.01,
+          "label": "Fare"
+        }
+      ],
+      "map": {
+        "lat": "pickupLat",
+        "lng": "pickupLng",
+        "label": "'Pick-up'"
+      },
+      "actions": [
+        {
+          "label": "Start trip",
+          "flow": "StartTrip",
+          "style": "primary",
+          "input": {
+            "id": "$row.id"
+          },
+          "visibleWhen": "$row.status == 'ACCEPTED'"
+        },
+        {
+          "label": "Complete ride",
+          "flow": "CompleteRide",
+          "style": "primary",
+          "input": {
+            "id": "$row.id",
+            "status": "'COMPLETED'"
+          },
+          "visibleWhen": "$row.status == 'IN_PROGRESS'"
+        },
+        {
+          "label": "Cancel",
+          "flow": "CancelRide",
+          "style": "danger",
+          "confirm": "Cancel this ride? It counts against your cancellation rate.",
+          "input": {
+            "id": "$row.id",
+            "status": "'CANCELLED'",
+            "cancelledByDriverFlag": "1"
+          }
+        }
+      ],
+      "empty": {
+        "text": "No active ride."
+      }
+    },
+    {
+      "name": "me-driver",
+      "title": "Me",
+      "kind": "detail",
+      "concept": "Driver",
+      "where": "account == $user.id",
+      "pick": "only",
+      "fields": [
+        "name",
+        "plate",
+        {
+          "value": "status",
+          "format": "badge"
+        },
+        {
+          "value": "ratingAvg",
+          "label": "Rating",
+          "format": "stars"
+        },
+        {
+          "value": "acceptanceRate",
+          "format": "number"
+        },
+        {
+          "value": "cancelRate",
+          "format": "number"
+        }
+      ],
+      "actions": [
+        {
+          "label": "Go online",
+          "flow": "SetDriverStatus",
+          "style": "primary",
+          "input": {
+            "id": "$row.id",
+            "status": "'AVAILABLE'"
+          },
+          "visibleWhen": "$row.status == 'OFFLINE'"
+        },
+        {
+          "label": "Go offline",
+          "flow": "SetDriverStatus",
+          "input": {
+            "id": "$row.id",
+            "status": "'OFFLINE'"
+          },
+          "visibleWhen": "$row.status == 'AVAILABLE'"
+        }
+      ]
+    },
+    {
+      "name": "dispatch-board",
+      "title": "Today",
+      "kind": "dashboard",
+      "live": true,
+      "widgets": [
+        {
+          "kind": "tile",
+          "title": "Waiting for a driver",
+          "value": "count('Ride', status == 'REQUESTED')"
+        },
+        {
+          "kind": "tile",
+          "title": "On the road",
+          "value": "count('Ride', status == 'IN_PROGRESS')"
+        },
+        {
+          "kind": "tile",
+          "title": "Drivers available",
+          "value": "count('Driver', status == 'AVAILABLE')"
+        },
+        {
+          "kind": "tile",
+          "title": "No driver found today",
+          "value": "count('Ride', status == 'NO_DRIVER' && createdAt >= today())"
+        },
+        {
+          "kind": "map",
+          "title": "Drivers",
+          "screen": "drivers-map",
+          "span": 2
+        },
+        {
+          "kind": "table",
+          "title": "Latest rides",
+          "screen": "rides-all",
+          "span": 2
+        },
+        {
+          "kind": "chart",
+          "chart": "donut",
+          "title": "Rides by status",
+          "screen": "rides-all",
+          "groupBy": "status",
+          "span": 2
+        }
+      ]
+    },
+    {
+      "name": "rides-all",
+      "title": "Rides",
+      "kind": "list",
+      "concept": "Ride",
+      "orderBy": "createdAt desc",
+      "live": true,
+      "columns": [
+        {
+          "value": "createdAt",
+          "format": "relative-time"
+        },
+        {
+          "value": "status",
+          "format": "badge"
+        },
+        "riderAccount",
+        "driverName",
+        {
+          "value": "fareCents",
+          "format": "money",
+          "currency": "BRL",
+          "unitScale": 0.01
+        },
+        "zoneName",
+        {
+          "value": "surgeMultiplier",
+          "label": "Surge",
+          "format": "number"
+        }
+      ]
+    },
+    {
+      "name": "drivers-map",
+      "title": "Drivers",
+      "kind": "map",
+      "concept": "Driver",
+      "live": true,
+      "map": {
+        "lat": "lat",
+        "lng": "lng",
+        "label": "name + ' (' + status + ')'",
+        "tiles": "driversTilesUrl"
+      }
+    },
+    {
+      "name": "drivers-board",
+      "title": "Driver status",
+      "kind": "board",
+      "concept": "Driver",
+      "groupBy": "status",
+      "live": true,
+      "visibleWhen": "$user.roles.contains('DISPATCHER')",
+      "columns": [
+        "name",
+        "plate"
+      ],
+      "actions": [
+        {
+          "label": "Set available",
+          "flow": "SetDriverStatus",
+          "style": "move",
+          "moveTo": "AVAILABLE",
+          "input": {
+            "id": "$row.id",
+            "status": "'AVAILABLE'"
+          }
+        },
+        {
+          "label": "Set offline",
+          "flow": "SetDriverStatus",
+          "style": "move",
+          "moveTo": "OFFLINE",
+          "input": {
+            "id": "$row.id",
+            "status": "'OFFLINE'"
+          }
+        }
+      ]
+    },
+    {
+      "name": "my-driver-rides",
+      "title": "My trips",
+      "kind": "list",
+      "query": "RidesOfDriver",
+      "params": {
+        "account": "$user.id"
+      },
+      "orderBy": "createdAt desc",
+      "columns": [
+        {
+          "value": "createdAt",
+          "format": "relative-time"
+        },
+        {
+          "value": "status",
+          "format": "badge"
+        },
+        "zoneName"
+      ],
+      "empty": {
+        "text": "No trips yet."
+      }
     }
   ]
 }

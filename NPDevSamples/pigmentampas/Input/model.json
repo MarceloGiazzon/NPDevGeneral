@@ -6,58 +6,6 @@
   "metadata": {
     "purpose": "Pigmentampas -- paint with beer caps. A cap catalogue (curated), personal cap collections, hex cap mosaics (20x33 cells, edited as one aggregate), a gallery and a dashboard. Rebuilt 2026-10-07 from the original PHP Tampas app as the NPDev demo + maturity evaluation for non-CRUD, visual apps. jwt-mode auth (Google + username/password via Credential -> identity::User); row-level access keys on ownerUsername == $user.id."
   },
-  "settings": {
-    "locale": "en-US",
-    "ui": {
-      "pageRows": 25,
-      "dateFormat": "yyyy-MM-dd"
-    }
-  },
-  "appShell": {
-    "defaultRoute": "Mosaic",
-    "navigation": [
-      {
-        "label": "Mosaics",
-        "target": "Mosaic",
-        "group": "Studio"
-      },
-      {
-        "label": "My collection",
-        "target": "CollectionItem",
-        "group": "Studio"
-      },
-      {
-        "label": "Cap catalogue",
-        "target": "Cap",
-        "group": "Catalogue"
-      },
-      {
-        "label": "Breweries",
-        "target": "Brewery",
-        "group": "Catalogue"
-      },
-      {
-        "label": "Members",
-        "target": "Member",
-        "group": "Community"
-      },
-      {
-        "label": "Trades",
-        "target": "Trade",
-        "group": "Community"
-      },
-      {
-        "label": "Likes",
-        "target": "Like",
-        "group": "Community"
-      },
-      {
-        "label": "Challenges",
-        "target": "Challenge",
-        "group": "Community"
-      }
-    ]
-  },
   "roles": [
     {
       "name": "Member",
@@ -247,7 +195,7 @@
   "agentAccess": {
     "assistant": {
       "name": "Pigmentampas Assistant",
-      "instructions": "You help beer-cap collectors who design cap mosaics. You can browse the cap catalogue and breweries, read and update the user's own cap collection, and read and design mosaics -- save_MosaicAggregate writes a whole mosaic, every cell, in one call. Reply in the user's language. When adding to a collection, set ownerUsername to the user's own username. A mosaic is a 20x33 hex grid of cells, each cell holding one cap (or empty).",
+      "instructions": "You help beer-cap collectors who design cap mosaics. You can browse the cap catalogue and breweries, read and update the user's own cap collection, and read and design mosaics -- save_Mosaic writes a whole mosaic, every cell, in one call. Reply in the user's language. When adding to a collection, set ownerUsername to the user's own username. A mosaic is a 20x33 hex grid of cells, each cell holding one cap (or empty).",
       "language": "en"
     },
     "channels": {
@@ -294,10 +242,10 @@
         "operations": [
           "list"
         ],
-        "description": "Cap mosaics: code, title, owner, size, status (DRAFT, PUBLISHED, BUILT). Use get_MosaicAggregate to see one with its cells."
+        "description": "Cap mosaics: code, title, owner, size, status (DRAFT, PUBLISHED, BUILT). Use get_Mosaic to see one with its cells."
       },
       {
-        "aggregate": "MosaicAggregate",
+        "aggregate": "Mosaic",
         "operations": [
           "get",
           "save"
@@ -709,6 +657,9 @@
             "image"
           ]
         }
+      },
+      "composition": {
+        "collections": []
       }
     },
     {
@@ -1010,6 +961,17 @@
             "likeCount"
           ]
         }
+      },
+      "composition": {
+        "collections": [
+          {
+            "name": "cells",
+            "concept": "MosaicCell",
+            "childField": "mosaicId",
+            "ownership": "owned",
+            "orderBy": "row"
+          }
+        ]
       }
     },
     {
@@ -1375,26 +1337,6 @@
       "access": {
         "write": "$user.roles.contains('Curator') || $user.isSystem"
       }
-    }
-  ],
-  "aggregates": [
-    {
-      "name": "MosaicAggregate",
-      "root": "Mosaic",
-      "collections": [
-        {
-          "name": "cells",
-          "concept": "MosaicCell",
-          "childField": "mosaicId",
-          "ownership": "owned",
-          "orderBy": "row"
-        }
-      ]
-    },
-    {
-      "name": "CapAggregate",
-      "root": "Cap",
-      "collections": []
     }
   ],
   "events": [
@@ -2045,7 +1987,7 @@
   "autoPanels": [
     {
       "name": "Mosaics",
-      "aggregate": "MosaicAggregate",
+      "aggregate": "Mosaic",
       "route": "/mosaics",
       "surfaces": [
         "selection",
@@ -2114,7 +2056,7 @@
     },
     {
       "name": "Caps",
-      "aggregate": "CapAggregate",
+      "aggregate": "Cap",
       "route": "/caps",
       "surfaces": [
         "selection",
@@ -2169,11 +2111,12 @@
       ]
     }
   ],
-  "documents": [
+  "screens": [
     {
       "name": "MosaicAssemblySheet",
+      "kind": "document",
       "concept": "Mosaic",
-      "aggregate": "MosaicAggregate",
+      "aggregate": "Mosaic",
       "title": "Mosaic assembly sheet",
       "pageSize": "A4",
       "marginMm": 15,
@@ -2238,55 +2181,101 @@
       ]
     }
   ],
-  "guidePages": [
-    {
-      "name": "Dashboard",
-      "default": true,
-      "theme": {
-        "mode": "light",
-        "accent": "#b5651d",
-        "logoText": "Pigmentampas",
-        "density": "comfortable"
+  "backOffice": {
+    "defaultRoute": "Mosaic",
+    "navigation": [
+      {
+        "label": "Mosaics",
+        "target": "Mosaic",
+        "group": "Studio"
       },
-      "gadgets": [
-        {
-          "name": "kpiCaps",
-          "type": "kpi",
-          "title": "Caps catalogued",
-          "query": "TotalCaps",
-          "y": "total"
+      {
+        "label": "My collection",
+        "target": "CollectionItem",
+        "group": "Studio"
+      },
+      {
+        "label": "Cap catalogue",
+        "target": "Cap",
+        "group": "Catalogue"
+      },
+      {
+        "label": "Breweries",
+        "target": "Brewery",
+        "group": "Catalogue"
+      },
+      {
+        "label": "Members",
+        "target": "Member",
+        "group": "Community"
+      },
+      {
+        "label": "Trades",
+        "target": "Trade",
+        "group": "Community"
+      },
+      {
+        "label": "Likes",
+        "target": "Like",
+        "group": "Community"
+      },
+      {
+        "label": "Challenges",
+        "target": "Challenge",
+        "group": "Community"
+      }
+    ],
+    "pages": [
+      {
+        "name": "Dashboard",
+        "default": true,
+        "theme": {
+          "mode": "light",
+          "accent": "#b5651d",
+          "logoText": "Pigmentampas",
+          "density": "comfortable"
         },
-        {
-          "name": "kpiMosaics",
-          "type": "kpi",
-          "title": "Mosaics published",
-          "query": "TotalPublishedMosaics",
-          "y": "total"
-        },
-        {
-          "name": "kpiMembers",
-          "type": "kpi",
-          "title": "Members",
-          "query": "TotalMembers",
-          "y": "total"
-        },
-        {
-          "name": "topBreweries",
-          "type": "bar",
-          "title": "Top breweries in mosaics",
-          "query": "TopBreweriesInMosaics",
-          "x": "capId.breweryId.name",
-          "y": "caps"
-        },
-        {
-          "name": "capsNeeded",
-          "type": "table",
-          "title": "Beers to drink",
-          "query": "BeersToDrink"
-        }
-      ]
-    }
-  ],
+        "gadgets": [
+          {
+            "name": "kpiCaps",
+            "type": "kpi",
+            "title": "Caps catalogued",
+            "query": "TotalCaps",
+            "y": "total"
+          },
+          {
+            "name": "kpiMosaics",
+            "type": "kpi",
+            "title": "Mosaics published",
+            "query": "TotalPublishedMosaics",
+            "y": "total"
+          },
+          {
+            "name": "kpiMembers",
+            "type": "kpi",
+            "title": "Members",
+            "query": "TotalMembers",
+            "y": "total"
+          },
+          {
+            "name": "topBreweries",
+            "type": "bar",
+            "title": "Top breweries in mosaics",
+            "query": "TopBreweriesInMosaics",
+            "x": "capId.breweryId.name",
+            "y": "caps"
+          },
+          {
+            "name": "capsNeeded",
+            "type": "table",
+            "title": "Beers to drink",
+            "query": "BeersToDrink"
+          }
+        ]
+      }
+    ],
+    "locale": "en-US"
+  },
   "seeds": [
     {
       "concept": "Brewery",

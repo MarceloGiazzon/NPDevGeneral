@@ -31,7 +31,24 @@ class AggregateBalanceValidationTest {
               "dslVersion": "3.0.0", "namespace": "wms.balance.test", "version": "1.0",
               "concepts": [
                 { "name": "StockTransfer", "fields": [
-                  { "name": "id", "type": "uuid", "id": true, "required": true } ] },
+                  { "name": "id", "type": "uuid", "id": true, "required": true } ],
+                  "composition": {
+                    "collections": [
+                      { "name": "items", "concept": "Item", "childField": "stockTransferId", "ownership": "owned",
+                        "collections": [
+                          { "name": "positions", "concept": "Position", "childField": "itemId", "ownership": "owned",
+                            "lookupFields": [
+                              { "name": "maxQuantity", "query": "%s", "joinField": "localId", "valueField": "disponivel" }
+                            ]
+                          }
+                        ]
+                      }
+                    ],
+                    "balances": [
+                      { "name": "%s", "collection": "%s", "discriminatorField": "role",
+                        "leftValue": "%s", "rightValue": "%s", "quantityField": "quantity" }
+                    ]
+                  } },
                 { "name": "Item", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "stockTransferId", "type": "uuid", "required": true } ] },
@@ -48,31 +65,10 @@ class AggregateBalanceValidationTest {
               "queries": [
                 { "name": "AvailableQuantityQuery", "concept": "StockLocation", "where": "disponivel >= 0" }
               ],
-              "aggregates": [
-                {
-                  "name": "StockTransferAggregate",
-                  "root": "StockTransfer",
-                  "collections": [
-                    { "name": "items", "concept": "Item", "childField": "stockTransferId", "ownership": "owned",
-                      "collections": [
-                        { "name": "positions", "concept": "Position", "childField": "itemId", "ownership": "owned",
-                          "lookupFields": [
-                            { "name": "maxQuantity", "query": "%s", "joinField": "localId", "valueField": "disponivel" }
-                          ]
-                        }
-                      ]
-                    }
-                  ],
-                  "balances": [
-                    { "name": "%s", "collection": "%s", "discriminatorField": "role",
-                      "leftValue": "%s", "rightValue": "%s", "quantityField": "quantity" }
-                  ]
-                }
-              ],
               "autoPanels": [
                 {
                   "name": "StockTransferWorkbench",
-                  "aggregate": "StockTransferAggregate",
+                  "aggregate": "StockTransfer",
                   "route": "/stock-transfers",
                   "transaction": {
                     "actions": [
@@ -165,27 +161,23 @@ class AggregateBalanceValidationTest {
               "dslVersion": "3.0.0", "namespace": "wms.balance.duptest", "version": "1.0",
               "concepts": [
                 { "name": "StockTransfer", "fields": [
-                  { "name": "id", "type": "uuid", "id": true, "required": true } ] },
+                  { "name": "id", "type": "uuid", "id": true, "required": true } ],
+                  "composition": {
+                    "collections": [
+                      { "name": "positions", "concept": "Position", "childField": "stockTransferId", "ownership": "owned" }
+                    ],
+                    "balances": [
+                      { "name": "SameName", "collection": "positions", "discriminatorField": "role",
+                        "leftValue": "Origem", "rightValue": "Destino", "quantityField": "quantity" },
+                      { "name": "SameName", "collection": "positions", "discriminatorField": "role",
+                        "leftValue": "Origem", "rightValue": "Destino", "quantityField": "quantity" }
+                    ]
+                  } },
                 { "name": "Position", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "stockTransferId", "type": "uuid", "required": true },
                   { "name": "role", "type": "string" },
                   { "name": "quantity", "type": "integer" } ] }
-              ],
-              "aggregates": [
-                {
-                  "name": "StockTransferAggregate",
-                  "root": "StockTransfer",
-                  "collections": [
-                    { "name": "positions", "concept": "Position", "childField": "stockTransferId", "ownership": "owned" }
-                  ],
-                  "balances": [
-                    { "name": "SameName", "collection": "positions", "discriminatorField": "role",
-                      "leftValue": "Origem", "rightValue": "Destino", "quantityField": "quantity" },
-                    { "name": "SameName", "collection": "positions", "discriminatorField": "role",
-                      "leftValue": "Origem", "rightValue": "Destino", "quantityField": "quantity" }
-                  ]
-                }
               ]
             }
             """;

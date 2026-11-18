@@ -1,0 +1,47 @@
+{
+ "$comment": "FORM P5-T9c admission, written 2026-11-18 (owner decision option A): the top-level appShell + guidePages became ONE optional ROOT `backOffice` {defaultRoute, navigation, pages}, independent of experiences and roles (experiences[].backOffice stays a boolean link). Same menu/page entries, so the net budget change is +1 slot (3 backOffice.* and pack:backOffice in; appShell.defaultRoute, appShell.navigation and pack:guidePages out).",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "backOffice (root object)",
+ "slots": [
+  "backOffice.defaultRoute",
+  "backOffice.navigation",
+  "backOffice.pages",
+  "pack:backOffice"
+ ],
+ "rung": 0,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-18",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "names the concept/panel the back office opens on, the menu entries (label, target, group) and the dashboard pages (regions, theme, gadgets bound to queries); no ordering of steps, no logic; omitted entirely, the shell keeps its derived defaults"
+  },
+  "notLower": {
+   "value": true,
+   "why": "the menu and the dashboard layout are structure the generated shell renders; no expression, function or step can say which entry opens first or which gadget sits in which region -- and a pack needs a place to contribute its own dashboard pages that survives composition (qualified pack::Page names)"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "NPDevSamples/dsl-conformance-max",
+    "NPDevSamples/pigmentampas"
+   ],
+   "note": "defaultRoute, navigation and pages: both apps declare all three (dsl-conformance-max and pigmentampas, each a root `backOffice`; WmsOffice and simple-user-registry-h2local use pages too). pack:backOffice: the labeling pack (NPDevSamples/dsl-conformance-max/Input/packs/labeling, and its copies in pack9-role-binding-a/b)"
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/BusinessUiEmitterAppShellManifestTest.java",
+   "note": "tests, not a booted probe: BusinessUiEmitterAppShellManifestTest and BusinessUiEmitterGuidePageManifestTest fail if defaultRoute/navigation/pages stop reaching the generated UI manifest; NPDevContract/dsl BackOfficeConfigThreadingTest fails if the menu, the page order, the one-menu rule, the pack-qualified page names (labeling::LabelingOverview) or the composed-model round trip break; AppShellModelThreadingTest rejects a navigation target or defaultRoute that names nothing"
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "`backOffice` (OPTIONAL root key -- omit it unless you want a grouped menu or your own dashboards): `{\"defaultRoute\":\"<Concept>\",\"navigation\":[{\"label\":\"..\",\"target\":\"<Concept>\",\"group\":\"..\"}],\"pages\":[<guide pages>]}`"
+  }
+ },
+ "replaces": [
+  "appShell.defaultRoute",
+  "appShell.navigation",
+  "pack:guidePages"
+ ],
+ "budgetDelta": 1
+}

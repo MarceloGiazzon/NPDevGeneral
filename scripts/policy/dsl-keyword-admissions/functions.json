@@ -1,0 +1,45 @@
+{
+ "$comment": "FORM P4-T2: functions[] is rung 2 of the ladder, the answer to 'we need a keyword for a named computation'. Six slots: the function def (name, params, returns, body, description) and the pack's functions array.",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "functions[]",
+ "slots": [
+  "function.name",
+  "function.params",
+  "function.returns",
+  "function.body",
+  "function.description",
+  "pack:functions"
+ ],
+ "rung": 2,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-17",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "a function says WHAT value it is (a typed pure expression over its parameters); no ordering, loop or temporary variable"
+  },
+  "notLower": {
+   "value": true,
+   "why": "an inline expression cannot be named and reused; without functions each repeated computation (surge, fare) needed its own keyword or an eleven-step chain of `set` steps"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "NPDevSamples/ride-hailing (demandFactor, surgeFactor, fareFor)",
+    "NPDevSamples/dsl-conformance-max (shelfTitle)"
+   ]
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevSamples/dsl-conformance-max/behavior-probes/17-pack-function.json"
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "Function | functions[] | A named pure computation: {\"name\":\"surgeFactor\",\"params\":[...],\"returns\":\"decimal\",\"body\":\"...\"}, then call surgeFactor(x) in any expression (a pack's: pack::name). The body reads only its parameters."
+  }
+ },
+ "replaces": [
+  "flows[].steps chains of set steps used only as arithmetic (ride-hailing PriceRide, 11 steps -> 2)"
+ ],
+ "budgetDelta": 6
+}

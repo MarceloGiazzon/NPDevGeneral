@@ -1,63 +1,36 @@
 package com.npdev.kernel.procedures;
 
-import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
+/**
+ * FORM P3-T7: one concept-bound step a flow runs through {@link DefaultProcedureExecutor} (the flow engine carries it
+ * as a one-step definition). Only the fields those step types read remain; control flow, capability calls, events and
+ * persistence writes are the flow engine's own steps and have no representation here.
+ *
+ * <p>Field use by type: READ_CONCEPT {@code conceptName, idRef, outputKey}; LIST_CONCEPTS {@code conceptName,
+ * outputKey}; RUN_QUERY {@code conceptName, operation (the query name), outputKey, queryParams}; DELETE_CONCEPT
+ * {@code conceptName, idRef}; PATCH_CONCEPT {@code conceptName, idRef, setValues, createIfMissing, outputKey};
+ * MAP_LIST {@code collectionRef, itemKey, setValues (the select), outputKey}; BUILD_OBJECT {@code setValues,
+ * outputKey}; EVALUATE {@code valueRef (the expression text), outputKey}.
+ */
 public record ProcedureStep(
         String name,
         ProcedureStepType type,
         String conceptName,
         String idRef,
-        String dataRef,
-        String capability,
-        String capabilityType,
-        String adapterId,
         String operation,
-        List<String> argRefs,
         String outputKey,
-        String eventName,
-        String payloadRef,
-        String conditionRef,
         String collectionRef,
         String itemKey,
         Object valueRef,
-        String procedureName,
-        Object returnRef,
-        List<ProcedureStep> thenSteps,
-        List<ProcedureStep> elseSteps,
-        List<ProcedureStep> steps,
         Map<String, Object> setValues,
         boolean createIfMissing,
-        Map<String, Object> queryParams,
-        String errorTarget
+        Map<String, Object> queryParams
 ) {
-    /** Pre-params/errorTarget constructor. */
-    public ProcedureStep(
-            String name, ProcedureStepType type, String conceptName, String idRef, String dataRef, String capability,
-            String capabilityType, String adapterId, String operation, List<String> argRefs, String outputKey,
-            String eventName, String payloadRef, String conditionRef, String collectionRef, String itemKey,
-            Object valueRef, String procedureName, Object returnRef, List<ProcedureStep> thenSteps,
-            List<ProcedureStep> elseSteps, List<ProcedureStep> steps, Map<String, Object> setValues,
-            boolean createIfMissing
-    ) {
-        this(name, type, conceptName, idRef, dataRef, capability, capabilityType, adapterId, operation, argRefs,
-                outputKey, eventName, payloadRef, conditionRef, collectionRef, itemKey, valueRef, procedureName,
-                returnRef, thenSteps, elseSteps, steps, setValues, createIfMissing, Map.of(), null);
-    }
-
     /** K2: {@code runQuery} step parameters (name -> literal or {@code $ref}). */
     public ProcedureStep withQueryParams(Map<String, Object> params) {
-        return new ProcedureStep(name, type, conceptName, idRef, dataRef, capability, capabilityType, adapterId,
-                operation, argRefs, outputKey, eventName, payloadRef, conditionRef, collectionRef, itemKey, valueRef,
-                procedureName, returnRef, thenSteps, elseSteps, steps, setValues, createIfMissing, params, errorTarget);
-    }
-
-    /** K3: a failed capability call is stored under this state key instead of failing the procedure. */
-    public ProcedureStep withErrorTarget(String key) {
-        return new ProcedureStep(name, type, conceptName, idRef, dataRef, capability, capabilityType, adapterId,
-                operation, argRefs, outputKey, eventName, payloadRef, conditionRef, collectionRef, itemKey, valueRef,
-                procedureName, returnRef, thenSteps, elseSteps, steps, setValues, createIfMissing, queryParams, key);
+        return new ProcedureStep(name, type, conceptName, idRef, operation, outputKey, collectionRef, itemKey,
+                valueRef, setValues, createIfMissing, params);
     }
 
     public ProcedureStep {
@@ -67,157 +40,42 @@ public record ProcedureStep(
         }
         conceptName = normalizeOptional(conceptName);
         idRef = normalizeOptional(idRef);
-        dataRef = normalizeOptional(dataRef);
-        capability = normalizeOptional(capability);
-        capabilityType = normalizeOptional(capabilityType);
-        adapterId = normalizeOptional(adapterId);
         operation = normalizeOptional(operation);
-        argRefs = argRefs == null ? List.of() : List.copyOf(argRefs);
         outputKey = normalizeOptional(outputKey);
-        eventName = normalizeOptional(eventName);
-        payloadRef = normalizeOptional(payloadRef);
-        conditionRef = normalizeOptional(conditionRef);
         collectionRef = normalizeOptional(collectionRef);
         itemKey = normalizeOptional(itemKey);
         valueRef = normalizeOptionalValue(valueRef);
-        procedureName = normalizeOptional(procedureName);
-        returnRef = normalizeOptionalValue(returnRef);
-        thenSteps = thenSteps == null ? List.of() : List.copyOf(thenSteps);
-        elseSteps = elseSteps == null ? List.of() : List.copyOf(elseSteps);
-        steps = steps == null ? List.of() : List.copyOf(steps);
         // Map.copyOf rejects null VALUES, but patchConcept.set may clear a field with an explicit null (REG-224, same fix
         // as ProcedureStepAst/CompiledProcedureStep). Consumed by key, so an unmodifiable LinkedHashMap is enough.
         setValues = setValues == null ? Map.of() : java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(setValues));
         queryParams = queryParams == null ? Map.of() : java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(queryParams));
-        errorTarget = normalizeOptional(errorTarget);
     }
 
-    public ProcedureStep(
-            String name,
-            ProcedureStepType type,
-            String conceptName,
-            String idRef,
-            String dataRef,
-            String capability,
-            String capabilityType,
-            String adapterId,
-            String operation,
-            List<String> argRefs,
-            String outputKey,
-            String eventName,
-            String payloadRef
-    ) {
-        this(
-                name,
-                type,
-                conceptName,
-                idRef,
-                dataRef,
-                capability,
-                capabilityType,
-                adapterId,
-                operation,
-                argRefs,
-                outputKey,
-                eventName,
-                payloadRef,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                List.of(),
-                List.of(),
-                List.of(),
-                Map.of(),
-                false
-        );
-    }
-
-    public static ProcedureStep saveConcept(
-            String name,
-            String conceptName,
-            String idRef,
-            String dataRef,
-            String outputKey
-    ) {
-        return new ProcedureStep(name, ProcedureStepType.SAVE_CONCEPT, conceptName, idRef, dataRef,
-                null, null, null, null, List.of(), outputKey, null, null);
-    }
-
-    public static ProcedureStep readConcept(
-            String name,
-            String conceptName,
-            String idRef,
-            String outputKey
-    ) {
-        return new ProcedureStep(name, ProcedureStepType.READ_CONCEPT, conceptName, idRef, null,
-                null, null, null, null, List.of(), outputKey, null, null);
+    public static ProcedureStep readConcept(String name, String conceptName, String idRef, String outputKey) {
+        return new ProcedureStep(name, ProcedureStepType.READ_CONCEPT, conceptName, idRef, null, outputKey,
+                null, null, null, Map.of(), false, Map.of());
     }
 
     public static ProcedureStep listConcepts(String name, String conceptName, String outputKey) {
-        return new ProcedureStep(name, ProcedureStepType.LIST_CONCEPTS, conceptName, null, null,
-                null, null, null, null, List.of(), outputKey, null, null);
+        return new ProcedureStep(name, ProcedureStepType.LIST_CONCEPTS, conceptName, null, null, outputKey,
+                null, null, null, Map.of(), false, Map.of());
     }
 
     public static ProcedureStep runQuery(String name, String queryName, String conceptName, String outputKey) {
-        return new ProcedureStep(name, ProcedureStepType.RUN_QUERY, conceptName, null, null,
-                null, null, null, queryName, List.of(), outputKey, null, null);
+        return new ProcedureStep(name, ProcedureStepType.RUN_QUERY, conceptName, null, queryName, outputKey,
+                null, null, null, Map.of(), false, Map.of());
     }
 
     public static ProcedureStep deleteConcept(String name, String conceptName, String idRef) {
-        return new ProcedureStep(name, ProcedureStepType.DELETE_CONCEPT, conceptName, idRef, null,
-                null, null, null, null, List.of(), null, null, null);
-    }
-
-    public static ProcedureStep callCapability(
-            String name,
-            String capability,
-            String capabilityType,
-            String adapterId,
-            String operation,
-            List<String> argRefs,
-            String outputKey
-    ) {
-        return new ProcedureStep(name, ProcedureStepType.CALL_CAPABILITY, null, null, null,
-                capability, capabilityType, adapterId, operation, argRefs, outputKey, null, null);
-    }
-
-    public static ProcedureStep publishEvent(String name, String eventName, String payloadRef) {
-        return new ProcedureStep(name, ProcedureStepType.PUBLISH_EVENT, null, null, null,
-                null, null, null, null, List.of(), null, eventName, payloadRef);
-    }
-
-    public static ProcedureStep ifThenElse(
-            String name,
-            String conditionRef,
-            List<ProcedureStep> thenSteps,
-            List<ProcedureStep> elseSteps
-    ) {
-        return new ProcedureStep(name, ProcedureStepType.IF, null, null, null,
-                null, null, null, null, List.of(), null, null, null,
-                conditionRef, null, null, null, null, null, thenSteps, elseSteps, List.of(), Map.of(), false);
-    }
-
-    public static ProcedureStep forEach(
-            String name,
-            String collectionRef,
-            String itemKey,
-            List<ProcedureStep> steps
-    ) {
-        return new ProcedureStep(name, ProcedureStepType.FOR_EACH, null, null, null,
-                null, null, null, null, List.of(), null, null, null,
-                null, collectionRef, itemKey, null, null, null, List.of(), List.of(), steps, Map.of(), false);
+        return new ProcedureStep(name, ProcedureStepType.DELETE_CONCEPT, conceptName, idRef, null, null,
+                null, null, null, Map.of(), false, Map.of());
     }
 
     /**
      * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 3A / Gap 6): a list transform/comprehension --
-     * builds a NEW list, one output object per input item, unlike {@link #forEach} which only
-     * iterates for side effects. {@code selectValues} is resolved per-item via the same
-     * literal-vs-{@code $ref} convention {@code patchConcept}'s {@code setValues} already
-     * established (reusing {@code setValues} itself, not a new field, since the resolution rule --
-     * not the field name -- is what {@code select} borrows).
+     * builds a NEW list, one output object per input item. {@code selectValues} is resolved per-item via the
+     * literal-vs-{@code $ref} convention {@code patchConcept}'s {@code setValues} established (reusing {@code setValues}
+     * itself, since the resolution rule -- not the field name -- is what {@code select} borrows).
      */
     public static ProcedureStep mapList(
             String name,
@@ -226,28 +84,14 @@ public record ProcedureStep(
             Map<String, Object> selectValues,
             String outputKey
     ) {
-        return new ProcedureStep(name, ProcedureStepType.MAP_LIST, null, null, null,
-                null, null, null, null, List.of(), outputKey, null, null,
-                null, collectionRef, itemKey, null, null, null, List.of(), List.of(), List.of(), selectValues, false);
-    }
-
-    /**
-     * REG-86: {@code valueRef} resolves via the SAME literal-vs-{@code $ref} convention
-     * {@code patchConcept}'s {@code set} already uses ({@link DefaultProcedureExecutor#resolveSetValue})
-     * -- a literal by default (including an array/object, not just a scalar), a {@code "$"}-prefixed
-     * String resolves against procedure state, {@code "$$x"} escapes to the literal {@code "$x"}.
-     */
-    public static ProcedureStep mapValue(String name, Object valueRef, String outputKey) {
-        return new ProcedureStep(name, ProcedureStepType.MAP_VALUE, null, null, null,
-                null, null, null, null, List.of(), outputKey, null, null,
-                null, null, null, valueRef, null, null, List.of(), List.of(), List.of(), Map.of(), false);
+        return new ProcedureStep(name, ProcedureStepType.MAP_LIST, null, null, null, outputKey,
+                collectionRef, itemKey, null, selectValues, false, Map.of());
     }
 
     /** FORM P3-T5c: the flow {@code map} step without a collection: one object whose keys are the select keys (literal-or-ref values). */
     public static ProcedureStep buildObject(String name, Map<String, Object> selectValues, String outputKey) {
-        return new ProcedureStep(name, ProcedureStepType.BUILD_OBJECT, null, null, null,
-                null, null, null, null, List.of(), outputKey, null, null,
-                null, null, null, null, null, null, List.of(), List.of(), List.of(), selectValues, false);
+        return new ProcedureStep(name, ProcedureStepType.BUILD_OBJECT, null, null, null, outputKey,
+                null, null, null, selectValues, false, Map.of());
     }
 
     /**
@@ -255,41 +99,8 @@ public record ProcedureStep(
      * expression language (see {@code docs/EXPRESSIONS.md}); every {@code $ref} in it resolves strictly.
      */
     public static ProcedureStep evaluate(String name, String expression, String outputKey) {
-        return new ProcedureStep(name, ProcedureStepType.EVALUATE, null, null, null,
-                null, null, null, null, List.of(), outputKey, null, null,
-                null, null, null, expression, null, null, List.of(), List.of(), List.of(), Map.of(), false);
-    }
-
-    /**
-     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, final item / REG-78): add/subtract, the minimum
-     * arithmetic primitive procedures had none of -- REG-78 found {@code patchConcept}'s {@code set}
-     * can copy a value or overwrite it with a literal, but never compute one AS A FUNCTION of the
-     * current value (e.g. {@code newQuantidade = existing.quantidade + delta}). Reuses {@code
-     * operation} for the operator name and {@code setValues} for the two operands ({@code left}/
-     * {@code right}) -- no new kernel fields, the same choice {@code mapList} made for {@code
-     * select}. Operands resolve via the SAME {@link DefaultProcedureExecutor#resolveSetValue}
-     * literal-vs-{@code $ref} convention every other {@code setValues}-bearing step already uses.
-     */
-    public static ProcedureStep computeValue(String name, String operator, Object left, Object right, String outputKey) {
-        // REG-313 (b): `today` takes no operands, and Map.copyOf (the constructor) rejects null values --
-        // an absent operand is simply absent, which the executor already reads as null.
-        Map<String, Object> operands = new java.util.LinkedHashMap<>();
-        if (left != null) {
-            operands.put("left", left);
-        }
-        if (right != null) {
-            operands.put("right", right);
-        }
-        return new ProcedureStep(name, ProcedureStepType.COMPUTE_VALUE, null, null, null,
-                null, null, null, operator, List.of(), outputKey, null, null,
-                null, null, null, null, null, null, List.of(), List.of(), List.of(), operands, false);
-    }
-
-    /** REG-86: {@code returnRef} follows the same literal-vs-{@code $ref} convention as {@link #mapValue}. */
-    public static ProcedureStep returnValue(String name, Object returnRef) {
-        return new ProcedureStep(name, ProcedureStepType.RETURN, null, null, null,
-                null, null, null, null, List.of(), null, null, null,
-                null, null, null, null, null, returnRef, List.of(), List.of(), List.of(), Map.of(), false);
+        return new ProcedureStep(name, ProcedureStepType.EVALUATE, null, null, null, outputKey,
+                null, null, expression, Map.of(), false, Map.of());
     }
 
     public static ProcedureStep patchConcept(
@@ -303,11 +114,9 @@ public record ProcedureStep(
     }
 
     /**
-     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1B): {@code createIfMissing} opts into the
-     * create half REG-77 found missing -- on {@code CONCEPT_NOT_FOUND}, build a new record from
-     * {@code setValues} with a generated id instead of failing. Defaults to {@code false},
-     * preserving REG-75's deliberate patch-not-upsert semantics; every existing caller (WmsOffice's
-     * Concluir/Cancelar, dsl-conformance-max) is unaffected.
+     * Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1B): {@code createIfMissing} opts into the create half REG-77 found
+     * missing -- on {@code CONCEPT_NOT_FOUND}, build a new record from {@code setValues} with a generated id instead of
+     * failing. Defaults to {@code false}, preserving REG-75's deliberate patch-not-upsert semantics.
      */
     public static ProcedureStep patchConcept(
             String name,
@@ -317,37 +126,8 @@ public record ProcedureStep(
             String outputKey,
             boolean createIfMissing
     ) {
-        return new ProcedureStep(name, ProcedureStepType.PATCH_CONCEPT, conceptName, idRef, null,
-                null, null, null, null, List.of(), outputKey, null, null,
-                null, null, null, null, null, null, List.of(), List.of(), List.of(), setValues, createIfMissing);
-    }
-
-    public static ProcedureStepType parseType(String rawType) {
-        String normalized = normalizeType(rawType);
-        return switch (normalized) {
-            case "readconcept" -> ProcedureStepType.READ_CONCEPT;
-            case "listconcepts" -> ProcedureStepType.LIST_CONCEPTS;
-            case "runquery", "conceptquery" -> ProcedureStepType.RUN_QUERY;
-            case "saveconcept", "conceptcreate", "conceptupdate", "conceptmutation" -> ProcedureStepType.SAVE_CONCEPT;
-            case "patchconcept" -> ProcedureStepType.PATCH_CONCEPT;
-            case "deleteconcept", "conceptdelete" -> ProcedureStepType.DELETE_CONCEPT;
-            case "callcapability", "capabilitycall" -> ProcedureStepType.CALL_CAPABILITY;
-            case "publishevent", "eventpublish" -> ProcedureStepType.PUBLISH_EVENT;
-            case "if", "condition" -> ProcedureStepType.IF;
-            case "foreach", "loop" -> ProcedureStepType.FOR_EACH;
-            case "maplist", "listtransform" -> ProcedureStepType.MAP_LIST;
-            case "mapvalue", "assign" -> ProcedureStepType.MAP_VALUE;
-            case "computevalue", "compute", "arithmetic" -> ProcedureStepType.COMPUTE_VALUE;
-            case "return" -> ProcedureStepType.RETURN;
-            default -> throw new IllegalArgumentException("Unsupported procedure step type: " + rawType);
-        };
-    }
-
-    private static String normalizeType(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.trim().replace("_", "").replace("-", "").toLowerCase(Locale.ROOT);
+        return new ProcedureStep(name, ProcedureStepType.PATCH_CONCEPT, conceptName, idRef, null, outputKey,
+                null, null, null, setValues, createIfMissing, Map.of());
     }
 
     private static String normalizeRequired(String value, String field) {
@@ -367,9 +147,9 @@ public record ProcedureStep(
     }
 
     /**
-     * REG-86: {@code valueRef}/{@code returnRef} are {@code Object}, not {@code String} -- a literal
-     * array/object/number/boolean passes through unchanged; only a {@code String} gets the same
-     * trim-to-null treatment {@link #normalizeOptional} already gives every other ref field.
+     * REG-86: {@code valueRef} is an {@code Object}, not a {@code String} -- a literal array/object/number/boolean passes
+     * through unchanged; only a {@code String} gets the same trim-to-null treatment {@link #normalizeOptional} gives
+     * every other ref field.
      */
     private static Object normalizeOptionalValue(Object value) {
         if (value instanceof String s) {

@@ -35,7 +35,21 @@ class PublicReadServiceTest {
               { "name": "status", "type": "string" },
               { "name": "photo", "type": "file", "file": { "contentTypes": ["image/png"] } } ],
               "access": { "public": { "where": "status == 'PUBLISHED' || status == 'BUILT'",
-                                      "fields": ["title", "status", "photo"] } } },
+                                      "fields": ["title", "status", "photo"] } },
+  "composition": {
+    "collections": [
+      {
+        "name": "cells",
+        "concept": "MosaicCell",
+        "childField": "mosaicId"
+      },
+      {
+        "name": "comments",
+        "concept": "Comment",
+        "childField": "mosaicId"
+      }
+    ]
+  } },
             { "name": "MosaicCell", "fields": [
               { "name": "id", "type": "uuid", "id": true, "required": true },
               { "name": "mosaicId", "type": "reference", "reference": { "target": "Mosaic" } },
@@ -46,11 +60,6 @@ class PublicReadServiceTest {
               { "name": "id", "type": "uuid", "id": true, "required": true },
               { "name": "mosaicId", "type": "reference", "reference": { "target": "Mosaic" } },
               { "name": "text", "type": "string" } ] }
-          ],
-          "aggregates": [
-            { "name": "MosaicAggregate", "root": "Mosaic", "collections": [
-              { "name": "cells", "concept": "MosaicCell", "childField": "mosaicId" },
-              { "name": "comments", "concept": "Comment", "childField": "mosaicId" } ] }
           ]
         }
         """;
@@ -125,13 +134,13 @@ class PublicReadServiceTest {
     @SuppressWarnings("unchecked")
     @Test
     void aggregateTreeServesPublicChildrenOnlyAndRefusesAPrivateRoot() {
-        Map<String, Object> tree = service.aggregate("MosaicAggregate", "m-pub");
+        Map<String, Object> tree = service.aggregate("Mosaic", "m-pub");
         List<Map<String, Object>> cells = (List<Map<String, Object>>) tree.get("cells");
         assertEquals(1, cells.size());
         assertEquals(Map.of("id", "c1", "row", 0), cells.get(0), "child projected onto its own allow-list");
         assertFalse(tree.containsKey("comments"), "a child concept without access.public is absent");
         assertFalse(tree.containsKey("ownerEmail"));
-        assertThrows(PublicReadService.NotPublicException.class, () -> service.aggregate("MosaicAggregate", "m-draft"));
+        assertThrows(PublicReadService.NotPublicException.class, () -> service.aggregate("Mosaic", "m-draft"));
         assertThrows(PublicReadService.NotPublicException.class, () -> service.aggregate("Nope", "m-pub"));
     }
 

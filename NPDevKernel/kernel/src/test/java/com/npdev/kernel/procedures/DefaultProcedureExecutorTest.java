@@ -19,158 +19,17 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class DefaultProcedureExecutorTest {
 
-    /** O5 (Move 11 W4): the REAL governed semantic policy every generated app runs, not the noop
-     * default -- see GovernedTestGateways. A write-path test on a noop policy is a test that starts
-     * downstream of the layer REG-71/REG-83 both broke. */
-    private static GovernedTestGateways.ConceptSpec[] concepts() {
-        return new ConceptSpec[]{ ConceptSpec.of("ContactMessage", "message", "subject", "email", "name") };
-    }
-
-    private static com.npdev.kernel.concepts.ConceptGateway governedGateway() {
-        return GovernedTestGateways.forConcepts(concepts());
-    }
-
     @Test
-    void executesConceptCapabilityAndEventStepsInOrder() {
-        CapturingEventBus eventBus = new CapturingEventBus();
-        CapabilityDispatcher dispatcher = (call, state) -> CapabilityResult.success(Map.of("sent", true, "args", call.args().size()));
+    void failsDeterministicallyWhenTheLoopLimitIsExceeded() {
         DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
-                governedGateway(),
-                dispatcher,
-                eventBus
-        );
-        ProcedureDefinition definition = new ProcedureDefinition(
-                "RegisterContact",
-                List.of(
-                        ProcedureStep.saveConcept("save-contact", "ContactMessage", "id", "payload", "saved"),
-                        ProcedureStep.readConcept("read-contact", "ContactMessage", "id", "loaded"),
-                        ProcedureStep.callCapability("notify", "notification", "NotificationCapability", "inproc", "send",
-                                List.of("loaded"), "notificationResult"),
-                        ProcedureStep.publishEvent("publish", "ContactRegistered", "loaded")
-                )
-        );
-
-        ProcedureExecutionResult result = executor.execute(
-                definition,
-                Map.of("id", "contact-1", "payload", Map.of("email", "a@example.test")),
-                ExecutionContext.of("tenant-a", "actor-a").withTag("correlationId", "corr-1")
-        );
-
-        assertTrue(result.ok());
-        assertEquals(4, result.steps().size());
-        assertTrue(result.steps().stream().allMatch(ProcedureStepResult::ok));
-        assertTrue(result.state().containsKey("saved"));
-        assertEquals(Map.of("sent", true, "args", 1), result.state().get("notificationResult"));
-        assertEquals(1, eventBus.events.size());
-        assertEquals("ContactRegistered", eventBus.events.get(0).eventName());
-        assertEquals("tenant-a", eventBus.events.get(0).tenantId());
-    }
-
-    @Test
-    void stopsAfterCapabilityFailure() {
-        CapturingEventBus eventBus = new CapturingEventBus();
-        CapabilityDispatcher dispatcher = (call, state) -> CapabilityResult.failure(
-                "NOTIFICATION_DOWN",
-                "notification unavailable",
-                CapabilityErrorKind.TRANSIENT,
-                Map.of()
-        );
-        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
-                governedGateway(),
-                dispatcher,
-                eventBus
-        );
-        ProcedureDefinition definition = new ProcedureDefinition(
-                "RegisterContact",
-                List.of(
-                        ProcedureStep.saveConcept("save-contact", "ContactMessage", "id", "payload", "saved"),
-                        ProcedureStep.callCapability("notify", "notification", "NotificationCapability", "inproc", "send",
-                                List.of("saved"), "notificationResult"),
-                        ProcedureStep.publishEvent("publish", "ContactRegistered", "saved")
-                )
-        );
-
-        ProcedureExecutionResult result = executor.execute(
-                definition,
-                Map.of("id", "contact-1", "payload", Map.of("email", "a@example.test")),
-                ExecutionContext.of("tenant-a", "actor-a")
-        );
-
-        assertFalse(result.ok());
-        assertEquals("NOTIFICATION_DOWN", result.failureCode());
-        assertEquals(2, result.steps().size());
-        assertTrue(eventBus.events.isEmpty());
-    }
-
-    @Test
-    void executesBranchLoopListAndReturnStepsThroughConceptGateway() {
-        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
-                governedGateway(),
-                (call, state) -> CapabilityResult.success(Map.of()),
-                new CapturingEventBus()
-        );
-        ProcedureDefinition definition = new ProcedureDefinition(
-                "RegisterExpenses",
-                List.of(
-                        ProcedureStep.ifThenElse(
-                                "when-enabled",
-                                "$enabled",
-                                List.of(
-                                        ProcedureStep.forEach(
-                                                "save-each-expense",
-                                                "items",
-                                                "item",
-                                                List.of(ProcedureStep.saveConcept(
-                                                        "save-expense",
-                                                        "Expense",
-                                                        "item.id",
-                                                        "item.payload",
-                                                        "lastSaved"
-                                                ))
-                                        ),
-                                        ProcedureStep.listConcepts("list-expenses", "Expense", "records"),
-                                        ProcedureStep.returnValue("return-records", "$records")
-                                ),
-                                List.of(ProcedureStep.returnValue("return-empty", "$input"))
-                        )
-                )
-        );
-
-        ProcedureExecutionResult result = executor.execute(
-                definition,
-                Map.of(
-                        "enabled", true,
-                        "items", List.of(
-                                Map.of("id", "expense-1", "payload", Map.of("amount", 20)),
-                                Map.of("id", "expense-2", "payload", Map.of("amount", 30))
-                        )
-                ),
-                ExecutionContext.of("tenant-a", "actor-a").withTag("executionMode", "headless")
-        );
-
-        assertTrue(result.ok());
-        @SuppressWarnings("unchecked")
-        List<Object> returned = (List<Object>) result.state().get("return");
-        assertEquals(2, returned.size());
-    }
-
-    @Test
-    void failsDeterministicallyWhenProcedureLoopLimitIsExceeded() {
-        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
-                governedGateway(),
-                (call, state) -> CapabilityResult.success(Map.of()),
-                new CapturingEventBus(),
+                GovernedTestGateways.forConcepts(GovernedTestGateways.ConceptSpec.of("Item", "name")),
+                new ProcedureExecutionLimits(100, 10, 1),
                 Map.of(),
-                new ProcedureExecutionLimits(100, 10, 1)
+                null
         );
         ProcedureDefinition definition = new ProcedureDefinition(
                 "Loop",
-                List.of(ProcedureStep.forEach(
-                        "limited-loop",
-                        "items",
-                        "item",
-                        List.of(ProcedureStep.mapValue("copy", "$item", "last"))
-                ))
+                List.of(ProcedureStep.mapList("limited-loop", "$items", "item", Map.of("v", "$item"), "out"))
         );
 
         ProcedureExecutionResult result = executor.execute(
@@ -183,12 +42,22 @@ class DefaultProcedureExecutorTest {
         assertEquals("PROCEDURE_LOOP_LIMIT_EXCEEDED", result.failureCode());
     }
 
-    private static final class CapturingEventBus implements EventBus {
-        private final List<EventEnvelope> events = new ArrayList<>();
+    @Test
+    void stopsAtTheFirstFailingStepAndKeepsTheStepResultsSoFar() {
+        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
+                GovernedTestGateways.forConcepts(GovernedTestGateways.ConceptSpec.of("Item", "name")));
+        ProcedureDefinition definition = new ProcedureDefinition(
+                "TwoSteps",
+                List.of(
+                        ProcedureStep.evaluate("first", "1 + 1", "a"),
+                        ProcedureStep.evaluate("second", "$missing", "b"),
+                        ProcedureStep.evaluate("third", "3", "c"))
+        );
 
-        @Override
-        public void publish(EventEnvelope event) {
-            events.add(event);
-        }
+        ProcedureExecutionResult result = executor.execute(definition, Map.of(), ExecutionContext.of("tenant-a", "actor-a"));
+
+        assertFalse(result.ok());
+        assertEquals("REF_UNRESOLVABLE", result.failureCode());
+        assertEquals(2, result.steps().size());
     }
 }

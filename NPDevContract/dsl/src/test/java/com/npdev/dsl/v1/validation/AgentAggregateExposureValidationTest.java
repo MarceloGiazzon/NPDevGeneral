@@ -35,15 +35,13 @@ class AgentAggregateExposureValidationTest {
               "concepts": [
                 { "name": "Mosaic", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
-                  { "name": "title", "type": "string", "required": true } ] },
+                  { "name": "title", "type": "string", "required": true } ],
+                  "composition": {
+                    "collections": [ { "name": "cells", "concept": "MosaicCell", "childField": "mosaicId", "ownership": "owned" } ] } },
                 { "name": "MosaicCell", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "mosaicId", "type": "reference", "required": true, "reference": { "target": "Mosaic" } },
                   { "name": "row", "type": "integer", "required": true } ] }
-              ],
-              "aggregates": [
-                { "name": "MosaicAggregate", "root": "Mosaic",
-                  "collections": [ { "name": "cells", "concept": "MosaicCell", "childField": "mosaicId", "ownership": "owned" } ] }
               ],
               "agentAccess": {
                 "channels": { "mcp": { "enabled": true } },
@@ -55,13 +53,13 @@ class AgentAggregateExposureValidationTest {
 
     @Test
     void validAggregateExposurePassesAndRoundTripsThroughCanonicalJson() throws Exception {
-        String json = model("[ { \"aggregate\": \"MosaicAggregate\", \"operations\": [\"get\", \"save\"] } ]");
+        String json = model("[ { \"aggregate\": \"Mosaic\", \"operations\": [\"get\", \"save\"] } ]");
         assertEquals(List.of(), exposeErrors(json));
 
         CompiledModel compiled = new ModelCompiler().compile(parse(json));
         CompiledAgentAccessExposure exposure = CompiledModelCanonicalJsonReader
                 .fromJson(CompiledModelCanonicalJson.toJson(compiled)).getAgentAccess().getExpose().get(0);
-        assertEquals("MosaicAggregate", exposure.getAggregate());
+        assertEquals("Mosaic", exposure.getAggregate());
         assertNull(exposure.getConcept());
         assertNull(exposure.getFlow());
         assertEquals(List.of("get", "save"), exposure.getOperations());
@@ -69,7 +67,7 @@ class AgentAggregateExposureValidationTest {
 
     @Test
     void aggregateExposureDefaultsToReadOnlyGet() throws Exception {
-        CompiledModel compiled = new ModelCompiler().compile(parse(model("[ { \"aggregate\": \"MosaicAggregate\" } ]")));
+        CompiledModel compiled = new ModelCompiler().compile(parse(model("[ { \"aggregate\": \"Mosaic\" } ]")));
         assertEquals(List.of("get"), compiled.getAgentAccess().getExpose().get(0).getOperations());
     }
 
@@ -77,10 +75,10 @@ class AgentAggregateExposureValidationTest {
     void refusesUnknownAggregateDuplicateAndConceptOnlyKeys() throws Exception {
         assertTrue(exposeErrors(model("[ { \"aggregate\": \"Nope\" } ]")).stream()
                 .anyMatch(e -> e.contains("aggregate 'Nope' does not resolve")));
-        assertTrue(exposeErrors(model("[ { \"aggregate\": \"MosaicAggregate\" }, { \"aggregate\": \"MosaicAggregate\" } ]"))
+        assertTrue(exposeErrors(model("[ { \"aggregate\": \"Mosaic\" }, { \"aggregate\": \"Mosaic\" } ]"))
                 .stream().anyMatch(e -> e.contains("is exposed more than once")));
         List<String> errors = exposeErrors(model(
-                "[ { \"aggregate\": \"MosaicAggregate\", \"operations\": [\"list\"], \"fields\": [\"title\"] } ]"));
+                "[ { \"aggregate\": \"Mosaic\", \"operations\": [\"list\"], \"fields\": [\"title\"] } ]"));
         assertTrue(errors.stream().anyMatch(e -> e.contains("operation 'list' is not valid on an aggregate exposure")));
         assertTrue(errors.stream().anyMatch(e -> e.contains("fields is concept-only, not valid on an aggregate")));
     }
@@ -89,7 +87,7 @@ class AgentAggregateExposureValidationTest {
     void refusesTwoTargetsAndSaveOnAConcept() throws Exception {
         // Two targets never reach the semantic pass: the schema's oneOf refuses them at parse time.
         assertThrows(ModelSchemaValidationException.class,
-                () -> parse(model("[ { \"aggregate\": \"MosaicAggregate\", \"concept\": \"Mosaic\" } ]")));
+                () -> parse(model("[ { \"aggregate\": \"Mosaic\", \"concept\": \"Mosaic\" } ]")));
         assertTrue(exposeErrors(model("[ { \"concept\": \"Mosaic\", \"operations\": [\"save\"] } ]")).stream()
                 .anyMatch(e -> e.contains("operation 'save' is aggregate-only")));
     }

@@ -36,9 +36,9 @@ class GuidePageGadgetQueryBindingValidationTest {
                   { "name": "unitsShipped", "type": "integer" } ] }
               ],
               "queries": [ %s ],
-              "guidePages": [
+              "backOffice": { "pages": [
                 { "name": "Dashboard", "gadgets": [ %s ] }
-              ]
+              ] }
             }
             """.formatted(queryJson, gadgetJson);
     }

@@ -20,8 +20,7 @@ class DefaultProcedureExecutorEvaluateTest {
     private static final EventBus NOOP_BUS = event -> { };
 
     private static ProcedureExecutionResult run(Map<String, Object> input, ProcedureStep... steps) {
-        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
-                GovernedTestGateways.forConcepts(ConceptSpec.of("X", "a")), (call, state) -> null, NOOP_BUS);
+        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(GovernedTestGateways.forConcepts(ConceptSpec.of("X", "a")));
         return executor.execute(new ProcedureDefinition("E", List.of(steps)), input, CTX);
     }
 

@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * R5.7 (Roadmap Wave 1 2026-08-19): {@code documents[].aggregate}/{@code bands}/{@code logo} --
+ * R5.7 (Roadmap Wave 1 2026-08-19): {@code screens[]} kind {@code document}: {@code aggregate}/{@code bands}/{@code logo} --
  * parse -> compile -> validate coverage. The canonical-JSON writer/reader round trip for the same
  * new fields is covered generically (no edits needed here) by {@link
  * com.npdev.dsl.v1.compiled.CanonicalJsonRoundTripCompletenessTest}'s reflective sweep.
@@ -40,13 +40,13 @@ class DocumentBandModelTest {
 
     @Test
     void aggregateBoundDocumentWithHeaderAndLineItemBandsAndLogoValidatesClean() throws Exception {
-        ModelAst ast = parse(model("\"aggregate\": \"InvoiceAggregate\",", DEFAULT_BANDS, "\"logo\": { \"field\": \"logoRef\" },"));
+        ModelAst ast = parse(model("\"aggregate\": \"Invoice\",", DEFAULT_BANDS, "\"logo\": { \"field\": \"logoRef\" },"));
 
         List<String> errors = new SemanticValidator().validate(ast);
         assertTrue(errors.isEmpty(), "expected no validation errors: " + errors);
 
         DocumentAst document = ast.getDocuments().get(0);
-        assertEquals("InvoiceAggregate", document.aggregate());
+        assertEquals("Invoice", document.aggregate());
         assertEquals(2, document.bands().size());
         assertEquals("logoRef", document.logo().field());
 
@@ -64,7 +64,7 @@ class DocumentBandModelTest {
 
     @Test
     void compileThreadsAggregateBandsAndLogoIntoTheCompiledDocument() throws Exception {
-        ModelAst ast = parse(model("\"aggregate\": \"InvoiceAggregate\",", DEFAULT_BANDS, "\"logo\": { \"field\": \"logoRef\" },"));
+        ModelAst ast = parse(model("\"aggregate\": \"Invoice\",", DEFAULT_BANDS, "\"logo\": { \"field\": \"logoRef\" },"));
         assertTrue(new SemanticValidator().validate(ast).isEmpty());
 
         CompiledModel compiled = new ModelCompiler().compile(ast);
@@ -72,7 +72,7 @@ class DocumentBandModelTest {
                 .filter(d -> d.name().equals("InvoicePdf"))
                 .findFirst().orElseThrow();
 
-        assertEquals("InvoiceAggregate", document.aggregate());
+        assertEquals("Invoice", document.aggregate());
         assertEquals("logoRef", document.logo().field());
         assertEquals(2, document.bands().size());
 
@@ -111,7 +111,7 @@ class DocumentBandModelTest {
                   { "name": "lines", "kind": "lineItems", "collection": "lines", "fields": [] }
                 ],
                 """;
-        String json = model("\"aggregate\": \"InvoiceAggregate\",", bands, "");
+        String json = model("\"aggregate\": \"Invoice\",", bands, "");
 
         Exception thrown = org.junit.jupiter.api.Assertions.assertThrows(
                 Exception.class, () -> parse(json));
@@ -127,7 +127,7 @@ class DocumentBandModelTest {
                     "fields": [ { "field": "sku" } ] }
                 ],
                 """;
-        ModelAst ast = parse(model("\"aggregate\": \"InvoiceAggregate\",", bands, ""));
+        ModelAst ast = parse(model("\"aggregate\": \"Invoice\",", bands, ""));
 
         List<String> errors = new SemanticValidator().validate(ast);
         assertTrue(errors.stream().anyMatch(e -> e.contains("collection not found") && e.contains("doesNotExist")),
@@ -150,7 +150,7 @@ class DocumentBandModelTest {
 
     @Test
     void aLogoFieldNotFoundOnTheRootConceptIsRejected() throws Exception {
-        ModelAst ast = parse(model("\"aggregate\": \"InvoiceAggregate\",", DEFAULT_BANDS,
+        ModelAst ast = parse(model("\"aggregate\": \"Invoice\",", DEFAULT_BANDS,
                 "\"logo\": { \"field\": \"noSuchField\" },"));
 
         List<String> errors = new SemanticValidator().validate(ast);
@@ -165,7 +165,7 @@ class DocumentBandModelTest {
                   { "name": "header", "kind": "header", "fields": [ { "field": "doesNotExist" } ] }
                 ],
                 """;
-        ModelAst ast = parse(model("\"aggregate\": \"InvoiceAggregate\",", bands, ""));
+        ModelAst ast = parse(model("\"aggregate\": \"Invoice\",", bands, ""));
 
         List<String> errors = new SemanticValidator().validate(ast);
         assertFalse(errors.isEmpty());
@@ -188,7 +188,10 @@ class DocumentBandModelTest {
                       { "name": "id", "type": "uuid", "id": true, "required": true },
                       { "name": "number", "type": "string" },
                       { "name": "logoRef", "type": "string" }
-                    ] },
+                    ],
+                    "composition": { "collections": [
+                      { "name": "lines", "concept": "InvoiceLine", "childField": "invoiceId", "ownership": "owned" }
+                    ] } },
                     { "name": "InvoiceLine", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true },
                       { "name": "invoiceId", "type": "uuid" },
@@ -196,14 +199,10 @@ class DocumentBandModelTest {
                       { "name": "qty", "type": "integer" }
                     ] }
                   ],
-                  "aggregates": [
-                    { "name": "InvoiceAggregate", "root": "Invoice", "collections": [
-                      { "name": "lines", "concept": "InvoiceLine", "childField": "invoiceId", "ownership": "owned" }
-                    ] }
-                  ],
-                  "documents": [
+                  "screens": [
                     {
                       "name": "InvoicePdf",
+                      "kind": "document",
                       "concept": "Invoice",
                       "title": "Invoice",
                       %s

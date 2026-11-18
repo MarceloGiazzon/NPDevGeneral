@@ -1,0 +1,34 @@
+id: REG-341
+title: >-
+  isToday(createdAt) and createdAt >= today() evaluate to null inside the server-side count() used by experience tiles and badges
+type: BUG
+severity: LOW
+status: DONE
+closed: 2026-11-18
+verification: VERIFIED_LIVE
+opened: 2026-11-18
+source: >-
+  Found 2026-11-18 (FORM P5-T8): the dispatcher board tile "No driver found today" = count('Ride', status == 'NO_DRIVER' && isToday(createdAt))
+  answered null. The server-side count/sum/avg/exists written for POST /api/x/eval push the predicate through ConceptQueryPredicateCompiler,
+  whose grammar has no date functions, so any predicate using now()/today()/isToday() is refused and the value fails to null by design.
+surface: runtimehost-core/experience (ExperienceEvaluator, GatewayConceptReads), kernel query predicate compiler
+detail: |
+  The board tile was changed to count('Ride', status == 'NO_DRIVER') with no 'today'. A date-aware predicate needs either date terms in the pushable
+  grammar (preferred, the same grammar the REST list filter uses) or evaluating the date function first and pushing a literal bound.
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/experience/ExperienceEvaluator.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/experience/GatewayConceptReads.java
+done_when: >-
+  count('Ride', status == 'NO_DRIVER' && createdAt >= today()) answers a number for a caller who may list Ride, via POST /api/x/eval, covered by a
+  behaviour probe; the ride-hailing dispatcher tile can say "today" again.
+notes: |
+  2026-11-18 (closed): two causes. (1) The pushable where-grammar had no date terms: QueryPredicateGrammar now accepts today() and now() (zero arguments) on
+  the right of a comparison as PredicateLiteral.Clock, resolved by ConceptQueryPredicateCompiler every time a predicate is compiled (like $user.id), never
+  frozen. (2) JdbcBusinessConceptStore.coerceValue threw on a plain date against a datetime column (createdAt >= '2026-11-18'), the experience swallowed it to
+  null: a plain date is now the start of that day in UTC (the zone today() is read in); the REST filter ?where=createdAt:gte:2026-11-18 benefits as well.
+  Tests: ConceptQueryPredicateCompilerClockTest, JdbcBusinessConceptStoreDatetimeFilterTest; behaviour probe 102-experience-eval-dates (dsl-conformance-max:
+  WidgetSupplier.listedOn + the warehouse Tips badge); ride-hailing dispatcher tile "No driver found today" = count('Ride', status == 'NO_DRIVER' && createdAt >= today())
+  and the drive_s2 experience check; full run-ride-hailing 141/141.
+  NOT covered: isToday(createdAt) and any other function (addDays(today(), 1)) in a pushed-down predicate are still refused (null) -- only today() and now().
+  Third cause, found by the full probe run: ConceptQueryEngine (the in-memory store) ordered a null last for sorting and reused that for filtering, so > and >= matched a row with NO value
+  (the JDBC store, like SQL, does not). Ordered comparisons now require both values; test ConceptQueryEngineMissingValueOrderingTest. Full behaviour probes 163/163 afterwards.

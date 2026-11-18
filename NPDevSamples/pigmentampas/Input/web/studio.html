@@ -54,7 +54,7 @@
   (function () {
     "use strict";
     // Pigmentampas studio: a hex-offset board (odd rows shifted half a cap) painted with caps from the
-    // ApprovedCaps query, saved as one MosaicAggregate commit (root Mosaic + cells[]). Only painted
+    // ApprovedCaps query, saved as one Mosaic commit (root Mosaic + cells[]). Only painted
     // cells are sent; a cell absent from the draft is deleted by the aggregate reconcile.
     var ROWS = 20, COLS = 33, BASE_SIZE = 26, ZOOMS = [0.5, 0.65, 0.8, 1, 1.25, 1.5, 2], zoomIdx = 3;
     var SIZE = BASE_SIZE, ROW_STEP = 23;
@@ -247,7 +247,7 @@
 
     function openMosaic(id) {
       setStatus("Loading mosaic...");
-      return api.get("/api/runtime/aggregate/MosaicAggregate/" + encodeURIComponent(id)).then(function (tree) {
+      return api.get("/api/runtime/aggregate/Mosaic/" + encodeURIComponent(id)).then(function (tree) {
         root = tree; grid = {}; cellIds = {}; undoStack = [];
         ROWS = tree.rows || 20; COLS = tree.cols || 33;
         (tree.cells || []).forEach(function (cell) {
@@ -288,7 +288,7 @@
       });
       setStatus("Saving " + draft.cells.length + " cells...");
       var started = performance.now();
-      return api.post("/api/runtime/aggregate/MosaicAggregate", draft).then(function (tree) {
+      return api.post("/api/runtime/aggregate/Mosaic", draft).then(function (tree) {
         var ms = Math.round(performance.now() - started);
         root = tree; cellIds = {};
         (tree.cells || []).forEach(function (cell) { cellIds[key(cell.row, cell.col)] = cell.id; });

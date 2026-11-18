@@ -10,7 +10,7 @@
         {
           "name": "allowed action on a new Draft transfer",
           "method": "POST",
-          "path": "/api/runtime/aggregate/StockTransferAggregate/invoke/StockTransferStampNoteProcedure",
+          "path": "/api/runtime/aggregate/StockTransfer/invoke/StockTransferStampNoteProcedure",
           "body": {
             "reference": "aa-${rand}",
             "status": "Draft"
@@ -25,7 +25,7 @@
         {
           "name": "disallowed action on a new Draft transfer is refused",
           "method": "POST",
-          "path": "/api/runtime/aggregate/StockTransferAggregate/invoke/StockTransferClearNoteProcedure",
+          "path": "/api/runtime/aggregate/StockTransfer/invoke/StockTransferClearNoteProcedure",
           "body": {
             "reference": "aa-${rand}",
             "status": "Draft"
@@ -41,7 +41,7 @@
         {
           "name": "persist a Draft transfer",
           "method": "POST",
-          "path": "/api/runtime/aggregate/StockTransferAggregate",
+          "path": "/api/runtime/aggregate/StockTransfer",
           "body": {
             "reference": "aa-${rand}",
             "status": "Draft",
@@ -61,7 +61,7 @@
         {
           "name": "a draft claiming Committed does not unlock it -- the persisted Draft decides",
           "method": "POST",
-          "path": "/api/runtime/aggregate/StockTransferAggregate/invoke/StockTransferClearNoteProcedure",
+          "path": "/api/runtime/aggregate/StockTransfer/invoke/StockTransferClearNoteProcedure",
           "body": {
             "id": "${tid}",
             "reference": "${ref}",
@@ -77,7 +77,7 @@
         {
           "name": "commit the transfer to Committed",
           "method": "POST",
-          "path": "/api/runtime/aggregate/StockTransferAggregate",
+          "path": "/api/runtime/aggregate/StockTransfer",
           "body": {
             "id": "${tid}",
             "reference": "${ref}",
@@ -94,7 +94,7 @@
         {
           "name": "Committed declares no allowedActions, so the action runs",
           "method": "POST",
-          "path": "/api/runtime/aggregate/StockTransferAggregate/invoke/StockTransferClearNoteProcedure",
+          "path": "/api/runtime/aggregate/StockTransfer/invoke/StockTransferClearNoteProcedure",
           "body": {
             "id": "${tid}",
             "reference": "${ref}",

@@ -139,10 +139,8 @@ class AllowlistMatchesTheSchemasTests(unittest.TestCase):
     def test_every_knob_it_says_lives_in_model_json_really_does(self):
         defs = MODEL_SCHEMA["$defs"]
         claims = {
-            "settings.locale": defs["settings"]["properties"].get("locale"),
-            "settings.strings": defs["settings"]["properties"].get("strings"),
-            "settings.ui.dateFormat": defs["settings"]["properties"]["ui"]["properties"].get("dateFormat"),
-            "settings.ui.pageRows": defs["settings"]["properties"]["ui"]["properties"].get("pageRows"),
+            "backOffice.locale": defs["backOffice"]["properties"].get("locale"),
+            "backOffice.strings": defs["backOffice"]["properties"].get("strings"),
             "presentationMetadata.currency": defs["presentationMetadata"]["properties"].get("currency"),
             "guidePage.theme": defs["guidePage"]["properties"].get("theme"),
             "properties[]": MODEL_SCHEMA["properties"].get("properties"),
@@ -150,7 +148,7 @@ class AllowlistMatchesTheSchemasTests(unittest.TestCase):
         for claim, found in claims.items():
             self.assertIsNotNone(found, f"model.schema.json no longer has {claim}: fix the allowlist's `located` list")
         text = json.dumps(ALLOWLIST["located"])
-        for claim in ("settings.locale", "settings.ui.dateFormat", "settings.ui.pageRows", "presentationMetadata.currency",
+        for claim in ("backOffice.locale", "backOffice.strings", "presentationMetadata.currency",
                       "guidePage.theme", "properties[]"):
             self.assertIn(claim, text)
 

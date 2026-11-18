@@ -77,8 +77,7 @@ class DefaultProcedureExecutorRunQueryPredicateV2Test {
                 "Q", new CompiledQuery("Q", "Order", where, List.of("codigo asc"), null, List.of(), List.of(),
                         Map.of(), List.of(), List.of(), null)
         );
-        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
-                gateway, NOOP_DISPATCHER, NOOP_BUS, Map.of(), ProcedureExecutionLimits.defaults(), queries);
+        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(gateway, queries);
         ProcedureDefinition definition = new ProcedureDefinition(
                 "Run", List.of(ProcedureStep.runQuery("run", "Q", "Order", "rows")));
         return executor.execute(definition, Map.of(), ExecutionContext.of("dev", "operator"));
@@ -177,8 +176,7 @@ class DefaultProcedureExecutorRunQueryPredicateV2Test {
                 "SalesV2", new CompiledQuery("SalesV2", "Order", where, List.of(), null, List.of(), List.of(),
                         Map.of(), List.of(), List.of(), null)
         );
-        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
-                recording, NOOP_DISPATCHER, NOOP_BUS, Map.of(), ProcedureExecutionLimits.defaults(), queries);
+        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(recording, queries);
         ProcedureDefinition definition = new ProcedureDefinition(
                 "Run", List.of(ProcedureStep.runQuery("run", "SalesV2", "Order", "rows")));
         ProcedureExecutionResult result = executor.execute(definition, Map.of(), ExecutionContext.of("dev", "operator"));

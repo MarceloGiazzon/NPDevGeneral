@@ -1,0 +1,104 @@
+{
+  "probes": [
+    {
+      "id": "cf-capability-adapter-binds-the-named-connector",
+      "keywords": ["flowStep.capability", "flowStep.operation"],
+      "description": "capabilities[].adapter names WHICH adapter serves a capability. selfApi declares adapter http-connector; ConnectorSelfCheckFlow calls selfApi.health. The call is dispatched to that adapter (the flow result names it as capabilityAdapterId) and the adapter fails CLOSED: its secret env var NPDEV_CONNECTOR_SELFAPI_KEY is not set in the probe run, so there is no outbound request, only a CONNECTOR_SECRET_NOT_CONFIGURED contract error. (If that env var is ever set for probe runs this probe must change: the call would then go to selfApiBaseUrl.)",
+      "steps": [
+        {
+          "name": "run the flow that calls the connector capability",
+          "method": "POST",
+          "path": "/api/flows/ConnectorSelfCheckFlow/execute",
+          "body": {},
+          "expect": {
+            "status": 422,
+            "json": {
+              "$.status": "CAPABILITY_FAILED",
+              "$.capabilityName": "selfApi",
+              "$.capabilityOperation": "health",
+              "$.capabilityAdapterId": "http-connector",
+              "$.capabilityError.code": "CONNECTOR_SECRET_NOT_CONFIGURED"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "cf-inbound-door-verifies-signature-and-resumes-await",
+      "keywords": ["flowStep.awaitEvent", "awaitMatch.correlation"],
+      "description": "capabilities[].inbound opens POST /api/hooks/<name> for a third party that holds no NPDev credential (every step here sends none). payment-processor maps body.orderId to the event correlation id and publishes PaymentConfirmed. The door fails closed: an unknown source is 404, a door whose secret env var is unset (github) is 401 WEBHOOK_SECRET_NOT_CONFIGURED, and for payment-processor (the harness sets a dummy NPDEV_WEBHOOK_PAYMENT_PROCESSOR_SECRET) a missing or wrong signature is 401 and publishes NOTHING: the parked AwaitPaymentConfirmation stays WAITING_EVENT. Only the correctly signed delivery (HMAC-SHA256 of the raw body, header X-Npdev-Webhook-Signature: sha256=<hex>) publishes the event and completes the flow.",
+      "steps": [
+        {
+          "name": "park a flow on PaymentConfirmed",
+          "method": "POST",
+          "path": "/api/flows/AwaitPaymentConfirmation/execute",
+          "body": { "orderRef": "hk-${rand}" },
+          "expect": {
+            "status": 202,
+            "json": { "$.status": "WAITING_EVENT", "$.awaitedEventName": "PaymentConfirmed" }
+          },
+          "save": { "execId": "$.executionId", "corr": "$.correlationId" }
+        },
+        {
+          "name": "unknown source is 404",
+          "method": "POST",
+          "path": "/api/hooks/no-such-source-${rand}",
+          "auth": "none",
+          "body": {},
+          "expect": { "status": 404, "json": { "$.ok": false, "$.code": "WEBHOOK_SOURCE_UNKNOWN" } }
+        },
+        {
+          "name": "a door with no secret configured refuses everything",
+          "method": "POST",
+          "path": "/api/hooks/github",
+          "auth": "none",
+          "headers": { "X-Hub-Signature-256": "sha256=00" },
+          "body": {},
+          "expect": { "status": 401, "json": { "$.ok": false, "$.code": "WEBHOOK_SECRET_NOT_CONFIGURED" } }
+        },
+        {
+          "name": "no signature header is 401",
+          "method": "POST",
+          "path": "/api/hooks/payment-processor",
+          "auth": "none",
+          "body": { "orderId": "${corr}", "txnRef": "t-${rand}" },
+          "expect": { "status": 401, "json": { "$.ok": false, "$.code": "WEBHOOK_SIGNATURE_MISSING" } }
+        },
+        {
+          "name": "a wrong signature is 401",
+          "method": "POST",
+          "path": "/api/hooks/payment-processor",
+          "auth": "none",
+          "headers": { "X-Npdev-Webhook-Signature": "sha256=0000000000000000000000000000000000000000000000000000000000000000" },
+          "body": { "orderId": "${corr}", "txnRef": "t-${rand}" },
+          "expect": { "status": 401, "json": { "$.ok": false, "$.code": "WEBHOOK_SIGNATURE_INVALID" } }
+        },
+        {
+          "name": "rejected deliveries published nothing: still waiting",
+          "method": "GET",
+          "path": "/api/executions/${execId}",
+          "expect": { "status": 200, "json": { "$.status": "WAITING_EVENT" } }
+        },
+        {
+          "name": "the correctly signed delivery is accepted",
+          "method": "POST",
+          "path": "/api/hooks/payment-processor",
+          "auth": "none",
+          "sign": { "secretEnv": "NPDEV_WEBHOOK_PAYMENT_PROCESSOR_SECRET", "header": "X-Npdev-Webhook-Signature", "prefix": "sha256=" },
+          "body": { "orderId": "${corr}", "txnRef": "t-${rand}" },
+          "expect": { "status": 200, "json": { "$.ok": true } }
+        },
+        {
+          "name": "the mapped correlation id resumed the parked flow",
+          "method": "GET",
+          "path": "/api/executions/${execId}",
+          "expect": {
+            "status": 200,
+            "json": { "$.status": "COMPLETED", "$.waitingForEventName": null }
+          },
+          "retry": { "attempts": 5, "delaySeconds": 1 }
+        }
+      ]
+    }
+  ]
+}

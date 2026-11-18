@@ -28,7 +28,8 @@ class OpenApiDocumentBuilderTest {
             {
               "dslVersion": "3.0.0", "namespace": "shop", "version": "1.0",
               "concepts": [
-                { "name": "Order", "fields": [
+                { "name": "Order", "composition": { "collections": [
+                    { "name": "lines", "concept": "OrderLine", "childField": "orderId", "ownership": "owned" } ] }, "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "total", "type": "decimal", "required": true },
                     { "name": "status", "type": "enum", "values": ["OPEN", "PAID"] },
@@ -46,10 +47,6 @@ class OpenApiDocumentBuilderTest {
               ],
               "queries": [
                 { "name": "OpenOrders", "concept": "Order", "where": "status == 'OPEN'", "orderBy": ["total desc"] }
-              ],
-              "aggregates": [
-                { "name": "OrderTree", "root": "Order", "collections": [
-                    { "name": "lines", "concept": "OrderLine", "childField": "orderId", "ownership": "owned" } ] }
               ],
               "flows": [
                 { "name": "PlaceOrder", "startEndpoint": true,
@@ -78,7 +75,7 @@ class OpenApiDocumentBuilderTest {
                 "/api/concepts/orders", "/api/concepts/orders/{id}", "/api/concepts/orders/batch",
                 "/api/concepts/order_lines", "/api/queries/OpenOrders",
                 "/api/v1/flows/PlaceOrder/execute", "/api/v1/flows/Internal/execute",
-                "/api/v1/runtime/aggregate/OrderTree", "/api/v1/runtime/aggregate/OrderTree/{rootId}",
+                "/api/v1/runtime/aggregate/Order", "/api/v1/runtime/aggregate/Order/{rootId}",
                 "/api/public/concepts", "/api/public/concepts/Gallery", "/api/public/concepts/Gallery/{id}")) {
             assertTrue(paths.has(path), "missing path " + path + " in " + names(paths));
         }
@@ -184,7 +181,7 @@ class OpenApiDocumentBuilderTest {
 
     @Test
     void aggregateSchemaNestsChildCollections() throws Exception {
-        JsonNode schema = doc().get("components").get("schemas").get("OrderTreeAggregate");
+        JsonNode schema = doc().get("components").get("schemas").get("OrderAggregate");
         JsonNode lines = schema.get("properties").get("lines");
         assertEquals("array", lines.get("type").asText());
         assertEquals("#/components/schemas/OrderLine", lines.get("items").get("allOf").get(0).get("$ref").asText());

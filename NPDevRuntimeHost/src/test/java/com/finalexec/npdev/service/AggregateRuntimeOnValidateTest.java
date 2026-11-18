@@ -60,7 +60,11 @@ class AggregateRuntimeOnValidateTest {
                   "name": "guardRef",
                   "type": "uuid"
                 }
-              ]
+              ],
+              "composition": {
+                "onValidate": "ValidateMovimentoProcedure",
+                "collections": []
+              }
             },
             {
               "name": "GuardCheck",
@@ -76,14 +80,6 @@ class AggregateRuntimeOnValidateTest {
                   "type": "string"
                 }
               ]
-            }
-          ],
-          "aggregates": [
-            {
-              "name": "Movimento",
-              "root": "Movimento",
-              "onValidate": "ValidateMovimentoProcedure",
-              "collections": []
             }
           ],
           "flows": [
@@ -128,7 +124,7 @@ class AggregateRuntimeOnValidateTest {
     void onValidatePassesAndTheRootCommitsNormally() {
         gateway.save(new ConceptWriteRequest("GuardCheck", "G1", "trial",
                 Map.of("id", "G1", "checked", "false")), ctx);
-        ProcedureRunner procedureRunner = new ProcedureRunner(model, gateway, null, null);
+        ProcedureRunner procedureRunner = new ProcedureRunner(model, gateway);
         InProcessAcceptanceRunner.attachKernel(procedureRunner, model, null, gateway, null);
         AggregateRuntime runtime = new AggregateRuntime(model, gateway, procedureRunner);
 
@@ -150,7 +146,7 @@ class AggregateRuntimeOnValidateTest {
      */
     @Test
     void onValidateFailureMeansTheRootIsNeverWrittenAtAll() {
-        ProcedureRunner procedureRunner = new ProcedureRunner(model, gateway, null, null);
+        ProcedureRunner procedureRunner = new ProcedureRunner(model, gateway);
         InProcessAcceptanceRunner.attachKernel(procedureRunner, model, null, gateway, null);
         AggregateRuntime runtime = new AggregateRuntime(model, gateway, procedureRunner);
 
@@ -170,7 +166,7 @@ class AggregateRuntimeOnValidateTest {
     void onValidateRunsBeforeIdAssignmentAndTheRootStillGetsANewGeneratedId() {
         gateway.save(new ConceptWriteRequest("GuardCheck", "G2", "trial",
                 Map.of("id", "G2", "checked", "false")), ctx);
-        ProcedureRunner procedureRunner = new ProcedureRunner(model, gateway, null, null);
+        ProcedureRunner procedureRunner = new ProcedureRunner(model, gateway);
         InProcessAcceptanceRunner.attachKernel(procedureRunner, model, null, gateway, null);
         AggregateRuntime runtime = new AggregateRuntime(model, gateway, procedureRunner);
 

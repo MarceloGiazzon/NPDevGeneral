@@ -29,7 +29,7 @@ class DefaultProcedureExecutorMapListTest {
 
     private static DefaultProcedureExecutor newExecutor() {
         ConceptGateway gateway = new DefaultConceptGateway(new InMemoryConceptStore());
-        return new DefaultProcedureExecutor(gateway, (call, state) -> CapabilityResult.success(null), NOOP_EVENT_BUS);
+        return new DefaultProcedureExecutor(gateway);
     }
 
     @Test
@@ -48,7 +48,7 @@ class DefaultProcedureExecutorMapListTest {
                                 ),
                                 "itensMapeados"
                         ),
-                        ProcedureStep.returnValue("return-mapped", "$itensMapeados")
+                        ProcedureStep.evaluate("return-mapped", "$itensMapeados", "return")
                 )
         );
 
@@ -112,7 +112,7 @@ class DefaultProcedureExecutorMapListTest {
                 List.of(
                         ProcedureStep.mapList(
                                 "map-lines", "$parsed.itens", "linha", Map.of("id", "$linha.id"), "out"),
-                        ProcedureStep.returnValue("return-linha", "$linha")
+                        ProcedureStep.evaluate("return-linha", "$linha", "return")
                 )
         );
 

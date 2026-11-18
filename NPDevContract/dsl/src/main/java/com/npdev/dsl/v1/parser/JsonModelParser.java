@@ -168,6 +168,67 @@ public final class JsonModelParser {
                     "legacy-fragments-root-key"
             ));
         }
+        for (String movedKey : List.of("appShell", "guidePages")) {
+            if (root.has(movedKey)) {
+                boolean shell = "appShell".equals(movedKey);
+                throw new DeprecationException(new ValidationDiagnostic(
+                        ValidationLayer.STRUCTURAL,
+                        ValidationSeverity.ERROR,
+                        shell ? "LEGACY_APPSHELL_ROOT_KEY" : "LEGACY_GUIDEPAGES_ROOT_KEY",
+                        "Root '" + movedKey + "' was removed (FORM P5-T9c): the back-office configuration is the optional root "
+                                + "backOffice {defaultRoute, navigation, pages}.",
+                        "NPDevContract",
+                        "$." + movedKey,
+                        null,
+                        null,
+                        "backOffice",
+                        null,
+                        shell
+                                ? "Move root appShell {defaultRoute, navigation} to the root \"backOffice\": {\"defaultRoute\": ..., \"navigation\": [...]} (it also takes \"pages\"). "
+                                        + "`python NPDevCli/appshell_guidepages_to_backoffice_codemod.py <model.json>` does the move."
+                                : "Move root guidePages[] to the root \"backOffice\": {\"pages\": [...]} (same entries); a pack declares them the same way, as its own \"backOffice\": {\"pages\": [...]}. "
+                                        + "`python NPDevCli/appshell_guidepages_to_backoffice_codemod.py <model.json>` does the move.",
+                        shell ? "legacy-appshell-root-key" : "legacy-guidepages-root-key"
+                ));
+            }
+        }
+        if (root.has("aggregates")) {
+            throw new DeprecationException(new ValidationDiagnostic(
+                    ValidationLayer.STRUCTURAL,
+                    ValidationSeverity.ERROR,
+                    "LEGACY_AGGREGATES_ROOT_KEY",
+                    "Root 'aggregates' was removed (FORM P5-T9e): an aggregate is its root concept's composition -- "
+                            + "concepts[].composition {collections, invariants, balances, onValidate, onCommit}; its name is the concept's name.",
+                    "NPDevContract",
+                    "$.aggregates",
+                    null,
+                    null,
+                    "composition",
+                    null,
+                    "Move each aggregate's collections/invariants/balances/onValidate/onCommit/metadata into \"composition\" on its root concept, "
+                            + "and point every \"aggregate\" reference (autoPanels, screens, agentAccess exposures, gadgets) at the concept name. "
+                            + "`python NPDevCli/aggregates_to_composition_codemod.py --root <dir> --apply` does the move.",
+                    "legacy-aggregates-root-key"
+            ));
+        }
+        if (root.has("settings")) {
+            throw new DeprecationException(new ValidationDiagnostic(
+                    ValidationLayer.STRUCTURAL,
+                    ValidationSeverity.ERROR,
+                    "LEGACY_SETTINGS_ROOT_KEY",
+                    "Root 'settings' was removed (FORM P5-T9g): the app's locale and string catalogue are backOffice.locale and "
+                            + "backOffice.strings; settings.ui (pageRows, dateFormat) was read by nothing and is gone.",
+                    "NPDevContract",
+                    "$.settings",
+                    null,
+                    null,
+                    "backOffice",
+                    null,
+                    "Move root settings.locale and settings.strings to the root \"backOffice\": {\"locale\": ..., \"strings\": {...}} and delete settings.ui. "
+                            + "`python NPDevCli/appshell_guidepages_to_backoffice_codemod.py <model.json>` does the move.",
+                    "legacy-settings-root-key"
+            ));
+        }
         if (root.has("ruleProfiles")) {
             throw new DeprecationException(new ValidationDiagnostic(
                     ValidationLayer.STRUCTURAL,
@@ -285,8 +346,6 @@ public final class JsonModelParser {
         List<GuidePageAst> guidePages = new ArrayList<>();
         List<AggregateAst> aggregates = new ArrayList<>();
         List<AutoPanelAst> autoPanels = new ArrayList<>();
-        List<SelectorAst> selectors = new ArrayList<>();
-        List<DocumentAst> documents = new ArrayList<>();
         List<com.npdev.dsl.v1.ast.RoleAst> roles = new ArrayList<>();
         List<com.npdev.dsl.v1.ast.PropertyScopeAst> propertyScopes = new ArrayList<>();
         List<com.npdev.dsl.v1.ast.PropertyAst> properties = new ArrayList<>();
@@ -708,16 +767,31 @@ public final class JsonModelParser {
             }
         }
 
+        // FORM P5-T9a: the top-level selectors[] key was folded into screens[] (kind "picker"). Refuse it with the
+        // exact replacement, never ignore it -- a silently dropped selector breaks every picker.selectorRef to it.
+        if (root.has("selectors")) {
+            throw new IOException("'selectors' was removed (FORM P5-T9a): declare each selector as a screens[] entry "
+                    + "{\"name\": \"<same name>\", \"kind\": \"picker\", \"concept\": \"<concept>\", "
+                    + "\"multiSelect\": ..., \"filters\": [...], \"columns\": [...], \"returnMapping\": {...}, "
+                    + "\"orderBy\": ..., \"where\": \"<the old filter>\"}; picker.selectorRef keeps naming it");
+        }
+        // FORM P5-T9b: the same for documents[] (kind "document" screens).
+        if (root.has("documents")) {
+            throw new IOException("'documents' was removed (FORM P5-T9b): declare each document as a screens[] entry "
+                    + "{\"name\": \"<same name>\", \"kind\": \"document\", \"concept\": \"<concept>\", \"title\": ..., "
+                    + "\"pageSize\": ..., \"marginMm\": ..., \"aggregate\": ..., \"bands\": [...], \"logo\": {...}}; a multi-record report "
+                    + "adds \"report\": true (the old kind \"list\") and \"printColumns\" (the old columns), \"query\", \"groupBy\", "
+                    + "\"subtotals\", \"grandTotal\"; the render URLs /api/documents/{name}/render.pdf|csv keep the name");
+        }
+
         queries.addAll(parseQueries(root.get("queries"), originByQualifiedMemberName.getOrDefault("queries", Map.of())));
         procedures.addAll(parseProcedures(root.get("procedures")));
         panels.addAll(parsePanels(root.get("panels"), originByQualifiedMemberName.getOrDefault("panels", Map.of())));
-        guidePages.addAll(parseGuidePages(root.get("guidePages")));
-        aggregates.addAll(parseAggregates(root.get("aggregates")));
+        // FORM P5-T9c: the pages live under the root backOffice.pages (see parseBackOffice below).
+        aggregates.addAll(parseCompositions(root.get("concepts")));
         autoPanels.addAll(parseAutoPanels(root.get("autoPanels")));
-        selectors.addAll(parseSelectors(root.get("selectors")));
-        documents.addAll(parseDocuments(root.get("documents")));
         ExternalAiAst externalAi = parseExternalAi(root.get("externalAi"));
-        SettingsAst settings = parseSettings(root.get("settings"));
+        SettingsAst settings = parseSettings(root.get("backOffice"));
         roles.addAll(parseRoles(root.get("roles"), originByQualifiedMemberName.getOrDefault("roles", Map.of())));
         propertyScopes.addAll(parsePropertyScopes(root.get("propertyScopes")));
         properties.addAll(parseProperties(root.get("properties")));
@@ -725,8 +799,15 @@ public final class JsonModelParser {
         List<com.npdev.dsl.v1.ast.ConversionAst> conversions = parseConversions(root.get("conversions"));
         List<com.npdev.dsl.v1.ast.SequenceAst> sequences = parseSequences(root.get("sequences"));
         List<com.npdev.dsl.v1.ast.SeedAst> seeds = parseSeeds(root.get("seeds"));
-        AppShellAst appShell = parseAppShell(root.get("appShell"));
         com.npdev.dsl.v1.ast.AgentAccessAst agentAccess = parseAgentAccess(root.get("agentAccess"));
+        List<JsonNode> experiences = parseOpaqueObjects(root.get("experiences"), "experiences");
+        // FORM P5-T9c: the old top-level appShell + guidePages are the root backOffice {defaultRoute, navigation, pages}.
+        // Read it into the SAME AppShellAst + guidePages list the compiler, canonical JSON and emitters consume.
+        AppShellAst appShell = parseBackOffice(root.get("backOffice"), guidePages);
+        List<JsonNode> screens = parseOpaqueObjects(root.get("screens"), "screens");
+        // FORM P5-T9b: ModelAst derives its documents from the document screens on every call; parse them once
+        // here so a malformed band/column/logo is a parse error now, never a surprise in a later getDocuments().
+        parseDocumentScreens(screens);
 
         return new ModelAst(
                 namespace,
@@ -743,8 +824,6 @@ public final class JsonModelParser {
                 guidePages,
                 aggregates,
                 autoPanels,
-                selectors,
-                documents,
                 parserWarnings,
                 externalAi,
                 settings,
@@ -757,8 +836,31 @@ public final class JsonModelParser {
                 sequences,
                 seeds,
                 appShell,
-                agentAccess
+                agentAccess,
+                experiences,
+                screens
         );
+    }
+
+    /** FORM P5-T1: parses an optional top-level array whose entries are carried as opaque JSON objects
+     *  ({@code experiences}, {@code screens}). The schema has already shaped each entry; this only refuses a
+     *  non-array / non-object so a hand-built tree cannot smuggle one in. Entries are deep-copied so the AST
+     *  does not alias the parse tree. */
+    private static List<JsonNode> parseOpaqueObjects(JsonNode node, String key) throws IOException {
+        List<JsonNode> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException(key + " must be an array");
+        }
+        for (JsonNode entry : node) {
+            if (!entry.isObject()) {
+                throw new IOException(key + " entries must be objects");
+            }
+            out.add(entry.deepCopy());
+        }
+        return out;
     }
 
     /** B20 (S2): parses the optional top-level {@code modules} array -- {@code name} + {@code $ref}.
@@ -1133,17 +1235,18 @@ public final class JsonModelParser {
         return new ExternalAiAst(egress, vendors, prompts, callsPerUserPerDay, monthlyCostCapUsd, providers);
     }
 
-    /** Move 6 Move A: parses the optional app-level settings block; null if the model declares none. */
-    private static SettingsAst parseSettings(JsonNode node) throws IOException {
-        if (node == null || node.isNull()) {
+    /** Move 6 Move A, FORM P5-T9g: parses the app's locale + string catalogue, which live in the optional root
+     *  {@code backOffice} object ({@code locale}, {@code strings}); null if the model declares neither. */
+    private static SettingsAst parseSettings(JsonNode backOffice) throws IOException {
+        if (backOffice == null || backOffice.isNull() || !backOffice.isObject()) {
             return null;
         }
-        if (!node.isObject()) {
-            throw new IOException("settings must be an object");
+        if (!backOffice.has("locale") && !backOffice.has("strings")) {
+            return null;
         }
-        String locale = readText(node, "locale");
+        String locale = readText(backOffice, "locale");
         Map<String, String> strings = new LinkedHashMap<>();
-        JsonNode stringsNode = node.get("strings");
+        JsonNode stringsNode = backOffice.get("strings");
         if (stringsNode != null && stringsNode.isObject()) {
             Iterator<String> keys = stringsNode.fieldNames();
             while (keys.hasNext()) {
@@ -1154,21 +1257,41 @@ public final class JsonModelParser {
                 }
             }
         }
-        Integer pageRows = null;
-        String dateFormat = null;
-        JsonNode uiNode = node.get("ui");
-        if (uiNode != null && uiNode.isObject()) {
-            JsonNode pageRowsNode = uiNode.get("pageRows");
-            if (pageRowsNode != null && pageRowsNode.isNumber()) {
-                pageRows = pageRowsNode.asInt();
-            }
-            dateFormat = readText(uiNode, "dateFormat");
-        }
-        return new SettingsAst(locale, strings, pageRows, dateFormat);
+        return new SettingsAst(locale, strings);
     }
 
-    /** Path A P6.3: parses the optional top-level {@code appShell} block (declared navigation
-     *  structure + default route for the generated app's shell chrome); null if the model declares
+    /** FORM P5-T9c: reads the optional ROOT {@code backOffice} object ({@code {defaultRoute?, navigation?, pages?}}),
+     *  the replacement of the removed top-level {@code appShell} + {@code guidePages}, into the SAME
+     *  {@link AppShellAst} and guide-page list the compiler, canonical JSON and emitters already consume (the IR is
+     *  unchanged). {@code defaultRoute}/{@code navigation} become the shell ({@code null} when neither is declared,
+     *  exactly like an absent {@code appShell}); {@code pages} are appended to {@code guidePages}. A model without
+     *  {@code backOffice} behaves exactly as before: derived navigation and the built-in guide pages.
+     *  {@link ModelSourceResolver} has already folded pack-contributed pages into {@code backOffice.pages}. */
+    private static AppShellAst parseBackOffice(JsonNode backOffice, List<GuidePageAst> guidePages) throws IOException {
+        if (backOffice == null || backOffice.isNull()) {
+            return null;
+        }
+        if (!backOffice.isObject()) {
+            throw new IOException("backOffice must be an object");
+        }
+        AppShellAst appShell = null;
+        if (backOffice.has("defaultRoute") || backOffice.has("navigation")) {
+            com.fasterxml.jackson.databind.node.ObjectNode shell = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+            if (backOffice.has("defaultRoute")) {
+                shell.set("defaultRoute", backOffice.get("defaultRoute"));
+            }
+            if (backOffice.has("navigation")) {
+                shell.set("navigation", backOffice.get("navigation"));
+            }
+            appShell = parseAppShell(shell);
+        }
+        guidePages.addAll(parseGuidePages(backOffice.get("pages")));
+        return appShell;
+    }
+
+    /** Path A P6.3: parses the back-office {@code defaultRoute}/{@code navigation} pair (declared navigation
+     *  structure + default route for the generated app's shell chrome; it was the top-level {@code appShell}
+     *  block until FORM P5-T9c moved it into the root {@code backOffice}); null if the model declares
      *  none. Neither {@code defaultRoute} nor a nav item's {@code target} is validated against an
      *  actual concept/panel name here -- structural plumbing only, see AppShellAst's javadoc. */
     private static AppShellAst parseAppShell(JsonNode node) throws IOException {
@@ -1176,7 +1299,7 @@ public final class JsonModelParser {
             return null;
         }
         if (!node.isObject()) {
-            throw new IOException("appShell must be an object");
+            throw new IOException("backOffice must be an object");
         }
         String defaultRoute = readText(node, "defaultRoute");
         List<AppShellNavItemAst> navigation = new ArrayList<>();
@@ -1184,7 +1307,7 @@ public final class JsonModelParser {
         if (navigationNode != null && navigationNode.isArray()) {
             for (JsonNode itemNode : navigationNode) {
                 if (!itemNode.isObject()) {
-                    throw new IOException("appShell.navigation entries must be objects");
+                    throw new IOException("backOffice.navigation entries must be objects");
                 }
                 navigation.add(new AppShellNavItemAst(
                         readText(itemNode, "label"),
@@ -1591,29 +1714,43 @@ public final class JsonModelParser {
         return out;
     }
 
-    private static List<DocumentAst> parseDocuments(JsonNode node) throws IOException {
+    /**
+     * FORM P5-T9b: the document declarations among {@code screens} (entries with {@code kind: "document"}, a name and a
+     * concept), in order -- the one place the authoring form of a document is read, so {@code DocumentAst.fromDocumentScreens}
+     * (what {@code ModelAst.getDocuments()} calls) and the parser share it. Property mapping onto the old {@code documents[]} entry:
+     * {@code name, concept, title, pageSize, marginMm, metadata, aggregate, bands, logo, query, groupBy, subtotals, grandTotal}
+     * keep their names; {@code report: true} is the old {@code kind: "list"}; {@code printColumns} is the old {@code columns}
+     * (a screen's own {@code columns} is the 7-column list cap, which a printable report must not inherit). A document screen
+     * without a name or concept is skipped here: {@code ExperienceValidation} reports it.
+     */
+    public static List<DocumentAst> parseDocumentScreens(List<JsonNode> screens) throws IOException {
         List<DocumentAst> out = new ArrayList<>();
-        if (node == null || node.isNull()) {
+        if (screens == null) {
             return out;
         }
-        if (!node.isArray()) {
-            throw new IOException("documents must be an array");
-        }
-        for (JsonNode documentNode : node) {
-            String name = requiredText(documentNode, "name");
+        for (JsonNode documentNode : screens) {
+            if (documentNode == null || !"document".equals(readText(documentNode, "kind"))) {
+                continue;
+            }
+            String name = readText(documentNode, "name");
+            String concept = readText(documentNode, "concept");
+            if (name == null || concept == null) {
+                continue;
+            }
+            String where = "screens[" + name + "]";
             out.add(new DocumentAst(
                     name,
-                    requiredText(documentNode, "concept"),
+                    concept,
                     readText(documentNode, "title"),
                     readText(documentNode, "pageSize"),
                     readOptionalDouble(documentNode, "marginMm"),
                     parseObjectMap(documentNode.get("metadata")),
                     readText(documentNode, "aggregate"),
-                    parseDocumentBands(documentNode.get("bands"), "documents[" + name + "].bands"),
-                    parseDocumentLogo(documentNode.get("logo"), "documents[" + name + "].logo"),
-                    readText(documentNode, "kind"),
+                    parseDocumentBands(documentNode.get("bands"), where + ".bands"),
+                    parseDocumentLogo(documentNode.get("logo"), where + ".logo"),
+                    Boolean.TRUE.equals(readOptionalBoolean(documentNode, "report")) ? "list" : null,
                     readText(documentNode, "query"),
-                    parseDocumentColumns(documentNode.get("columns"), "documents[" + name + "].columns"),
+                    parseDocumentColumns(documentNode.get("printColumns"), where + ".printColumns"),
                     parseTextArray(documentNode.get("groupBy")),
                     readOptionalBoolean(documentNode, "subtotals"),
                     readOptionalBoolean(documentNode, "grandTotal")
@@ -1683,32 +1820,37 @@ public final class JsonModelParser {
         return new DocumentLogoAst(requiredText(node, "field"));
     }
 
-    private static List<AggregateAst> parseAggregates(JsonNode node) throws IOException {
+    /** FORM P5-T9e: every concept that declares a {@code composition} is the root of an aggregate. The aggregate's name
+     *  IS the concept's name (the internal {@link AggregateAst} keeps its {@code name}/{@code root} pair, equal here), so
+     *  the compiler, canonical IR and runtime are unchanged. */
+    private static List<AggregateAst> parseCompositions(JsonNode conceptsNode) throws IOException {
         List<AggregateAst> out = new ArrayList<>();
-        if (node == null || node.isNull()) {
+        if (conceptsNode == null || !conceptsNode.isArray()) {
             return out;
         }
-        if (!node.isArray()) {
-            throw new IOException("aggregates must be an array");
-        }
-        for (JsonNode aggregateNode : node) {
-            String name = requiredText(aggregateNode, "name");
+        for (JsonNode conceptNode : conceptsNode) {
+            JsonNode composition = conceptNode.get("composition");
+            if (composition == null || composition.isNull()) {
+                continue;
+            }
+            String name = requiredText(conceptNode, "name");
+            if (!composition.isObject()) {
+                throw new IOException("concepts[" + name + "].composition must be an object");
+            }
+            String path = "concepts[" + name + "].composition";
             out.add(new AggregateAst(
                     name,
-                    requiredText(aggregateNode, "root"),
-                    parseAggregateCollections(aggregateNode.get("collections"),
-                            "aggregates[" + name + "].collections"),
-                    readText(aggregateNode, "onCommit"),
-                    parseObjectMap(aggregateNode.get("metadata")),
-                    readText(aggregateNode, "onValidate"),
+                    name,
+                    parseAggregateCollections(composition.get("collections"), path + ".collections"),
+                    readText(composition, "onCommit"),
+                    parseObjectMap(composition.get("metadata")),
+                    readText(composition, "onValidate"),
                     // R4.4/npdev-aggregate-invariant-four-place: parser -> compiler -> canonical
                     // writer+reader, mirroring ast-compiled-four-place's chain for a per-member field.
-                    parseAggregateInvariants(aggregateNode.get("invariants"),
-                            "aggregates[" + name + "].invariants"),
+                    parseAggregateInvariants(composition.get("invariants"), path + ".invariants"),
                     // npdev-aggregate-balance-four-place (Session 1, 2026-09-14): parser -> compiler
                     // -> canonical writer+reader, same shape as npdev-aggregate-invariant-four-place.
-                    parseAggregateBalances(aggregateNode.get("balances"),
-                            "aggregates[" + name + "].balances")
+                    parseAggregateBalances(composition.get("balances"), path + ".balances")
             ));
         }
         return out;
@@ -1829,31 +1971,6 @@ public final class JsonModelParser {
                     parseAutoPanelSurface(autoPanelNode.get("transaction")),
                     parseAutoPanelSurface(autoPanelNode.get("prompt")),
                     parseObjectMap(autoPanelNode.get("metadata"))
-            ));
-        }
-        return out;
-    }
-
-    private static List<SelectorAst> parseSelectors(JsonNode node) throws IOException {
-        List<SelectorAst> out = new ArrayList<>();
-        if (node == null || node.isNull()) {
-            return out;
-        }
-        if (!node.isArray()) {
-            throw new IOException("selectors must be an array");
-        }
-        for (JsonNode selectorNode : node) {
-            Boolean multiSelect = readOptionalBoolean(selectorNode, "multiSelect");
-            out.add(new SelectorAst(
-                    requiredText(selectorNode, "name"),
-                    requiredText(selectorNode, "concept"),
-                    multiSelect != null && multiSelect,
-                    parseTextArray(selectorNode.get("filters")),
-                    parseTextArray(selectorNode.get("columns")),
-                    parseObjectMap(selectorNode.get("returnMapping")),
-                    parseObjectMap(selectorNode.get("metadata")),
-                    parseTextArray(selectorNode.get("orderBy")),
-                    readText(selectorNode, "filter")
             ));
         }
         return out;
@@ -2117,7 +2234,7 @@ public final class JsonModelParser {
             return out;
         }
         if (!node.isArray()) {
-            throw new IOException("guidePages must be an array");
+            throw new IOException("backOffice.pages must be an array");
         }
         for (JsonNode pageNode : node) {
             out.add(new GuidePageAst(
@@ -2136,7 +2253,7 @@ public final class JsonModelParser {
             return null;
         }
         if (!node.isObject()) {
-            throw new IOException("guidePages[].regions must be an object");
+            throw new IOException("backOffice.pages[].regions must be an object");
         }
         Boolean top = readOptionalBoolean(node, "top");
         return new GuidePageRegionsAst(
@@ -2151,7 +2268,7 @@ public final class JsonModelParser {
             return null;
         }
         if (!node.isObject()) {
-            throw new IOException("guidePages[].regions.left/right must be an object");
+            throw new IOException("backOffice.pages[].regions.left/right must be an object");
         }
         Boolean enabled = readOptionalBoolean(node, "enabled");
         Boolean collapsible = readOptionalBoolean(node, "collapsible");
@@ -2171,7 +2288,7 @@ public final class JsonModelParser {
             return null;
         }
         if (!node.isObject()) {
-            throw new IOException("guidePages[].theme must be an object");
+            throw new IOException("backOffice.pages[].theme must be an object");
         }
         return new GuidePageThemeAst(
                 readText(node, "mode"),
@@ -2188,7 +2305,7 @@ public final class JsonModelParser {
             return out;
         }
         if (!node.isArray()) {
-            throw new IOException("guidePages[].gadgets must be an array");
+            throw new IOException("backOffice.pages[].gadgets must be an array");
         }
         for (JsonNode gadgetNode : node) {
             out.add(new GuidePageGadgetAst(

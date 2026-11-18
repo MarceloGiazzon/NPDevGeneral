@@ -1221,7 +1221,7 @@ public final class ReferenceIndex {
                     continue;
                 }
                 String owner = safe(selector.name());
-                String base = "selectors[" + owner + "]";
+                String base = "screens[" + owner + "]"; // a selector is a picker screen (P5-T9a)
                 concept(owner, SITE_SELECTOR_CONCEPT, base + ".concept", selector.concept(), KIND_SELECTOR);
                 eachField(KIND_SELECTOR, owner, SITE_SELECTOR_COLUMNS, base + ".columns",
                         safe(selector.concept()), selector.columns());
@@ -1238,7 +1238,7 @@ public final class ReferenceIndex {
                     continue;
                 }
                 String owner = safe(page.name());
-                String base = "guidePages[" + owner + "]";
+                String base = "backOffice.pages[" + owner + "]";
                 int position = 0;
                 for (GuidePageGadgetAst gadget : nullSafe(page.gadgets())) {
                     if (gadget == null) {
@@ -1298,17 +1298,18 @@ public final class ReferenceIndex {
                 if (document == null) {
                     continue;
                 }
+                // A document is a document screen (P5-T9b).
                 concept(safe(document.name()), SITE_DOCUMENT_CONCEPT,
-                        "documents[" + safe(document.name()) + "].concept", document.concept(), KIND_DOCUMENT);
-                // REP-1: a kind:list report names a queries[] entry and reads concept fields.
-                String base = "documents[" + safe(document.name()) + "]";
+                        "screens[" + safe(document.name()) + "].concept", document.concept(), KIND_DOCUMENT);
+                // REP-1: a report (report: true) names a queries[] entry and reads concept fields.
+                String base = "screens[" + safe(document.name()) + "]";
                 named(KIND_DOCUMENT, safe(document.name()), SITE_DOCUMENT_QUERY, base + ".query",
                         KIND_QUERY, document.query(), queryNames);
                 int columnPosition = 0;
                 for (DocumentColumnAst column : nullSafe(document.columns())) {
                     if (column != null) {
                         fieldOf(KIND_DOCUMENT, safe(document.name()), SITE_DOCUMENT_COLUMN_FIELD,
-                                base + ".columns[" + columnPosition + "].field", safe(document.concept()), column.field());
+                                base + ".printColumns[" + columnPosition + "].field", safe(document.concept()), column.field());
                     }
                     columnPosition++;
                 }

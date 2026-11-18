@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>The proof has two independent legs:
  * <ol>
  *   <li>{@link #rendersSectionsNobodyWroteCodeFor()}: a real model exercising {@code seeds[]} and
- *   {@code aggregates[].invariants[]} -- the two DSL sections that landed on this branch with no
+ *   {@code concepts[].composition.invariants[]} -- the two DSL sections that landed on this branch with no
  *   surface code written for either -- shows up fully in the emitted page's embedded JSON. Nothing
  *   in {@link ModelSurfaceEmitter} or {@code model-surface.mustache} was written with either section
  *   in mind; if the emitted page still shows the data, that is because the emitter never asked the
@@ -177,19 +177,15 @@ class ModelSurfaceEmitterTest {
                       "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true },
                         { "name": "name", "type": "string", "required": true }
-                      ]
-                    }
-                  ],
-                  "aggregates": [
-                    {
-                      "name": "widgetAggregate",
-                      "root": "Widget",
-                      "invariants": [
-                        {
-                          "name": "NameRequired",
-                          "expression": "name != null && name != ''"
-                        }
-                      ]
+                      ],
+                      "composition": {
+                        "invariants": [
+                          {
+                            "name": "NameRequired",
+                            "expression": "name != null && name != ''"
+                          }
+                        ]
+                      }
                     }
                   ],
                   "seeds": [

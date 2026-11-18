@@ -244,9 +244,10 @@
       ]
     }
   ],
-  "documents": [
+  "screens": [
     {
       "name": "ProjectsPdf",
+      "kind": "document",
       "concept": "Project",
       "title": "Projects",
       "pageSize": "A4",

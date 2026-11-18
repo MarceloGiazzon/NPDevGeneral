@@ -65,7 +65,7 @@ NPDev has twelve nouns. Ask the questions in order and stop at the first yes:
 2. Does the app **do** something, or react to something? -> **Flow** (steps, started by api / ui / event / schedule / webhook). A fact other flows react to -> **Event**. A pure calculation reused in expressions -> **Function** (today: write the expression inline).
 3. Does it reach **outside** the app (HTTP API, payment, mail, your own code)? -> **Capability**.
 4. Does it say **who may** do what? -> **Role**.
-5. Does it decide **what a user sees**? -> **Screen** (one page: list, detail, form, board, ...) inside an **Experience** (one role's home and navigation). Today: `panels[]`, `selectors[]`, `appShell`.
+5. Does it decide **what a user sees**? -> **Screen** (one page: list, detail, form, board, ...) inside an **Experience** (one role's home and navigation). Today: `panels[]`; the optional root `backOffice` configures the generated back office; a reusable picker (kind `picker`, named by `picker.selectorRef`) and a printable document (kind `document`: `aggregate`/`bands`/`logo`, or `report: true` with `printColumns`; PDF and CSV at `/api/documents/<name>/render.pdf|csv`) are already screens.
 6. Is it a **setting** changed without regenerating? -> **Property**.
 7. Is it **someone else's** library to reuse? -> **Pack**. A boundary inside your own project? -> **Module** (`modules[]`).
 
@@ -80,6 +80,7 @@ Never invent a thirteenth block: if none fits, you are describing a field, a ste
 | Capability | `capabilities[]` (+ its `adapter`) | A verb a flow calls (notification, webhook, http...), bound to an adapter. |
 | Event | `events[]` (or nested in a concept) | A broadcast fact; emitted by a flow step or a lifecycle transition. |
 | Event-triggered flow | `flows[]` with `trigger` | "when event X → do Y": a flow whose `trigger` is `{"event":"X"}` (optional `condition`) runs by itself whenever X is published. |
+| Function | `functions[]` | A named pure computation: `{"name":"surgeFactor","params":[{"name":"zone","type":"decimal"}],"returns":"decimal","body":"round(min(zone * 3, 3), 2)"}`, then call `surgeFactor(x)` in any expression (a pack's: `pack::name`). The body reads only its parameters. |
 | Query / Panel / Procedure | `queries[]` / `panels[]` / `procedures[]` | A named filtered list; a hand-designed screen; server logic for a panel button. Only when the generic UI is not enough. |
 
 ## Totals, reports and reactions
@@ -114,6 +115,23 @@ Exact shapes (verified); copy them, do not invent keys.
 `persistence` capability and its `repository` binding derived, with the operations the flows
 use. Declare them yourself only to bind a different adapter; an explicit declaration wins.
 
+**Back office (optional).** `backOffice` is OPTIONAL: omit it unless you want a grouped menu, your own dashboards or your own wording (without it the generated back office lists the concepts, shows the built-in guide pages and speaks the platform's English). When present: `"backOffice":{"defaultRoute":"<Concept>","navigation":[{"label":"..","target":"<Concept>","group":".."}],"pages":[<guide pages>],"locale":"pt-BR","strings":{"action.save":"Gravar"}}`; it needs no role or experience. `strings` overrides platform text by id (a closed list, see the schema); an id you leave out keeps the English default.
+
+**Screens for each role (optional).** `experiences[]` says who lands where and `screens[]` says what they see, e.g.
+`"experiences":[{"name":"driver","for":["Driver"],"home":"offers","navigation":[{"screen":"offers","label":"Offers"}]}],
+"screens":[{"name":"offers","kind":"list","concept":"RideOffer","columns":["status"],"actions":[{"label":"Accept","flow":"AcceptOffer","input":{"id":"$row.id"}}]}]`.
+`for` names roles from `roles[]`; a user lands in the first experience that names one of their roles, any other role keeps the back office.
+`kind` is list, detail, form, status, inbox, board, map or dashboard; every button starts a flow with `"expose":"ui"` (or `api`), never anything else.
+Experience extras: `title`, `device` (`mobile` = bottom tab bar, max 5 entries, installable; `web`; `both`), `theme` (`"dark"`), `backOffice:true` (also link the generated back office), navigation `icon` and `badge` (an expression such as `count('Ride', status == 'NEW')`).
+Screen extras: `title`, `query` + `params` (a named query instead of `concept`; `"params":{"account":"$user.id"}` fills the query's `$params.account`), `where`/`orderBy`/`pick:"first"`/`empty:{"text":".."}`, `live:true` (refresh when rows change), `countdown` (inbox rows that expire), `visibleWhen` (expression; false hides the screen), `widgets:[{"kind":"tile|chart|table|map|list","title":"..","value":"count(..)","screen":"<screen>","groupBy":"status","chart":"bar|line|donut","span":2}]` on a dashboard, board `groupBy` (an enum field) with a button `style:"move"` + `moveTo`, button `confirm`/`visibleWhen`/`then`.
+Your own page (`kind:"custom"`): `"component":"<name>"` mounts `web/regions/<name>.js`, which calls `window.npdev.regions.register("<name>",{mount(el,api)})`; the api is `{screen,user,get(url),refresh()}`.
+Maps: `"map":{"lat":"pickupLat","lng":"pickupLng","label":"..","center":"me","tiles":"<property>","pickPoints":{..}}` (`pickPoints` on a form: the user taps the map to fill two fields).
+**Aggregate (a concept's `composition`).** A concept that owns child records declares `"composition":{"collections":[{"name":"lines","concept":"OrderLine","childField":"orderId"}],"invariants":[],"balances":[],"onValidate":"<procedure>","onCommit":"<procedure>"}` on the ROOT concept: the root and its collections are read and saved WHOLE in one transaction (`/api/v1/runtime/aggregate/<Concept>`). An `autoPanels[]` entry or a document screen names it with `"aggregate":"<Concept>"` (the concept's own name). There is no top-level `aggregates` key.
+
+Picker (`kind:"picker"`): `multiSelect`, `filters` (searchable fields), `returnMapping` (`{returnedName:field}`). Document (`kind:"document"`): `pageSize`, `marginMm`, `metadata`, `aggregate` + `bands`, `logo`, or `report:true` with `printColumns`, `groupBy`, `subtotals`, `grandTotal`.
+
+**Platform state is not app data.** A concept marked `"system":true` (the identity pack's credentials and sessions) gets no REST route, menu, export or agent tool; a concept of yours that holds a password hash is refused.
+
 **Packs: reuse a published concept set instead of inventing it.** Add to `packs[]` (no other keys
 than `from`, optional `as`); concepts of the pack are named `<as or id>::<Concept>`, e.g.
 `"reference":{"target":"identity::User"}`. Import only a pack from the "Pack catalog" list in this
@@ -132,6 +150,7 @@ Deliver each as its own file. **In a chat reply that must be ONE `model.json`, d
 **Query rows, then run your logic on them.** A flow can read and query concepts itself: `{"type":"runQuery","query":"AvailableDrivers","params":{"who":"$input.id"},"output":"$free"}`,
 `{"type":"listConcepts","output":"$all"}`, `{"type":"readConcept","id":"$input.id","output":"$row"}`, `{"type":"deleteConcept","id":"$input.id"}`,
 `{"type":"set","value":"$input.name","output":"$wanted"}` and `{"type":"callFlow","flow":"Helper","input":"$input","output":"$answer"}` (the concept is the flow's own, or the step's `scope`).
+An `updateConcept` may write chosen fields instead of `$input`: `{"type":"updateConcept","scope":"Ticket","id":"$input.id","set":{"status":"CLOSED","note":"$input.note"},"createIfMissing":true,"output":"$row"}` (each value a literal or a `$ref`; `createIfMissing` makes a new row when the id has none).
 A flow may also say who may start it and as whom it runs: `"expose":"api|ui|internal"` (default `api`; `ui` and `internal` flows have no public POST, it answers 404; an `internal` flow is only started by a `callFlow`)
 and `"runAs":"caller|system"`. For multi-step logic put the steps in another flow and run it with a `callFlow` step. Procedure-style steps (still accepted in a flow where the vocabularies overlap): `{"type":"runQuery","query":"AvailableDrivers","concept":"Driver","target":"free"}`,
 `{"type":"mapList","items":"$free","as":"d","select":{"id":"$d.id","lat":"$d.lat"},"target":"rows"}`,
@@ -153,6 +172,12 @@ A computed price is a field with `derivedExpression` (`+ - * /`), e.g. `"300 + 1
 onto the ride) declares `"runAs":"system"`: its steps, and the procedures it calls, run as the tenant's system principal
 (`$user.isSystem`), and the audit records who it acted for. Rules written `... || $user.isSystem` let only it through. Only a flow
 or another procedure may call it (not an action); check the state first with an `if` step.
+
+**A third party that calls you (a payment confirmation) needs an inbound door:** a capability entry
+`{"name":"payment-processor","inbound":{"eventName":"PaymentConfirmed","fieldMapping":{"correlationId":"orderId"}}}`
+serves `POST /api/hooks/payment-processor` with no NPDev login. The caller signs the body (HMAC-SHA256, header
+`X-Npdev-Webhook-Signature: sha256=<hex>`) with the secret in env `NPDEV_WEBHOOK_PAYMENT_PROCESSOR_SECRET`; a missing or wrong signature, or
+an unset secret, is a 401. A good delivery publishes `eventName`, which resumes a flow parked on `awaitEvent` with `match.correlation`.
 
 **Distances and nearest (built in, no code): the `geo` capability.** Declare
 `{"name":"geo","type":"GeoCapability","adapter":"geo-inproc","operations":["distanceKm","closest"]}` in `capabilities[]`. Both calls take one object in `args`, plain numbers:

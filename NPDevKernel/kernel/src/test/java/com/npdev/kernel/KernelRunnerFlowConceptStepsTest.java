@@ -32,8 +32,7 @@ class KernelRunnerFlowConceptStepsTest {
     }
 
     private static KernelRunner runner(ConceptGateway gateway, InMemoryFlowDefinitionProvider flows) {
-        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
-                gateway, (call, state) -> CapabilityResult.success(null), event -> { });
+        DefaultProcedureExecutor executor = new DefaultProcedureExecutor(gateway);
         return new KernelRunner(event -> { }, (entityName, payload) -> List.of(), flows,
                 (call, state) -> CapabilityResult.success(null)).withProcedureExecutor(executor);
     }
@@ -98,8 +97,8 @@ class KernelRunnerFlowConceptStepsTest {
     void setBindsALiteralAndAStrictRef() {
         InMemoryFlowDefinitionProvider flows = new InMemoryFlowDefinitionProvider().register(new FlowDefinition(
                 "SetFlow", "Sibling", List.of(
-                FlowStepDefinition.procedureStep("lit", ProcedureStep.mapValue("lit", "fixed", "a"), "a"),
-                FlowStepDefinition.procedureStep("ref", ProcedureStep.mapValue("ref", "$input.who", "b"), "b"),
+                FlowStepDefinition.procedureStep("lit", ProcedureStep.evaluate("lit", "'fixed'", "a"), "a"),
+                FlowStepDefinition.procedureStep("ref", ProcedureStep.evaluate("ref", "$input.who", "b"), "b"),
                 FlowStepDefinition.returnValue("ret", "b"))));
 
         ExecutionResult result = runner(gatewayWithSibling(), flows).execute("SetFlow", Map.of("who", "ana"), CTX);

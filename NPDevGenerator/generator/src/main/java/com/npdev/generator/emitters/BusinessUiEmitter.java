@@ -264,7 +264,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             ctx.put("selectionPanel", selectionPanel);
             ctx.put("filtersJson", filtersJson);
             // Move 6 Move A: the app's full resolved string catalogue (platform English defaults
-            // merged with any settings.strings overrides) -- see CompiledSettings/PlatformStrings.
+            // merged with any backOffice.strings overrides) -- see CompiledSettings/PlatformStrings.
             ctx.put("stringsJson", stringsJson);
             writer.writeRelative(
                     "src/main/resources/static/npdev-workbench/" + panel.name() + ".html",
@@ -491,7 +491,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         auth.put("loginPath", loginPath.trim());
         root.put("auth", auth);
         // The shell carries no model data (see shellCtx), so its own chrome strings travel here:
-        // PlatformStrings defaults (English) with the model's settings.strings merged on top.
+        // PlatformStrings defaults (English) with the model's backOffice.strings merged on top.
         if (model != null && model.getSettings() != null) {
             root.put("strings", model.getSettings().getStrings());
         }
@@ -1086,7 +1086,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
 
     /**
      * Sorted, de-duplicated union of every locale tag a label map in the model uses (concept/field ui
-     * label + shortLabel maps, enum option labels) plus {@code settings.locale} when set. The server's
+     * label + shortLabel maps, enum option labels) plus {@code backOffice.locale} when set. The server's
      * LabelResolver owns resolution; this list only tells the UI which languages to offer.
      */
     static List<String> declaredLocales(CompiledModel model) {
@@ -1131,7 +1131,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
 
     /**
      * Shell chrome strings per language: English and Portuguese catalogues (PlatformStrings), with the
-     * model's settings.strings overrides layered onto the one matching settings.locale.
+     * model's backOffice.strings overrides layered onto the one matching backOffice.locale.
      */
     static Map<String, Map<String, String>> stringsByLocale(CompiledModel model) {
         Map<String, String> en = new LinkedHashMap<>(PlatformStrings.DEFAULTS);

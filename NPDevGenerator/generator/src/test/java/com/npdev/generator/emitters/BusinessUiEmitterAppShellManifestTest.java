@@ -55,7 +55,7 @@ public class BusinessUiEmitterAppShellManifestTest {
                     { "name": "WidgetOrder", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
                     { "name": "WidgetCatalogEntry", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
                   ],
-                  "appShell": {
+                  "backOffice": {
                     "defaultRoute": "WidgetOrder",
                     "navigation": [
                       { "label": "Widget Orders", "target": "WidgetOrder", "group": "Operations" },
@@ -72,6 +72,34 @@ public class BusinessUiEmitterAppShellManifestTest {
         assertTrue(manifest.contains("\"target\" : \"WidgetCatalogEntry\""), manifest);
         assertTrue(manifest.contains("\"group\" : \"Operations\""), manifest);
         assertTrue(manifest.contains("\"label\" : \"Reference Data\""), manifest);
+    }
+
+    /**
+     * FORM P5-T9c: the root backOffice is OPTIONAL and independent of roles and experiences. A minimal model (one concept,
+     * no roles, no experiences, no backOffice) must still parse, compile and generate: no shell block, the three built-in
+     * guide pages.
+     */
+    @Test
+    void aMinimalModelWithNoRolesExperiencesOrBackOfficeGeneratesNoShellAndTheBuiltInGuidePages() throws Exception {
+        CompiledModel model = compile("""
+                {
+                  "namespace": "backoffice.minimal.demo",
+                  "dslVersion": "3.0.0",
+                  "version": "1.0",
+                  "concepts": [
+                    { "name": "Note", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
+                  ]
+                }
+                """);
+        org.junit.jupiter.api.Assertions.assertNull(model.getAppShell());
+
+        String manifest = emitAndReadManifest(model);
+        assertTrue(manifest.contains("\"appShell\" : null"), manifest);
+        assertFalse(manifest.contains("\"defaultRoute\""), manifest);
+        for (String builtin : new String[] {"Default", "Minimal", "None"}) {
+            assertTrue(manifest.contains("\"name\" : \"" + builtin + "\""), "built-in guide page " + builtin + ": " + manifest);
+        }
+        assertTrue(manifest.contains("\"defaultGuidePage\" : \"Default\""), manifest);
     }
 
     @Test
@@ -108,16 +136,15 @@ public class BusinessUiEmitterAppShellManifestTest {
                       { "name": "id", "type": "uuid", "id": true, "required": true },
                       { "name": "code", "type": "string" }
                     ] },
-                    { "name": "Board", "fields": [
+                    { "name": "Board", "composition": { "collections": [] }, "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true },
                       { "name": "title", "type": "string" }
                     ] }
                   ],
-                  "aggregates": [ { "name": "BoardAggregate", "root": "Board", "collections": [] } ],
                   "autoPanels": [
                     { "name": "Orders", "concept": "Order", "route": "/orders",
                       "surfaces": ["selection", "detail", "transaction"] },
-                    { "name": "Boards", "aggregate": "BoardAggregate", "route": "/boards",
+                    { "name": "Boards", "aggregate": "Board", "route": "/boards",
                       "surfaces": ["selection", "detail", "transaction"] }
                   ]
                 }

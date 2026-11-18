@@ -82,7 +82,12 @@ class AutoPanelLabelLocaleTest {
                   "concepts": [
                     { "name": "Movimento", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true },
-                      { "name": "situacao", "type": "string" } ] },
+                      { "name": "situacao", "type": "string" } ],
+                      "composition": { "collections": [
+                        { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId",
+                          "ownership": "owned", "collections": [
+                            { "name": "posicoes", "concept": "MovimentoItemPosicao",
+                              "childField": "movimentoItemId", "ownership": "owned" } ] } ] } },
                     { "name": "MovimentoItem", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true },
                       { "name": "movimentoId", "type": "uuid" },
@@ -91,13 +96,6 @@ class AutoPanelLabelLocaleTest {
                       { "name": "id", "type": "uuid", "id": true, "required": true },
                       { "name": "movimentoItemId", "type": "uuid" },
                       { "name": "papel", "type": "string" } ] }
-                  ],
-                  "aggregates": [
-                    { "name": "Movimento", "root": "Movimento", "collections": [
-                      { "name": "itens", "concept": "MovimentoItem", "childField": "movimentoId",
-                        "ownership": "owned", "collections": [
-                          { "name": "posicoes", "concept": "MovimentoItemPosicao",
-                            "childField": "movimentoItemId", "ownership": "owned" } ] } ] }
                   ],
                   "procedures": [
                     { "name": "AprovarMovimento", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] }

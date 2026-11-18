@@ -216,9 +216,9 @@ class ContractSurfaceSupportTest {
         Path modelPath = writeTempModel("""
                 {
                   "dslVersion": "3.0.0", "namespace": "close.contract", "version": "1.0.0",
-                  "concepts": [ { "name": "WorkItem", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
-                  "aggregates": [ { "name": "WorkAggregate", "root": "WorkItem", "collections": [
-                    { "name": "children", "concept": "WorkItem", "childField": "id", "via": "bondChildren" } ] } ]
+                  "concepts": [ { "name": "WorkItem", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ],
+                    "composition": { "collections": [
+                      { "name": "children", "concept": "WorkItem", "childField": "id", "via": "bondChildren" } ] } } ]
                 }
                 """);
         Exception exception = assertThrows(Exception.class, () -> new JsonModelParser().parse(modelPath));
@@ -233,9 +233,9 @@ class ContractSurfaceSupportTest {
         Path modelPath = writeTempModel("""
                 {
                   "dslVersion": "3.0.0", "namespace": "close.contract", "version": "1.0.0",
-                  "concepts": [ { "name": "WorkItem", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
-                  "aggregates": [ { "name": "WorkAggregate", "root": "WorkItem", "metadata": { "purpose": "still fine" }, "collections": [
-                    { "name": "children", "concept": "WorkItem", "childField": "id", "metadata": { "note": "retired" } } ] } ]
+                  "concepts": [ { "name": "WorkItem", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ],
+                    "composition": { "metadata": { "purpose": "still fine" }, "collections": [
+                      { "name": "children", "concept": "WorkItem", "childField": "id", "metadata": { "note": "retired" } } ] } } ]
                 }
                 """);
         Exception exception = assertThrows(Exception.class, () -> new JsonModelParser().parse(modelPath));
@@ -262,8 +262,8 @@ class ContractSurfaceSupportTest {
                 """,
                 """
                 { "dslVersion": "3.0.0", "namespace": "close.contract", "version": "1.0.0",
-                  "concepts": [ { "name": "WorkItem", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
-                  "aggregates": [ { "name": "WorkAggregate", "uid": "aggr0000000001", "root": "WorkItem" } ] }
+                  "concepts": [ { "name": "WorkItem", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ],
+                    "composition": { "uid": "aggr0000000001" } } ] }
                 """
         };
         for (String model : models) {

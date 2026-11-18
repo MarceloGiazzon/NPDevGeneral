@@ -1,0 +1,65 @@
+{
+  "probes": [
+    {
+      "id": "cf-pack-function-inlined-and-evaluated",
+      "keywords": ["field.derivedExpression"],
+      "description": "FORM P4-T2 (extension ladder rung 2, pack side): the labeling pack contributes functions badge(label) and areaBand(cells); ShelfLayout.nameBadge (derivedExpression `labeling::badge(name)`) and ShelfLayout.areaBandLabel (`labeling::areaBand(rows + cols)`) call them as pack::name. The call is inlined at resolve time, so the server stores and returns the EVALUATED value, never the call text; a compound argument keeps its grouping (rows + cols is summed BEFORE the body doubles it: 4 + 7 -> 22 -> 'wide', whereas an unparenthesised substitution would give 4 + 14 = 18 -> 'narrow'); both values override a lying client value and are recomputed on update.",
+      "steps": [
+        {
+          "name": "create: the pack function result is computed server-side",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": { "name": "pk-${rand}", "rows": 4, "cols": 7 },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.nameBadge": { "matches": "^\\[PK-[0-9A-F]{8}\\]$" },
+              "$.areaBandLabel": "wide"
+            },
+            "notText": ["labeling::", "badge(", "areaBand(", "concat("]
+          },
+          "save": { "pid": "$.id" }
+        },
+        {
+          "name": "stored value is the evaluated string",
+          "method": "GET",
+          "path": "/api/shelf_layouts/${pid}",
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.nameBadge": { "matches": "^\\[PK-[0-9A-F]{8}\\]$" },
+              "$.areaBandLabel": "wide"
+            },
+            "notText": ["labeling::", "badge(", "areaBand("]
+          }
+        },
+        {
+          "name": "a lying client value is overridden and the small side of the ternary is reachable",
+          "method": "POST",
+          "path": "/api/shelf_layouts",
+          "body": { "name": "pq-${rand}", "rows": 1, "cols": 1, "nameBadge": "LIE", "areaBandLabel": "wide" },
+          "expect": {
+            "status": 201,
+            "json": {
+              "$.nameBadge": { "matches": "^\\[PQ-[0-9A-F]{8}\\]$" },
+              "$.areaBandLabel": "narrow"
+            }
+          }
+        },
+        {
+          "name": "update recomputes both pack-function values",
+          "method": "PUT",
+          "path": "/api/shelf_layouts/${pid}",
+          "body": { "name": "pz-${rand}", "rows": 1, "cols": 2 },
+          "expect": {
+            "status": 200,
+            "json": {
+              "$.nameBadge": { "matches": "^\\[PZ-[0-9A-F]{8}\\]$" },
+              "$.areaBandLabel": "narrow"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

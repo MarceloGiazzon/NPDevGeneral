@@ -34,7 +34,31 @@ class WorkbenchRuntimeTest {
           "concepts": [
             { "name": "Expedicao", "fields": [
               { "name": "id", "type": "uuid", "id": true, "required": true },
-              { "name": "cliente", "type": "string" } ] },
+              { "name": "cliente", "type": "string" } ],
+  "composition": {
+    "collections": [
+      {
+        "name": "itens",
+        "concept": "ExpedicaoItem",
+        "childField": "expedicaoId",
+        "ownership": "owned",
+        "collections": [
+          {
+            "name": "origens",
+            "concept": "MovtoOrigem",
+            "childField": "itemSeq",
+            "ownership": "owned"
+          },
+          {
+            "name": "destinos",
+            "concept": "MovtoDestino",
+            "childField": "itemSeq",
+            "ownership": "owned"
+          }
+        ]
+      }
+    ]
+  } },
             { "name": "ExpedicaoItem", "fields": [
               { "name": "id", "type": "uuid", "id": true, "required": true },
               { "name": "expedicaoId", "type": "uuid" }, { "name": "produtoId", "type": "string" } ] },
@@ -44,16 +68,6 @@ class WorkbenchRuntimeTest {
             { "name": "MovtoDestino", "fields": [
               { "name": "id", "type": "uuid", "id": true, "required": true },
               { "name": "itemSeq", "type": "uuid" }, { "name": "local", "type": "string" } ] }
-          ],
-          "aggregates": [
-            { "name": "Expedicao", "root": "Expedicao",
-              "collections": [
-                { "name": "itens", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned",
-                  "collections": [
-                    { "name": "origens", "concept": "MovtoOrigem", "childField": "itemSeq", "ownership": "owned" },
-                    { "name": "destinos", "concept": "MovtoDestino", "childField": "itemSeq", "ownership": "owned" }
-                  ] }
-              ] }
           ],
           "autoPanels": [ { "aggregate": "Expedicao" } ]
         }

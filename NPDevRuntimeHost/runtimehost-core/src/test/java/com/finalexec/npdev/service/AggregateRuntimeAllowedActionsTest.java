@@ -83,19 +83,14 @@ class AggregateRuntimeAllowedActionsTest {
                     "to": "Done"
                   }
                 ]
-              }
-            }
-          ],
-          "aggregates": [
-            {
-              "name": "OrdAggregate",
-              "root": "Ord"
+              },
+              "composition": {}
             }
           ],
           "autoPanels": [
             {
               "name": "OrdWorkbench",
-              "aggregate": "OrdAggregate",
+              "aggregate": "Ord",
               "route": "/ords",
               "transaction": {
                 "actions": [
@@ -181,7 +176,7 @@ class AggregateRuntimeAllowedActionsTest {
     void setUp() throws Exception {
         CompiledModel model = new ModelCompiler().compile(new JsonModelParser().parse(MAPPER.readTree(MODEL)));
         gateway = DefaultConceptGateway.governedBy(new InMemoryConceptStore(model), model);
-        ProcedureRunner procedureRunner = new ProcedureRunner(model, gateway, null, null);
+        ProcedureRunner procedureRunner = new ProcedureRunner(model, gateway);
         InProcessAcceptanceRunner.attachKernel(procedureRunner, model, null, gateway, null);
         InProcessAcceptanceRunner.attachKernel(procedureRunner, model, null, gateway, null);
         runtime = new AggregateRuntime(model, gateway, procedureRunner);
@@ -196,9 +191,9 @@ class AggregateRuntimeAllowedActionsTest {
 
     @Test
     void aNewRootIsInTheInitialStateWhereOnlyTheListedActionRuns() {
-        assertEquals("stamped", runtime.invoke("OrdAggregate", "StampProcedure", draft("N1", "Draft"), ctx).get("note"));
+        assertEquals("stamped", runtime.invoke("Ord", "StampProcedure", draft("N1", "Draft"), ctx).get("note"));
         AggregateActionNotAllowedException refused = assertThrows(AggregateActionNotAllowedException.class,
-                () -> runtime.invoke("OrdAggregate", "ClearProcedure", draft("N1", "Draft"), ctx));
+                () -> runtime.invoke("Ord", "ClearProcedure", draft("N1", "Draft"), ctx));
         assertTrue(refused.getMessage().contains("ClearProcedure") && refused.getMessage().contains("Draft"),
                 refused.getMessage());
     }
@@ -206,18 +201,18 @@ class AggregateRuntimeAllowedActionsTest {
     @Test
     void aProcedureThatIsNotAWorkbenchActionIsNeverGated() {
         assertEquals("recomputed",
-                runtime.invoke("OrdAggregate", "RecomputeProcedure", draft("N1", "Draft"), ctx).get("note"));
+                runtime.invoke("Ord", "RecomputeProcedure", draft("N1", "Draft"), ctx).get("note"));
     }
 
     @Test
     void thePersistedStateDecidesNotTheStatusTheDraftClaims() {
         gateway.save(new ConceptWriteRequest("Ord", "O1", "trial", Map.of("id", "O1", "status", "Draft")), ctx);
         assertThrows(AggregateActionNotAllowedException.class,
-                () -> runtime.invoke("OrdAggregate", "ClearProcedure", draft("O1", "Submitted"), ctx),
+                () -> runtime.invoke("Ord", "ClearProcedure", draft("O1", "Submitted"), ctx),
                 "a draft claiming Submitted must not unlock an action the persisted Draft forbids");
 
         gateway.save(new ConceptWriteRequest("Ord", "O1", "trial", Map.of("id", "O1", "status", "Submitted")), ctx);
-        assertDoesNotThrow(() -> runtime.invoke("OrdAggregate", "ClearProcedure", draft("O1", "Draft"), ctx),
+        assertDoesNotThrow(() -> runtime.invoke("Ord", "ClearProcedure", draft("O1", "Draft"), ctx),
                 "Submitted declares no allowedActions, so every action runs");
     }
 }

@@ -35,6 +35,12 @@ public final class ControllerEmitter extends AbstractEmitter {
     public void emit(CompiledModel model, List<LinkedSealedPack> linkedSealedPacks) {
         Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
         for (CompiledConcept entity : model.getConcepts()) {
+            // REG-339: a platform-owned (system) concept -- the identity pack's Credential holds password hashes --
+            // gets no typed REST controller. Its service/entity stay (the runtime reads the table itself); only the
+            // public /api/<route> surface is withheld, like the generic CRUD, menu, export and agent surfaces.
+            if (entity.isSystem()) {
+                continue;
+            }
 
             Optional<LinkedSealedPack.ConceptLinkage> linkage =
                     LinkedSealedPack.resolve(entity.getName(), linkedSealedPacks);

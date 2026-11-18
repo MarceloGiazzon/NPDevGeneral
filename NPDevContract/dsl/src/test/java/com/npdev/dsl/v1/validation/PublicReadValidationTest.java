@@ -38,15 +38,13 @@ class PublicReadValidationTest {
                   { "name": "title", "type": "string" },
                   { "name": "ownerEmail", "type": "string", "access": { "read": "$user.roles.contains('Admin')" } },
                   { "name": "status", "type": "string" } ],
-                  "access": { "read": "status != 'DRAFT'", "public": %s } },
+                  "access": { "read": "status != 'DRAFT'", "public": %s },
+                  "composition": {
+                    "collections": [ { "name": "cells", "concept": "MosaicCell", "childField": "mosaicId" } ] } },
                 { "name": "MosaicCell", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "mosaicId", "type": "reference", "reference": { "target": "Mosaic" } },
                   { "name": "row", "type": "integer" } ]%s }
-              ],
-              "aggregates": [
-                { "name": "MosaicAggregate", "root": "Mosaic",
-                  "collections": [ { "name": "cells", "concept": "MosaicCell", "childField": "mosaicId" } ] }
               ]
             }
             """.formatted(mosaicPublic, cellPublic == null ? "" : ", \"access\": { \"public\": " + cellPublic + " }");

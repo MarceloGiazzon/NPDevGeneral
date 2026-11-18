@@ -1,5 +1,6 @@
 package com.npdev.dsl.v1.compiled;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.npdev.dsl.v1.ast.ModelAst;
 import java.util.*;
 
@@ -33,6 +34,8 @@ public final class CompiledModel {
     private final List<CompiledSeed> seeds;
     private final CompiledAppShell appShell;
     private final CompiledAgentAccess agentAccess;
+    private final List<JsonNode> experiences;
+    private final List<JsonNode> screens;
 
     public CompiledModel(String namespace, String version, Map<String, ? extends CompiledEntity> entitiesByName) {
         this(namespace, ModelAst.DEFAULT_DSL_VERSION, version, entitiesByName, List.of(), List.of(), List.of(), List.of(), List.of());
@@ -513,6 +516,45 @@ public final class CompiledModel {
             CompiledAppShell appShell,
             CompiledAgentAccess agentAccess
     ) {
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+                documents, externalAi, settings, roles, propertyScopes, properties, contexts, conversions, webhooks,
+                sequences, seeds, appShell, agentAccess, null, null);
+    }
+
+    /** FORM P5-T1: canonical constructor, adds {@code experiences} and {@code screens} -- opaque JSON objects
+     *  (see {@link #getExperiences()}); a null list means none. */
+    public CompiledModel(
+            String namespace,
+            String dslVersion,
+            String version,
+            Map<String, ? extends CompiledEntity> entitiesByName,
+            List<CompiledDomainType> domainTypes,
+            List<CompiledCapability> capabilities,
+            List<CompiledCapabilityBinding> bindings,
+            List<CompiledEvent> events,
+            List<CompiledFlow> flows,
+            List<CompiledQuery> queries,
+            List<CompiledProcedure> procedures,
+            List<CompiledPanel> panels,
+            List<CompiledGuidePage> guidePages,
+            List<CompiledAggregate> aggregates,
+            List<CompiledAutoPanel> autoPanels,
+            List<CompiledDocument> documents,
+            CompiledExternalAi externalAi,
+            CompiledSettings settings,
+            List<CompiledRole> roles,
+            List<CompiledPropertyScope> propertyScopes,
+            List<CompiledProperty> properties,
+            List<CompiledContext> contexts,
+            List<CompiledConversion> conversions,
+            List<CompiledWebhook> webhooks,
+            List<CompiledSequence> sequences,
+            List<CompiledSeed> seeds,
+            CompiledAppShell appShell,
+            CompiledAgentAccess agentAccess,
+            List<JsonNode> experiences,
+            List<JsonNode> screens
+    ) {
         this.namespace = namespace;
         this.dslVersion = dslVersion;
         this.version = version;
@@ -545,6 +587,19 @@ public final class CompiledModel {
         this.seeds = seeds == null ? List.of() : List.copyOf(seeds);
         this.appShell = appShell;
         this.agentAccess = agentAccess;
+        this.experiences = experiences == null ? List.of() : List.copyOf(experiences);
+        this.screens = screens == null ? List.of() : List.copyOf(screens);
+    }
+
+    /** FORM P5-T1: the model's {@code experiences[]} as authored (opaque JSON objects, never null). The
+     *  canonical writer emits them sorted by name; see {@code ModelAst#getExperiences()}. */
+    public List<JsonNode> getExperiences() {
+        return experiences;
+    }
+
+    /** FORM P5-T1: the model's {@code screens[]} as authored (opaque JSON objects, never null). */
+    public List<JsonNode> getScreens() {
+        return screens;
     }
 
     public String getNamespace() { return namespace; }

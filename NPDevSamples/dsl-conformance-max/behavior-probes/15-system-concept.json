@@ -2,7 +2,6 @@
   "probes": [
     {
       "id": "cf-system-concept-has-no-generated-rest-route",
-      "knownFailure": "REG-339",
       "keywords": [
         "concept.system"
       ],

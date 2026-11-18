@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
- * REP-1: the manifest tells the grid toolbar which documents are multi-record reports ({@code kind: list},
+ * REP-1: the manifest tells the grid toolbar which document screens are multi-record reports ({@code report: true},
  * which also have a CSV form) by stamping {@code kind} on that document's node only; a per-record
  * document gets no {@code kind}, so the toolbar keeps offering only the PDF.
  */
@@ -40,10 +40,10 @@ public class BusinessUiEmitterListReportManifestTest {
                       { "name": "total", "type": "decimal" }
                     ] }
                   ],
-                  "documents": [
-                    { "name": "OrderSummary", "concept": "Order", "title": "Order summary" },
-                    { "name": "OrdersByStatus", "concept": "Order", "kind": "list", "title": "Orders by status",
-                      "columns": [ { "field": "status", "label": "Status" },
+                  "screens": [
+                    { "name": "OrderSummary", "kind": "document", "concept": "Order", "title": "Order summary" },
+                    { "name": "OrdersByStatus", "kind": "document", "concept": "Order", "report": true, "title": "Orders by status",
+                      "printColumns": [ { "field": "status", "label": "Status" },
                                    { "field": "total", "label": "Total", "total": "sum" } ],
                       "groupBy": ["status"], "subtotals": true, "grandTotal": true }
                   ]

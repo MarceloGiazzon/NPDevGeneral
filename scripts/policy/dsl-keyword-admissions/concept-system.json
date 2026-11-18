@@ -1,0 +1,39 @@
+{
+ "$comment": "FORM P4-T4 retroactive admission record (the slot predates the budget, so it is also in baselineSlots; this record documents why it earned its place). Written after REG-339 closed on 2026-11-17: before that the probe was a known failure and the typed REST controller was still emitted, so `enforced` would have been false.",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "concepts[].system",
+ "slots": [
+  "concept.system"
+ ],
+ "rung": 0,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-17",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "says a concept is platform state, not app data; no ordering, no logic"
+  },
+  "notLower": {
+   "value": true,
+   "why": "withholding every REST, menu, export and agent surface of a concept is decided by the generator and runtime; no expression or flow can remove a route the platform emits"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "NPDevSamples/dsl-conformance-max",
+    "NPDevSamples/ride-hailing",
+    "NPDevSamples/journeys"
+   ]
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevSamples/dsl-conformance-max/behavior-probes/15-system-concept.json"
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "A concept marked \"system\":true (the identity pack's credentials and sessions) gets no REST route, menu, export or agent tool; a concept of yours that holds a password hash is refused."
+  }
+ },
+ "replaces": [],
+ "budgetDelta": 0
+}

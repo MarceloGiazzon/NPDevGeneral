@@ -62,7 +62,7 @@ class ApprovalsPackProcedureTest {
 
     @Test
     void aDecisionMovesTheRequestAndLogsWhoDecidedWhenAndWhy() {
-        ProcedureRunner runner = new ProcedureRunner(model, gateway, null, null);
+        ProcedureRunner runner = new ProcedureRunner(model, gateway);
         InProcessAcceptanceRunner.attachKernel(runner, model, null, gateway, null);
 
         ProcedureExecutionResult result = runner.execute("approvals::ApplyApprovalDecision",
@@ -86,7 +86,7 @@ class ApprovalsPackProcedureTest {
 
     @Test
     void aRequestThatAlreadyLeftPendingIsNotDecidedTwice() {
-        ProcedureRunner runner = new ProcedureRunner(model, gateway, null, null);
+        ProcedureRunner runner = new ProcedureRunner(model, gateway);
         InProcessAcceptanceRunner.attachKernel(runner, model, null, gateway, null);
         runner.execute("approvals::ApplyApprovalDecision",
                 Map.of("requestId", "r-1", "status", "REJECTED", "comment", "No", "completedBy", "bob"),
@@ -105,7 +105,7 @@ class ApprovalsPackProcedureTest {
 
     @Test
     void expiringAPendingRequestMarksItExpired() {
-        ProcedureRunner runner = new ProcedureRunner(model, gateway, null, null);
+        ProcedureRunner runner = new ProcedureRunner(model, gateway);
         InProcessAcceptanceRunner.attachKernel(runner, model, null, gateway, null);
 
         ProcedureExecutionResult result = runner.execute("approvals::ExpireApprovalRequest",

@@ -1,0 +1,52 @@
+{
+ "$comment": "FORM P5 admission, 2026-11-18. kind and concept admit the kinds the client renders (list, detail, form, status, inbox, board, dashboard, map, picker, document); workbench and custom are listed in the schema but not rendered yet, and screen.component is NOT admitted.",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "screens[]",
+ "slots": [
+  "screen.name",
+  "screen.title",
+  "screen.kind",
+  "screen.concept",
+  "screen.where",
+  "screen.orderBy",
+  "screen.columns",
+  "screen.fields",
+  "screen.pick",
+  "screen.empty",
+  "screen.actions",
+  "screen.live",
+  "pack:screens"
+ ],
+ "rung": 0,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-18",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "names one page, what concept it shows, which columns/fields, a filter and a sort; row access is applied by the platform on top, never widened"
+  },
+  "notLower": {
+   "value": true,
+   "why": "which rows a caller may see is enforced by the concept gateway (row rules apply under `where`); a function cannot render a page and the client has no way to widen access"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "NPDevSamples/ride-hailing",
+    "NPDevSamples/dsl-conformance-max"
+   ],
+   "note": "screen.live: dsl-conformance-max `suppliers` and ride-hailing (offers, my-ride, active-ride, rides-all, dispatch-board)"
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevSamples/dsl-conformance-max/behavior-probes/19-experience-routes.json",
+   "note": "probe 19 serves the screens' data under the caller's role; probe 20 shows concept access applies to values an experience asks for; ExperienceValidationTest checks columns (max 7) / fields / where / orderBy against the concept; screen.live is browser-proven (ride-hailing stage 23/23) and client-tested, with no server probe of the SSE stream"
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "`screens[]` says what they see ... `\"screens\":[{\"name\":\"offers\",\"kind\":\"list\",\"concept\":\"RideOffer\",\"columns\":[\"status\"],...}]` ... Screen extras: `title`, `where`/`orderBy`/`pick:\"first\"`/`empty:{\"text\":\"..\"}`, `live:true` (refresh when rows change)"
+  }
+ },
+ "replaces": [],
+ "budgetDelta": 13
+}

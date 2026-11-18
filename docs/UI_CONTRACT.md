@@ -207,7 +207,7 @@ sources feed it, in cascade order:
    emitted into `generated-ui-manifest.json`'s top-level `theme` block and applied by
    `shell.js`'s `applyAppTheme()` on every boot, before any GuidePage is resolved.
 2. **Per-GuidePage override** — a GuidePage's own `theme.mode`/`theme.density` (model-declared,
-   `guidePages[].theme`), applied by `applyGuidePage()` immediately after. Left `null` in the
+   `backOffice.pages[].theme`), applied by `applyGuidePage()` immediately after. Left `null` in the
    manifest when a model-declared GuidePage doesn't declare them, so the app-wide default shows for
    every such page. The three built-in GuidePages (`Default`, `Minimal`, `None`) are the exception: they
    are built with a hard-coded theme (`mode: "light"`, `density: "comfortable"`, `GuidePageDefaults.builtin()`),
@@ -562,14 +562,14 @@ is unchanged.
 
 A model may declare labels per language (`"label": {"default": "Status", "pt-BR": "Situação"}`). The
 manifest's top-level `locales` lists every tag used by a concept/field/enum-option label map (plus
-`settings.locale`); with two or more, `views/locale.js` adds a language `<select>` (Auto + each tag) to
+`backOffice.locale`); with two or more, `views/locale.js` adds a language `<select>` (Auto + each tag) to
 the top bar. The choice is stored in `localStorage` key `npdev.ui.locale` and sent as `X-Tag-locale` on
 every call (`app.js` `headers()`, `shell.js` `authHeaders()`); picking one reloads the page. The server
 resolves labels (kernel `LabelResolver`: exact tag, then language, then default) and the UI copies the
 already-resolved `label` / `shortLabel` from `GET /api/v1/runtime/metadata/ui/bundle` onto the manifest
 fields; the client never interprets a locale map. Shell chrome strings come from the manifest's
-`stringsByLocale` (`en`, `pt`; `settings.strings` overrides are layered onto the entry matching
-`settings.locale`), looked up by the language part of the chosen tag, then `strings`, then the English
+`stringsByLocale` (`en`, `pt`; `backOffice.strings` overrides are layered onto the entry matching
+`backOffice.locale`), looked up by the language part of the chosen tag, then `strings`, then the English
 fallback. "Auto" clears the key, so `Accept-Language` decides server-side and `strings` (the app's
 generation-time catalogue) decides the chrome. Known gap: the Aggregate Workbench page bakes its
 strings at generation and does not follow the switch.
@@ -580,15 +580,15 @@ The topbar breadcrumb is a projection of the same nav tree `renderSidebar()` alr
 (`deriveNativeGroups()` in `business-ui-app.mustache`), not a second, hand-maintained hierarchy.
 `setContext({ title, path, rows })` accepts an ordered `path` array; `shell.js.mustache` joins it with
 `" / "`. On activating a concept or declared Panel, `business-ui-app.mustache` looks up which group
-(`appShell`-curated, or the native fallback groups, labelled by the platform strings `shell.navData` /
-`shell.navPanels`: "Data"/"Panels", "Dados"/"Paineis" in a `pt` app, overridable in `settings.strings`) contains that target's `hash` and
-passes `[groupLabel, title]` — a nested route (e.g. `appShell.navigation` placing `WidgetOrder` under
+(`backOffice`-curated, or the native fallback groups, labelled by the platform strings `shell.navData` /
+`shell.navPanels`: "Data"/"Panels", "Dados"/"Paineis" in a `pt` app, overridable in `backOffice.strings`) contains that target's `hash` and
+passes `[groupLabel, title]` — a nested route (e.g. `backOffice.navigation` placing `WidgetOrder` under
 group `"Operations"`) renders `/ Operations / Widget order`. A target with no group (the superuser-only
 Store/Box View/Promotion sections, which have no home in that tree) falls back to a flat `/ Title`,
 unchanged from before this task. Callers that only pass `title` (none remain in-repo, but an
 Untrusted Extension page could) still get the same single-segment breadcrumb they always did.
 
-Cold entry (`bootstrap()`, no URL hash present) already honours `appShell.defaultRoute` ahead of the
+Cold entry (`bootstrap()`, no URL hash present) already honours `backOffice.defaultRoute` ahead of the
 positional `concepts[0]` fallback — built and validated in W1.1, unchanged here.
 
 Recents stay a per-viewer `localStorage` convenience (`RECENT_ITEMS_KEY`, capped at 10) — deliberately
