@@ -40,3 +40,8 @@ notes: |
   Verified: probe 15 (dsl-conformance-max, knownFailure removed) green; ride-hailing setup stage 20/20, rider GET /api/identity_credentials = 404, matrix reports no system-route
   violation; journeys 36/36 (REST); corpus scan: every password-hash field sits in a system:true Credential. NOT run this session: the full ride-hailing all-stages run
   (the matrix then also needs rides/payments rows for its expect-some checks, 7 such cells were empty after the setup-only run), generator full suite, the weekly gates.
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/SystemConceptNoRestRouteTest.java#aSystemConceptGetsNoTypedControllerWhileAnOrdinaryOneDoes
+  asserts: ControllerEmitter emits no typed REST controller for a system concept (identity::Credential) while an ordinary concept still gets one, so /api/identity_credentials does not exist.
+  provenRed: false

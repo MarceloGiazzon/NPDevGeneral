@@ -207,8 +207,7 @@ later step can read `"$saved"`.
   "steps": [
     { "name": "validate-user", "type": "invariantCheck", "scope": "User",
       "invariants": ["EmailRequired", "NameRequired", "EmailUnique"] },
-    { "name": "save-user", "type": "capabilityCall", "capability": "persistence", "operation": "save",
-      "args": ["$input"], "output": "$saved" },
+    { "name": "save-user", "type": "createConcept", "scope": "User", "input": "$input", "output": "$saved" },
     { "name": "emit-user-created", "type": "emitEvent", "event": "UserCreated", "from": "$saved" },
     { "name": "return-user", "type": "return", "value": "$saved" }
   ]

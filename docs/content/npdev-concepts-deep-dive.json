@@ -45,7 +45,7 @@
     {
       "level": 3,
       "title": "Real example (from `simple-user-registry-inmemory`)",
-      "body": "\n```json\n{\n  \"name\": \"CreateUser\",\n  \"input\": { \"concept\": \"User\", \"mode\": \"create\" },\n  \"steps\": [\n    { \"name\": \"validate-user\", \"type\": \"invariantCheck\", \"scope\": \"User\",\n      \"invariants\": [\"EmailRequired\", \"NameRequired\", \"EmailUnique\"] },\n    { \"name\": \"save-user\", \"type\": \"capabilityCall\", \"capability\": \"persistence\", \"operation\": \"save\",\n      \"args\": [\"$input\"], \"output\": \"$saved\" },\n    { \"name\": \"emit-user-created\", \"type\": \"emitEvent\", \"event\": \"UserCreated\", \"from\": \"$saved\" },\n    { \"name\": \"return-user\", \"type\": \"return\", \"value\": \"$saved\" }\n  ]\n}\n```\n\nRead top to bottom: *validate the incoming data → save it → announce that it happened → hand\nthe saved record back to whoever called the flow.*\n"
+      "body": "\n```json\n{\n  \"name\": \"CreateUser\",\n  \"input\": { \"concept\": \"User\", \"mode\": \"create\" },\n  \"steps\": [\n    { \"name\": \"validate-user\", \"type\": \"invariantCheck\", \"scope\": \"User\",\n      \"invariants\": [\"EmailRequired\", \"NameRequired\", \"EmailUnique\"] },\n    { \"name\": \"save-user\", \"type\": \"createConcept\", \"scope\": \"User\", \"input\": \"$input\", \"output\": \"$saved\" },\n    { \"name\": \"emit-user-created\", \"type\": \"emitEvent\", \"event\": \"UserCreated\", \"from\": \"$saved\" },\n    { \"name\": \"return-user\", \"type\": \"return\", \"value\": \"$saved\" }\n  ]\n}\n```\n\nRead top to bottom: *validate the incoming data → save it → announce that it happened → hand\nthe saved record back to whoever called the flow.*\n"
     },
     {
       "level": 3,

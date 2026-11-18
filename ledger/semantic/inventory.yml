@@ -22,16 +22,12 @@ keys:
     mechanism: "AgentAccessAst -> CompiledAgentAccess (AGENT-1): what AI agents may see and do, per exposure and role. Served by the generated app as an MCP endpoint (AgentMcpController, caller's own bearer token) and chat channels -- a Telegram bot (TelegramChannel) and a WhatsApp Cloud API webhook (WhatsAppChannel + AgentWhatsAppWebhookController) over one AgentConversationService -- all calling the app's own REST API on loopback as the linked user; AgentAccessValidation + AgentAccessChannelCheck guard the model and its auth prerequisites."
     status: shipped
 
-  - key: aggregates
-    mechanism: "AggregateAst + Aggregate Workbench (docs/architecture ADR-0004, project_aggregate_workbench_vision)."
-    status: shipped
-
-  - key: appShell
-    mechanism: "AppShellAst/AppShellNavItemAst + CompiledAppShell (P6.3, this plan) -- declared navigation structure and default route, threaded through the four-place schema/resolver/canonical-json seam and rendered by the versioned business-UI shell (P6.1/P6.2)."
-    status: shipped
-
   - key: autoPanels
     mechanism: "AutoPanelAst -- panel scaffolding derived from a concept without a hand-authored panel."
+    status: shipped
+
+  - key: backOffice
+    mechanism: "backOffice $def (FORM P5) -- the operator/admin surface declared in the model: which concepts get generated back-office screens and for which roles."
     status: shipped
 
   - key: capabilities
@@ -43,6 +39,14 @@ keys:
     status: duplicated
     notes: "Four sites walk the specializes/extends edge and disagree (field-override refusal vs. silent win, and whether specializes is honoured at all). See duplicate-lanes.yml lanes 1-4; Phase 3 (P3.1) collapses them."
 
+  - key: experiences
+    mechanism: "experiences[] (FORM P5-T1) -- per-role landing: a signed-in user lands in the first experience whose `for` contains one of their roles; ExperienceEmitter + the runtime-host experience evaluator (POST /api/x/eval)."
+    status: shipped
+
+  - key: functions
+    mechanism: "functions[] (FORM P4-T2, extension ladder rung 2) -- named pure functions inlined into any expression at compile time; a pack's functions are called as pack::name."
+    status: shipped
+
   - key: modules
     mechanism: "ContextAst (B20, S2 wave) -- bounded-context declarations (root key renamed from contexts, FORM P3-T11), each $ref'ing a file via the array-entry $ref machinery."
     status: shipped
@@ -53,10 +57,6 @@ keys:
 
   - key: customCapabilities
     mechanism: "CustomCapabilityAst -- app-declared capability beyond the built-in set."
-    status: shipped
-
-  - key: documents
-    mechanism: "DocumentAst -- generated document/report definitions."
     status: shipped
 
   - key: domainTypes
@@ -77,10 +77,6 @@ keys:
 
   - key: flows
     mechanism: "FlowAst + durable FlowEngine port hosted in KernelRunner (docs/FLOWS.md)."
-    status: shipped
-
-  - key: guidePages
-    mechanism: "GuidePageAst -- authored in-app documentation pages."
     status: shipped
 
   - key: metadata
@@ -128,20 +124,16 @@ keys:
     mechanism: "Model-level schema version pin, distinct from dslVersion."
     status: shipped
 
+  - key: screens
+    mechanism: "screens[] (FORM P5-T1) -- the screens experiences navigate to, each one archetype from a closed set (list, detail, form, status, inbox, board, map, dashboard, workbench, document, picker, custom)."
+    status: shipped
+
   - key: seeds
     mechanism: "SeedAst -- seed/mock data feature. Reference-rewriting posture deliberately differs from every other MODEL_ARRAY_KEYS member (R8.8)."
     status: shipped
 
-  - key: selectors
-    mechanism: "SelectorAst."
-    status: shipped
-
   - key: sequences
     mechanism: "SequenceAst + SequenceValidation; nextNumber('name') referenced as an opaque literal inside defaultExpression text, so its declaration is pack-qualified but its reference is not (R5.3)."
-    status: shipped
-
-  - key: settings
-    mechanism: "settings $def -- app-level settings object."
     status: shipped
 
   - key: version

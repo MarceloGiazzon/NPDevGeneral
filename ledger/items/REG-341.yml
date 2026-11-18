@@ -32,3 +32,8 @@ notes: |
   NOT covered: isToday(createdAt) and any other function (addDays(today(), 1)) in a pushed-down predicate are still refused (null) -- only today() and now().
   Third cause, found by the full probe run: ConceptQueryEngine (the in-memory store) ordered a null last for sorting and reused that for filtering, so > and >= matched a row with NO value
   (the JDBC store, like SQL, does not). Ordered comparisons now require both values; test ConceptQueryEngineMissingValueOrderingTest. Full behaviour probes 163/163 afterwards.
+guard:
+  kind: test
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/ConceptQueryPredicateCompilerClockTest.java#todayOnTheRightBecomesTodaysIsoDate
+  asserts: today() on the right of a comparison compiles to today's ISO date in the pushed-down predicate, so count('Ride', createdAt >= today()) answers a number.
+  provenRed: false

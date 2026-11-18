@@ -57,6 +57,6 @@ detail: |
   direct REST GET showing the row persisted with the correct auto-generated id.
 guard:
   kind: test
-  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/procedures/DefaultProcedureExecutorAutoIdSemanticPolicyTest.java#saveConceptWithNoIdRefAutoGeneratesAnIdThatSatisfiesARealRequiredIdField
-  asserts: saveConcept's blank-idRef auto-generate fallback folds the generated id into the write's own data map, so a real governed ConceptGateway does not deny it as CONCEPT_FIELD_REQUIRED.
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/procedures/DefaultProcedureExecutorAutoIdSemanticPolicyTest.java#patchConceptCreateIfMissingAutoGeneratesAnIdThatSatisfiesARealRequiredIdField
+  asserts: (saveConcept was removed by FORM P3-T7; the surviving path is patchConcept createIfMissing) the blank-idRef auto-generate fallback folds the generated id into the write's own data map, so a real governed ConceptGateway does not deny it as CONCEPT_FIELD_REQUIRED.
   provenRed: true

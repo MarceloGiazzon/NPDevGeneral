@@ -37,3 +37,8 @@ notes: |
   second flow's emitEvent; note it passes on the old kernel because dsl-conformance-max payloads are strings, so the unit test is what pins the fix).
   Ride-hailing: AcceptRideOffer and DeclineRideOffer use emitEvent again, the inbox countdown is 20 s; live: answer at 5 s and 8 s -> ACCEPTED in 0.1 s
   (was ASSIGNED for 20 s+); full run-ride-hailing 141/141 incl. the exposure matrix.
+guard:
+  kind: test
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/KernelRunnerAwaitPayloadMatchTest.java#aLiveUuidInTheEventMatchesTheStringIdInTheParkedState
+  asserts: a live java.util.UUID in an emitted event matches the string id held in a parked awaitEvent's persisted state, so emitEvent resumes the parked flow.
+  provenRed: false

@@ -2,7 +2,7 @@
   "$schema": "../../../../../NPDevContract/schemas/pack.schema.json",
   "dslVersion": "3.0.0",
   "pack": "labeling",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "namespace": "com.npdev.labeling",
   "description": "docs/FAIL_OPEN_PLAN.md R2: minimal, fully in-git example of a top-level `packs` entry -- a self-contained, reusable domain module composed into the model via $ref, same mechanism AppGen/apps/_official/WmsOffice's identity/workspace packs use, with no out-of-tree asset dependency.",
   "category": "other",

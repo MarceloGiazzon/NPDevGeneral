@@ -215,7 +215,7 @@ def iter_model_files(roots: list[Path]):
             yield root
             continue
         for path in sorted(root.rglob("*.json")):
-            if SKIP_PARTS.intersection(path.parts) or path.name in SKIP_NAMES:
+            if SKIP_PARTS.intersection(path.relative_to(root).parts) or path.name in SKIP_NAMES:
                 continue
             yield path
 

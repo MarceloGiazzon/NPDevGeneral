@@ -1,0 +1,23 @@
+id: REG-342
+title: >-
+  The top-level procedures[] array and its schema family are still in the DSL although every in-repo procedure became a flow
+type: FEATURE
+severity: LOW
+status: OPEN
+opened: 2026-11-18
+source: >-
+  FORM P3-T5c stage 6 / P3-T7 (2026-11-16..18). Every procedure in the in-repo corpus was rewritten as a flow and DefaultProcedureExecutor was cut to the
+  eight concept steps, but procedures[] stays in model.schema.json because two untrusted-extension apps under AppGen/apps (WmsOffice, WmsOfficePackTest)
+  still declare it.
+surface: dsl/procedures, contract/model.schema.json, kernel/procedures
+detail: |
+  On a bare CI checkout (no AppGen/apps) check-dsl-coverage.py sees no model declaring procedures[], so the feature and the four procedure.* step
+  features are carried by reviewed entries in scripts/quality/dsl-coverage-allowlist.json that cite this item. They go away together with the schema family.
+  Plan task: P4-T5 (rung 4, code capabilities), which merges customCapabilities into capabilities[] and needs the owner present (D14).
+files:
+  - NPDevContract/schemas/model.schema.json
+  - scripts/quality/dsl-coverage-allowlist.json
+verification: NOT_VERIFIED
+done_when: >-
+  model.schema.json (all four copies) has no procedures[] and no procedure $def family, no corpus model declares it, and the five procedures entries in
+  scripts/quality/dsl-coverage-allowlist.json are deleted.

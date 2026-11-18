@@ -35,12 +35,9 @@
     },
     {
       "id": "X0-3",
-      "class": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/procedures/DefaultProcedureExecutor.java",
-      "verdict": "FIXED",
-      "fixedBy": "REG-96",
-      "test": "NPDevKernel/kernel/src/test/java/com/npdev/kernel/procedures/ProcedureConditionComparisonTest.java",
-      "testMarker": "malformedConditionFailsTheStep",
-      "note": "REG-96, reshaped by FORM P3-T3 (2026-11-15): ProcedureConditionEvaluator is deleted; DefaultProcedureExecutor.ifThenElse now evaluates the condition with ComputedExpression.evaluateBooleanStrict over a ResolverScope, and a condition that does not parse, names an undeclared (non-$) name or does not decide to a boolean fails the step CONDITION_UNSUPPORTED instead of taking the else-path. An absent operand compares as null (absentOperandIsFalseNotAnError) by design. Registry corrected 2026-10-23: the entry still said OPEN long after the fix landed. Original finding: truthiness-only; '== X' is inexpressible. Tracked by REG-96, not required to pass a must-error test yet."
+      "class": null,
+      "verdict": "NOT_BUILT",
+      "note": "REG-96 / FORM P3-T3, then removed by FORM P3-T7 (2026-11-18): the procedure ifThenElse step (and with it ProcedureConditionComparisonTest) no longer exists -- procedures are straight-line (ProcedureStepType has no branch), and the only condition evaluator left is KernelRunner.evaluateCondition, registered as X0-18 with its must-error test. If a branching procedure step is ever reintroduced it needs its own FIXED/CLEAN entry with a must-error test in the SAME commit."
     },
     {
       "id": "X0-4",

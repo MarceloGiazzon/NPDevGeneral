@@ -1,36 +1,17 @@
 {
-  "closedAt": "2026-11-18T14:28:41.7553468Z",
+  "closedAt": "2026-11-18T16:16:24.1067918Z",
   "branch": "main",
-  "head": "46f459fb",
-  "headSubject": "chore(session): handoff after FORM P3 close-out (all gates green)",
-  "summary": "Fixed the Whitelabel 404 (experience/api.js now HEAD-probes /login.html before redirecting; test added). Did P3-T7: DefaultProcedureExecutor is now the single implementation of the concept steps (set/read/list/runQuery/delete/map-select/updateConcept); deleted the dead if/forEach/return/save/callCapability/publishEvent/mapValue/computeValue copies, shrank ProcedureStepType 16->8 and ProcedureStep 26->12 fields, slimmed executor/ProcedureRunner constructors, removed CLI run-procedure/debug-procedure, BREAKING.md entry. Plan 59/62 = 95.2%. ALL UNCOMMITTED on purpose.",
-  "nextStep": "Remaining plan: P4-T5 (D14, needs owner present) and P1-T6 (only with a real schema edit). Otherwise run the pre-commit set in chunks under 5 min: python scripts/quality/select_checks.py then run_selected.py; run-ride-hailing.ps1 -Stages all (141 expected); run-journeys.ps1; run-f6-showcase.ps1; full :NPDevContract:dsl:test and generator Gradle suites; full NPDevCli unittest; RuntimeHost ROOT module tests via run-runtimehost-gate.ps1 (root compile fails standalone on OpsAlertScheduler/SuperUserClaimController - needs assembled app; check PanelRuntime after the ProcedureRunner ctor change); pwsh scripts/hygiene/clean-workspace-state.ps1; then ONE commit on main and git push origin main. Progress log: D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\NPDEV_FORM_PLAN_2026-11-13\\impl\\PROGRESS.md",
+  "head": "6279b6dc",
+  "headSubject": "feat(form): experiences/screens/backOffice, root keys folded into concepts, procedure executor single implementation (FORM P3-T7, P5)",
+  "summary": "Verified and committed the whole uncommitted FORM P3-T7/P5 work as 6279b6dc on main (pushed). Fixed what verification found: stale PasswordPageUxTest assertion, PanelRuntimeOnRowLoadTest old ProcedureRunner ctor, dead theme-object branch in ExperienceEmitter (schema types theme as string; it pulled generator coverage under its ratchet floor), DSL_REFERENCE floor 15->11 for the four removed root keys. Plan 59/62 = 95.2%.",
+  "nextStep": "Nothing is uncommitted. Remaining plan: P4-T5 (D14, needs the owner present) and P1-T6 (only with a real schema edit). Optional catch-up on what was NOT run this session: kernel gate (python scripts/ai/run_digest.py -- pwsh -NoProfile -File scripts/quality/run-kernel-quality-gate.ps1), aiKnowledge gate (-Only aiKnowledge; CI runs it on 6279b6dc anyway), run-shell-scenarios.ps1; then check the CI result of 6279b6dc on GitHub. NEVER run two Gradle jobs at once: the generator gate and test_relay_files RealGateTests share Build/gradle/npdev-generator and wipe each other's classes.",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\NPDEV_FORM_PLAN_2026-11-13\\impl\\TASKS.md",
   "blocked": "P4-T5 needs the owner present (D14).",
-  "verified": "P3-T7: :kernel:test 840 tests 0 failures; flow-compiled and geo-inproc test compile; runtimehost-core targeted tests (ProcedureRunner, AggregateRuntime, ApprovalsPackProcedure, InProcessAcceptance) green; npdev-cli tests green; run-behavior-probes 163/163 (6 skipped, need other run modes). Whitelabel fix: check-experience-client 62 node tests. NOT run: RuntimeHost root module, ride-hailing, journeys, F6, shell scenarios, full generator/DSL/NPDevCli suites, T2 gates, clean-workspace-state.ps1.",
-  "dirtyCount": 253,
-  "dirtyFiles": [
-    " M .gitattributes",
-    " M BREAKING.md",
-    " M NPDevCli/dsl_v2_migration.py",
-    " M NPDevCli/npdev_cli.py",
-    " M NPDevCli/npdev_relay_authoring.py",
-    " M NPDevCli/npdev_relay_preview_pt.py",
-    " M NPDevCli/npdev_relay_themes.py",
-    " M NPDevCli/npdev_static_pages.py",
-    " M NPDevCli/relay-config-allowlist.json",
-    " M NPDevCli/relay-ingest-policy.json",
-    " M NPDevCli/tests/test_inspect_bonds.py",
-    " M NPDevCli/tests/test_relay_config.py",
-    " M NPDevCli/tests/test_relay_themes.py",
-    " M NPDevContract/docs/WORKSPACE-MENU-AND-GUIDEPAGES.md",
-    " M NPDevContract/dsl/resources/Schemas/model.schema.json",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/DocumentAst.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/FieldPickerAst.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/ModelAst.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/SelectorAst.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/SettingsAst.java"
-  ],
+  "verified": "GREEN: run_selected.py (11 commands: dsl tests, schema mirror, concept-map, keyword-budget, behavior probes, canary, exposure-matrix/ride-hailing 141/141, twin-pair, dsl-coverage, panel-provenance, experience-client); run-journeys.ps1; run-f6-showcase.ps1; run-generator-gate.ps1 (after fixes, 284s, no ratchet regression); run-runtimehost-gate.ps1 (289s); run-untrusted-extension-security-check.ps1; full NPDevCli unittest 2161 tests (1 failure was a Gradle collision, test_relay_files re-run alone 22/22 OK); check-dsl-reference-output-floor.py; clean-workspace-state + slimness. NOT run: kernel gate, aiKnowledge gate, run-shell-scenarios, -IncludePaperwork, model-validate-touched (manual).",
+  "dirtyCount": 0,
+  "dirtyFiles": [],
   "unpushed": 0,
-  "landedCommits": []
+  "landedCommits": [
+    "6279b6dc feat(form): experiences/screens/backOffice, root keys folded into concepts, procedure executor single implementation (FORM P3-T7, P5)"
+  ]
 }
