@@ -10,7 +10,7 @@
   "use strict";
   NPDevViews.registerModule("formInputs", function (host) {
     const {
-      button, closeModalIn, createCustomWidgetInput, el, fetchJson, fileHandleUrl, formatValue, headers, humanize, isImageField, isImageFileValue, loadReferenceLabel, lookupLabel, openModalInto, referenceCacheKey, setStatus, state, text, whereExpression
+      button, closeModalIn, createCustomWidgetInput, el, fetchJson, fileHandleUrl, formatValue, headers, humanize, isImageField, isImageFileValue, labelRows, loadReferenceLabel, lookupLabel, openModalInto, referenceCacheKey, setStatus, state, text, whereExpression
     } = host;
 
     function createInput(field, value, recordId) {
@@ -772,6 +772,7 @@
             headers: headers()
           });
           const rows = Array.isArray(payload.content) ? payload.content : [];
+          await labelRows(reference, rows); // REG-336: a satellite is labelled by the record it extends
           rows.forEach(function (row) {
             const isViaRef = reference.via && reference.via !== "" && reference.anchorField && reference.anchorField !== reference.targetIdField;
             const id = isViaRef ? text(row[reference.anchorField]) : text(row[reference.targetIdField]);
@@ -860,6 +861,7 @@
             headers: headers()
           });
           const rows = Array.isArray(payload.content) ? payload.content : [];
+          await labelRows(reference, rows); // REG-336: a satellite is labelled by the record it extends
           suggestions.innerHTML = "";
           if (rows.length === 0) {
             suggestions.style.display = "none";
@@ -962,6 +964,7 @@
             headers: headers()
           });
           rows = Array.isArray(payload.content) ? payload.content : [];
+          await labelRows(reference, rows);
         } catch (error) {
           window.NPDevShell.renderError(list, { message: text(error.message) });
           return;
@@ -1273,6 +1276,7 @@
         try {
           const payload = await fetchJson(reference.endpointBase + "?" + params.toString(), { method: "GET", headers: headers() });
           const rows = Array.isArray(payload.content) ? payload.content : [];
+          await labelRows(reference, rows); // REG-336: a satellite is labelled by the record it extends
           grid.innerHTML = "";
           if (rows.length === 0) {
             window.NPDevShell.renderEmpty(grid, { message: "No options available." });
@@ -1355,6 +1359,7 @@
             headers: headers()
           });
           const rows = Array.isArray(payload.content) ? payload.content : [];
+          await labelRows(reference, rows); // REG-336: a satellite is labelled by the record it extends
           tableWrapper.innerHTML = "";
           if (rows.length === 0) {
             window.NPDevShell.renderEmpty(tableWrapper, {
@@ -1367,6 +1372,12 @@
           table.className = "records picker-records";
           const thead = document.createElement("thead");
           const headRow = document.createElement("tr");
+          // REG-336: a satellite's rows lead with the name of the record it extends (search and sort stay on the columns below).
+          if (reference.labelVia) {
+            const nameTh = document.createElement("th");
+            nameTh.textContent = humanize(reference.labelVia.displayField);
+            headRow.appendChild(nameTh);
+          }
           columns.forEach(function (col) {
             const th = document.createElement("th");
             th.textContent = humanize(col);
@@ -1384,6 +1395,11 @@
             // pattern R7.5 used for the SVG dashboard shapes (makeClickableSvg in shell.js.mustache).
             tr.tabIndex = 0;
             tr.setAttribute("role", "button");
+            if (reference.labelVia) {
+              const nameTd = document.createElement("td");
+              nameTd.textContent = row.__viaLabel || "";
+              tr.appendChild(nameTd);
+            }
             columns.forEach(function (col) {
               const td = document.createElement("td");
               td.textContent = formatValue(row[col]);

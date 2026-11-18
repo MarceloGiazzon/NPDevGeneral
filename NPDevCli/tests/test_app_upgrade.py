@@ -228,6 +228,51 @@ class UpgradeAppTest(unittest.TestCase):
         self.assertIn("ACK_TOKEN_MISSING", [d["code"] for d in result["diagnostics"]])
         self.assertEqual(self.app.boot_jars, [b"OLD-JAR"])
 
+    def _impact_with(self, *rows: str) -> str:
+        head = "NPDev schema impact report\n  verdict:     DESTRUCTIVE\n" \
+               "      SAFETY  TABLE  COLUMN  CHANGE  ROWS  NOTE\n"
+        return (head + "".join(f"  !!  {row}  3  \n" for row in rows)
+                + f"  summary: 0 safe / 0 attention / {len(rows)} destructive\n"
+                + "  acknowledgment token: " + "ab12" * 16 + "\n")
+
+    def test_reg321_ack_items_covering_every_destructive_row_proceeds(self):
+        self.impact = 3
+        self.impact_text = self._impact_with("DESTRUCTIVE_DROP_TABLE  order_lines  -  DROP TABLE",
+                                             "DESTRUCTIVE_DROP_COLUMN  customers  nick_name  DROP COLUMN")
+        result = self._upgrade(allow_destructive=True, ack_items="OrderLine, Customer.nickName")
+        self.assertEqual(result["outcome"], "UPGRADED")
+        self.assertEqual([c.get("destructive_ack") for c in self.app.calls], [None, "ab12" * 16, None])
+
+    def test_reg321_a_destructive_row_nobody_ticked_stops_the_upgrade(self):
+        self.impact = 3
+        self.impact_text = self._impact_with("DESTRUCTIVE_DROP_TABLE  order_lines  -  DROP TABLE",
+                                             "DESTRUCTIVE_DROP_COLUMN  customers  email  DROP COLUMN")
+        result = self._upgrade(allow_destructive=True, ack_items="OrderLine")
+        self.assertEqual(result["outcome"], "REFUSED")
+        diag = [d for d in result["diagnostics"] if d["code"] == "UNACKNOWLEDGED_DESTRUCTIVE_ITEM"]
+        self.assertEqual(len(diag), 1)
+        self.assertIn("customers.email", diag[0]["message"])
+        self.assertNotIn("order_lines", diag[0]["message"])
+        self.assertEqual(self.app.boot_jars, [b"OLD-JAR"], "nothing new was booted, the old version is back")
+        self.assertNotIn("ab12" * 16, [c.get("destructive_ack") for c in self.app.calls], "no token rebuild")
+
+    def test_reg321_a_type_narrowing_is_never_covered_by_a_ticked_removal(self):
+        self.impact = 3
+        self.impact_text = self._impact_with("DESTRUCTIVE_NARROW_TYPE  customers  name  NARROW")
+        result = self._upgrade(allow_destructive=True, ack_items="Customer.name")
+        self.assertEqual(result["outcome"], "REFUSED")
+
+    def test_reg321_unreadable_rows_fail_closed(self):
+        self.impact = 3
+        self.impact_text = "  summary: 0 safe / 0 attention / 2 destructive\n  acknowledgment token: " + "ab12" * 16 + "\n"
+        result = self._upgrade(allow_destructive=True, ack_items="Customer")
+        self.assertEqual(result["outcome"], "REFUSED")
+
+    def test_reg321_without_ack_items_the_blanket_flag_behaves_as_before(self):
+        self.impact = 3
+        self.impact_text = self._impact_with("DESTRUCTIVE_DROP_TABLE  anything  -  DROP TABLE")
+        self.assertEqual(self._upgrade(allow_destructive=True)["outcome"], "UPGRADED")
+
     def test_needs_attention_impact_continues_with_a_diagnostic(self):
         self.impact = 2
         result = self._upgrade()

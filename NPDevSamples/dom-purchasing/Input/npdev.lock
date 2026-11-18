@@ -13,7 +13,7 @@
     },
     "purchasing" : {
       "resolvedVersion" : "2.0.0",
-      "digest" : "sha256:178085e0039c809879fce40aea08d95bc934b00bac26d1047bb07414bf13c54a",
+      "digest" : "sha256:eb4dbfe7a1ac24f18e59b5c88b6e9a607680f51403ea3565a59bb46e81e7113d",
       "sourcePath" : "packs/purchasing/pack.json"
     }
   }

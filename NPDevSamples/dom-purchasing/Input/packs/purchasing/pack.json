@@ -29,8 +29,7 @@
       "Payment terms are stored on the supplier but the due date of a bill is typed in, not calculated from them.",
       "Stock is not increased by receiving an order. Linking purchasing to the inventory pack is a decision for the first app that needs both.",
       "An approved order may still be cancelled; cancelling an order that already has a bill does not void the bill.",
-      "Today numeric bounds are enforced through the rules above; the field-level min/max declarations are repeated for documentation only because the platform does not enforce them yet.",
-      "Lists and pickers show a supplier by its code, not by the organization's name: a reference shows one field of the record it points at, and the name lives on the organization. Say whether pickers must show the name."
+      "Today numeric bounds are enforced through the rules above; the field-level min/max declarations are repeated for documentation only because the platform does not enforce them yet."
     ]
   },
   "concepts": [

@@ -49,7 +49,8 @@
     failure: null, // which run the last launch failed in -- "build" or "start" -- so "Ask the AI to fix this" knows which log
     targets: null, // the chat AIs the CLI lists (relay_targets), read once
     target: null, // the one picked for this conversation
-    blocked: false, // the answer would delete stored data, which this window cannot do (the CLI says so: needsSchemaAcknowledgment)
+    blocked: false, // the answer would delete stored data and there is no app folder to upgrade (the CLI says so: needsSchemaAcknowledgment)
+    removal: false, // the answer removes stored data and Apply finishes it through the guarded upgrade (REG-321)
     intentByHand: false, // the person chose the kind (a new app, or a change to an app) with the two buttons themselves: a re-read of the app list must not undo it
   };
 
@@ -824,7 +825,12 @@
     // The CLI says when applying would make the app's own schema guard refuse to boot until it gets a separate, itemized
     // acknowledgment of the data that would be dropped (a removed record type or field). This window cannot give that, so
     // it offers no Apply: the sentence says why and "Ask for something else" is the way on. Nothing is decided here.
-    const blocked = p.needsSchemaAcknowledgment === true;
+    // REG-321: a CHANGE to an app we know the folder of can be finished here -- the Rust side upgrades the app in place
+    // (backup, rebuild, boot, automatic rollback) with the acknowledgment itemized by the boxes ticked below. Anything
+    // else that needs the acknowledgment (no app folder to upgrade) still stays declined.
+    const needsAck = p.needsSchemaAcknowledgment === true;
+    const removal = needsAck && S.intent === "change" && !!S.appDir;
+    const blocked = needsAck && !removal;
     const list = $("browserai-preview");
     list.replaceChildren();
     const li = (cls, mark, text) => {
@@ -868,9 +874,12 @@
     $("browserai-prose").textContent = r.prose || "";
     $("browserai-details").hidden = !r.prose;
     S.blocked = blocked;
+    S.removal = removal;
     $("browserai-blocked").hidden = !blocked;
     $("browserai-apply").hidden = blocked;
-    note("browserai-apply-note", needsYes ? "Tick each box to say you agree." : "");
+    note("browserai-apply-note", removal
+      ? "Tick each box to say you agree. NPDev copies your data first, then rebuilds the app, and puts everything back if anything goes wrong."
+      : needsYes ? "Tick each box to say you agree." : "");
     updateApply();
   }
 
@@ -952,13 +961,16 @@
     note("browserai-apply-note", "Applying…");
     try {
       let r;
+      const removal = S.removal === true;
       try {
-        r = await invoke("relay_apply", { code: S.code, round: null, confirmed, parentDir });
+        r = removal
+          ? await invoke("relay_apply_removal", { code: S.code, round: null, confirmed, appDir: S.appDir })
+          : await invoke("relay_apply", { code: S.code, round: null, confirmed, parentDir });
       } catch (e) {
         return note("browserai-apply-note", WENT_WRONG, true);
       }
       if (!r || r.ok !== true) {
-        const why = r && APPLY_REFUSED[r.error];
+        const why = r && (APPLY_REFUSED[r.error] || REMOVAL_REFUSED[r.error]);
         return note("browserai-apply-note", why || "The change could not be applied. Nothing was changed.", true);
       }
       S.applied = r;
@@ -966,6 +978,16 @@
       conversationClosed(S.code);
       note("browserai-apply-note", ""); // "Applying…" must not stay behind the folded step
       showDone(r);
+      if (removal) {
+        // The upgrade already rebuilt and started the app: there is nothing left to launch, only to open.
+        const up = r.upgrade || {};
+        S.openUrl = up.openUrl || up.baseUrl || null;
+        S.builtAppDir = null;
+        note("browserai-progress", "Done. The change is in your app, and your data from before it is saved in a copy.");
+        showLaunchButtons({ open: !!S.openUrl });
+        $("browserai-undo").hidden = true; // putting the model back would not bring the removed data back
+        return;
+      }
       S.builtAppDir = await generatedAppDir(r);
     } finally {
       setBusy(false);
@@ -974,6 +996,14 @@
     // Not awaited: a build takes minutes and the person may leave this screen or ask for something else meanwhile.
     if (S.builtAppDir) launch();
   }
+
+  // The guarded upgrade's three ways of not finishing (REG-321). In every one the app is back as it was and so is the
+  // model (Rust undoes the model change), so the sentence says that first and what to do next second.
+  const REMOVAL_REFUSED = {
+    "upgrade-refused": "The change would also delete data you did not agree to, so nothing was changed. Ask the AI for something else.",
+    "upgrade-rolled-back": "The app could not start with this change, so NPDev put everything back as it was. Nothing was changed.",
+    "upgrade-failed": "The change could not be finished. Check that your app still opens; your data is safe in a copy NPDev made first.",
+  };
 
   // The folder the built app lives in. A change already knows it (the app that was picked); a new app was made as a
   // model folder, and the one place that knows where its app goes is the Rust side.
@@ -1315,6 +1345,7 @@
     note("browserai-progress", "");
     announce("");
     S.blocked = false;
+    S.removal = false;
     $("browserai-blocked").hidden = true;
     $("browserai-apply").hidden = false;
     forgetTarget();

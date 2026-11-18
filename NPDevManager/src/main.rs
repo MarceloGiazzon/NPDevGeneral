@@ -3244,6 +3244,57 @@ async fn relay_apply(
     Ok(result)
 }
 
+/// "Use a browser AI": apply an answer that REMOVES a record type or a field (REG-321). The model is written like
+/// any change, then the app is upgraded in place -- backup, rebuild, boot, automatic rollback -- with the
+/// acknowledgment itemized by exactly the removals the owner ticked (a destructive change nobody ticked is refused
+/// by the upgrade itself). Whenever the app does not end up running the new version, the model change is undone
+/// too, so the folder and the running app never disagree. Answer: the apply result when it went through, else
+/// `{ok: false, error: "upgrade-refused" | "upgrade-rolled-back" | "upgrade-failed", upgrade, undone}`.
+#[tauri::command]
+async fn relay_apply_removal(
+    state: State<'_, AppState>,
+    code: String,
+    round: Option<u32>,
+    confirmed: Vec<String>,
+    app_dir: String,
+) -> Result<Value, String> {
+    let (python, cli, java_home) = relay_cli(&state).await?;
+    let items = npdev::removal_items_from_codes(&confirmed);
+    if items.is_empty() {
+        return Err("no removal was confirmed".to_string());
+    }
+    let mut applied =
+        npdev::run_relay_apply(&python, &cli, java_home.as_deref(), &code, round, &confirmed, None).await?;
+    if applied.get("ok").and_then(|v| v.as_bool()) != Some(true) {
+        return Ok(applied);
+    }
+    let model_path = applied.get("modelPath").and_then(|m| m.as_str()).map(str::to_string);
+    let upgrade =
+        npdev::run_upgrade_app(&python, &cli, java_home.as_deref(), &app_dir, model_path.as_deref(), &items).await;
+    let upgrade = match upgrade {
+        Ok(value) => value,
+        Err(e) => serde_json::json!({"ok": false, "outcome": "FAILED", "error": e}),
+    };
+    let outcome = upgrade.get("outcome").and_then(|o| o.as_str()).unwrap_or("FAILED").to_string();
+    log::info(format!("relay_apply_removal code={code} upgrade={outcome}"));
+    if outcome == "UPGRADED" {
+        if let Some(object) = applied.as_object_mut() {
+            object.insert("upgrade".to_string(), upgrade);
+        }
+        return Ok(applied);
+    }
+    let undone = npdev::run_relay_undo(&python, &cli, java_home.as_deref(), &code, false)
+        .await
+        .map(|r| r.get("ok").and_then(|v| v.as_bool()) == Some(true))
+        .unwrap_or(false);
+    let error = match outcome.as_str() {
+        "REFUSED" => "upgrade-refused",
+        "ROLLED_BACK" => "upgrade-rolled-back",
+        _ => "upgrade-failed",
+    };
+    Ok(serde_json::json!({"ok": false, "error": error, "upgrade": upgrade, "undone": undone}))
+}
+
 /// Adds an app the AI relay just created to the Manager's app list (once: the same folder is never listed
 /// twice, whatever the slash style or letter case). A failure to save only means the app is not listed; the
 /// app itself is on disk, so it is logged and not raised.
@@ -4455,6 +4506,7 @@ the blast radius needs a baseline to diff against"
             relay_prompt_attachment,
             relay_list,
             relay_apply,
+            relay_apply_removal,
             relay_start_pack,
             pack_push,
             packs_workspace,

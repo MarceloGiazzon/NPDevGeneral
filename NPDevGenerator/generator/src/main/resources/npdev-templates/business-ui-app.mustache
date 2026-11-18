@@ -2652,7 +2652,8 @@
         })()
       : fetchJson(reference.endpointBase + "/" + encodeURIComponent(rawId), { method: "GET", headers: headers() });
 
-    const promise = fetchPromise.then(function (row) {
+    const promise = fetchPromise.then(async function (row) {
+      await labelRows(reference, [row]); // REG-336: a satellite is labelled by the record it extends
       const label = lookupLabel(reference, row);
       state.referenceLabels[key] = {
         status: "resolved",
@@ -3448,7 +3449,42 @@
     return parts.join(",");
   }
 
+  // REG-336: a reference to a satellite (Customer extends contacts::Organization) carries `labelVia`, the one hop to the
+  // record whose display field is the human name. The hop is followed for the LABEL only: the satellite's own row is still
+  // what is picked, searched and sorted. One GET per distinct base record, cached; a base record this viewer may not read
+  // (or that fails) just leaves the satellite's own label (its code) in place. A page labels at most 60 rows this way.
+  const viaLabelCache = {};
+  function viaLabel(reference, row) {
+    const via = reference && reference.labelVia;
+    const rawId = via && row ? row[via.field] : null;
+    if (!rawId) {
+      return Promise.resolve("");
+    }
+    const key = via.endpointBase + "#" + rawId;
+    if (!viaLabelCache[key]) {
+      viaLabelCache[key] = fetchJson(via.endpointBase + "/" + encodeURIComponent(rawId), { method: "GET", headers: headers() })
+        .then(function (base) { return base ? text(base[via.displayField]) : ""; })
+        .catch(function () { return ""; });
+    }
+    return viaLabelCache[key];
+  }
+  async function labelRows(reference, rows) {
+    if (!reference || !reference.labelVia || !Array.isArray(rows)) {
+      return rows;
+    }
+    await Promise.all(rows.slice(0, 60).map(async function (row) {
+      const label = await viaLabel(reference, row);
+      if (label) {
+        row.__viaLabel = label;
+      }
+    }));
+    return rows;
+  }
+
   function lookupLabel(reference, row) {
+    if (row && row.__viaLabel) {
+      return row.__viaLabel;
+    }
     if (reference.displayTemplate) {
       const mustache = reference.displayTemplate.replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, function (_, name) {
         return text(row[name]);
@@ -4076,7 +4112,7 @@
   const { loadStore, renderStorePanel, loadBoxView, renderBoxViewPanel, loadPromotion, renderPromotionPanel } = NPDevViews.module("adminPanels", { BOX_VIEW_SECTION, PROMOTION_SECTION, STORE_SECTION, badgeCell, button, fetchJson, headerRow, headers, lineageCell, openModal, render, sectionId, setStatus, state, text, textCell, visibleConcepts });
   const { loadDeclaredPanel, renderDeclaredPanel } = NPDevViews.module("declaredPanels", { button, el, evaluateWhen, fetchJson, fileHandleUrl, formatValue, headerRow, headers, isImageFileValue, notify, panelContextValues, panelSectionRef, render, sectionId, setStatus, state, text, trackFlowExecution });
   const { exportPanelCsv, exportPanelXlsx, importCellToPayloadValue, openImportDialog, buildCsv, csvFilenameFor, downloadCsv, neutralizeCsvFormula } = NPDevViews.module("csvIo", { baseQueryParams, button, fetchJson, fieldViolations, formFields, headerRow, headers, notify, openModal, panelState, reloadAfterMutation, setStatus, text, visibleFields });
-  const { createInput, sanitizeRichText } = NPDevViews.module("formInputs", { button, closeModalIn, createCustomWidgetInput, el, fetchJson, fileHandleUrl, formatValue, headers, humanize, isImageField, isImageFileValue, loadReferenceLabel, lookupLabel, openModalInto, referenceCacheKey, setStatus, state, text, whereExpression });
+  const { createInput, sanitizeRichText } = NPDevViews.module("formInputs", { button, closeModalIn, createCustomWidgetInput, el, fetchJson, fileHandleUrl, formatValue, headers, humanize, isImageField, isImageFileValue, labelRows, loadReferenceLabel, lookupLabel, openModalInto, referenceCacheKey, setStatus, state, text, whereExpression });
   const { isRowSelected, toggleRowSelected, postConceptBatch, buildBulkActionsBar } = NPDevViews.module("bulkActions", { buildCsv, button, closeModal, createInput, csvFilenameFor, downloadCsv, fetchJson, formFields, headerRow, headers, importCellToPayloadValue, neutralizeCsvFormula, notify, openDetailsMany, openModal, reloadAfterMutation, render, setStatus, textCell, visibleFields });
   // CARVE-1 modules: end
   bootstrap().catch(function (error) {

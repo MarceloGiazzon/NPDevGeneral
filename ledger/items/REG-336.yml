@@ -3,8 +3,9 @@ title: >-
   A reference to a satellite (sales::Customer, purchasing::Supplier) shows the satellite's code, not the name of the record it extends
 type: FEATURE
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-11-12
+closed: 2026-11-18
 source: >-
   Single-owner refactor of the built-in packs (2026-11-12, BREAKING.md entry of that date): Customer and Supplier became satellites of
   contacts::Organization, whose `name` is where the human-readable name lives.
@@ -26,10 +27,29 @@ detail: |
   Costs: new keyword through the four REG-108 places + both model.schema/pack.schema mirrors, dsl-conformance-max example, admission
   record, golden compiled-metadata files; a viewer who may read Customer but not Organization falls back to the code (403 handled).
   Search and sort stay on the satellite's columns (a join is out of scope).
+  DECIDED + CODED 2026-11-18 (owner chose "automatic, no keyword" over displayThrough): nothing is added to the DSL (keyword budget stays
+  801). A concept's `satelliteOf` already names the base and the satellite's one field referencing it names what to show (its own
+  reference.displayField), so BusinessUiEmitter.labelVia derives `reference.labelVia = {field, endpointBase, targetIdField, displayField}`
+  for any reference whose target is a satellite. business-ui-app.mustache (loadReferenceLabel, viaLabel/labelRows, lookupLabel) and
+  form-inputs.js (the five row fetches: select, autocomplete, multi-select, two pickers) follow the hop for the LABEL only: one cached GET
+  per distinct base record, at most 60 rows per page, any failure or 403 keeps the satellite's own label (the code). Search and sort stay
+  on the satellite's columns. Not covered: many-to-many bond summaries (loadMultiSelectSummary) and the separate workbench-page copy of
+  lookupLabel keep showing the code. The two "shows the code" reviewNotes were removed from the sales and purchasing packs and their
+  dom-sales / dom-purchasing copies. Test: BusinessUiEmitterLabelViaTest.
+  PROVEN LIVE 2026-11-18 in a booted dom-sales app (headless browser, port 8421): the sales order list shows "Acme Industries" and not the
+  code C-001; the Browse... customer picker shows a Name column ("Acme Industries") beside Code; the field shows "Acme Industries" after a
+  pick. The picker dialog is a table read column by column, so form-inputs.js adds a leading name column when reference.labelVia is set.
 files:
   - NPDevContract/packs/sales/pack.json
   - NPDevContract/packs/purchasing/pack.json
-verification: NOT_VERIFIED
+verification: VERIFIED_LIVE
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/BusinessUiEmitterLabelViaTest.java#aReferenceToASatelliteNamesTheHopToTheRecordItExtends
+  asserts: >-
+    a reference whose target concept is satelliteOf another carries reference.labelVia {field organizationId, displayField name, endpointBase of the base}
+    in the generated UI manifest, while its own displayField (the code) stays as the fallback; an ordinary reference carries none.
+  provenRed: false
 done_when: >-
   A sales order list and its customer picker in a generated dom-sales app show the organization's name for each customer, without the
   sales pack copying the name onto Customer.

@@ -223,6 +223,11 @@ window.__TAURI__ = {
         }
         case "relay_pick_answer_files": window.__pickCalls = (window.__pickCalls || 0) + 1; return window.__pickAnswer || [];
         case "relay_apply": window.__relayApplies = (window.__relayApplies || []).concat([args]); return window.__applyAnswer || F.relay.apply;
+        // REG-321: an answer that REMOVES data, finished through the guarded upgrade; a check puts a refusal in __removalAnswer.
+        case "relay_apply_removal":
+          window.__relayRemovals = (window.__relayRemovals || []).concat([args]);
+          return window.__removalAnswer || { ok: true, code: args.code, round: 1, intent: "change", created: false, appDir: args.appDir, backupPath: "/x/model.before.json",
+            upgrade: { ok: true, outcome: "UPGRADED", phase: "READY", baseUrl: "http://127.0.0.1:8299", openUrl: "http://127.0.0.1:8299/", backupDir: "/x/data/backups/pre-upgrade-1" } };
         case "relay_undo": window.__relayUndos = (window.__relayUndos || []).concat([args]); return window.__undoAnswer || F.relay.undo;
         case "relay_abort": window.__relayAborts = (window.__relayAborts || []).concat([args]); return F.relay.abort;
         // The watchers (F3 T3.1 clipboard, T3.2 Downloads): there is no clipboard or Downloads folder here, so a check
@@ -1277,11 +1282,62 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   const changeStart = await page.evaluate(() => window.__relayStarts);
   check("browser AI: a change is started for the picked app, and 'let the AI ask me questions' is passed on",
     changeStart.length === 1 && changeStart[0].intent === "change" && /auxscreen/i.test(changeStart[0].appDir) && !changeStart[0].newAppName && changeStart[0].interview === true, JSON.stringify(changeStart));
+  // REG-321: an answer that removes a field, for an app we know the folder of, is finished here through the guarded upgrade:
+  // the boxes are real (the person ticks the removal), Apply goes to relay_apply_removal with that exact code, and the
+  // plain relay_apply (which would leave the app to rebuild itself into a schema refusal) is never called.
+  await page.click("#browserai-copy");
+  await page.fill("#browserai-paste", "STUB-REMOVAL");
+  await page.click("#browserai-check");
+  await page.waitForTimeout(250);
+  const removalBoxes = await page.$$eval("#browserai-confirms label", (l) => l.length);
+  check("browser AI: a removal in a change to a known app is NOT declined -- it has a box to tick and an Apply, and no 'cannot' sentence",
+    removalBoxes === 1 && (await shown("#browserai-apply")) && (await page.$eval("#browserai-apply", (b) => b.disabled)) && !(await shown("#browserai-blocked")) &&
+    /puts everything back/.test(await text("#browserai-apply-note")), String(await text("#browserai-apply-note")));
+  await page.evaluate(() => { window.__relayRemovals = []; window.__relayApplies = []; window.__launchLog = []; });
+  await page.check("#browserai-confirms input");
+  await page.click("#browserai-apply");
+  await page.waitForTimeout(300);
+  const removals = await page.evaluate(() => window.__relayRemovals);
+  check("browser AI: Apply on a removal sends the ticked code and the app's folder to relay_apply_removal, and never calls relay_apply",
+    removals.length === 1 && removals[0].confirmed.join() === "REMOVAL:field:Customer.firstName" && /auxscreen/i.test(removals[0].appDir) && (await page.evaluate(() => window.__relayApplies.length)) === 0, JSON.stringify(removals));
+  check("browser AI: a finished removal says the data is in a copy, the app is already running (nothing is rebuilt again), Open is offered and Undo is not",
+    (await text("#browserai-progress")) === "Done. The change is in your app, and your data from before it is saved in a copy." && (await shown("#browserai-open")) && !(await shown("#browserai-undo")) &&
+    (await page.evaluate(() => window.__launchLog.length)) === 0, String(await text("#browserai-progress")));
+  // the upgrade that did not finish: the app and the model are back as they were (Rust undid the model), one sentence says so
+  const pickChange = async () => {
+    await page.evaluate(() => {
+      window.__relayStarts = []; window.__relayApplies = []; window.__relayUndos = []; window.__relayRemovals = []; window.__launchLog = [];
+      window.__relayAborts = []; // the removal conversations above gave themselves up; the abort counts below are about the rename flow
+      const p =document.getElementById("browserai-app");
+      const opt = [...p.options].find((o) => /auxscreen/i.test(o.textContent));
+      if (opt) { p.value = opt.value; p.dispatchEvent(new Event("change", { bubbles: true })); }
+    });
+    await page.fill("#browserai-ask", "drop the first name");
+    await page.click("#browserai-continue");
+    await page.waitForTimeout(250);
+  };
+  await page.click("#browserai-again");
+  await page.waitForTimeout(200);
+  await pickChange();
+  await page.evaluate(() => { window.__removalAnswer = { ok: false, error: "upgrade-rolled-back", undone: true, upgrade: { ok: false, outcome: "ROLLED_BACK" } }; });
+  await page.click("#browserai-copy");
+  await page.fill("#browserai-paste", "STUB-REMOVAL");
+  await page.click("#browserai-check");
+  await page.waitForTimeout(250);
+  await page.check("#browserai-confirms input");
+  await page.click("#browserai-apply");
+  await page.waitForTimeout(300);
+  check("browser AI: a removal the upgrade rolled back says everything was put back, offers no Open or Undo, and leaves Apply to try again",
+    (await text("#browserai-apply-note")) === "The app could not start with this change, so NPDev put everything back as it was. Nothing was changed." &&
+    (await page.$eval("#browserai-apply-note", (e) => e.classList.contains("bad"))) && !(await shown("#browserai-open")), String(await text("#browserai-apply-note")));
+  await page.evaluate(() => { window.__removalAnswer = null; document.getElementById("browserai-else").click(); });
+  await page.waitForTimeout(200);
+  await pickChange();
   await page.click("#browserai-copy");
   await page.fill("#browserai-paste", "STUB-RENAME");
   await page.click("#browserai-check");
   await page.waitForTimeout(250);
-  const boxes = await page.$$eval("#browserai-confirms label", (l) => l.map((x) => x.textContent.replace(/^\s*⚠\s*/, "").trim()));
+  const boxes =await page.$$eval("#browserai-confirms label", (l) => l.map((x) => x.textContent.replace(/^\s*⚠\s*/, "").trim()));
   check("browser AI: a rename shows the CLI's warning as a box to tick, and Apply waits for it",
     boxes.length === 1 && boxes[0] === "In Customer, the field First name is renamed to Given name. The data is kept." && (await page.$eval("#browserai-apply", (b) => b.disabled)) &&
     (await shown("#browserai-apply")) && !(await shown("#browserai-blocked")), JSON.stringify(boxes));

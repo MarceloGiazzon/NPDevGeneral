@@ -1234,6 +1234,52 @@ pub async fn run_relay_undo(
     run_relay_json(python_exe, npdev_cli, java_home, &args, "undo").await
 }
 
+/// REG-321: the removals the owner ticked, as the `--ack-items` list the upgrade itemizes its acknowledgment by.
+/// A preview warning's code is `REMOVAL:concept:Customer` or `REMOVAL:field:Customer.lastName`; any other code
+/// (a rename, a settings change) is not a removal and is left out. The names are the CLI's own, copied, never made up.
+pub fn removal_items_from_codes(confirmed: &[String]) -> Vec<String> {
+    confirmed
+        .iter()
+        .filter_map(|code| {
+            code.strip_prefix("REMOVAL:concept:").or_else(|| code.strip_prefix("REMOVAL:field:")).map(str::to_string)
+        })
+        .filter(|item| !item.is_empty())
+        .collect()
+}
+
+/// `npdev upgrade --app <dir> --stop --allow-destructive --ack-items <items>` -- the guarded in-place upgrade of one
+/// generated app (backup, validate, regenerate, build, impact check, boot, health, automatic rollback), told which
+/// removals the owner ticked. It never runs without at least one item: an empty list would be a blanket yes.
+/// The answer is `{ok, outcome: UPGRADED | REFUSED | ROLLED_BACK | ROLLBACK_FAILED, phase, backupDir, diagnostics, ...}`;
+/// a refusal is a RESULT the screen words, not a transport error.
+pub async fn run_upgrade_app(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+    model_path: Option<&str>,
+    ack_items: &[String],
+) -> Result<Value, String> {
+    if fake_mode() {
+        return Ok(serde_json::json!({"ok": true, "outcome": "UPGRADED", "phase": "READY", "diagnostics": []}));
+    }
+    check_relay_value("the app folder", app_dir)?;
+    if ack_items.is_empty() {
+        return Err("no removal was confirmed, so the upgrade would drop data nobody agreed to".to_string());
+    }
+    for item in ack_items {
+        check_relay_warning_code(item)?;
+    }
+    let joined = ack_items.join(",");
+    let mut args: Vec<&str> = vec!["upgrade", "--app", app_dir, "--stop", "--allow-destructive", "--ack-items", joined.as_str()];
+    if let Some(model) = model_path {
+        check_relay_value("the model file", model)?;
+        args.extend(["--model", model]);
+    }
+    args.push("--json");
+    run_relay_json(python_exe, npdev_cli, java_home, &args, "upgrade").await
+}
+
 /// `npdev ai relay targets` -- the chat AIs this NPDev knows: where to open each and how much text it takes pasted.
 /// The addresses come from the CLI's own list and nowhere else (never from an AI's answer).
 pub async fn run_relay_targets(python_exe: &Path, npdev_cli: &Path, java_home: Option<&str>) -> Result<Value, String> {
@@ -3297,7 +3343,29 @@ mod relay_pipe_tests {
         );
         let bare = argv_of(&run_relay_apply(&python, &script, None, "K7Q2", None, &[], None).await.unwrap());
         assert_eq!(bare, ["ai", "relay", "apply", "--code", "K7Q2", "--json"]);
+
+        // REG-321: only the removals ticked become the itemized acknowledgment; a rename is not one.
+        let items = removal_items_from_codes(&confirmed);
+        assert_eq!(items, ["Customer.lastName"]);
+        let upgrade = argv_of(&run_upgrade_app(&python, &script, None, "apps/Shop", Some("apps/Shop/model.json"), &items).await.unwrap());
+        assert_eq!(&upgrade[..3], ["upgrade", "--app", "apps/Shop"], "{upgrade:?}");
+        assert!(upgrade.contains(&"--stop".to_string()) && upgrade.contains(&"--allow-destructive".to_string()), "{upgrade:?}");
+        assert!(has_pair(&upgrade, "--ack-items", "Customer.lastName") && has_pair(&upgrade, "--model", "apps/Shop/model.json"), "{upgrade:?}");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn an_upgrade_is_never_run_without_a_ticked_removal() {
+        if fake_mode() {
+            return;
+        }
+        let python = Path::new("python");
+        let cli = Path::new("never-run.py");
+        assert!(run_upgrade_app(python, cli, None, "apps/Shop", None, &[]).await.is_err(), "an empty list is a blanket yes");
+        assert!(run_upgrade_app(python, cli, None, "apps/Shop", None, &["--force".to_string()]).await.is_err());
+        assert!(run_upgrade_app(python, cli, None, "apps/Shop", None, &["A,B".to_string()]).await.is_err());
+        assert!(run_upgrade_app(python, cli, None, "--app", None, &["A".to_string()]).await.is_err());
+        assert!(removal_items_from_codes(&["RENAME:field:Order.a>b".to_string(), "CHANGE_SETTINGS".to_string()]).is_empty());
     }
 
     #[tokio::test]

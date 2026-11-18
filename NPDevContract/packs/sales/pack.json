@@ -28,8 +28,7 @@
       "A line copies the unit price when it is entered (so later price-list changes do not rewrite old orders), but nothing checks it against the price list.",
       "Stock is not reserved or reduced by a sale. Linking sales to the inventory pack is a decision for the first app that needs both.",
       "A confirmed order may still be cancelled; cancelling an order that already has an invoice does not void the invoice.",
-      "Today numeric bounds are enforced through the rules above; the field-level min/max declarations are repeated for documentation only because the platform does not enforce them yet.",
-      "Lists and pickers show a customer by its code, not by the organization's name: a reference shows one field of the record it points at, and the name lives on the organization. Say whether pickers must show the name."
+      "Today numeric bounds are enforced through the rules above; the field-level min/max declarations are repeated for documentation only because the platform does not enforce them yet."
     ]
   },
   "concepts": [

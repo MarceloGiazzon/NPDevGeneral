@@ -1497,6 +1497,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         reference.put("pickerColumns", pickerColumns);
         reference.put("displayTemplate", firstNonBlank(referenceDisplayTemplate(field), ""));
         reference.put("previewFields", effectiveReferencePreviewFields(field, target, displayFields));
+        labelVia(target, conceptsByName, contexts).ifPresent(hop -> reference.put("labelVia", hop));
         // EDIT-18 (REAL_LIFT_PLAN_2026-09-03 package C2): only ever non-empty when picker.selectorRef
         // resolved -- ModelCompiler is the only writer of CompiledFieldPicker.orderBy().
         if (field.getPicker() != null && !field.getPicker().orderBy().isEmpty()) {
@@ -1601,6 +1602,47 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             foundTarget = candidate.getName();
         }
         return foundTarget;
+    }
+
+    /**
+     * REG-336: a reference to a SATELLITE (Customer {@code satelliteOf} contacts::Organization) would label each record
+     * with the satellite's own display field -- its code -- while the human name lives one hop away on the base record.
+     * The satellite declares that hop itself: its one field referencing the base (the validator guarantees exactly one),
+     * and that field's own displayField names what to show. No DSL keyword: this is derived from {@code satelliteOf}.
+     * Published as {@code reference.labelVia = {field, endpointBase, targetIdField, displayField}} for the UI, which
+     * follows it for a label only (search, sort and pickers' columns stay on the satellite) and falls back to the
+     * satellite's own label when the base record cannot be read. Empty for anything that is not a satellite.
+     */
+    private static Optional<Map<String, Object>> labelVia(
+            CompiledConcept target,
+            Map<String, CompiledConcept> conceptsByName,
+            List<CompiledContext> contexts
+    ) {
+        String satelliteOf = target.getSatelliteOf();
+        if (satelliteOf == null || satelliteOf.isBlank()) {
+            return Optional.empty();
+        }
+        for (CompiledField link : target.getFields()) {
+            String linkTarget = link == null ? null : link.getReferenceTarget();
+            if (linkTarget == null || !satelliteOf.trim().equalsIgnoreCase(linkTarget.trim())) {
+                continue;
+            }
+            CompiledConcept base = conceptsByName.get(linkTarget.trim());
+            if (base == null) {
+                return Optional.empty();
+            }
+            String shown = firstExistingField(base, firstNonBlank(referenceDisplayField(link), inferReferenceDisplayField(base)));
+            if (shown == null || shown.isBlank()) {
+                return Optional.empty();
+            }
+            Map<String, Object> hop = new LinkedHashMap<>();
+            hop.put("field", link.getName());
+            hop.put("endpointBase", endpointBase(base, contexts));
+            hop.put("targetIdField", idField(base).getName());
+            hop.put("displayField", shown);
+            return Optional.of(hop);
+        }
+        return Optional.empty();
     }
 
     private static String referenceDisplayField(CompiledField field) {

@@ -33,8 +33,18 @@ detail: |
   PROGRESS 2026-11-18 -- part (1) DONE: `npdev upgrade --app --allow-destructive` now reads the `acknowledgment token:` line from the
   REPORT_ONLY impact run, rebuilds once with `--destructiveAcknowledgment <token>` (npdev_cli passes it to the generator when
   args.destructive_ack is set), then boots; no token in the report means ACK_TOKEN_MISSING and a rollback. Tests in
-  NPDevCli/tests/test_app_upgrade.py (reg321_*). Still open: (2) the Manager wiring and (3) the itemized `--ack-items` check, plus the
-  real-window proof with a second app.
+  NPDevCli/tests/test_app_upgrade.py (reg321_*).
+  PROGRESS 2026-11-18 (later) -- parts (2) and (3) CODED, real-window proof still open. (3): `npdev upgrade --app --allow-destructive
+  --ack-items "Concept,Concept.field"` parses the `!!` rows of the impact report and refuses (UNACKNOWLEDGED_DESTRUCTIVE_ITEM, old
+  version restored) any destructive row no ticked item covers; a narrowing is never covered; unreadable rows or a count that differs from
+  the summary fail closed. Table/column names use the generator's rule (snake_case + "s"), so an explicit tableName override or a junction
+  table refuses instead of acknowledging blind. (2): Rust `relay_apply_removal` (NPDevManager/src/main.rs) = relay apply + upgrade with
+  the items taken from the ticked REMOVAL codes (`npdev::run_upgrade_app` refuses an empty list: never a blanket yes) + automatic
+  `relay undo` of the model when the upgrade does not end UPGRADED; browserai.js uses it for a `change` with a known app folder
+  (S.removal) and keeps the old "cannot do this" screen for everything else. Tests: test_app_upgrade.py 30/30, Manager Rust relay tests,
+  check-manager-ui-render.mjs (removal flow: box, Apply -> relay_apply_removal, rolled-back sentence). Still open: the real-window proof
+  with a second app (a removal that ends in the app running again with the table in the pre-upgrade backup, and an unticked item that
+  still stops it), and an explicit-tableName model to confirm the refusal is clean.
 resolution: >-
   Done when applying a confirmed removal of a record type, on a running app, ends in the app running again with the data of
   that table in the pre-upgrade backup, proven on the real window with a second app, and a destructive item the person did not

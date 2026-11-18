@@ -13,7 +13,7 @@
     },
     "sales" : {
       "resolvedVersion" : "2.0.0",
-      "digest" : "sha256:5bb232d316f521191035e51af78c13203a6e3da11a129d1513abe4af72abf759",
+      "digest" : "sha256:7eed369a506dd7964c027b511097b0cc6bc684d1903206f555d0426408a0637b",
       "sourcePath" : "packs/sales/pack.json"
     }
   }

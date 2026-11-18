@@ -137,6 +137,65 @@ def parse_ack_token(report_text: str) -> str | None:
     return found[-1] if found else None
 
 
+_DESTRUCTIVE_ROW = re.compile(r"^\s*!!\s+(DESTRUCTIVE_[A-Z_]+)\s+(\S+)\s+(\S+)(?:\s|$)", re.MULTILINE)
+_DESTRUCTIVE_SUMMARY = re.compile(r"summary:\s*\d+\s+safe\s*/\s*\d+\s+attention\s*/\s*(\d+)\s+destructive")
+
+
+def parse_destructive_rows(report_text: str) -> tuple[list[tuple[str, str, str]], int | None]:
+    """REG-321 (3): the destructive rows of the impact report as (safety class, table, column or ""),
+    and the destructive count its summary line states (None when there is no summary)."""
+    rows = [(m.group(1), m.group(2), "" if m.group(3) == "-" else m.group(3))
+            for m in _DESTRUCTIVE_ROW.finditer(report_text or "")]
+    summary = _DESTRUCTIVE_SUMMARY.findall(report_text or "")
+    return rows, (int(summary[-1]) if summary else None)
+
+
+def _snake(value: str) -> str:
+    """SqlIdentifierSupport.toSnake: lower-case, an underscore before an upper-case letter that follows a
+    lower-case letter or digit, every other non-alphanumeric to an underscore."""
+    out, previous = [], ""
+    for index, ch in enumerate((value or "").strip().replace("::", "_")):
+        if ch.isupper() and index > 0 and (previous.islower() or previous.isdigit()):
+            out.append("_")
+        out.append(ch.lower() if ch.isalnum() else "_")
+        previous = ch
+    return re.sub(r"^_+|_+$", "", re.sub(r"_+", "_", "".join(out)))
+
+
+def _table_of(concept: str) -> str:
+    """SqlIdentifierSupport.toSnakePlural: snake-case plus "s" (kept as is when it already ends in s)."""
+    base = _snake(concept)
+    return base if not base or base.endswith("s") else base + "s"
+
+
+def unacknowledged_destructive_items(report_text: str, ack_items: list[str]) -> list[str]:
+    """REG-321 (3): the destructive rows of the impact report that NO ticked item covers. `ack_items` are
+    `Concept` (its whole table) and `Concept.field` (one column) -- the removals the person ticked.
+    Fails closed: when the rows cannot all be read, or their number is not the one the summary states, the
+    report itself is returned as the one unacknowledged item, so a naming convention this does not know
+    (an explicit tableName, a junction table) refuses rather than acknowledging blind."""
+    rows, declared = parse_destructive_rows(report_text)
+    if declared is None or declared != len(rows):
+        return ["(the impact report's destructive rows could not be read)"]
+    tables = {_table_of(item) for item in ack_items if "." not in item}
+    columns = set()
+    for item in ack_items:
+        if "." in item:
+            concept, _, field = item.partition(".")
+            columns.add((_table_of(concept), _snake(field)))
+    missing = []
+    for safety, table, column in rows:
+        if safety == "DESTRUCTIVE_DROP_TABLE" and not column:
+            covered = table in tables
+        elif safety == "DESTRUCTIVE_DROP_COLUMN":
+            covered = (table, column) in columns or table in tables
+        else:
+            covered = False  # a narrowing or anything else is never in a removal preview
+        if not covered:
+            missing.append(f"{table}.{column}" if column else table)
+    return missing
+
+
 # --------------------------------------------------------------------------------------------
 # Preflight helpers
 # --------------------------------------------------------------------------------------------
@@ -435,6 +494,19 @@ def upgrade_app(args: argparse.Namespace, cli) -> dict:
                 "ACK_TOKEN_MISSING",
                 "the impact report named no acknowledgment token, so the destructive change cannot be "
                 "acknowledged; rolling back.", None, "IMPACT")
+        ack_items = getattr(args, "ack_items", None)
+        if ack_items is not None:
+            # REG-321 (3): the acknowledgment stays itemized -- a destructive row nobody ticked stops it.
+            unticked = unacknowledged_destructive_items(
+                impact_text, [i.strip() for i in str(ack_items).split(",") if i.strip()])
+            if unticked:
+                result["diagnostics"].append(cli._diag(
+                    "IMPACT", "UNACKNOWLEDGED_DESTRUCTIVE_ITEM",
+                    "the upgrade would also drop data nobody confirmed: " + ", ".join(unticked) + ".",
+                    suggested_fix="Nothing was applied. Confirm every removal the plan lists, or change the model."))
+                rolled = rollback("IMPACT")
+                rolled["outcome"] = REFUSED if rolled["outcome"] == ROLLED_BACK else rolled["outcome"]
+                return rolled
         result["diagnostics"].append(cli._diag(
             "IMPACT", "DESTRUCTIVE_ALLOWED", "destructive schema change allowed by --allow-destructive."))
         acked = cli.run_app(_run_app_args(args, app_root, int(port), remaining(), model=str(model_path),

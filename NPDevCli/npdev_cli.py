@@ -18394,6 +18394,10 @@ def build_parser() -> argparse.ArgumentParser:
     upgrade_parser.add_argument("--allow-destructive", action="store_true",
                                 help="with --app: proceed even when the schema impact check reports a "
                                      "destructive change (dropped data)")
+    upgrade_parser.add_argument("--ack-items", default=None, dest="ack_items",
+                                help="with --app --allow-destructive: itemize the acknowledgment. Comma-separated "
+                                     "removals the person confirmed (`Concept` = its table, `Concept.field` = one "
+                                     "column); a destructive change the list does not cover is refused")
     upgrade_parser.add_argument("--skip-db-backup", action="store_true",
                                 help="with --app: do not require a Postgres/MySQL dump (you backed the "
                                      "database up yourself)")
