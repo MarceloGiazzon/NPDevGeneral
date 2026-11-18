@@ -110,13 +110,13 @@ def dependency_ids(doc: dict, pack_dir_name: str, errors: list[str]) -> list[str
 
 
 def capability_names(doc: dict) -> list[str]:
-    """`requires.capabilities` (what the pack needs) then `customCapabilities[].name` (what it
+    """`requires.capabilities` (what the pack needs) then `capabilities[].name` (what it
     declares), without duplicates."""
     names: list[str] = []
     requires = doc.get("requires")
     if isinstance(requires, dict):
         names.extend(c for c in requires.get("capabilities") or [] if isinstance(c, str))
-    for custom in doc.get("customCapabilities") or []:
+    for custom in doc.get("capabilities") or []:
         if isinstance(custom, dict) and isinstance(custom.get("name"), str):
             names.append(custom["name"])
     return list(dict.fromkeys(names))

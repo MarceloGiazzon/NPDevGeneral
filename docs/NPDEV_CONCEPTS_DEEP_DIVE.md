@@ -266,7 +266,7 @@ app's own database), `inproc` (an in-process event bus for `eventBus`), `notific
 **Custom capability** — when you need logic no built-in adapter provides:
 
 ```jsonc
-"customCapabilities": [
+"capabilities": [
   { "name": "triageAssistant", "type": "TriageAssistantCapability",
     "adapter": "plugin:java-source", "operations": ["score"] }
 ]

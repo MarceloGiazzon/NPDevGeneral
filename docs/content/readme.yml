@@ -304,7 +304,7 @@ sections:
       | a panel `slot`, a custom region, a custom widget | your own component above, below or **instead of** a generated panel body, inside a generated workbench (`render: "component"`), or for one field (`ui.widget: "custom"`) |
       | `metadata.untrustedExtensionEntrypoint` on a procedure | your own Java class, pinned by hash in the app's `untrusted-extension-manifest.json`, admitted through the same bytecode/AST safety gate as a mounted plugin |
       | `metadata.untrustedExtensionEntrypoint` on a panel | your own HTML/JS asset, hash-pinned into the app — for bringing an existing page with you |
-      | a `capability` with a swapped `binding`, or a `customCapabilities` entry | the contract stays in the model; the implementation is yours and is resolved at runtime |
+      | a `capability` with a swapped `binding`, or a `plugin:*` capability entry | the contract stays in the model; the implementation is yours and is resolved at runtime |
       | the generated REST API (with an OpenAPI description) | a separate frontend, mobile app or other service is just another client — outside the blast radius of a regeneration entirely |
 
       Regeneration deliberately spares exactly three directories inside a built app — `data`, `logs`,

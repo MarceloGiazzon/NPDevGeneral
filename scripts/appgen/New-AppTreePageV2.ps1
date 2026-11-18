@@ -229,7 +229,6 @@ $ModelKeyToBucket = @{
   propertyScopes      = 'Features'
   properties          = 'Features'
   capabilities        = 'Features'
-  customCapabilities  = 'Features'
   events              = 'Features'
   queries             = 'Features'
   ruleProfiles        = 'Features'

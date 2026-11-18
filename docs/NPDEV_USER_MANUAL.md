@@ -276,7 +276,7 @@ Maven dependency (or a local jar) on its classpath that NPDev doesn't already sh
   scope. Use the object forms for a different scope (`implementation` / `runtimeOnly` /
   `compileOnly` / `testImplementation`), a local jar, or a BOM (`platform`).
 - **Local jars** go in `<the folder holding this app's model.json>/libs/*.jar` -- the same
-  definition-folder convention `customCapabilities` already uses for
+  definition-folder convention a `plugin:java-source` capability already uses for
   `<definition>/capabilities/<name>/src/main/java`. They're copied into the generated app
   automatically; reference one with a `{ "jar": "libs/your-file.jar" }` dependency entry.
 - If a declared dependency's `groupId:artifactId` is already on the app's classpath (a Spring Boot
@@ -354,7 +354,7 @@ carry it say so in a `NOTICE` on every boot. Existing apps keep working unchange
 This is where your app "happens": `version` (your own app
 version string), `namespace` (a Java-style package name), and `concepts` (at least one) are
 required. (`dslVersion` is optional: omit it, or write `"3.0.0"`.) Everything else — `flows`, `events`, `queries`, `procedures`, `panels`,
-`capabilities`, `customCapabilities` — is optional and is exactly what
+`capabilities` — is optional and is exactly what
 the four levels below add, one at a time.
 
 **Choosing one value, or several.** A field that holds one of a fixed set is
@@ -655,8 +655,8 @@ enforced is never applied halfway.
 
 **What you learn:** writing your own capability in Java when built-in behavior isn't enough,
 authoring a hand-designed panel instead of the automatic one, and a flow that *pauses* and
-waits for a real-world event before continuing. **New vocabulary:** `customCapabilities`
-(`plugin:java-source`), `panel` authoring, `awaitEvent` (resumable flow), multi-tenant data.
+waits for a real-world event before continuing. **New vocabulary:** a `capabilities` entry with
+`plugin:java-source`, `panel` authoring, `awaitEvent` (resumable flow), multi-tenant data.
 
 This is where NPDev stops being "just JSON" and starts being a real development platform: you
 can drop in a few lines of Java for logic that has no generic built-in equivalent (like
@@ -680,7 +680,7 @@ green end-to-end. Three pieces, trimmed from its real `model.json`:
 **1. A custom capability** — declared in `model.json`:
 
 ```json
-"customCapabilities": [
+"capabilities": [
   { "name": "triageAssistant", "type": "TriageAssistantCapability",
     "adapter": "plugin:java-source", "operations": ["score"] }
 ]

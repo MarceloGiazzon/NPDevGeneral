@@ -56,7 +56,8 @@ class FakeApp:
                 "modelPath": str(self.model)}
 
     def run_app(self, ns: argparse.Namespace) -> dict:
-        self.calls.append({"stop_after_build": ns.stop_after_build, "skip": ns.skip_generate_and_build})
+        self.calls.append({"stop_after_build": ns.stop_after_build, "skip": ns.skip_generate_and_build,
+                           "destructive_ack": getattr(ns, "destructive_ack", None)})
         if ns.stop_after_build:
             for child in list(self.root.iterdir()):
                 if child.name not in ("data", "logs", "secrets"):
@@ -103,6 +104,7 @@ class UpgradeAppTest(unittest.TestCase):
         self.app = FakeApp(Path(self._tmp.name))
         self.report = {"status": "passed", "diagnostics": []}
         self.impact = 0
+        self.impact_text = "  summary: 0 safe / 0 attention / 1 destructive\n  acknowledgment token: " + "ab12" * 16 + "\n"
         self.listening = False
         self.service = "no"
         self.stop_calls = 0
@@ -127,7 +129,8 @@ class UpgradeAppTest(unittest.TestCase):
             mock.patch.object(npdev_cli, "ensure_api_key", return_value="k"),
             mock.patch.object(npdev_cli, "run_app", side_effect=app.run_app),
             mock.patch.object(npdev_cli, "run_validate_semantic", side_effect=fake_validate),
-            mock.patch.object(npdev_app_upgrade, "impact_exit_code", side_effect=lambda *a, **k: self.impact),
+            mock.patch.object(npdev_app_upgrade, "impact_run",
+                              side_effect=lambda *a, **k: (self.impact, self.impact_text)),
             mock.patch.object(npdev_app_upgrade, "service_state", side_effect=lambda *a, **k: self.service),
             mock.patch.object(npdev_app_upgrade, "_stop_app", side_effect=fake_stop),
         ]
@@ -209,6 +212,21 @@ class UpgradeAppTest(unittest.TestCase):
         self.impact = 3
         result = self._upgrade(allow_destructive=True)
         self.assertEqual(result["outcome"], "UPGRADED")
+
+    def test_reg321_destructive_with_flag_rebuilds_with_the_token_from_the_report(self):
+        self.impact = 3
+        result = self._upgrade(allow_destructive=True)
+        self.assertEqual(result["outcome"], "UPGRADED")
+        acks = [c.get("destructive_ack") for c in self.app.calls]
+        self.assertEqual(acks, [None, "ab12" * 16, None], "build, token rebuild, boot")
+
+    def test_reg321_no_token_in_the_report_rolls_back_instead_of_booting_into_a_refusal(self):
+        self.impact = 3
+        self.impact_text = "  summary: 0 safe / 0 attention / 1 destructive\n"
+        result = self._upgrade(allow_destructive=True)
+        self.assertEqual(result["outcome"], "ROLLED_BACK")
+        self.assertIn("ACK_TOKEN_MISSING", [d["code"] for d in result["diagnostics"]])
+        self.assertEqual(self.app.boot_jars, [b"OLD-JAR"])
 
     def test_needs_attention_impact_continues_with_a_diagnostic(self):
         self.impact = 2

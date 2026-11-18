@@ -61,7 +61,7 @@ is unchanged.
 | VALIDATE | full structural + semantic validation of the model, before anything is copied | errors: `REFUSED`, with `npdev migrate dsl-2 --input <model> --write` suggested for retired syntax |
 | BACKUP | `<app>/data/backups/pre-upgrade-<UTC>/` gets `code/` (the jar, `npdev-generated/`, `_ops/`) and the data (below) | a Postgres/MySQL app with no `deploy/backup.sh` (or no `bash`) and no `--skip-db-backup`: `REFUSED` before any build |
 | BUILD | the same GENERATE + BUILD phases as `npdev run app` | build failure: rollback |
-| IMPACT | the new jar runs once with `-Dnpdev.schema.lifecycle.mode=REPORT_ONLY` (writes nothing): exit 0 safe, 2 needs attention (reported, continues), 3 destructive | 3 without `--allow-destructive`: old version restored, `REFUSED`; any other exit: rollback |
+| IMPACT | the new jar runs once with `-Dnpdev.schema.lifecycle.mode=REPORT_ONLY` (writes nothing): exit 0 safe, 2 needs attention (reported, continues), 3 destructive | 3 without `--allow-destructive`: old version restored, `REFUSED`; 3 with it: the `acknowledgment token:` line of the report is baked into one more generate+build (`--destructiveAcknowledgment`), and a report without a token rolls back (`ACK_TOKEN_MISSING`); any other exit: rollback |
 | BOOT / READY | the same BOOT + `/actuator/health` loop as `npdev run app`; this is where the schema migration is applied for real. On success the JVM is left running | not healthy: rollback |
 | ROLLBACK | restores the previous jar, `npdev-generated/` and `_ops/` (and embedded data), boots the old jar and health-checks it | old version does not boot either: `ROLLBACK_FAILED` |
 

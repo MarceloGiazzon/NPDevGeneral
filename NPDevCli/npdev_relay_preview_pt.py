@@ -33,7 +33,7 @@ ITEM_PT = {
     "properties": ("configuração", "configurações", "f"),
     "propertyScopes": ("nível de configuração", "níveis de configuração", "m"),
     "modules": ("área", "áreas", "f"),
-    "customCapabilities": ("serviço de que precisa", "serviços de que precisa", "m"),
+    "capabilities": ("serviço de que precisa", "serviços de que precisa", "m"),
 }
 
 # What changed about one field or concept, by the key that changed (mirrors the CLI's `_attr_words`).

@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class DslCustomCapabilityAliasTest {
 
     @Test
-    void parserMergesCustomCapabilitiesIntoCanonicalCapabilitiesList() throws Exception {
+    void capabilitiesWithTypedOperationsAreParsedAndTheLegacyAliasIsGone() throws Exception {
         String json = """
                 {
                   "namespace": "demo",
@@ -33,9 +33,7 @@ class DslCustomCapabilityAliasTest {
                       "name": "persistence",
                       "type": "PersistenceCapability",
                       "operations": ["save"]
-                    }
-                  ],
-                  "customCapabilities": [
+                    },
                     {
                       "name": "customExtension",
                       "type": "CustomProcedureCapability",

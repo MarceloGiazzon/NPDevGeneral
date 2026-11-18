@@ -95,7 +95,7 @@ processes, screens, permissions, and how it all changes over time.
 | **Operation `policy`** | per capability operation: `retryCount`/`retryDelayMs`, `timeoutMs`, a circuit breaker (`circuitOpenAfterFailures`), a bulkhead (`bulkheadMaxConcurrent`) and idempotency keys |
 | **HTTP connectors** | a capability bound to `http-connector` calls an outside REST API with no client code; `baseUrl` can come from a tenant-overridable property, and credentials are named environment variables, never values in the model |
 | **`capabilities[].inbound`** | an inbound door at `POST /api/hooks/{path}`: the HMAC-SHA256 signature is checked against an environment variable (by default `NPDEV_WEBHOOK_<PATH>_SECRET`), then the event wakes a flow waiting on it, or the flow whose `trigger` is `{webhook: <the capability>}` starts |
-| **`customCapabilities`** | your own Java, called from a flow, when the declarative vocabulary runs out — sandboxed (no files, network or DB), so a flow hands it what it needs: query results, and uploaded images through the built-in **`fileStore.readImage`** capability (a `file` field → tenant-checked `data:` URI). Pigmentampas' *Paint from photo* is the worked example |
+| **`capabilities` with `plugin:java-source`** | your own Java, called from a flow, when the declarative vocabulary runs out — sandboxed (no files, network or DB), so a flow hands it what it needs: query results, and uploaded images through the built-in **`fileStore.readImage`** capability (a `file` field → tenant-checked `data:` URI). Pigmentampas' *Paint from photo* is the worked example |
 
 ## 5. Screens
 

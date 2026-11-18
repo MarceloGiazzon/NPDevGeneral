@@ -4,7 +4,7 @@ title: >-
   --allow-destructive passes the impact check but the boot step still refuses for lack of the acknowledgment token
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: PARTIAL
 opened: 2026-11-10
 source: >-
   REG-320 (2026-11-10): choosing between its options (a) "the preview's tick IS the itemized acknowledgment" and (c) "decline
@@ -30,6 +30,11 @@ detail: |
   instead of its own stop/generate/build/start, and words UPGRADED / REFUSED / ROLLED_BACK in plain sentences; (3) the
   acknowledgment must stay ITEMIZED: only proceed when every destructive item the plan lists is one the person ticked (a type
   narrowing the preview did not show must still stop it). Until then the Manager declines such an answer (REG-320, option c).
+  PROGRESS 2026-11-18 -- part (1) DONE: `npdev upgrade --app --allow-destructive` now reads the `acknowledgment token:` line from the
+  REPORT_ONLY impact run, rebuilds once with `--destructiveAcknowledgment <token>` (npdev_cli passes it to the generator when
+  args.destructive_ack is set), then boots; no token in the report means ACK_TOKEN_MISSING and a rollback. Tests in
+  NPDevCli/tests/test_app_upgrade.py (reg321_*). Still open: (2) the Manager wiring and (3) the itemized `--ack-items` check, plus the
+  real-window proof with a second app.
 resolution: >-
   Done when applying a confirmed removal of a record type, on a running app, ends in the app running again with the data of
   that table in the pre-upgrade backup, proven on the real window with a second app, and a destructive item the person did not

@@ -51,7 +51,7 @@ from pathlib import Path
 # resolved before the MODEL_ARRAY_KEYS merge so it's absent from that Java set, but still legitimately
 # movable content).
 MOVABLE_KEYS = (
-    "concepts", "domainTypes", "capabilities", "customCapabilities", "events", "flows",
+    "concepts", "domainTypes", "capabilities", "events", "flows",
     "queries", "procedures", "panels",
     "fragments",
 )

@@ -308,9 +308,7 @@
       ],
       "type": "NotifyCapability",
       "adapter": "notify"
-    }
-  ],
-  "customCapabilities": [
+    },
     {
       "name": "mosaicPainter",
       "operations": [

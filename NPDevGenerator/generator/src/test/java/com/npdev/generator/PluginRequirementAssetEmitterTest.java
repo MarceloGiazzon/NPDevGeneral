@@ -46,9 +46,7 @@ class PluginRequirementAssetEmitterTest {
                       "operations": [
                         "save"
                       ]
-                    }
-                  ],
-                  "customCapabilities": [
+                    },
                     {
                       "name": "customExtension",
                       "type": "CustomProcedureCapability",

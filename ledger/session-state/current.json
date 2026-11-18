@@ -1,17 +1,36 @@
 {
-  "closedAt": "2026-11-18T16:16:24.1067918Z",
+  "closedAt": "2026-11-18T20:17:09.3233105Z",
   "branch": "main",
-  "head": "6279b6dc",
-  "headSubject": "feat(form): experiences/screens/backOffice, root keys folded into concepts, procedure executor single implementation (FORM P3-T7, P5)",
-  "summary": "Verified and committed the whole uncommitted FORM P3-T7/P5 work as 6279b6dc on main (pushed). Fixed what verification found: stale PasswordPageUxTest assertion, PanelRuntimeOnRowLoadTest old ProcedureRunner ctor, dead theme-object branch in ExperienceEmitter (schema types theme as string; it pulled generator coverage under its ratchet floor), DSL_REFERENCE floor 15->11 for the four removed root keys. Plan 59/62 = 95.2%.",
-  "nextStep": "Nothing is uncommitted. Remaining plan: P4-T5 (D14, needs the owner present) and P1-T6 (only with a real schema edit). Optional catch-up on what was NOT run this session: kernel gate (python scripts/ai/run_digest.py -- pwsh -NoProfile -File scripts/quality/run-kernel-quality-gate.ps1), aiKnowledge gate (-Only aiKnowledge; CI runs it on 6279b6dc anyway), run-shell-scenarios.ps1; then check the CI result of 6279b6dc on GitHub. NEVER run two Gradle jobs at once: the generator gate and test_relay_files RealGateTests share Build/gradle/npdev-generator and wipe each other's classes.",
+  "head": "59d51e70",
+  "headSubject": "fix(ci): green the AI Knowledge Gate and Engine-support jobs after 6279b6dc",
+  "summary": "Closed REG-331 (derivedExpression over a rollup now re-derived, tests green), did the CLI half of REG-321 (upgrade reads the ack token, rebuilds with it), merged customCapabilities into capabilities[] with no new keyword (P4-T5 part 1: schemas, parser, 5 corpus models, docs, keyword budget 802 to 801) and added a typed-input arity check on capabilityCall (P4-T5 part 2). REG-336 designed and recorded, not built. NOTHING IS COMMITTED.",
+  "nextStep": "Commit this working tree on main first (run scripts/hygiene/clean-workspace-state.ps1 before the commit, then git push origin main), or decide to keep going. Then either: P4-T5 remainder (relay T4.4 JS+Java quarantine, needs the owner present for the D14 sandbox review), or REG-321 Manager wiring plus --ack-items in NPDevCli/npdev_app_upgrade.py and NPDevManager/ui/browserai.js, or REG-336 via a label-only displayThrough key (design is in ledger/items/REG-336.yml).",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\NPDEV_FORM_PLAN_2026-11-13\\impl\\TASKS.md",
-  "blocked": "P4-T5 needs the owner present (D14).",
-  "verified": "GREEN: run_selected.py (11 commands: dsl tests, schema mirror, concept-map, keyword-budget, behavior probes, canary, exposure-matrix/ride-hailing 141/141, twin-pair, dsl-coverage, panel-provenance, experience-client); run-journeys.ps1; run-f6-showcase.ps1; run-generator-gate.ps1 (after fixes, 284s, no ratchet regression); run-runtimehost-gate.ps1 (289s); run-untrusted-extension-security-check.ps1; full NPDevCli unittest 2161 tests (1 failure was a Gradle collision, test_relay_files re-run alone 22/22 OK); check-dsl-reference-output-floor.py; clean-workspace-state + slimness. NOT run: kernel gate, aiKnowledge gate, run-shell-scenarios, -IncludePaperwork, model-validate-touched (manual).",
-  "dirtyCount": 0,
-  "dirtyFiles": [],
+  "blocked": "P4-T5 quarantine needs the owner D14 sandbox review; REG-342 needs the 2 external WMS apps (WmsOffice, WmsOfficePackTest) migrated off procedures[]; REG-332/334/335 need a real chat AI, ngrok or the owner browser.",
+  "verified": "run-shell-scenarios.ps1 green (5 golden browser scenarios + a11y baseline); run-behavior-probes.ps1 163/163 (first run had 1 flaky now() probe, passed on rerun); RollupConceptStoreDecoratorTest green; NPDevCli test_app_upgrade 25/25; :NPDevContract:dsl:test full suite 1536 green; two generator tests green; 4 migrated models validate with no errors; run-fast-gate.ps1 T1 PASSED (it listed OVERDUE check-adr-decision-implementation and check-doc-references, not run); run_selected --level core green; check-dsl-keyword-budget, check-concept-map, check-schema-mirror, check-dsl-coverage, check-twin-pair, check-done-item-guards, check-doc-inventory, check-no-markdown-reads OK. NOT run: kernel gate, full NPDevCli suite, aiKnowledge gate, exposure-matrix.",
+  "dirtyCount": 60,
+  "dirtyFiles": [
+    " M BREAKING.md",
+    " M NPDevCli/dsl_v2_migration_bounded_contexts.py",
+    " M NPDevCli/npdev_app_upgrade.py",
+    " M NPDevCli/npdev_cli.py",
+    " M NPDevCli/npdev_pack_sheet.py",
+    " M NPDevCli/npdev_relay_pack.py",
+    " M NPDevCli/npdev_relay_preview_pt.py",
+    " M NPDevCli/npdev_static_pages.py",
+    " M NPDevCli/relay-ingest-policy.json",
+    " M NPDevCli/tests/test_app_upgrade.py",
+    " M NPDevContract/dsl/resources/Schemas/model.schema.json",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/pack/PackDiffEngine.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/FlowValidation.java",
+    " M NPDevContract/dsl/src/main/resources/schema/model.schema.json",
+    " M NPDevContract/dsl/src/main/resources/schema/pack.schema.json",
+    " M NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/DslCustomCapabilityAliasTest.java",
+    " M NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/DslFlowModelTest.java",
+    " M NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/DslSchemaConformanceTest.java"
+  ],
   "unpushed": 0,
-  "landedCommits": [
-    "6279b6dc feat(form): experiences/screens/backOffice, root keys folded into concepts, procedure executor single implementation (FORM P3-T7, P5)"
-  ]
+  "landedCommits": []
 }

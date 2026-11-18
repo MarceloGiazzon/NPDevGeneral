@@ -360,7 +360,7 @@ _MODEL_KEY_TO_BUCKET = {
     "flows": "Procedures", "procedures": "Procedures",  "conversions": "Procedures",
     "packs": "Features", "modules": "Features", "provides": "Features",
     "roles": "Features", "propertyScopes": "Features", "properties": "Features",
-    "capabilities": "Features", "customCapabilities": "Features",
+    "capabilities": "Features",
     "events": "Features", "queries": "Features",
     "schemaVersion": "ProjectGeneral", "dslVersion": "ProjectGeneral", "namespace": "ProjectGeneral",
     "model": "ProjectGeneral", "version": "ProjectGeneral", "metadata": "ProjectGeneral",

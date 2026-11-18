@@ -398,7 +398,6 @@ public final class PackDiffEngine {
             case "concepts" -> "concept";
             case "domainTypes" -> "domain type";
             case "capabilities" -> "capability";
-            case "customCapabilities" -> "custom capability";
             case "events" -> "event";
             case "flows" -> "flow";
             case "queries" -> "query";

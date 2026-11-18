@@ -48,7 +48,6 @@ public final class ModelSourceResolver {
             "concepts",
             "domainTypes",
             "capabilities",
-            "customCapabilities",
             "events",
             "flows",
             "queries",
@@ -718,9 +717,9 @@ public final class ModelSourceResolver {
      * each member kind's own array. Mirrors {@link #recordPhysicalQualifiers}'s own "derive straight
      * off the pack's own JSON header, never the local alias" rule for {@code packId}.
      *
-     * <p>Deliberately walks all 18 {@link #MODEL_ARRAY_KEYS} kinds (via {@link #memberRewriteMap},
-     * the same generalized walker PK-1 steps 1-4 already built) even though only 8 of them
-     * (concepts, domainTypes, capabilities, customCapabilities, events, flows, queries, roles,
+     * <p>Deliberately walks all {@link #MODEL_ARRAY_KEYS} kinds (via {@link #memberRewriteMap},
+     * the same generalized walker PK-1 steps 1-4 already built) even though only some of them
+     * (concepts, domainTypes, capabilities, events, flows, queries, roles,
      * panels) currently carry an {@code origin} field on their {@code Compiled*}/{@code *Ast} type
      * -- {@code JsonModelParser} only ever looks up the 8 kinds it knows about, so the extra entries
      * for the other 10 kinds are simply never read. Doing the walk generically here (rather than
@@ -858,16 +857,12 @@ public final class ModelSourceResolver {
     /** PK-1: one rewrite map per {@link #MODEL_ARRAY_KEYS} kind for a single pack/context
      *  contribution, keyed by kind so a reference field (e.g. {@code query}) only ever resolves
      *  against that kind's own map (e.g. {@code queries}), never a same-named member of a
-     *  different kind. {@code capabilities} and {@code customCapabilities} share one merged map --
-     *  a {@code capability} reference field does not distinguish which of the two declared it. */
+     *  different kind. */
     static Map<String, Map<String, String>> buildRewriteMaps(String qualifierId, ObjectNode sourceNode) {
         Map<String, Map<String, String>> maps = new LinkedHashMap<>();
         for (String kind : MODEL_ARRAY_KEYS) {
             maps.put(kind, memberRewriteMap(qualifierId, sourceNode, kind));
         }
-        Map<String, String> mergedCapabilities = new LinkedHashMap<>(maps.getOrDefault("capabilities", Map.of()));
-        mergedCapabilities.putAll(maps.getOrDefault("customCapabilities", Map.of()));
-        maps.put("capabilities", mergedCapabilities);
         return maps;
     }
 
@@ -923,9 +918,6 @@ public final class ModelSourceResolver {
                 ambiguousNames.put(kindEntry.getKey(), ambiguous);
             }
         }
-        Map<String, String> mergedCapabilities = new LinkedHashMap<>(globalRewriteMaps.getOrDefault("capabilities", Map.of()));
-        mergedCapabilities.putAll(globalRewriteMaps.getOrDefault("customCapabilities", Map.of()));
-        globalRewriteMaps.put("capabilities", mergedCapabilities);
 
         for (String kind : MODEL_ARRAY_KEYS) {
             // R8.8: seeds[] is deliberately excluded from this GLOBAL cross-pack pass -- see
@@ -1234,7 +1226,7 @@ public final class ModelSourceResolver {
      *  guidePageGadget.query), procedure (panelAction/panelDataSource/flowStep/procedureStep/
      *  autoPanelDataSource.procedure), flow (panelAction.flow), capability
      *  (binding.capability/orchestrationAction.capability/flowStep.capability/
-     *  procedureStep.capability -- capabilities and customCapabilities share one lookup, see
+     *  procedureStep.capability -- see
      *  {@link #buildRewriteMaps}), event (lifecycleTransition/orchestrationTrigger/
      *  orchestrationAction/flowStep/procedureStep.event), guidePage (panel.guidePage), and
      *  propertyScope (property.settableAt[], the one array-of-references field found). Concept

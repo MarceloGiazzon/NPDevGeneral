@@ -65,7 +65,7 @@ def static_errors(pack, pack_id: str, text: str) -> list[str]:
         lines.append('pack.json version - a pack version looks like "1.0.0" (three numbers) - write it that way')
     if pack.get("bindings"):
         lines.append("pack.json bindings - a reusable pack must not bind to an adapter of one application - "
-                     "remove \"bindings\" and describe the need as a customCapabilities contract")
+                     "remove \"bindings\" and describe the need as a capabilities contract")
     for key in NPDEV_OWNED:
         if key in pack:
             lines.append(f'pack.json {key} - NPDev fills this when the pack is published - remove "{key}"')

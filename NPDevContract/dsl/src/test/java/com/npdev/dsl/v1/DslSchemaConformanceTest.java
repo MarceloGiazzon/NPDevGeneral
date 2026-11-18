@@ -44,7 +44,7 @@ class DslSchemaConformanceTest {
                       ]
                     }
                   ],
-                  "customCapabilities": [
+                  "capabilities": [
                     {
                       "name": "insurancePortal",
                       "type": "ExternalCapability",
@@ -60,7 +60,7 @@ class DslSchemaConformanceTest {
                 }
                 """);
         Set<ValidationMessage> violations = schema.validate(model);
-        assertTrue(violations.isEmpty(), "Expected schema-valid customCapabilities alias, got: " + violations);
+        assertTrue(violations.isEmpty(), "Expected schema-valid typed capability, got: " + violations);
     }
 
     @Test

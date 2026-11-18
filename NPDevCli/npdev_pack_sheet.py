@@ -200,13 +200,13 @@ def render(pack: dict) -> str:
 
 # --------------------------------------------------------------------------- the plain-words preview (P4.4)
 
-COUNTED = ("concepts", "fields", "queries", "flows", "procedures", "roles", "customCapabilities")
+COUNTED = ("concepts", "fields", "queries", "flows", "procedures", "roles", "capabilities")
 SHOWN_FIELDS = 6
 SHOWN_CONCEPTS = 8
 SHOWN_CHANGES = 8
 ITEM_EN = {"concepts": ("kind of record", "kinds of record"), "fields": ("field", "fields"), "queries": ("search", "searches"),
            "flows": ("process", "processes"), "procedures": ("action", "actions"), "roles": ("role", "roles"),
-           "customCapabilities": ("service it needs", "services it needs")}
+           "capabilities": ("service it needs", "services it needs")}
 CHANGE_EN = {"ADDITIVE": "something added", "BREAKING": "something removed or changed that apps may rely on", "PATCH": "a small fix"}
 
 
@@ -293,7 +293,7 @@ def plain_preview(pack: dict, base: dict | None = None, gate: dict | None = None
     for query in _list(pack, "queries"):
         lines.append(_line("PACK_QUERY", f'Search {query.get("name", "?")}: reads {query.get("concept", "?")} records.',
                            name=str(query.get("name", "?")), concept=str(query.get("concept", "?"))))
-    needs = [str(c.get("name")) for c in _list(pack, "customCapabilities") if c.get("name")]
+    needs = [str(c.get("name")) for c in _list(pack, "capabilities") if c.get("name")]
     if needs:
         lines.append(_line("PACK_NEEDS", f"It asks the app that uses it to provide: {_words(needs)}.", names=needs))
     findings = [f for f in (gate or {}).get("findings") or [] if isinstance(f, dict) and f.get("message")]

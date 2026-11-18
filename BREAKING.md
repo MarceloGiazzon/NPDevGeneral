@@ -6,6 +6,14 @@ one-line entry here, in the same commit that makes the change. While NPDev has n
 (owner, 2026-11-12) a change ships without an `npdev migrate` codemod; this repo's own models are
 migrated directly in the same commit. Earlier entries name the codemods written before that.
 
+## 2026-11-18 — a capability operation with a typed object `input` takes exactly one argument (FORM P4-T5, typed contract)
+
+The validator now checks every `capabilityCall` against the operation's declared contract: when the operation's `input` is an object schema, the step must pass exactly one argument (`args: ["$input"]`, or the single-payload `input` shorthand). Zero or several arguments are refused with "declares a typed object input". All 13 call sites in the corpus already complied.
+
+## 2026-11-18 — `customCapabilities` is merged into `capabilities` (FORM P4-T5, REG-342 prerequisite)
+
+`customCapabilities` was only ever an alias of `capabilities[]` (the parser fed both into one list). It is gone from every schema (model, model-fragment, pack) and from the parser; a model that still carries it is refused with `LEGACY_CUSTOM_CAPABILITIES_ROOT_KEY` and the sentence "move every entry into `capabilities`". No new keyword: `adapter: "plugin:*"` already marks a code capability. The keyword budget went down by one slot (802 -> 801). This repo's own models (pigmentampas, lib-probe, p7-plugin-controller, the notification pack and its proof copy) were migrated in the same commit.
+
 ## 2026-11-18 — one step engine: the procedure executor keeps only the concept steps; `npdev run-procedure` / `debug-procedure` are gone (FORM P3-T7)
 
 `procedures[]` are declarative stubs for trusted Java code (every executable procedure became a flow in P3-T5c), so nothing at runtime ran their steps, yet `DefaultProcedureExecutor` still carried a second copy of if / forEach / return / saveConcept / callCapability / publishEvent / mapValue / computeValue. Those are deleted: the executor is now the single implementation of `set`, `readConcept`, `listConcepts`, `runQuery`, `deleteConcept`, `map` (select forms) and `updateConcept`'s patch, which the flow engine calls per step. `ProcedureStepType` shrinks to those eight values and `ProcedureStep` to the 12 fields they read; `DefaultProcedureExecutor` and `ProcedureRunner` lose the capability-dispatcher / event-bus / procedure-registry constructor arguments. The CLI commands `run-procedure` and `debug-procedure` are removed (`list-procedures` stays; run a flow with `execute`). Kernel behaviour for flows is unchanged (behaviour probes and ride-hailing acceptance re-run); tests that only covered the deleted step types were removed.

@@ -91,7 +91,7 @@ def kind_of(doc: dict, road: dict | None) -> str:
     if road and road.get("kind"):
         return road["kind"]
     if not doc.get("concepts"):
-        return "capability" if (doc.get("customCapabilities") or doc.get("capabilities")) else "data-type"
+        return "capability" if doc.get("capabilities") else "data-type"
     return "module"
 
 

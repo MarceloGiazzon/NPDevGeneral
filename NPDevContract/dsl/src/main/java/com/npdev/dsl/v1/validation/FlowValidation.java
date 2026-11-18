@@ -84,6 +84,9 @@ final class FlowValidation {
     private FlowValidation() {
     }
 
+    /** Prefix of the synthetic {@code operationsByCapability} keys that list a capability's typed-input operations. */
+    private static final String TYPED_INPUT_KEY = "#typedInput:";
+
     private static final Map<String, Set<String>> BUILTIN_CAPABILITY_OPERATIONS = Map.of(
             "persistencecapability", Set.of("save", "delete", "query", "exists"),
             "persistence", Set.of("save", "delete", "query", "exists"),
@@ -809,6 +812,14 @@ final class FlowValidation {
         }
     }
 
+    /** A capability call hands over its payload as {@code args[]} or, in the single-payload shorthand, as {@code input}. */
+    private static int passedArgumentCount(StepAst step) {
+        if (!step.getArgs().isEmpty()) {
+            return step.getArgs().size();
+        }
+        return normalize(step.getInput()).isBlank() ? 0 : 1;
+    }
+
     private static void validateCapabilityStep(
             FlowAst flow,
             StepAst step,
@@ -840,6 +851,13 @@ final class FlowValidation {
             errors.add("Flow " + flow.getName() + " step " + step.getName()
                     + ": references unknown operation " + step.getOperation()
                     + " for capability " + step.getCapability());
+        } else if (operationsByCapability.getOrDefault(TYPED_INPUT_KEY + capability, Set.of()).contains(operation)
+                && passedArgumentCount(step) != 1) {
+            // The call is checked against the operation's declared contract: a typed object input is ONE payload.
+            errors.add("Flow " + flow.getName() + " step " + step.getName()
+                    + ": operation " + step.getOperation() + " of capability " + step.getCapability()
+                    + " declares a typed object input, so the call passes exactly one argument (the payload) but passes "
+                    + passedArgumentCount(step) + " -- suggestedFix: pass a single argument holding the object, e.g. args: [\"$input\"]");
         }
 
         validateCapabilityPolicy(
@@ -1176,9 +1194,20 @@ final class FlowValidation {
             }
             operationsByCapability.put(capabilityKey, operations);
 
+            // P4-T5 (typed contract): operations whose declared input is an object schema. Kept under a
+            // synthetic key (a '#' can never start a capability name) so the map's shape and its seven
+            // call sites stay as they were; nothing iterates the keys.
+            Set<String> typedInput = capability.getOperations().stream()
+                    .filter(op -> op.getInputSchema() != null && "object".equalsIgnoreCase(op.getInputSchema().getType()))
+                    .map(CapabilityOperationAst::getName)
+                    .map(SemanticValidator::normalize)
+                    .collect(Collectors.toCollection(HashSet::new));
+            operationsByCapability.put(TYPED_INPUT_KEY + capabilityKey, typedInput);
+
             String capabilityType = normalize(capability.getType());
             if (!capabilityType.isBlank()) {
                 operationsByCapability.put(capabilityType, new HashSet<>(operations));
+                operationsByCapability.put(TYPED_INPUT_KEY + capabilityType, new HashSet<>(typedInput));
             }
         }
         return operationsByCapability;

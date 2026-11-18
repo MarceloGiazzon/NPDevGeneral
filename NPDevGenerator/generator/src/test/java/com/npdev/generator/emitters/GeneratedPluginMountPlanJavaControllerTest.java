@@ -311,7 +311,7 @@ final class GeneratedPluginMountPlanJavaControllerTest {
                       ]
                     }
                   ],
-                  "customCapabilities": [
+                  "capabilities": [
                     {
                       "name": "%s",
                       "type": "%s",

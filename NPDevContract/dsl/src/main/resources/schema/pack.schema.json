@@ -121,15 +121,6 @@
         ]
       }
     },
-    "customCapabilities": {
-      "type": "array",
-      "items": {
-        "oneOf": [
-          { "$ref": "model.schema.json#/$defs/capability" },
-          { "$ref": "model.schema.json#/$defs/localModelRef" }
-        ]
-      }
-    },
     "events": {
       "type": "array",
       "items": {

@@ -30,7 +30,7 @@
       ]
     }
   ],
-  "customCapabilities": [
+  "capabilities": [
     {
       "name": "adminTools",
       "type": "AdminToolsController",

@@ -49,6 +49,7 @@ class LegacySchemaRejectionTest {
         assertRemovedRootKey("\"contexts\": []", "LEGACY_CONTEXTS_ROOT_KEY", "$.contexts", "modules", true);
         assertRemovedRootKey("\"fragments\": []", "LEGACY_FRAGMENTS_ROOT_KEY", "$.fragments", "$ref", true);
         assertRemovedRootKey("\"ruleProfiles\": []", "LEGACY_RULE_PROFILES_ROOT_KEY", "$.ruleProfiles", "Delete", true);
+        assertRemovedRootKey("\"customCapabilities\": []", "LEGACY_CUSTOM_CAPABILITIES_ROOT_KEY", "$.customCapabilities", "capabilities", true);
         assertRemovedRootKey("\"webhooks\": []", "LEGACY_WEBHOOKS_ROOT_KEY", "$.webhooks", "capabilities[].inbound", true);
     }
 

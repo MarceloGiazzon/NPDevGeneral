@@ -3,7 +3,7 @@
   "configVersion": "1.0",
   "scenario": {
     "name": "notification-pack-proof",
-    "description": "Path A P4.3: second first-party pack (notification), contracts only -- consumed by this corpus app to prove requires/provides capability binding and customCapabilities generation end to end.",
+    "description": "Path A P4.3: second first-party pack (notification), contracts only -- consumed by this corpus app to prove requires/provides capability binding and capabilities generation end to end.",
     "outputRoot": "..\\Output"
   },
   "generator": {

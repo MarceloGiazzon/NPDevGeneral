@@ -114,12 +114,27 @@ def restore(app_root: Path, dest: Path, embedded: bool, data_root: Path | None =
             shutil.copytree(dest / "code" / name, app_root / name)
 
 
-def impact_exit_code(java: str, jar: Path, app_root: Path, profile: str, timeout: int = 600) -> int:
+_ACK_TOKEN_LINE = re.compile(r"acknowledgment token:\s*([0-9A-Za-z]{16,})")
+
+
+def impact_run(java: str, jar: Path, app_root: Path, profile: str, timeout: int = 600) -> tuple[int, str]:
+    """REPORT_ONLY boot of the new jar: its exit code (0 clean, 2 attention, 3 destructive) and the
+    report text it printed, which carries the `acknowledgment token: <hex>` line for a destructive one."""
     completed = subprocess.run(
         [java, "-Dnpdev.schema.lifecycle.mode=REPORT_ONLY", "-jar", str(jar),
          f"--spring.profiles.active={profile}"],
         cwd=str(app_root), capture_output=True, text=True, timeout=timeout)
-    return completed.returncode
+    return completed.returncode, (completed.stdout or "") + "\n" + (completed.stderr or "")
+
+
+def impact_exit_code(java: str, jar: Path, app_root: Path, profile: str, timeout: int = 600) -> int:
+    return impact_run(java, jar, app_root, profile, timeout)[0]
+
+
+def parse_ack_token(report_text: str) -> str | None:
+    """REG-321: the itemized acknowledgment token the impact report printed, or None."""
+    found = _ACK_TOKEN_LINE.findall(report_text or "")
+    return found[-1] if found else None
 
 
 # --------------------------------------------------------------------------------------------
@@ -392,8 +407,8 @@ def upgrade_app(args: argparse.Namespace, cli) -> dict:
     result["phase"] = "IMPACT"
     cli.ensure_api_key(app_root)  # StartupValidator needs a key even in REPORT_ONLY
     try:
-        code = impact_exit_code(java, new_jar, app_root, getattr(args, "profile", "dev") or "dev",
-                                timeout=remaining())
+        code, impact_text = impact_run(java, new_jar, app_root, getattr(args, "profile", "dev") or "dev",
+                                       timeout=remaining())
     except (OSError, subprocess.SubprocessError) as exc:
         return fail_and_rollback("IMPACT_CHECK_FAILED", f"the schema-impact check could not run: {exc}",
                                  None, "IMPACT")
@@ -412,8 +427,25 @@ def upgrade_app(args: argparse.Namespace, cli) -> dict:
             # Refused, not failed: the old version is back and nothing was applied.
             rolled["outcome"] = REFUSED if rolled["outcome"] == ROLLED_BACK else rolled["outcome"]
             return rolled
+        # REG-321: the boot guard accepts a destructive change only with the itemized token baked
+        # into the generated manifest, so the confirmed removal needs one more generate+build.
+        token = parse_ack_token(impact_text)
+        if not token:
+            return fail_and_rollback(
+                "ACK_TOKEN_MISSING",
+                "the impact report named no acknowledgment token, so the destructive change cannot be "
+                "acknowledged; rolling back.", None, "IMPACT")
         result["diagnostics"].append(cli._diag(
             "IMPACT", "DESTRUCTIVE_ALLOWED", "destructive schema change allowed by --allow-destructive."))
+        acked = cli.run_app(_run_app_args(args, app_root, int(port), remaining(), model=str(model_path),
+                                          config=infer_args.config, stop_after_build=True,
+                                          destructive_ack=token))
+        if not acked.get("ok"):
+            for d in acked.get("diagnostics") or []:
+                result["diagnostics"].append(d)
+            return fail_and_rollback("UPGRADE_BUILD_FAILED",
+                                     "rebuilding with the acknowledgment token failed; rolling back.",
+                                     None, "IMPACT", acked)
     elif code != 0:
         return fail_and_rollback("IMPACT_CHECK_FAILED",
                                  f"the schema-impact check exited with {code}; rolling back.",

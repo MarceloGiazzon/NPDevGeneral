@@ -16,6 +16,16 @@ detail: |
   and any future satellite. Both packs carry a reviewNote saying so.
   Possible fix: let displayField (and searchFields) take a one-hop path through a reference field of the target, e.g.
   "organizationId.name", resolved by the same label lookup that already joins the target row.
+  INVESTIGATED 2026-11-18 (no code yet): a path inside displayField is the WRONG shape -- displayField also feeds the inferred searchFields,
+  previewFields, pickerColumns, the "{{displayField}}" template and the xref index, all of which read a column of the target and would
+  choke or silently drop "organizationId.name" (BusinessUiEmitter.firstExistingField/existingFields drop unknown names). Recommended
+  design: keep displayField as the fallback (the satellite's code) and add a label-only key, e.g. referenceSemantics.displayThrough
+  "organizationId.name": validated as a reference field of the target plus an existing field on THAT target, published in compiled
+  metadata, and resolved in business-ui-app.mustache loadReferenceLabel (second GET on the hop target) and, for pickers and lists, by one
+  batched prefetch per page (where id in (...)) feeding the synchronous lookupLabel in form-inputs.js (10 call sites, lines ~767-1395).
+  Costs: new keyword through the four REG-108 places + both model.schema/pack.schema mirrors, dsl-conformance-max example, admission
+  record, golden compiled-metadata files; a viewer who may read Customer but not Organization falls back to the code (403 handled).
+  Search and sort stay on the satellite's columns (a join is out of scope).
 files:
   - NPDevContract/packs/sales/pack.json
   - NPDevContract/packs/purchasing/pack.json

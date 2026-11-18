@@ -66,6 +66,8 @@ Because the value is an ordinary column, it sorts, filters and pages like any ot
   that view today.
 - Rows that existed before the rollup was declared are recomputed at boot: `RollupBackfillRunner` calls
   `RollupConceptStoreDecorator.backfill(tenantId)` for `default` and every `npdev_tenant` row.
+- A `derivedExpression` that reads a rollup field (directly or through another derived field) is re-evaluated in the same write that
+  updates the rollup, so it stays current after a child write; an expression that cannot be evaluated keeps its old value.
 - Like a `derivedExpression` field, a rollup field still appears as an input in generated forms.
   The platform overwrites whatever is submitted. The typed `PUT`/`POST` response still echoes the
   submitted value; the next read returns the real one.

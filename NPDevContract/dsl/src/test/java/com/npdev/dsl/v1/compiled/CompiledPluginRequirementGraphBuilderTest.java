@@ -209,7 +209,7 @@ class CompiledPluginRequirementGraphBuilderTest {
                       ]
                     }
                   ],
-                  "customCapabilities": [
+                  "capabilities": [
                     {
                       "name": "adminTools",
                       "type": "AdminToolsController",
@@ -257,7 +257,7 @@ class CompiledPluginRequirementGraphBuilderTest {
                       ]
                     }
                   ],
-                  "customCapabilities": [
+                  "capabilities": [
                     {
                       "name": "adminTools",
                       "type": "AdminToolsController",

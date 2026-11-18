@@ -420,7 +420,6 @@ MODEL_ARRAY_KEYS = {
     "concepts",
     "domainTypes",
     "capabilities",
-    "customCapabilities",
     "events",
     "flows",
     "queries",
@@ -1827,7 +1826,7 @@ def run_migrate_assign_uids(args: argparse.Namespace) -> int:
     has_concepts = isinstance(concepts, list)
     if not has_concepts and not any(
             isinstance(doc.get(key), list)
-            for key in ("capabilities", "customCapabilities", "events", "flows",
+            for key in ("capabilities", "events", "flows",
                         "procedures", "panels", "queries")
     ):
         print(f"npdev migrate assign-uids: {model_path} has no concepts[] array -- nothing to stamp")
@@ -1876,7 +1875,6 @@ def run_migrate_assign_uids(args: argparse.Namespace) -> int:
 
     # P2.1 (Path A Phase 2): the seven element types uid was extended to alongside concept/field.
     already_present += _stamp_named_items_uid(doc.get("capabilities"), "capability", stamped, args.write)
-    already_present += _stamp_named_items_uid(doc.get("customCapabilities"), "capability", stamped, args.write)
     already_present += _stamp_named_items_uid(doc.get("events"), "event", stamped, args.write)
     already_present += _stamp_named_items_uid(doc.get("procedures"), "procedure", stamped, args.write)
     already_present += _stamp_named_items_uid(doc.get("panels"), "panel", stamped, args.write)
@@ -3221,6 +3219,9 @@ def _generate_phase_captured(
             return False, str(exc)
         if web_root is not None:   # the same mount `generate app` has: `npdev dev` and `run` carry pages too
             generator_args += ["--webAssetsRoot", str(web_root)]
+        destructive_ack = getattr(args, "destructive_ack", None)
+        if destructive_ack:   # REG-321: `npdev upgrade --allow-destructive` bakes the itemized token in
+            generator_args += ["--destructiveAcknowledgment", str(destructive_ack)]
         args_str = " ".join(f'"{item}"' if " " in item else item for item in generator_args)
         command = [str(wrapper), *gradle_project_cache_args("generator"), ":generator:run",
                    "--no-daemon", "--console=plain", f"--args={args_str}"]

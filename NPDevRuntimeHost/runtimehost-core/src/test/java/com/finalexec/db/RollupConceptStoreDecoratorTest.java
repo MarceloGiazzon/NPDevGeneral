@@ -26,7 +26,9 @@ class RollupConceptStoreDecoratorTest {
               { "name": "title", "type": "string" },
               { "name": "likeCount", "type": "integer" },
               { "name": "totalWeight", "type": "decimal" },
-              { "name": "maxWeight", "type": "decimal" } ],
+              { "name": "maxWeight", "type": "decimal" },
+              { "name": "likeScore", "type": "integer", "derivedExpression": "likeCount * 2" },
+              { "name": "likeLabel", "type": "string", "derivedExpression": "concat('s', likeScore)" } ],
               "rollups": [
                 { "field": "likeCount", "from": "Like", "via": "mosaicId" },
                 { "field": "totalWeight", "from": "Like", "via": "mosaicId", "fn": "sum", "of": "weight" },
@@ -116,6 +118,25 @@ class RollupConceptStoreDecoratorTest {
         store.deleteById("default", "Like", "l1", null);
         assertEquals(0L, likes("m1"));
         assertNull(field("m1", "maxWeight"));
+    }
+
+    @Test
+    void reg331ADerivedExpressionOverARollupFollowsTheChildWrites() {
+        save("Like", "l1", Map.of("mosaicId", "m1", "weight", 2));
+        save("Like", "l2", Map.of("mosaicId", "m1", "weight", 5));
+        assertEquals(4L, ((Number) field("m1", "likeScore")).longValue(), "likeCount * 2 after two likes");
+        assertEquals("s4", String.valueOf(field("m1", "likeLabel")), "a field derived from a derived field follows too");
+        store.deleteById("default", "Like", "l2");
+        assertEquals(2L, ((Number) field("m1", "likeScore")).longValue());
+    }
+
+    @Test
+    void reg331SavingTheParentRederivesFromTheFreshRollupNotTheSubmittedOne() {
+        save("Like", "l1", Map.of("mosaicId", "m1", "weight", 2));
+        // The gateway derived likeScore from a stale likeCount of 0 before the decorator replaced it.
+        save("Mosaic", "m1", Map.of("title", "Sunset", "likeCount", 0, "likeScore", 0));
+        assertEquals(1L, likes("m1"));
+        assertEquals(2L, ((Number) field("m1", "likeScore")).longValue());
     }
 
     @Test

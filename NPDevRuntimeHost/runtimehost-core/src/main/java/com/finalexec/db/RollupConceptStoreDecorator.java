@@ -1,6 +1,7 @@
 package com.finalexec.db;
 
 import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledRollup;
 import com.npdev.kernel.concepts.ConceptAggregateQuery;
@@ -9,16 +10,19 @@ import com.npdev.kernel.concepts.ConceptListSlice;
 import com.npdev.kernel.concepts.ConceptPage;
 import com.npdev.kernel.concepts.ConceptQuery;
 import com.npdev.kernel.concepts.ConceptRecord;
+import com.npdev.kernel.concepts.ValueExpressionEvaluator;
 import com.npdev.kernel.ports.ConceptStore;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
 
 /**
@@ -66,9 +70,13 @@ public final class RollupConceptStoreDecorator implements ConceptStore {
         ConceptRecord toSave = record;
         if (!own.isEmpty()) {
             Map<String, Object> data = new LinkedHashMap<>(record.data());
+            Set<String> changed = new LinkedHashSet<>();
             for (CompiledRollup rollup : own) {
                 data.put(rollup.field(), compute(record.tenantId(), record.id(), rollup));
+                changed.add(rollup.field());
             }
+            // REG-331: the gateway derived these from the submitted (possibly stale) rollup values.
+            data.putAll(rederive(record.conceptName(), data, changed));
             toSave = new ConceptRecord(record.conceptName(), record.id(), record.tenantId(), data, record.rowVersion());
         }
         Optional<ConceptRecord> previous = sourced.isEmpty()
@@ -212,8 +220,61 @@ public final class RollupConceptStoreDecorator implements ConceptStore {
         if (!numericallyEqual(stored, value)) {
             Map<String, Object> values = new LinkedHashMap<>();
             values.put(entry.rollup().field(), value);
+            // REG-331: a derivedExpression that reads the rollup is re-evaluated here, in the same
+            // narrow write, because the gateway only derives when the parent itself is saved.
+            Map<String, Object> data = new LinkedHashMap<>(parent.get().data());
+            data.put(entry.rollup().field(), value);
+            values.putAll(rederive(entry.parentConcept(), data, new LinkedHashSet<>(List.of(entry.rollup().field()))));
             delegate.writeMaintainedFields(tenantId, entry.parentConcept(), parent.get().id(), values);
         }
+    }
+
+    /**
+     * Re-evaluates, in declared order, every {@code derivedExpression} of {@code conceptName} that
+     * names a field in {@code changed} (a rollup, or a field derived earlier in this pass) against
+     * {@code data}. Returns only the derived values that now differ. A value that cannot be evaluated
+     * is left alone: a child write must never fail because the parent's formula does.
+     */
+    private Map<String, Object> rederive(String conceptName, Map<String, Object> data, Set<String> changed) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        CompiledModel current = model.get();
+        if (current == null) {
+            return out;
+        }
+        for (CompiledConcept concept : current.getConcepts()) {
+            if (!concept.getName().equalsIgnoreCase(conceptName)) {
+                continue;
+            }
+            Map<String, Object> scope = new LinkedHashMap<>(data);
+            for (CompiledField field : concept.getFieldsInDeclaredOrder()) {
+                String expression = field.getSchema() == null ? null : field.getSchema().getDerivedExpression();
+                if (expression == null || expression.isBlank() || !mentionsAny(expression, changed)) {
+                    continue;
+                }
+                Object value;
+                try {
+                    value = ValueExpressionEvaluator.evaluate(expression, scope);
+                } catch (RuntimeException unevaluable) {
+                    continue;
+                }
+                if (value != null && !numericallyEqual(valueOf(scope, field.getName()), value)) {
+                    out.put(field.getName(), value);
+                    scope.put(field.getName(), value);
+                    changed.add(field.getName());
+                }
+            }
+        }
+        return out;
+    }
+
+    private static boolean mentionsAny(String expression, Set<String> names) {
+        for (String name : names) {
+            if (java.util.regex.Pattern.compile("(?<![A-Za-z0-9_])" + java.util.regex.Pattern.quote(name)
+                    + "(?![A-Za-z0-9_])").matcher(expression).find()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** count and sum of no rows are 0 (a counter is never null); min/max/avg of no rows are null. */

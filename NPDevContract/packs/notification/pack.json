@@ -10,7 +10,7 @@
   "requires": {
     "capabilities": ["sendMail"]
   },
-  "customCapabilities": [
+  "capabilities": [
     {
       "name": "mailer",
       "operations": [

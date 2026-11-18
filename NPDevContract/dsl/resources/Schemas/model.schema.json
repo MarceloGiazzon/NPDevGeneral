@@ -94,23 +94,6 @@
         }
       }
     },
-    "customCapabilities": {
-      "type": "array",
-      "items": {
-        "if": {
-          "type": "object",
-          "required": [
-            "$ref"
-          ]
-        },
-        "then": {
-          "$ref": "#/$defs/localModelRef"
-        },
-        "else": {
-          "$ref": "#/$defs/capability"
-        }
-      }
-    },
     "events": {
       "type": "array",
       "items": {

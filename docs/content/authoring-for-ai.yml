@@ -197,7 +197,7 @@ sections:
     nearest first; with no candidate `found` is false (never an error). Straight-line distance, not road distance.
 
     **Your own code (a custom capability).** For logic no built-in has (surge pricing, scoring):
-    `"customCapabilities":[{"name":"surge","type":"SurgeCapability","adapter":"plugin:java-source","operations":["multiplier"]}]`, and two files:
+    `"capabilities":[{"name":"surge","type":"SurgeCapability","adapter":"plugin:java-source","operations":["multiplier"]}]`, and two files:
     `<app>/capabilities/surge/src/main/java/<pkg>/SurgeCapability.java` (a plain class with a public no-arg constructor;
     one public method per operation taking `Map`/`List` parameters named like the `args` keys and returning
     a `Map`; pure computation only: no files, network, threads, reflection) and
@@ -236,7 +236,7 @@ sections:
     Only when asked for a PACK (a reusable, versioned set of definitions many apps import; not an app). The file is
     `pack.json`; concepts, fields, `access`, queries, roles, flows and the rest follow the same contract as `model.json`.
     - **In a pack:** concepts (with `access` and lifecycle), queries, roles, domain types, events, flows that use only the
-      pack's own concepts, and `customCapabilities` as CONTRACTS (name, inputs, outputs, meaning).
+      pack's own concepts, and `capabilities` as CONTRACTS (name, inputs, outputs, meaning).
     - **Never in a pack:** code; an `adapter` of one app; `signature`, `migrations`, `firstPublishedVersion`,
       `forkedFrom` (NPDev fills them); keys, passwords, tokens, personal data; references to another app's concepts.
     - **Names:** `pack` is EXACTLY the id you were given (`Pack id:` line of the request) (lowercase letters, digits, `-`, `_`). Concept and field names are plain and

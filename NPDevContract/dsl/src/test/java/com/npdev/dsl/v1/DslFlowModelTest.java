@@ -160,6 +160,42 @@ class DslFlowModelTest {
         assertTrue(result.getWarnings().stream().anyMatch(w -> w.contains("technology-neutral")));
     }
 
+    private static String typedCapabilityModel(String args) {
+        return """
+                {
+                  "namespace": "x", "dslVersion": "3.0.0", "version": "1.0",
+                  "concepts": [
+                    { "name": "Invoice", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
+                  ],
+                  "capabilities": [
+                    { "name": "mailer", "type": "MailerCapability", "adapter": "plugin:java-source",
+                      "operations": [
+                        { "name": "send",
+                          "input": { "type": "object", "properties": { "to": { "type": "string" } }, "required": ["to"] },
+                          "output": { "type": "object", "properties": { "ok": { "type": "boolean" } } } } ] }
+                  ],
+                  "flows": [
+                    { "name": "Notify", "concept": "Invoice",
+                      "steps": [ { "name": "cap", "type": "capabilityCall", "capability": "mailer", "operation": "send", "args": %s } ] }
+                  ]
+                }
+                """.formatted(args);
+    }
+
+    @Test
+    void p4t5TypedObjectInputTakesExactlyOneArgument() throws Exception {
+        List<String> errors = new SemanticValidator().validateWithWarnings(parse(typedCapabilityModel("[\"$input\", \"extra\"]"))).getErrors();
+        assertTrue(errors.stream().anyMatch(e -> e.contains("declares a typed object input") && e.contains("passes 2")), errors.toString());
+        List<String> none = new SemanticValidator().validateWithWarnings(parse(typedCapabilityModel("[]"))).getErrors();
+        assertTrue(none.stream().anyMatch(e -> e.contains("declares a typed object input") && e.contains("passes 0")), none.toString());
+    }
+
+    @Test
+    void p4t5TypedObjectInputWithOneArgumentIsAccepted() throws Exception {
+        List<String> errors = new SemanticValidator().validateWithWarnings(parse(typedCapabilityModel("[\"$input\"]"))).getErrors();
+        assertFalse(errors.stream().anyMatch(e -> e.contains("typed object input")), errors.toString());
+    }
+
     @Test
     void validatorRejectsDuplicateInvariantNamesPerConcept() throws Exception {
         String json = """

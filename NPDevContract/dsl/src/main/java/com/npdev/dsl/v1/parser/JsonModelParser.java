@@ -152,6 +152,22 @@ public final class JsonModelParser {
                     "legacy-contexts-root-key"
             ));
         }
+        if (root.has("customCapabilities")) {
+            throw new DeprecationException(new ValidationDiagnostic(
+                    ValidationLayer.STRUCTURAL,
+                    ValidationSeverity.ERROR,
+                    "LEGACY_CUSTOM_CAPABILITIES_ROOT_KEY",
+                    "Root 'customCapabilities' was merged into 'capabilities' (REG-342/P4-T5); it was only ever an alias.",
+                    "NPDevContract",
+                    "$.customCapabilities",
+                    null,
+                    null,
+                    "capabilities",
+                    null,
+                    "Move every 'customCapabilities' entry into 'capabilities' (same shape; adapter 'plugin:*' still marks code).",
+                    "legacy-custom-capabilities-root-key"
+            ));
+        }
         if (root.has("fragments")) {
             throw new DeprecationException(new ValidationDiagnostic(
                     ValidationLayer.STRUCTURAL,
@@ -580,7 +596,6 @@ public final class JsonModelParser {
         }
 
         parseCapabilitiesArray(root.get("capabilities"), "capabilities", capabilities, conceptsByLowerName, originByQualifiedMemberName);
-        parseCapabilitiesArray(root.get("customCapabilities"), "customCapabilities", capabilities, conceptsByLowerName, originByQualifiedMemberName);
 
         JsonNode eventsNode = root.get("events");
         if (eventsNode != null) {
