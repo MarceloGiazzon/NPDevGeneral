@@ -55,10 +55,6 @@ keys:
     mechanism: "ConversionAst; ExtensionInventoryEmitter tracks javaHook usage as one of the four escape-hatch categories (P0.3)."
     status: shipped
 
-  - key: customCapabilities
-    mechanism: "CustomCapabilityAst -- app-declared capability beyond the built-in set."
-    status: shipped
-
   - key: domainTypes
     mechanism: "DomainTypeAst -- app-declared scalar/value types beyond the DSL's built-in field types."
     status: shipped

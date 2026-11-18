@@ -72,8 +72,12 @@ class BusinessUiEmitterLabelViaTest {
             """;
 
     private static JsonNode reference(String fieldName) throws Exception {
+        return reference(MODEL, fieldName);
+    }
+
+    private static JsonNode reference(String modelJson, String fieldName) throws Exception {
         Path modelPath = Files.createTempFile("npdev-label-via-", ".json");
-        Files.writeString(modelPath, MODEL);
+        Files.writeString(modelPath, modelJson);
         ModelAst ast = new JsonModelParser().parse(modelPath);
         CompiledModel model = new ModelCompiler().compile(ast);
         Path out = Files.createTempDirectory("npdev-label-via-out-");
@@ -108,5 +112,13 @@ class BusinessUiEmitterLabelViaTest {
     @Test
     void aReferenceToAnOrdinaryConceptHasNoHop() throws Exception {
         assertNull(reference("widgetId").get("labelVia"));
+    }
+
+    @Test
+    void aSatelliteWhoseHopNamesNoRealFieldOnTheBaseHasNoHop() throws Exception {
+        String model = MODEL.replace(
+                "\"reference\": { \"target\": \"Organization\", \"displayField\": \"name\" } },",
+                "\"reference\": { \"target\": \"Organization\", \"displayField\": \"noSuchField\" } },");
+        assertNull(reference(model, "customerId").get("labelVia"));
     }
 }
