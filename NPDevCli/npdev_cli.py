@@ -11798,6 +11798,14 @@ def _scan_pack_catalog_entries(repo_dir: Path, repository_url: str, tag_template
         needs = sorted({str(d["pack"]) for d in data.get("packs") or [] if isinstance(d, dict) and d.get("pack")})
         if needs:
             entry["needs"] = needs
+        # REG-332: what a chat AI needs to write the import correctly without guessing -- the pack's REAL concept names (it
+        # invented `sales::PriceList` from the description) and the roles the pack names, which the app must bind.
+        concepts = [str(c["name"]) for c in data.get("concepts") or [] if isinstance(c, dict) and c.get("name")]
+        if concepts:
+            entry["concepts"] = concepts
+        roles = sorted(set(re.findall(r"role\('([^']+)'\)", pack_json.read_text(encoding="utf-8-sig"))))
+        if roles:
+            entry["roles"] = roles
         entries.append(entry)
     return entries, problems
 

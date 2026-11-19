@@ -58,6 +58,30 @@ detail: |
   the failure that do not exist beside the staged model, never from English wording. Tests: test_relay_packs.py (+2),
   test_pack_catalog.py (+1). THE PUBLIC INDEX STILL LACKS `needs` until the owner regenerates and pushes it (`pack publish --push`),
   so today only (3) is live.
+  INDEX PUBLISHED 2026-11-19 (owner: "faça como se fosse eu"): NPR main 1613798 carries needs[] on inventory, purchasing, sales, user (verified
+  through `gh api`). BUT FOUND: the NPR repo is PRIVATE (`gh repo view` -> PRIVATE; anonymous https://raw.githubusercontent.com/MarceloGiazzon/NPR/main/
+  catalog-index.json -> 404). `pack search`, the relay's live catalog fetch (DEFAULT_PACK_CATALOG_URL, urllib, no credentials) therefore fall back to
+  the local cache: a fresh relay briefing still lists the OLD index (approvals 1.0.0, no `[also import: ...]`). `git clone` of a pack works only with
+  the owner's own git credentials, so no outside user could import an NPR pack today. Needs an owner decision: make NPR public (irreversible exposure),
+  or serve the index/packs from somewhere anonymous. Stand-in Gemini round 2026-11-19 hung >12 min on one call and was killed (no result).
+  NPR MADE PUBLIC 2026-11-19 (owner: "Tornar o NPR público"; content scanned first: only pack.json files, README, catalog-index.json, no credentials).
+  Anonymous raw index -> 200 with 4 needs entries; a fresh relay briefing now lists the current catalog (approvals 2.0.0, sales 2.0.0
+  `[also import: contacts, products]`, 5 markers). Remaining for done_when: the real chat-AI round on the owner's machine.
+  STAND-IN ROUNDS 2026-11-19 after the public flip (Gemini free tier, real relay; it hangs >4 min on ~half the calls, runs killed by a watchdog):
+  the AI imported sales + contacts + products together (needs[] works, pack downloaded and locked). NEW DEFECT found and fixed: the composer
+  refuses ONE unbound pack role per run (salesManager, then salesRep, then accountant), so the AI spent a round per role. npdev_relay_engine.
+  _unbound_roles_hint now appends one sentence naming EVERY role('x') the locked packs use that the answer does not bind
+  (test_relay_packs.py UnboundRolesHintTests, 4 tests). Verified live: round 1 listed accountant/salesManager/salesRep, round 2 had them
+  bound. The runs still ended NEEDS_FIX at 3 rounds (round 2: concept access rules; round 3: the weak model invented `sales::PriceList`),
+  so READY through the relay is NOT yet shown even with the stand-in.
+  BRIEFING IMPROVED 2026-11-19: the index entries now carry `concepts` (the pack's real concept names) and `roles` (the role('x') names it
+  uses) -- npdev_cli._scan_pack_catalog_entries; the briefing line reads `- sales 2.0.0 - ... [also import: contacts, products]
+  [concepts: Customer, SalesItem, ...] [roles: accountant, salesManager, salesRep]` and the section states three rules once (name concepts
+  `<pack>::<Name>` exactly as listed; bind every listed role in provides.roleBindings in one answer; give every imported concept an access
+  rule). Index republished to NPR (8087536). Section grew 921 chars (2,293 -> 3,214). Tests: test_pack_catalog (+1), test_relay_packs (+1).
+  Stand-in round after this (session 5XSP, Gemini free tier, real relay): round 1 was a truncated reply, round 2 READY -- answer imported
+  contacts + sales + products, the relay generated and accepted the npdev.lock (trust-defaults:own-npr-2026-11). One run only; the app was not
+  built from it. Still needed for done_when: a real chat AI on the owner's machine and the app building with the pack.
   NOT done: `pack update` always clones (a cached pack is not reused offline) -- offline therefore fails with the sentence above
   even when the pack is cached; the catalog list itself does fall back to its cache. The real relay round with a real chat AI on the
   owner's machine (P2 "Verify") has not been run.

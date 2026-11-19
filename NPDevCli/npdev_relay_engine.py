@@ -71,7 +71,11 @@ def pack_catalog_text(catalog: dict | None) -> str:
     lines = ["## Pack catalog", "",
              "Packs you MAY import (`packs[]`, see the contract above). Copy the `from` coordinate exactly; a pack not "
              "listed here does not exist. A pack marked `[also import: ...]` only works when every pack named there is "
-             "in your `packs[]` too.", ""]
+             "in your `packs[]` too. The checker enforces three more rules on imported packs: (1) name a pack's concept "
+             "exactly as listed after `concepts:`, written `<pack>::<Name>` - never invent one from the description; (2) every "
+             "role listed after `roles:` must be bound in your `provides.roleBindings` (name -> one of your own roles), all "
+             "in the same answer; (3) every imported concept needs an access rule: add it to one of your roles' `concepts` "
+             "(`\"concepts\": {\"contacts::Address\": [\"read\"]}`) or give it an `access` block.", ""]
     pattern_ok = []
     for entry in sorted(entries, key=lambda e: str(e["pack"])):
         description = " ".join(str(entry.get("description") or "").split())
@@ -80,10 +84,14 @@ def pack_catalog_text(catalog: dict | None) -> str:
         description = description if len(description) <= 90 else description[:87].rstrip() + "..."
         regular = repo and entry["from"] == f"git+{repo}.git//packs/{entry['pack']}@{entry['pack']}-{entry.get('version')}"
         pattern_ok.append(bool(regular))
-        tail = "" if regular else f" -- from: `{entry['from']}`"
-        needs = [str(n) for n in entry.get("needs") or [] if n]
-        if needs:  # a pack's own dependencies resolve only beside the model: they must be imported too (REG-332)
-            tail = f" [also import: {', '.join(needs)}]" + tail
+        marks = ""
+        # REG-332: `needs` -- a pack's own dependencies resolve only beside the model, so they must be imported too; `concepts`
+        # and `roles` -- the pack's REAL names, so a chat AI neither invents a concept nor misses a role to bind.
+        for key, label in (("needs", "also import"), ("concepts", "concepts"), ("roles", "roles")):
+            names = [str(n) for n in entry.get(key) or [] if n]
+            if names:
+                marks += f" [{label}: {', '.join(names)}]"
+        tail = marks + ("" if regular else f" -- from: `{entry['from']}`")
         lines.append(f"- {entry['pack']} {entry.get('version')}" + (f" - {description}" if description else "") + tail)
     if any(pattern_ok):
         lines += ["", f"Coordinate: `{{\"from\": \"git+{repo}.git//packs/<id>@<id>-<version>\"}}`"
@@ -649,8 +657,49 @@ def _after_parsed(session: dict, number: int, result: dict) -> None:
     if report.get("status") == "failed":
         result["outcome"] = "NEEDS_FIX"
         result["errorLines"] = validation_lines(report)
+        hint = _unbound_roles_hint(model_path, fixed, result["errorLines"])
+        if hint:
+            result["errorLines"].append(hint)
         return
     finish_ready(session, number, result, entry)
+
+
+_UNBOUND_ROLE_MARK = "does not declare in provides.roleBindings"
+
+
+def _unbound_roles_hint(model_path, model: dict, lines: list) -> str | None:
+    """The composer refuses ONE unbound pack role per run, so an AI fixes one per round and runs out of rounds (REG-332 stand-in,
+    2026-11-19: salesManager, then salesRep, then accountant). When that is the failure, name EVERY role('x') the imported packs
+    use that the answer does not bind yet, in one sentence. None when it is not this failure or only one role is missing."""
+    if not any(_UNBOUND_ROLE_MARK in str(line) for line in lines):
+        return None
+    cache = None
+    for line in lines:  # the refusal names the cached pack file: <cache>/sha256/<digest>/pack.json
+        found = re.match(r"(.*?[\\/]packs)[\\/]sha256[\\/]", str(line))
+        if found:
+            cache = Path(found.group(1))
+            break
+    lock_path = Path(model_path).parent / "npdev.lock"
+    try:
+        lock = json.loads(lock_path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return None
+    named = set()
+    for entry in ((lock.get("packs") or {}) if isinstance(lock, dict) else {}).values():
+        source = str((entry or {}).get("sourcePath") or "")
+        base = cache if source.startswith("sha256/") else lock_path.parent
+        if base is None or not source:
+            continue
+        try:
+            named.update(re.findall(r"role\('([^']+)'\)", (base / source).read_text(encoding="utf-8-sig")))
+        except OSError:
+            continue
+    bound = set(((model.get("provides") or {}).get("roleBindings") or {}))
+    missing = sorted(named - bound)
+    if len(missing) < 2:
+        return None
+    return ("the imported packs use these roles and the app binds none of them yet - add ALL of them to provides.roleBindings "
+            "in this one answer (each name maps to one of the app's own roles): " + ", ".join(missing))
 
 
 def _check_themes(session: dict, result: dict, model: dict) -> bool:

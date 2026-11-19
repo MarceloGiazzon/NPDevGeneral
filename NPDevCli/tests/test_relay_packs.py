@@ -213,6 +213,19 @@ class CatalogBriefingTests(unittest.TestCase):
         self.assertNotIn("- contacts 1.1.0 [also import", text)
         self.assertIn("[also import: ...]", text)  # the rule is stated once, above the list
 
+    def test_the_real_concept_and_role_names_are_listed_with_the_three_rules(self):
+        catalog = {"repository": "https://github.com/MarceloGiazzon/NPR.git", "packs": [
+            {"pack": "sales", "version": "2.0.0", "needs": ["contacts"], "concepts": ["Customer", "SalesOrder"],
+             "roles": ["salesRep", "accountant"],
+             "from": "git+https://github.com/MarceloGiazzon/NPR.git//packs/sales@sales-2.0.0"},
+            {"pack": "bare", "version": "1.0.0",
+             "from": "git+https://github.com/MarceloGiazzon/NPR.git//packs/bare@bare-1.0.0"}]}
+        text = engine.pack_catalog_text(catalog)
+        self.assertIn("- sales 2.0.0 [also import: contacts] [concepts: Customer, SalesOrder] [roles: salesRep, accountant]", text)
+        self.assertTrue(any(line == "- bare 1.0.0" for line in text.splitlines()))  # neither concepts nor roles: no marker
+        for rule in ("`<pack>::<Name>`", "`provides.roleBindings`", "access rule"):
+            self.assertIn(rule, text)
+
     def test_no_catalog_no_section(self):
         self.assertEqual(engine.pack_catalog_text(None), "")
         self.assertEqual(engine.pack_catalog_text({"packs": []}), "")
@@ -274,6 +287,50 @@ class RealResolutionTests(unittest.TestCase):
             text = files_mod.resolve_packs(self.staged, self.model)
         lock = json.loads(text)
         self.assertEqual(lock["packs"]["widgets"]["signature"]["acceptedBy"], "trust-defaults:fixture")
+
+
+
+
+class UnboundRolesHintTests(unittest.TestCase):
+    """REG-332 stand-in 2026-11-19: the composer names ONE unbound pack role per run; the relay names them all at once."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        cache = self.tmp / "home" / "packs" / "sha256" / "abc"
+        cache.mkdir(parents=True)
+        (cache / "pack.json").write_text("{\"a\": \"role('salesManager')\", \"b\": \"role('salesRep')\"}", encoding="utf-8")
+        self.model_dir = self.tmp / "stage"
+        (self.model_dir / "packs" / "contacts").mkdir(parents=True)
+        (self.model_dir / "packs" / "contacts" / "pack.json").write_text("{\"c\": \"role('accountant')\"}", encoding="utf-8")
+        lock = {"packs": {"sales": {"sourcePath": "sha256/abc/pack.json"},
+                          "contacts": {"sourcePath": "packs/contacts/pack.json"}}}
+        (self.model_dir / "npdev.lock").write_text(json.dumps(lock), encoding="utf-8")
+        self.model_path = self.model_dir / "model.json"
+        self.line = (str(cache / "pack.json") + " /packs: pack 'sales' references role('salesManager'), which the app does not "
+                     "declare in provides.roleBindings.'salesManager' -- composition refuses")
+
+    def test_every_role_the_imported_packs_name_is_listed_at_once(self):
+        hint = engine._unbound_roles_hint(self.model_path, {}, [self.line])
+        self.assertIsNotNone(hint)
+        for name in ("accountant", "salesManager", "salesRep"):
+            self.assertIn(name, hint)
+
+    def test_roles_the_answer_already_binds_are_left_out(self):
+        model = {"provides": {"roleBindings": {"salesManager": "SalesManager"}}}
+        hint = engine._unbound_roles_hint(self.model_path, model, [self.line])
+        self.assertIn("accountant", hint)
+        self.assertNotIn("salesManager,", hint)
+        self.assertNotIn("salesManager", hint.split(":")[-1])
+
+    def test_nothing_to_add_for_a_single_missing_role_or_another_failure(self):
+        model = {"provides": {"roleBindings": {"salesManager": "A", "salesRep": "B"}}}
+        self.assertIsNone(engine._unbound_roles_hint(self.model_path, model, [self.line]))
+        self.assertIsNone(engine._unbound_roles_hint(self.model_path, {}, ["$.concepts: something else is wrong"]))
+
+    def test_no_lock_means_no_hint(self):
+        (self.model_dir / "npdev.lock").unlink()
+        self.assertIsNone(engine._unbound_roles_hint(self.model_path, {}, [self.line]))
 
 
 if __name__ == "__main__":

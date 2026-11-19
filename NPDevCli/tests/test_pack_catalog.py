@@ -250,6 +250,23 @@ class PackBuildCatalogTest(unittest.TestCase):
             self.assertEqual(["alpha"], by_id["beta"]["needs"])
             self.assertNotIn("needs", by_id["alpha"])  # only when there are any
 
+    def test_the_index_lists_a_packs_real_concept_names_and_the_roles_it_names(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp) / "repo"
+            _write(repo_dir / "packs" / "shop" / "pack.json", {
+                "dslVersion": "3.0.0", "pack": "shop", "version": "1.0.0",
+                "concepts": [{"name": "Order", "access": {"read": "$user.roles.contains(role('buyer'))"}},
+                             {"name": "Line", "access": {"write": "$user.roles.contains(role('clerk')) || $user.roles.contains(role('buyer'))"}}]})
+            _write(repo_dir / "packs" / "bare" / "pack.json", {"dslVersion": "3.0.0", "pack": "bare", "version": "1.0.0"})
+            entries, problems = npdev_cli._scan_pack_catalog_entries(
+                repo_dir, "https://github.com/MarceloGiazzon/NPR", "{pack}-{version}")
+            self.assertEqual([], problems)
+            by_id = {e["pack"]: e for e in entries}
+            self.assertEqual(["Order", "Line"], by_id["shop"]["concepts"])
+            self.assertEqual(["buyer", "clerk"], by_id["shop"]["roles"])
+            self.assertNotIn("concepts", by_id["bare"])  # only when there are any
+            self.assertNotIn("roles", by_id["bare"])
+
     def test_repository_url_already_ending_in_dot_git_is_not_doubled(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo_dir = Path(tmp) / "repo"
