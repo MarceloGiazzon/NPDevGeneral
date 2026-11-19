@@ -3031,6 +3031,7 @@ mod process_layer_tests {
 
     #[tokio::test]
     async fn a_failing_setup_leaves_the_failing_gradle_line_in_the_report() {
+        let _serial = crate::runs::serial_test_guard();
         let Some(python) = find_python() else {
             eprintln!("SKIPPED: no python on PATH");
             return;

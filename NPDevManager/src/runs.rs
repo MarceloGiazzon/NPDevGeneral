@@ -243,6 +243,14 @@ fn unresolved_in(records: &VecDeque<RunRecord>) -> Option<RunRecord> {
     None
 }
 
+/// Tests that read back a record they just made, or that fill the ring buffer, share this ONE process-wide store;
+/// run in parallel the ring-buffer test evicts the other's record (CAPACITY 20). They take this guard first.
+#[cfg(test)]
+pub(crate) fn serial_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: Mutex<()> = Mutex::new(());
+    LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Test/selftest hook: forget everything.
 #[allow(dead_code)]
 pub fn clear() {
@@ -264,6 +272,7 @@ mod tests {
 
     #[tokio::test]
     async fn recorded_keeps_the_error_and_the_tail() {
+        let _serial = serial_test_guard();
         let r: Result<(), String> = recorded("unit-test-op", async {
             let s = sink();
             s.stdout("line one\r\n");
@@ -320,6 +329,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_ring_buffer_drops_the_oldest() {
+        let _serial = serial_test_guard();
         for i in 0..(CAPACITY + 5) {
             let _ = recorded::<(), _>(&format!("ring-{i}"), async { Ok(()) }).await;
         }

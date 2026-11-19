@@ -54,6 +54,11 @@ def publish(packs: list[str], repo: Path, force: bool = False) -> list[str]:
         _git(repo, "config", "user.email", "packs@npdev.local")
         _git(repo, "config", "user.name", "NPDev Pack Publisher")
 
+    # A pack's lock digest covers the WHOLE tree's bytes. Without this a Windows clone (the global
+    # core.autocrlf=true) checks pack.json out with CRLF and digests differently from the LF
+    # NPDevContract/packs mirror, so no committed npdev.lock can match on both OSes.
+    (repo / ".gitattributes").write_text("* -text\n", encoding="utf-8", newline="\n")
+
     published = []
     for pack_id in packs:
         source = PACKS_SOURCE / pack_id / "pack.json"
