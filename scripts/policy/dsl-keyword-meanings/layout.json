@@ -1,0 +1,80 @@
+{
+  "$comment": "Layout of docs/DSL_KEYWORD_REFERENCE.md: which model.schema.json $defs entry is documented under which of the twelve nouns of docs/adr/ADR-0013-twelve-nouns.md. Read by scripts/docs/generate_dsl_keyword_reference.py; every $defs entry must be placed exactly once (the generator refuses otherwise). Everything here is rendered into a product document, so it is English.",
+  "schemaVersion": "npdev-keyword-meanings.v1",
+  "rootIntro": "A model file is one JSON object. `namespace` and `concepts` are required in every model (the schema also requires `version`); everything else is optional. Each array below holds objects of the kind named in its type, and every array of object kinds also accepts an entry of the form `{\"$ref\": \"relative/file.json\"}` that pulls that item from a local file next to the model. The keys are grouped by the twelve nouns of the vocabulary in the sections that follow.",
+  "packIntro": "A pack file (`pack.json`) is a named, versioned bundle of the same kinds of members a model declares (concepts, flows, capabilities, roles, screens, ...) that other models consume through the `packs` root key. The member arrays have the same shape as in a model; the keys that only exist in a pack file describe the pack itself (identity, dependencies, publishing metadata).",
+  "nouns": [
+    {
+      "id": "concept",
+      "title": "Concept",
+      "intro": "A kind of record the app stores: its fields, lifecycle, invariants and who may read or write it. This section also holds everything that belongs to describing data: field types, reusable domain types, numbering sequences, first-boot seed rows, row and field level access, presentation hints and aggregates (a root concept that owns child collections read and saved as one unit).",
+      "defs": ["concept", "field", "domainType", "enumOption", "referenceDefinition", "schemaObject", "localizableLabel", "presentationMetadata", "uiField", "conceptAccess", "index", "invariant", "lifecycle", "lifecycleState", "lifecycleTransition", "actionMetadata", "composition", "aggregateCollection", "aggregateCollectionLookupField", "aggregateInvariant", "aggregateBalance", "sequence", "seed"]
+    },
+    {
+      "id": "query",
+      "title": "Query",
+      "intro": "A named, parameterised, permission-aware read over one concept: filters, ordering, joins through reference fields, grouping and aggregates. Screens, panels, flows and agents run queries by name.",
+      "defs": ["query", "queryLookup", "queryComputedColumn", "groupByField", "aggregateFunction", "queryParameter"]
+    },
+    {
+      "id": "flow",
+      "title": "Flow",
+      "intro": "Something the app does: an ordered list of steps started by a trigger (an API call, a screen button, an event, a schedule, a webhook or another flow). Flows are durable, can wait for events or human tasks and can compensate on failure. The legacy procedure kinds at the end of this section are being retired in favour of flows.",
+      "defs": ["flow", "flowInput", "flowSchedule", "flowHook", "flowStep", "awaitMatch", "humanTask", "generatedActionDescriptor"]
+    },
+    {
+      "id": "event",
+      "title": "Event",
+      "intro": "A named fact that happened, with a payload. Flows emit events and can be triggered by them or wait for them; a capability's inbound door publishes one per verified webhook delivery.",
+      "defs": ["event", "eventPayloadField"]
+    },
+    {
+      "id": "function",
+      "title": "Function",
+      "intro": "A named, pure, typed computation callable from any expression. Each call is replaced by the function body at compile time, so functions cost nothing at runtime.",
+      "defs": ["function"]
+    },
+    {
+      "id": "capability",
+      "title": "Capability",
+      "intro": "A door to the outside world: outbound operations (an HTTP API, a payment provider, a code extension, an AI vendor) and inbound webhooks. Operations carry a contract, an execution policy (retries, timeout, circuit breaker, idempotency) and an auth requirement.",
+      "defs": ["capability", "capabilityOperation", "capabilityContractSchemaRef", "capabilityPolicy", "failureClassification", "capabilityOperationError", "capabilityAuth", "httpConnector", "httpConnectorAuth", "httpConnectorOperation", "inboundDoor"]
+    },
+    {
+      "id": "role",
+      "title": "Role",
+      "intro": "A kind of user and what that kind may do. Roles are the anchor of default-deny authorization. This section also holds `agentAccess`, which decides what an AI agent acting for a user is offered (an access rule set documented next to roles).",
+      "defs": ["role", "agentAccess", "agentAccessChannel", "agentAccessExposure"]
+    },
+    {
+      "id": "experience",
+      "title": "Experience",
+      "intro": "What one group of roles sees when it signs in: the device it targets, the screen it lands on and its navigation. This section also holds the optional configuration of the generated back office (menu groups, default route, dashboard pages).",
+      "defs": ["experience", "backOffice", "appShellNavItem", "guidePage", "guidePageRegions", "guidePageRegion", "guidePageTheme", "guidePageGadget"]
+    },
+    {
+      "id": "screen",
+      "title": "Screen",
+      "intro": "One screen of the app. The `screen` kind is the current, closed set of archetypes (list, detail, form, status, inbox, board, map, dashboard, workbench, document, picker, custom). The older hand-composed `panel` and `autoPanel` kinds (data sources, layouts, field bindings, the aggregate workbench and its typed surfaces) are still accepted and documented here, together with the printable-document bands used by `document` screens.",
+      "defs": ["screen", "column", "screenAction", "mapSpec", "widget", "documentColumn", "documentBand", "documentLogo", "panel", "panelDataSource", "panelLayout", "panelWidget", "panelSlot", "panelFieldBinding", "panelAction", "autoPanel", "autoPanelSurface", "autoPanelDataSource", "workbenchAction", "workbenchActionApplyTo", "workbenchBandPicker", "regionMount", "cellGrid", "transactionHooks", "transactionDerivedField", "transactionUiState"]
+    },
+    {
+      "id": "pack",
+      "title": "Pack",
+      "intro": "A versioned, reusable bundle of concepts, flows, roles and screens that a model imports with the `packs` root key. This section lists the two shapes used to reference other files and packs; the keys of a pack file itself are in section 0.",
+      "defs": ["packRef", "localModelRef"]
+    },
+    {
+      "id": "module",
+      "title": "Module",
+      "intro": "Composition and evolution of a model: bounded contexts (`modules`, each a fragment file) and declarative data conversions that run at boot when the schema changes.",
+      "defs": ["context", "conversion", "conversionSplitTarget", "conversionLookupMatch", "conversionCaseWhen"]
+    },
+    {
+      "id": "property",
+      "title": "Property",
+      "intro": "Runtime configuration resolved through a scoped cascade (for example tenant, then user), plus the app-level setting for delegating work to an outside AI.",
+      "defs": ["property", "propertyScope", "externalAi"]
+    }
+  ]
+}

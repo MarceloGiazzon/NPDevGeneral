@@ -97,9 +97,7 @@ class AutoPanelLabelLocaleTest {
                       { "name": "movimentoItemId", "type": "uuid" },
                       { "name": "papel", "type": "string" } ] }
                   ],
-                  "procedures": [
-                    { "name": "AprovarMovimento", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] }
-                  ],
+                  "flows": [{"name": "AprovarMovimento", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
                   "autoPanels": [
                     { "aggregate": "Movimento", "transaction": {
                         "actions": [ { "procedure": "AprovarMovimento", "label": %s } ],

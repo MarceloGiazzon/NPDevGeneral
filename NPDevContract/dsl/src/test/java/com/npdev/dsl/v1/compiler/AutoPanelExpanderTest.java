@@ -156,10 +156,7 @@ class AutoPanelExpanderTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "nome", "type": "string" } ] }
               ],
-              "procedures": [
-                { "name": "ListarClientesAtivos", "steps": [
-                  { "name": "ret", "type": "return", "value": "$input" } ] }
-              ],
+              "flows": [{"name": "ListarClientesAtivos", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
               "autoPanels": [ { "concept": "Cliente",
                 "selection": { "dataSource": { "procedure": "ListarClientesAtivos" } } } ]
             }

@@ -26,9 +26,7 @@ class AutoPanelSelectionDataSourceValidationTest {
                 { "name": "Cliente", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }
               ],
-              "procedures": [
-                { "name": "RealProcedure", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] }
-              ],
+              "flows": [{"name": "RealProcedure", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
               "autoPanels": [ { "concept": "Cliente", "selection": %s } ]
             }
             """.formatted(selectionJson);

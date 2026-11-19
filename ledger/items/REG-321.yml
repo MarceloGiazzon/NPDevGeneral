@@ -45,6 +45,21 @@ detail: |
   check-manager-ui-render.mjs (removal flow: box, Apply -> relay_apply_removal, rolled-back sentence). Still open: the real-window proof
   with a second app (a removal that ends in the app running again with the table in the pre-upgrade backup, and an unticked item that
   still stops it), and an explicit-tableName model to confirm the refusal is clean.
+  PROGRESS 2026-11-18 (CLI-level proof on a throwaway second app, AppGen/apps/_scratch/reg321-proof: concepts Note + Tag, H2, 8097; 1 note + 2 tags
+  seeded): (a) removing Tag AND Note.body with --ack-items "Tag" -> REFUSED, UNACKNOWLEDGED_DESTRUCTIVE_ITEM "notes.body", old app running again with
+  its 2 tags and the note; (b) removing Tag with --ack-items "Tag" -> UPGRADED, health UP, /api/tags 404, storage summary lists only `notes`, the
+  pre-upgrade backup's data file still holds the tag rows ("urgent", "later"). NOT proven: the Manager window path (relay_apply_removal through the real
+  window) and the explicit-tableName refusal; the throwaway app is still the one to use for them.
+  PROGRESS 2026-11-19 -- REAL-WINDOW PROOF done (Manager rebuilt 2026-11-18 23:54; scratch tour OutsideRepo/reg321-tour/tour.mjs, CDP, the real CLI, generator and
+  builds; 12/12 checks). The app was created through "Use a browser AI" (Note + Tag, built and running), seeded (1 note, 2 tags), picked in the picker (never any other
+  app), "Change this app", answer removing Tag with deliberateRemovals [Tag]: the screen shows ONE box "This removes the kind of record Tag and all the data stored in it.",
+  Apply is disabled until it is ticked, Apply ends "Done. The change is in your app, and your data from before it is saved in a copy.", the app is running again, /api/tags
+  is 404, the note is intact and data/backups/pre-upgrade-* holds the tag rows. An answer that also dropped Note.body without declaring it is NEEDS_FIX ("The AI made a
+  mistake. Copy this message and paste it in the same conversation": Field 'Note.body' ... not accounted for by renamedFrom or deliberateRemovals) and nothing is applied.
+  Because a box exists per declared removal and Apply needs all of them, the window cannot send a partial acknowledgment; the itemized refusal (UNACKNOWLEDGED_DESTRUCTIVE_ITEM)
+  is the CLI-level backstop proven above. Side finding (boundary B5, not a defect here): putting a removed concept BACK on a database that already migrated past it is refused
+  at boot ("schema_ahead_detected ... Downgrade is not supported"), so a removal test needs a fresh app/database each time. STILL open: an explicit-tableName model (the
+  refusal must be clean) and the decision to drop the "cannot do this from here yet" screen for the other cases.
 resolution: >-
   Done when applying a confirmed removal of a record type, on a running app, ends in the app running again with the data of
   that table in the pre-upgrade backup, proven on the real window with a second app, and a destructive item the person did not

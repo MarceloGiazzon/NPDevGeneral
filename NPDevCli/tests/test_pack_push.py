@@ -167,3 +167,39 @@ class PushTests(PushCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProbeStagingTests(unittest.TestCase):
+    """The publish probe must be able to compose a pack that depends on other packs and that names roles/capabilities/scopes."""
+
+    def test_the_probe_carries_dependencies_a_lock_role_bindings_capabilities_and_scopes(self):
+        import npdev_relay_pack as relay_pack
+
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp) / "mine"
+            for pid, body in (("base", {"pack": "base", "version": "1.2.0"}),
+                              ("top", {"pack": "top", "version": "2.0.0", "packs": [{"pack": "base", "version": "^1.0"}],
+                                       "requires": {"capabilities": ["sendMail"]},
+                                       "properties": [{"key": "top.on", "settableAt": ["tenant"]}],
+                                       "access": "$user.roles.contains(role('boss'))"})):
+                (parent / pid).mkdir(parents=True)
+                (parent / pid / "pack.json").write_text(json.dumps(body), encoding="utf-8")
+            top = json.loads((parent / "top" / "pack.json").read_text(encoding="utf-8"))
+            folder = Path(tmp) / "probe"
+            model_path = relay_pack.stage_probe(folder, "top", json.dumps(top), relay_pack.probe_model("top", top), siblings=parent)
+            model = json.loads(model_path.read_text(encoding="utf-8"))
+            self.assertTrue((folder / "packs" / "base" / "pack.json").is_file())
+            lock = json.loads((folder / "npdev.lock").read_text(encoding="utf-8"))
+            self.assertEqual(sorted(lock["packs"]), ["base", "top"])
+            self.assertTrue(lock["packs"]["base"]["digest"].startswith("sha256:"))
+            self.assertEqual(model["provides"]["capabilities"], ["sendMail"])
+            self.assertEqual(model["provides"]["roleBindings"], {"boss": "PROBE_BOSS"})
+            self.assertEqual(model["propertyScopes"], [{"name": "tenant"}])
+
+    def test_a_pack_with_no_dependencies_gets_the_plain_probe_and_no_lock(self):
+        import npdev_relay_pack as relay_pack
+
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp) / "probe"
+            relay_pack.stage_probe(folder, "solo", json.dumps({"pack": "solo", "version": "1.0.0"}), relay_pack.probe_model("solo"))
+            self.assertFalse((folder / "npdev.lock").exists())

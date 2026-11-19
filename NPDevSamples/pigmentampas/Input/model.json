@@ -325,11 +325,11 @@
       "as": "identity"
     },
     {
-      "from": "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/tracing@tracing-1.0.2",
+      "from": "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/tracing@tracing-1.0.3",
       "as": "tracing"
     },
     {
-      "from": "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/workspace@workspace-1.1.0",
+      "from": "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/workspace@workspace-1.1.1",
       "as": "workspace"
     }
   ],

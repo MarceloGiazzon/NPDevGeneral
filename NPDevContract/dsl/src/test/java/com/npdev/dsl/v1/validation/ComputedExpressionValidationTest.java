@@ -105,9 +105,7 @@ class ComputedExpressionValidationTest {
                   { "name": "pos", "type": "integer" },
                   { "name": "cxAvulsas", "type": "integer" } ] }
               ],
-              "procedures": [
-                { "name": "Recalcular", "steps": [{ "name": "done", "type": "return", "value": "ok" }] }
-              ],
+              "flows": [{"name": "Recalcular", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
               "autoPanels": [
                 { "concept": "Item", "surfaces": ["transaction"],
                   "transaction": {

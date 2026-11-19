@@ -35,9 +35,7 @@ import com.npdev.dsl.v1.ast.PanelActionAst;
 import com.npdev.dsl.v1.ast.PanelAst;
 import com.npdev.dsl.v1.ast.PanelDataSourceAst;
 import com.npdev.dsl.v1.ast.PresentationMetadataAst;
-import com.npdev.dsl.v1.ast.ProcedureAst;
-import com.npdev.dsl.v1.ast.ProcedureParameterAst;
-import com.npdev.dsl.v1.ast.ProcedureStepAst;
+import com.npdev.dsl.v1.ast.QueryParameterAst;
 import com.npdev.dsl.v1.ast.QueryAst;
 import com.npdev.dsl.v1.ast.ReferenceSemanticsAst;
 import com.npdev.dsl.v1.ast.TruthLevel;
@@ -82,11 +80,7 @@ final class AggregateValidation {
 
     static void validateAggregates(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
         Set<String> aggregateNames = new HashSet<>();
-        Map<String, ProcedureAst> proceduresByLower = new HashMap<>();
-        for (ProcedureAst procedure : modelAst.getProcedures()) {
-            proceduresByLower.put(normalize(procedure.name()), procedure);
-        }
-        // FORM P3-T5c: a hook names a procedure OR the flow that replaced it
+        // a hook names a flow (every procedure became one: REG-342)
         Set<String> flowNamesByLower = new HashSet<>();
         for (com.npdev.dsl.v1.ast.FlowAst flow : modelAst.getFlows()) {
             flowNamesByLower.add(normalize(flow.getName()));
@@ -117,14 +111,14 @@ final class AggregateValidation {
             // one actually takes effect (a direct aggregate.onValidate/onCommit always wins), and
             // separately validate the three hook positions with no aggregate-level equivalent.
             TransactionHooksAst hooks = transactionHooksFor(aggregate.name(), modelAst.getAutoPanels());
-            validateOnCommit(aggregate, hooks, proceduresByLower, flowNamesByLower, errors);
-            validateOnValidate(aggregate, hooks, proceduresByLower, flowNamesByLower, errors);
+            validateOnCommit(aggregate, hooks, flowNamesByLower, errors);
+            validateOnValidate(aggregate, hooks, flowNamesByLower, errors);
             validateHookProcedure(aggregate.name(), "onLoad",
-                    hooks == null ? null : hooks.onLoad(), proceduresByLower, flowNamesByLower, errors);
+                    hooks == null ? null : hooks.onLoad(), flowNamesByLower, errors);
             validateHookProcedure(aggregate.name(), "onFieldChange",
-                    hooks == null ? null : hooks.onFieldChange(), proceduresByLower, flowNamesByLower, errors);
+                    hooks == null ? null : hooks.onFieldChange(), flowNamesByLower, errors);
             validateHookProcedure(aggregate.name(), "beforeAction",
-                    hooks == null ? null : hooks.beforeAction(), proceduresByLower, flowNamesByLower, errors);
+                    hooks == null ? null : hooks.beforeAction(), flowNamesByLower, errors);
             validateAggregateInvariants(aggregate, errors);
             validateAggregateBalances(aggregate, errors);
         }
@@ -254,12 +248,11 @@ final class AggregateValidation {
 
     private static void validateHookProcedure(
             String aggregateName, String position, String procedureName,
-            Map<String, ProcedureAst> proceduresByLower, Set<String> flowNamesByLower, List<String> errors) {
+            Set<String> flowNamesByLower, List<String> errors) {
         if (!hasText(procedureName)) {
             return;
         }
-        if (!proceduresByLower.containsKey(normalize(procedureName))
-                && !flowNamesByLower.contains(normalize(procedureName))) {
+        if (!flowNamesByLower.contains(normalize(procedureName))) {
             errors.add("Aggregate " + aggregateName + ": transaction.hooks." + position
                     + " names a procedure not found: " + procedureName);
         }
@@ -274,21 +267,16 @@ final class AggregateValidation {
      * nesting limit guards recursion at run time.
      */
     private static void validateOnCommit(
-            AggregateAst aggregate, TransactionHooksAst hooks, Map<String, ProcedureAst> proceduresByLower,
+            AggregateAst aggregate, TransactionHooksAst hooks,
             Set<String> flowNamesByLower, List<String> errors) {
         String onCommit = hasText(aggregate.onCommit())
                 ? aggregate.onCommit() : (hooks == null ? null : hooks.onCommit());
         if (!hasText(onCommit)) {
             return;
         }
-        String normalized = normalize(onCommit);
-        ProcedureAst procedure = proceduresByLower.get(normalized);
-        if (procedure == null && flowNamesByLower.contains(normalized)) {
-            return; // a flow: its own callFlow nesting limit guards recursion at run time
-        }
-        if (procedure == null) {
+        // a flow: its own callFlow nesting limit guards recursion at run time
+        if (!flowNamesByLower.contains(normalize(onCommit))) {
             errors.add("Aggregate " + aggregate.name() + ": onCommit names a procedure not found: " + onCommit);
-            return;
         }
     }
 
@@ -300,21 +288,16 @@ final class AggregateValidation {
      * same direct-self-recursion linting check as {@code onCommit}, for the same reason.
      */
     private static void validateOnValidate(
-            AggregateAst aggregate, TransactionHooksAst hooks, Map<String, ProcedureAst> proceduresByLower,
+            AggregateAst aggregate, TransactionHooksAst hooks,
             Set<String> flowNamesByLower, List<String> errors) {
         String onValidate = hasText(aggregate.onValidate())
                 ? aggregate.onValidate() : (hooks == null ? null : hooks.onValidate());
         if (!hasText(onValidate)) {
             return;
         }
-        String normalized = normalize(onValidate);
-        ProcedureAst procedure = proceduresByLower.get(normalized);
-        if (procedure == null && flowNamesByLower.contains(normalized)) {
-            return; // a flow: its own callFlow nesting limit guards recursion at run time
-        }
-        if (procedure == null) {
+        // a flow: its own callFlow nesting limit guards recursion at run time
+        if (!flowNamesByLower.contains(normalize(onValidate))) {
             errors.add("Aggregate " + aggregate.name() + ": onValidate names a procedure not found: " + onValidate);
-            return;
         }
     }
 

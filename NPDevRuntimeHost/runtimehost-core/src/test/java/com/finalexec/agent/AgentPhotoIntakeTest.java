@@ -53,7 +53,7 @@ class AgentPhotoIntakeTest {
                   { "name": "status", "type": "string", "required": true },
                   { "name": "submittedBy", "type": "string" } ] }
               ],
-              "procedures": [ { "name": "Identify", "steps": [ { "name": "done", "type": "return", "value": "$input" } ] } ],
+              "flows": [{"name": "Identify", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
               "agentAccess": {
                 "channels": { "telegram": { "enabled": true } },
                 "expose": [ { "concept": "Cap", "operations": ["list"] } ]

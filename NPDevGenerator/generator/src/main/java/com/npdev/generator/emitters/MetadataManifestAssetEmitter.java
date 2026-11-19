@@ -46,7 +46,6 @@ public final class MetadataManifestAssetEmitter {
 
         List<CatalogDefinition> definitions = List.of(
                 new CatalogDefinition("concepts", "concepts", "concepts.manifest.json"),
-                new CatalogDefinition("procedures", "procedures", "procedures.manifest.json"),
                 new CatalogDefinition("queries", "queries", "queries.manifest.json"),
                 new CatalogDefinition("domainTypes", "domainTypes", "domain-types.manifest.json"),
                 new CatalogDefinition("panels", "panels", "panels.manifest.json"),

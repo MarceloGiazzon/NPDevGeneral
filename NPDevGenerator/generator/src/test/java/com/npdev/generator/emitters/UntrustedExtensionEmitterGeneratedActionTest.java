@@ -8,9 +8,7 @@ import com.npdev.dsl.v1.compiled.CompiledCapabilityCall;
 import com.npdev.dsl.v1.compiled.CompiledCapabilityExecutionPolicy;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledFlowStep;
-import com.npdev.dsl.v1.compiled.CompiledGeneratedActionDescriptorSpec;
 import com.npdev.dsl.v1.compiled.CompiledModel;
-import com.npdev.dsl.v1.compiled.CompiledProcedure;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.strategy.RegenerationPolicy;
 
@@ -168,21 +166,6 @@ final class UntrustedExtensionEmitterGeneratedActionTest {
     }
 
     @Test
-    void explicitDescriptorWithoutSideEffectConceptDoesNotGenerateInferredConceptCounting() throws Exception {
-        Path outputRoot = emitTrustedActionApp(false);
-        Path trustedRoot = outputRoot.resolve("src/main/java/com/npdev/generated/trusted");
-
-        String registry = Files.readString(trustedRoot.resolve("GeneratedActionRegistry.java"));
-        assertTrue(registry.contains("List.of(),"));
-        assertTrue(registry.contains("\"\","));
-        assertFalse(registry.contains("\"User\","),
-                "Explicit descriptors without sideEffectConcept must not infer User from CreateUser");
-
-        String runner = Files.readString(trustedRoot.resolve("GeneratedActionKernelRunner.java"));
-        assertTrue(runner.contains("disabled: descriptor sideEffectConcept is not declared"));
-    }
-
-    @Test
     void generatedTrustedActionJavaCompilesAndProcedureEndpointDelegatesThroughRunner() throws Exception {
         Path outputRoot = emitTrustedActionApp();
         writeGeneratedAppValidationStubs(outputRoot);
@@ -253,7 +236,7 @@ final class UntrustedExtensionEmitterGeneratedActionTest {
                   "entries": [
                     {
                       "entryId": "create-user",
-                      "kind": "procedure",
+                      "kind": "flow",
                       "relativePath": "trusted/CreateUserProcedure.java",
                       "language": "java",
                       "sha256": "%s",
@@ -269,32 +252,12 @@ final class UntrustedExtensionEmitterGeneratedActionTest {
         Path modelSource = modelRoot.resolve("model.json");
         Files.writeString(modelSource, "{}", StandardCharsets.UTF_8);
 
-        CompiledProcedure procedure = new CompiledProcedure(
-                "CreateUser",
-                "Creates a user through trusted source",
-                List.of(),
-                List.of(),
-                List.of(),
-                null,
-                List.of("ADMIN"),
-                new CompiledGeneratedActionDescriptorSpec(
-                        "CreateUser",
-                        includeSideEffectConcept ? List.of("User") : List.of(),
-                        includeSideEffectConcept ? "User" : null,
-                        "generated.action.create-user.completed",
-                        "GENERATED_ACTION",
-                        "record",
-                        "record",
-                        "claim",
-                        true
-                ),
-                Map.of(
+        CompiledFlow procedure = new CompiledFlow("CreateUser", null, null, List.of(), null, null, null, false, null, null, null, "ui", null, "Creates a user through trusted source", Map.of(
                         "untrustedExtensionEntrypoint", "trusted/CreateUserProcedure.java",
-                        "sideEffectConcept", "LegacyShouldNotWin",
-                        "affectedConcepts", "LegacyShouldNotWin",
-                        "eventNameOnSuccess", "generated.action.legacy.completed"
-                )
-        );
+                        "sideEffectConcept", "User",
+                        "affectedConcepts", "User",
+                        "eventNameOnSuccess", "generated.action.create-user.completed"
+                ));
         CompiledFlow flow = new CompiledFlow(
                 "CreateUserFlow",
                 "User",
@@ -349,9 +312,8 @@ final class UntrustedExtensionEmitterGeneratedActionTest {
                 List.of(),
                 List.of(),
                 List.of(),
-                List.of(flow),
+                List.of(flow, procedure),
                 List.of(),
-                List.of(procedure),
                 List.of()
         );
 

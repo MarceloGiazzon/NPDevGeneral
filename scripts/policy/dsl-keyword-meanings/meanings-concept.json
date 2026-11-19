@@ -1,0 +1,388 @@
+{
+  "$comment": "Hand-written English meanings for the Concept noun of docs/DSL_KEYWORD_REFERENCE.md. A slot id is <def>.<property> (model.schema.json $defs) or pack:<property> / root:<property>. Only keywords whose schema node has no description are listed here (an entry here wins over a schema description). `inline` entries name keys written inside an inline object of a slot: <slot>.<key>. `defs` entries add a summary, a status and a minimal example to a $defs section.",
+  "schemaVersion": "npdev-keyword-meanings.v1",
+  "defs": {
+    "concept": {
+      "summary": "A kind of record the app stores. A concept has fields, and optionally invariants, indexes, row-level access, events, a lifecycle (state machine), a composition (aggregate of child collections) and presentation hints. Each concept becomes a table, a REST resource and a generated screen.",
+      "example": {
+        "name": "Invoice",
+        "fields": [
+          {
+            "name": "id",
+            "type": "uuid",
+            "id": true
+          },
+          {
+            "name": "number",
+            "type": "string",
+            "required": true,
+            "unique": true,
+            "defaultExpression": "nextNumber('invoice')"
+          },
+          {
+            "name": "total",
+            "type": "decimal",
+            "precision": 12,
+            "scale": 2,
+            "min": 0
+          }
+        ],
+        "softDelete": true
+      }
+    },
+    "field": {
+      "summary": "One column of a concept (and one entry of an object's properties). The `type` decides the stored shape; the remaining keywords add constraints, defaults, references, enum members and presentation.",
+      "example": {
+        "name": "status",
+        "type": "enum",
+        "required": true,
+        "enumValues": [
+          "OPEN",
+          "PAID"
+        ],
+        "default": "OPEN"
+      }
+    },
+    "domainType": {
+      "summary": "A reusable, named field type (for example an email address or a postal code): a base type plus validation, normalization and presentation that every field using it inherits through `field.domainType`.",
+      "example": {
+        "name": "Email",
+        "baseType": "string",
+        "validation": {
+          "type": "string",
+          "maxLength": 254,
+          "regex": "^[^@\\s]+@[^@\\s]+$"
+        },
+        "normalization": [
+          "trim",
+          "lowercase"
+        ]
+      }
+    },
+    "enumOption": {
+      "summary": "A rich enum member, written instead of a plain string inside `field.enumValues` / `field.values` when the member needs a label, an icon, a badge or a position."
+    },
+    "referenceDefinition": {
+      "summary": "The long form of `field.reference`: the target concept of a reference field plus how the generated UI looks it up, previews it and what happens on delete.",
+      "example": {
+        "target": "Customer",
+        "displayField": "name",
+        "searchFields": [
+          "name",
+          "email"
+        ],
+        "onDelete": "restrict"
+      }
+    },
+    "schemaObject": {
+      "summary": "A small inline type description (a JSON-Schema-like subset) used wherever a value is not a concept field: object and array shapes of fields, a domain type's validation, capability operation inputs and outputs, a flow's input and output schema and a procedure's returns. It is recursive through `properties` and `items`."
+    },
+    "localizableLabel": {
+      "summary": "A text shown to users. Either a plain string, or an object with a required `default` text plus one entry per locale (for example `pt-BR`); the runtime picks the requested locale, then its language, then `default`."
+    },
+    "presentationMetadata": {
+      "summary": "Presentation hints for the generated UI. Used on a concept (`concept.ui`: whole-list and whole-form behavior) and on a field (`field.ui`, `domainType.ui`, a panel field binding's `ui`: how the one field is labelled, grouped and edited). Hints only change how data is shown; they never widen access or change what is stored.",
+      "example": {
+        "label": "Customer",
+        "formColumns": 2,
+        "defaultGroup": "status",
+        "formPresentation": "modal"
+      }
+    },
+    "uiField": {
+      "summary": "The `ui` of a field or domain type: an alias of presentationMetadata."
+    },
+    "conceptAccess": {
+      "summary": "Row-level authorization of a concept, evaluated per record: which rows a caller may read and which it may write, plus an optional anonymous public read grant.",
+      "example": {
+        "read": "ownerId == $user.id || 'Manager' in $user.roles",
+        "write": "ownerId == $user.id"
+      }
+    },
+    "index": {
+      "summary": "A database index over one or more fields of a concept, optionally unique.",
+      "example": {
+        "name": "ux_invoice_number",
+        "fields": [
+          "number"
+        ],
+        "unique": true
+      }
+    },
+    "invariant": {
+      "summary": "A rule every row of the concept must satisfy before it is written. Either a uniqueness rule over fields (`type: unique`) or a boolean expression over the row (`type: expression`). A specializing concept can replace an inherited invariant with `override: true`.",
+      "example": {
+        "name": "PositiveTotal",
+        "type": "expression",
+        "expression": "total >= 0"
+      }
+    },
+    "lifecycle": {
+      "summary": "The state machine of a concept: which field holds the state, the declared states and the allowed transitions between them.",
+      "example": {
+        "statusField": "status",
+        "states": [
+          {
+            "value": "OPEN",
+            "initial": true
+          },
+          {
+            "value": "PAID",
+            "terminal": true
+          }
+        ],
+        "transitions": [
+          {
+            "from": "OPEN",
+            "to": "PAID",
+            "event": "Pay"
+          }
+        ]
+      }
+    },
+    "lifecycleState": {
+      "summary": "One state of a lifecycle."
+    },
+    "lifecycleTransition": {
+      "summary": "One allowed move from a state to another, optionally guarded by an expression and tied to an event and a button."
+    },
+    "actionMetadata": {
+      "summary": "How an action button is presented: caption, confirmation text, success and failure messages, danger level and visibility. Used on a lifecycle transition, a flow and a flow step."
+    },
+    "composition": {
+      "summary": "Turns a concept into the root of an aggregate: a header plus owned child collections that are read and saved whole, in one transaction, at `/api/v1/runtime/aggregate/<Concept>`. Also holds the cross-collection rules (invariants, balances) and the hooks that run around a commit."
+    },
+    "aggregateCollection": {
+      "summary": "One child collection of an aggregate: the concept it holds, the field that points back to the parent and, optionally, nested collections and read-only lookup columns."
+    },
+    "aggregateCollectionLookupField": {
+      "summary": "A read-only column attached to every row of a collection when it loads, fetched from a declared query and joined in memory. Never persisted."
+    },
+    "aggregateInvariant": {
+      "summary": "A named rule evaluated over the whole aggregate draft (root fields plus every collection) just before commit; a failure vetoes the commit and names the rule."
+    },
+    "aggregateBalance": {
+      "summary": "A named balance rule over a collection whose rows are split into two sides by a discriminator field (for example origin and destination): per group, the summed quantities of the two sides must be equal, or the commit is vetoed."
+    },
+    "sequence": {
+      "summary": "A document-numbering counter such as INV-2026-0001. A field takes the next value with `defaultExpression: \"nextNumber('<name>')\"`.",
+      "example": {
+        "name": "invoice",
+        "format": "INV-{year}-{seq:4}",
+        "scope": "tenant"
+      }
+    },
+    "seed": {
+      "summary": "Rows inserted once, automatically, at first boot through the same governed save path as any other write. A seed is one record, or many (`count` / `repeatOver`).",
+      "example": {
+        "concept": "Country",
+        "id": "br",
+        "data": {
+          "code": "BR",
+          "name": "Brazil"
+        }
+      }
+    }
+  },
+  "slots": {
+    "concept.name": "The concept's name, unique within the model (PascalCase by convention). It names the table, the REST resource (`/api/<Concept>`) and every reference to the concept from queries, flows and screens.",
+    "concept.extends": "Alias of `specializes`: the name of a base concept this concept builds on.",
+    "concept.specializes": "Name of a base concept (usually contributed by a pack, written `pack::Concept`) that this concept specializes: it starts from the base's fields, invariants and events and may add to them. The base is pinned to the pack version the app was generated against (see `specializesFloat`).",
+    "concept.truthLevel": "The concept's declared verification maturity, `T0` (least) to `T6` (most). The release gate (`--releaseGate --targetTruthLevel=<T>`) refuses to promote a model whose concepts are below the target level.",
+    "concept.module": "Name of the bounded context (`modules[]` entry) this concept belongs to. Other contexts refer to it as `context::Concept`.",
+    "concept.fields": "The concept's fields, at least one. Field order is the default display order.",
+    "concept.invariants": "Rules every row must satisfy (uniqueness or boolean expressions). A violation rejects the write.",
+    "concept.indexes": "Extra database indexes (the platform already indexes ids and unique fields).",
+    "concept.access": "Row-level read and write rules, and an optional anonymous public read grant, for this concept.",
+    "concept.events": "Events declared inside the concept. A nested event with `mode` is published automatically by the generated create, update or delete.",
+    "concept.lifecycle": "The concept's state machine: status field, states and allowed transitions.",
+    "concept.composition": "Makes the concept the root of an aggregate whose child collections are read and saved whole.",
+    "concept.ui": "Presentation hints for the concept as a whole (labels, form layout, default grouping, offline writes).",
+    "field.name": "The field's name: its column name and its JSON key in the REST API. Unique within the concept.",
+    "field.type": "The stored type. `string`, `uuid`, `int` / `integer` (32-bit), `long` (64-bit), `decimal` (use with `precision` and `scale`), `boolean`, `date`, `datetime`, `enum` (needs `enumValues`), `reference` (to another concept's row), `object` (structured, described by `properties`), `array` (described by `items`), `file` (an uploaded file handle).",
+    "field.id": "When true this field is the concept's identifier (primary key). Conventionally a `uuid` field named `id`.",
+    "field.required": "True: a value must be supplied on create and may not be cleared. On an `object` field this may instead be a list of the property names that are required inside the object.",
+    "field.unique": "True: no two rows (within one tenant, and among non-deleted rows when the concept uses `softDelete`) may hold the same value.",
+    "field.connectable": "Set to `anchor` on a unique, non-id field to make it a natural-key anchor that other concepts may reference with `reference.via` (the foreign key then points at this field, scoped by tenant).",
+    "field.enumValues": "The allowed values of an `enum` field, in display order. Each entry is a plain string or an `enumOption` object that adds a label, icon, badge or order.",
+    "field.values": "Alias of `enumValues`.",
+    "field.ref": "Shorthand for the target of a reference field: the name of the referenced concept. Prefer `reference`.",
+    "field.reference": "Makes the field a reference to another concept's row. Either the target concept's name, or a `referenceDefinition` object that also configures lookup, preview and delete behavior.",
+    "field.domainType": "Name of a `domainTypes[]` entry whose base type, validation, normalization and presentation this field inherits.",
+    "field.description": "A sentence saying what the field holds. Shown as help in the generated UI and read by AI authors.",
+    "field.default": "A literal value stored when the caller does not supply one on create.",
+    "field.defaultExpression": "An expression evaluated on create when the caller supplies no value, for example `nextNumber('invoice')`, `today()` or `$user.id`. Not re-applied on update.",
+    "field.derivedExpression": "An expression that computes the field's value from the row's other fields. The value is calculated by the platform, not supplied by clients.",
+    "field.minLength": "Minimum number of characters of a `string` value.",
+    "field.maxLength": "Maximum number of characters of a `string` value.",
+    "field.min": "Smallest allowed numeric value (inclusive) for `int`, `long` and `decimal` fields.",
+    "field.max": "Largest allowed numeric value (inclusive) for `int`, `long` and `decimal` fields.",
+    "field.precision": "Total number of digits of a `decimal` field (1 to 38).",
+    "field.scale": "Number of digits after the decimal point of a `decimal` field.",
+    "field.minItems": "Minimum number of elements of an `array` field.",
+    "field.maxItems": "Maximum number of elements of an `array` field.",
+    "field.uniqueItems": "True: the elements of an `array` field must all be different.",
+    "field.itemIdentityField": "For an `array` of objects, the property of each element that identifies it; used together with `duplicationPolicy` to detect duplicates.",
+    "field.duplicationPolicy": "For an `array` field: `allow` or `deny` elements that share the same identity (`itemIdentityField`).",
+    "field.properties": "For an `object` field, the structure: a map from property name to a `schemaObject` describing that property.",
+    "field.items": "For an `array` field, the `schemaObject` describing every element.",
+    "field.ui": "Presentation hints for this one field (label, placeholder, widget, grouping, visibility rules).",
+    "domainType.name": "The domain type's name, referenced by `field.domainType`.",
+    "domainType.baseType": "The stored type that fields of this domain type get (a scalar field type).",
+    "domainType.validation": "A `schemaObject` with the constraints (length, range, pattern, ...) applied to every field of this type.",
+    "domainType.normalization": "Names of normalizations applied to a value before it is validated and stored (for example `trim`, `lowercase`).",
+    "domainType.format": "A format hint for the value (for example an input mask or a well-known format name); also shown to users and AI authors.",
+    "domainType.examples": "Example values, used in generated help and in tests.",
+    "domainType.ui": "Presentation hints inherited by every field of this type.",
+    "enumOption.value": "The stored value of this enum member.",
+    "enumOption.label": "The text shown for the member (a plain string or per-locale object).",
+    "enumOption.displayLabel": "An alternative display text used where the short `label` is not enough, for example in a form dropdown.",
+    "enumOption.order": "Position of the member in dropdowns and filters (lower first). Members without `order` follow in declaration order.",
+    "enumOption.group": "Heading under which the member is grouped in dropdowns.",
+    "enumOption.default": "True: this member is preselected on create.",
+    "enumOption.deprecated": "True: existing rows may keep the value but it is no longer offered for new data.",
+    "enumOption.icon": "Icon name shown next to the member.",
+    "enumOption.iconHint": "Accessible text explaining the icon.",
+    "enumOption.badge": "Short badge text or color token shown next to the member.",
+    "enumOption.badgeHint": "Accessible text explaining the badge.",
+    "enumOption.description": "A sentence describing what the member means.",
+    "enumOption.help": "Longer help shown when the user focuses the member.",
+    "referenceDefinition.target": "The referenced concept's name (`Concept`, or `pack::Concept` / `context::Concept` for one declared elsewhere).",
+    "referenceDefinition.multiple": "True: the field holds a list of references instead of one.",
+    "referenceDefinition.displayField": "Field of the target used as the human-readable text of a reference.",
+    "referenceDefinition.lookupFields": "Fields of the target shown in lookup results.",
+    "referenceDefinition.searchFields": "Fields of the target the picker searches when the user types.",
+    "referenceDefinition.previewFields": "Fields of the target shown in the hover or detail preview of a selected reference.",
+    "referenceDefinition.displayTemplate": "A template combining target fields into the displayed text, for example `{code} - {name}`.",
+    "referenceDefinition.pickerColumns": "Columns of the target shown in the picker dialog.",
+    "referenceDefinition.previewCardTemplate": "A template for the preview card shown for a selected reference.",
+    "referenceDefinition.defaultFilter": "A predicate that restricts which target rows the picker offers.",
+    "referenceDefinition.defaultFilterBehavior": "Alias of `defaultFilter`.",
+    "referenceDefinition.inlineCreate": "`allow` lets the user create a new target row from inside the picker; `deny` hides that option.",
+    "referenceDefinition.via": "Name of a field of the target to reference instead of its id. It must be the target's id or a unique field marked `connectable: anchor`.",
+    "referenceDefinition.onDelete": "What happens to this field when the referenced row is deleted: `restrict` refuses the delete, `cascade` deletes the referencing rows too, `nullify` clears the reference.",
+    "schemaObject.type": "The value type: a scalar field type, `object`, `array` or `reference`.",
+    "schemaObject.description": "A sentence describing the value.",
+    "schemaObject.minLength": "Minimum length of a string.",
+    "schemaObject.maxLength": "Maximum length of a string.",
+    "schemaObject.min": "Smallest allowed numeric value.",
+    "schemaObject.max": "Largest allowed numeric value.",
+    "schemaObject.precision": "Total digits of a decimal.",
+    "schemaObject.scale": "Digits after the decimal point of a decimal.",
+    "schemaObject.minItems": "Minimum number of elements of an array.",
+    "schemaObject.maxItems": "Maximum number of elements of an array.",
+    "schemaObject.uniqueItems": "True: array elements must all be different.",
+    "schemaObject.itemIdentityField": "Property that identifies an array element, used with `duplicationPolicy`.",
+    "schemaObject.duplicationPolicy": "`allow` or `deny` array elements that share the same identity.",
+    "schemaObject.regex": "A regular expression a string value must match.",
+    "schemaObject.pattern": "Alias of `regex`.",
+    "schemaObject.enumValues": "The allowed values of an enum value.",
+    "schemaObject.values": "Alias of `enumValues`.",
+    "schemaObject.enum": "Alias of `enumValues`.",
+    "schemaObject.required": "For an object, the names of the properties that must be present.",
+    "schemaObject.properties": "For an object, a map from property name to the `schemaObject` describing it.",
+    "schemaObject.items": "For an array, the `schemaObject` describing every element.",
+    "schemaObject.default": "A literal default value.",
+    "schemaObject.defaultExpression": "An expression giving the default value when none is supplied.",
+    "schemaObject.derivedExpression": "An expression that computes the value from its siblings.",
+    "presentationMetadata.label": "The user-facing name of the field or concept (plain string or per-locale object). Defaults to a prettified name.",
+    "presentationMetadata.shortLabel": "A shorter name used where space is tight, such as a table header or a mobile card.",
+    "presentationMetadata.description": "A sentence of help shown next to the control.",
+    "presentationMetadata.placeholder": "Hint text shown inside an empty input.",
+    "presentationMetadata.helpText": "Longer help text shown under the control.",
+    "presentationMetadata.order": "Position of the field in forms and details (lower first).",
+    "presentationMetadata.widget": "The control used to edit the field (for example `text`, `textarea`, `select`, `checkbox`, `date`, `number`, `custom`). It must be compatible with the field's type; the validator checks it. With `custom`, `customWidgetRef` names the component.",
+    "presentationMetadata.group": "Name of the group the field belongs to in a form; fields with the same group render together.",
+    "presentationMetadata.section": "Name of the form section (a titled block) the field is placed in.",
+    "presentationMetadata.advanced": "True: the field is tucked away under an Advanced toggle.",
+    "presentationMetadata.deprecated": "True: the field is kept for old data but hidden for new entries.",
+    "presentationMetadata.examples": "Example values shown as hints.",
+    "presentationMetadata.visibleWhen": "Expression over the record; the control is shown only while it is true.",
+    "presentationMetadata.enabledWhen": "Expression over the record; the control is editable only while it is true.",
+    "presentationMetadata.readonlyWhen": "Expression over the record; while true the control is read-only.",
+    "presentationMetadata.requiredWhen": "Expression over the record; while true the control is marked and enforced as required.",
+    "presentationMetadata.pickerType": "How a reference field is picked, for example a `search-dialog`.",
+    "presentationMetadata.allowInlineCreate": "True: the picker lets the user create a new target row in place.",
+    "presentationMetadata.searchFields": "Fields searched by the picker for this reference field.",
+    "presentationMetadata.filterPreset": "Name of a preset filter applied to the picker's candidate rows.",
+    "presentationMetadata.tab": "Name of the form tab the field is placed on.",
+    "presentationMetadata.column": "Grid column (1-based) the field occupies in a multi-column form.",
+    "presentationMetadata.columnSpan": "Number of grid columns the field spans in a multi-column form.",
+    "presentationMetadata.width": "Preferred width of the field's control or column (a CSS size or a keyword).",
+    "presentationMetadata.summaryCard": "True: the field is shown on the record's summary card.",
+    "presentationMetadata.listColumn": "True: the field is a column of the list; false hides it from the list.",
+    "presentationMetadata.showInDefaultWebUi": "False hides the field from the generated web UI entirely (it stays in the API).",
+    "presentationMetadata.listColumnOrder": "Position of the field among the list columns (lower first).",
+    "presentationMetadata.formColumns": "Concept-level. Number of columns of the create and edit form (default 1).",
+    "presentationMetadata.displayMode": "Concept-level. How the concept's records are shown by default, for example `standard`.",
+    "presentationMetadata.formPresentation": "Concept-level. `standard` (default) opens the create and edit form in place of the list with a Back to list action; `modal` opens it as a popup dialog.",
+    "presentationMetadata.defaultSort": "Concept-level. The field the list is sorted by by default.",
+    "presentationMetadata.defaultGroup": "Concept-level. An `enum` field whose members become the columns of the generated board (kanban) view; defaults to the lifecycle status field.",
+    "presentationMetadata.imageField": "On a reference field or concept: the field of the target that holds an image, shown as the thumbnail of a selected reference.",
+    "presentationMetadata.customWidgetRef": "With `widget: custom`: the relative path of the app-supplied widget component that renders the field.",
+    "presentationMetadata.currency": "ISO currency code (for example `BRL`) used to format a numeric field as money.",
+    "conceptAccess.read": "Expression evaluated per record that scopes which rows a caller may read; `$user.id`, `$user.tenantId`, `$user.roles` and the row's own fields are available. A row for which it is false is invisible.",
+    "conceptAccess.write": "Expression evaluated per record that scopes which rows a caller may change or delete.",
+    "index.name": "Name of the database index. Generated from the concept and fields when omitted.",
+    "index.fields": "The fields the index covers, in order. At least one.",
+    "index.unique": "True: the combination of the indexed fields must be unique.",
+    "invariant.name": "The rule's name, shown in the error when it is violated and used to refer to it from `override`.",
+    "invariant.type": "`unique` (the `fields` must be unique together) or `expression` (a boolean expression that must hold).",
+    "invariant.specializes": "Name of an inherited invariant this one refines.",
+    "invariant.override": "True: replaces the inherited invariant of the same name in a specializing concept.",
+    "invariant.rule": "A one-line rule text that the parser turns into the `type`, `fields` and `expression` of the invariant. Prefer the explicit keys.",
+    "invariant.expr": "Alias of `expression`.",
+    "invariant.expression": "The boolean expression over the row's fields that must be true for a write to be accepted.",
+    "invariant.fields": "For `type: unique`, the fields whose combined values must be unique.",
+    "lifecycle.statusField": "The enum field that stores the current state. Defaults to a field named `status`.",
+    "lifecycle.states": "The declared states, with labels, initial and terminal marks. When omitted they are derived from the transitions.",
+    "lifecycle.transitions": "The allowed moves between states, at least one. A move not listed here is refused.",
+    "lifecycleState.value": "The state's stored value (a member of the status field).",
+    "lifecycleState.label": "The text shown for the state.",
+    "lifecycleState.initial": "True: new rows start in this state.",
+    "lifecycleState.allowedActions": "Names of the actions offered while a row is in this state.",
+    "lifecycleState.metadata": "Free-form string notes about the state, carried into the compiled model unchanged.",
+    "lifecycleTransition.from": "The state the transition leaves.",
+    "lifecycleTransition.to": "The state the transition enters.",
+    "lifecycleTransition.event": "Name of the event that triggers (and is published by) this transition.",
+    "lifecycleTransition.guard": "Expression over the row that must be true for the transition to be allowed.",
+    "lifecycleTransition.actionLabel": "Caption of the button that performs the transition.",
+    "lifecycleTransition.action": "Presentation of the transition's action (confirmation text, success message, danger level).",
+    "lifecycleTransition.requiredPayload": "Names of fields of the row that must hold a value for the transition to be performed.",
+    "lifecycleTransition.requires": "Alias of `requiredPayload`.",
+    "lifecycleTransition.metadata": "Free-form string notes carried into the compiled model unchanged.",
+    "actionMetadata.label": "Caption of the action button.",
+    "actionMetadata.confirmationText": "Question shown for confirmation before the action runs.",
+    "actionMetadata.successMessage": "Message shown after the action succeeds.",
+    "actionMetadata.failureHint": "Hint shown to the user when the action fails.",
+    "actionMetadata.dangerLevel": "How destructive the action is: `low`, `medium`, `high` or `critical`; higher levels get stronger confirmation styling.",
+    "actionMetadata.visibleWhen": "Expression; the button is shown only while it is true.",
+    "actionMetadata.permissionHint": "Text explaining which permission the action needs.",
+    "composition.collections": "The aggregate's child collections, each loaded and saved with the root.",
+    "composition.onCommit": "Name of a procedure (or a flow of that name) that runs after the whole tree is written, in the same transaction; a failure rolls everything back.",
+    "composition.metadata": "Free-form notes carried into the compiled model unchanged.",
+    "aggregateCollection.name": "The collection's name; its address inside the aggregate (nested ones are addressed `parent.child`).",
+    "aggregateCollection.concept": "The concept whose rows make up the collection.",
+    "aggregateCollection.childField": "Field of the child concept that points back to the parent row.",
+    "aggregateCollection.ownership": "`owned` (default): the aggregate creates and deletes the child rows. `referenced`: the rows exist independently and are only linked.",
+    "aggregateCollection.orderBy": "Field the collection's rows are ordered by.",
+    "aggregateCollection.collections": "Nested child collections (a second level, such as lines and their positions)."
+  },
+  "inline": {
+    "seed.repeatOver.vars": "Index variables: a map from variable name to the inclusive integer range it takes.",
+    "concept.rollups.field": "The stored field of this concept that holds the aggregate.",
+    "concept.rollups.from": "The child concept whose rows are aggregated.",
+    "concept.rollups.via": "The field of the child concept that points at this concept.",
+    "concept.rollups.fn": "The aggregate function: count (default), sum, min, max or avg.",
+    "concept.rollups.of": "The child field the function applies to (not used by `count`).",
+    "field.picker.multiSelect": "True lets the user pick several rows.",
+    "field.access.read": "Expression evaluated per record; while false the field is hidden from the caller.",
+    "field.access.write": "Expression evaluated per record; while false the field is read-only for the caller.",
+    "field.file.contentTypes": "Allowed MIME types of the uploaded file.",
+    "field.file.maxSizeBytes": "Largest allowed upload in bytes.",
+    "field.file.multiple": "True: the field holds a list of files.",
+    "conceptAccess.public.where": "Filter narrowing which rows are public (the query `where` grammar; it cannot use `$user`). Absent means every row.",
+    "conceptAccess.public.fields": "The allow-list of fields served publicly (the id is always included).",
+    "conceptAccess.public.scope": "`concept` (default): the concept is publicly readable on its own. `aggregate`: its aggregate is served as a whole."
+  }
+}

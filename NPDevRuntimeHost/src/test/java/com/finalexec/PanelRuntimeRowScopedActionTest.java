@@ -218,7 +218,6 @@ class PanelRuntimeRowScopedActionTest {
                 List.of(),
                 List.of(),
                 List.of(),
-                List.of(),
                 List.of(panel)
         );
     }
@@ -262,7 +261,6 @@ class PanelRuntimeRowScopedActionTest {
                 "1.0.0",
                 "1.0.0",
                 Map.of(),
-                List.of(),
                 List.of(),
                 List.of(),
                 List.of(),

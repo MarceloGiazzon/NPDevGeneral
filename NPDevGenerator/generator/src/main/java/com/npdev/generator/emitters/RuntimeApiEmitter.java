@@ -14,7 +14,6 @@ import com.npdev.dsl.v1.compiled.CompiledFlowStep;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPresentationMetadata;
-import com.npdev.dsl.v1.compiled.CompiledProcedure;
 import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.dsl.v1.compiled.CompiledRole;
 import com.npdev.dsl.v1.parser.ResolvedModelSource;
@@ -583,11 +582,6 @@ writer.writeRelative(
         for (CompiledFlow flow : model.getFlows()) {
             addIfPresent(permissions, flow.getAction() == null ? null : flow.getAction().getPermissionHint());
             collectStepPermissionHints(flow.getSteps(), permissions);
-        }
-        for (CompiledProcedure procedure : model.getProcedures()) {
-            for (String requirement : procedure.permissionRequirements()) {
-                addIfPresent(permissions, requirement);
-            }
         }
         // REG-301: GET /api/queries/{name} now enforces a query's permissionRequirements[]
         // (NamedQueryPermissions), so a requirement this manifest never grants would lock the query

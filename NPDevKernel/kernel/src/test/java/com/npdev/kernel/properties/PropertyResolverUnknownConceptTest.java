@@ -41,7 +41,7 @@ class PropertyResolverUnknownConceptTest {
         return new CompiledModel(
                 "wms.props", "1.0.0", "1.0",
                 Map.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 null, null, List.of(),
                 List.of(TENANT_SCOPE),
                 List.of(PAGE_ROWS)
@@ -81,7 +81,7 @@ class PropertyResolverUnknownConceptTest {
                 Map.of("workspace::PropertyValue",
                         new CompiledConcept("workspace::PropertyValue", "PropertyValue", "property_value", List.of())),
                 List.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 null, null, List.of(),
                 List.of(TENANT_SCOPE),
                 List.of(PAGE_ROWS));

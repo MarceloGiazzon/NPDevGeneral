@@ -68,7 +68,7 @@ def check_pack(cli, pack_dir: Path, checkout: Path, work: Path, validate) -> tup
             problems, report = relay_pack.version_errors(pack, old_text, work / "gate", cli)
     if not problems:
         folder = work / "probe"
-        model_path = relay_pack.stage_probe(folder, pack_id, text, relay_pack.probe_model(pack_id))
+        model_path = relay_pack.stage_probe(folder, pack_id, text, relay_pack.probe_model(pack_id, pack), siblings=pack_dir.parent)
         verdict = validate(model_path, work / "validation.json")
         if verdict is None:
             # Publishing to everyone is the one place a check that could not run must NOT pass silently.

@@ -87,7 +87,6 @@ class PanelRuntimeRowOpsTest {
                 List.of(),
                 List.of(),
                 List.of(),
-                List.of(),
                 List.of(panel)
         );
     }
@@ -154,7 +153,7 @@ class PanelRuntimeRowOpsTest {
         );
         CompiledModel model = new CompiledModel(
                 "panel.runtime.readonly", "1.0.0", "1.0.0", Map.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 List.of(panel)
         );
         PanelRuntime runtime = runtimeFor(model, newGateway());

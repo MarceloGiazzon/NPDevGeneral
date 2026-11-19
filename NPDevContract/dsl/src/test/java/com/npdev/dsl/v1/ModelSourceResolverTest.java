@@ -451,16 +451,6 @@ class ModelSourceResolverTest {
                       "steps": [{ "name": "done", "type": "return", "value": "ok" }]
                     }
                   ],
-                  "procedures": [
-                    {
-                      "name": "ArchiveProduct",
-                      "steps": [{ "name": "load", "type": "load", "concept": "Product" }],
-                      "actionDescriptor": {
-                        "sideEffectConcept": "Product",
-                        "affectedConcepts": ["Product", "billing::Invoice"]
-                      }
-                    }
-                  ],
                   "panels": [
                     {
                       "name": "ProductPanel",
@@ -490,11 +480,6 @@ class ModelSourceResolverTest {
 
         assertEquals("cat::Product", resolved.get("queries").get(0).get("concept").asText());
         assertEquals("cat::Product", resolved.get("flows").get(0).get("concept").asText());
-        assertEquals("cat::Product", resolved.get("procedures").get(0).get("steps").get(0).get("concept").asText());
-        assertEquals("cat::Product",
-                resolved.get("procedures").get(0).get("actionDescriptor").get("sideEffectConcept").asText());
-        assertEquals("billing::Invoice",
-                resolved.get("procedures").get(0).get("actionDescriptor").get("affectedConcepts").get(1).asText());
         assertEquals("cat::Product",
                 resolved.get("panels").get(0).get("dataSources").get(0).get("concept").asText());
         assertEquals("cat::Product",

@@ -145,23 +145,6 @@
         }
       }
     },
-    "procedures": {
-      "type": "array",
-      "items": {
-        "if": {
-          "type": "object",
-          "required": [
-            "$ref"
-          ]
-        },
-        "then": {
-          "$ref": "#/$defs/localModelRef"
-        },
-        "else": {
-          "$ref": "#/$defs/procedure"
-        }
-      }
-    },
     "conversions": {
       "type": "array",
       "items": {
@@ -4718,7 +4701,7 @@
         "parameters": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/procedureParameter"
+            "$ref": "#/$defs/queryParameter"
           }
         },
         "permissionRequirements": {
@@ -4896,82 +4879,6 @@
       },
       "additionalProperties": false
     },
-    "procedure": {
-      "type": "object",
-      "required": [
-        "name",
-        "steps"
-      ],
-      "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "uid": {
-          "type": "string",
-          "pattern": "^[a-z0-9]{8,32}$",
-          "description": "REG-209 (B1 lift, P2.1 extension): a stable identity for this procedure, generated once and never reused (npdev migrate assign-uids stamps one). When a live element's persisted uid matches a model procedure's uid but the name differs, the rename is resolved by identity -- declared by construction, no renamedFrom needed. Optional: a model with no uids behaves exactly as before."
-        },
-        "runAs": {
-          "type": "string",
-          "enum": ["system"],
-          "description": "A procedure that must act on rows the caller may not touch (e.g. a rider's request marking a driver busy) declares runAs \"system\": its steps, and the procedures it calls, run with the tenant's system principal ($user.isSystem is true) while the audit records who it acted for. Only a flow or another procedure may call it - a runAs procedure cannot be exposed as an action. Check the state first (an if step). Absent = runs as the caller."
-        },
-        "description": {
-          "type": "string",
-          "minLength": 1
-        },
-        "parameters": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/procedureParameter"
-          }
-        },
-        "locals": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/procedureVariable"
-          }
-        },
-        "variables": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/procedureVariable"
-          }
-        },
-        "steps": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/$defs/procedureStep"
-          }
-        },
-        "returns": {
-          "$ref": "#/$defs/schemaObject"
-        },
-        "permissionRequirements": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "actionDescriptor": {
-          "$ref": "#/$defs/generatedActionDescriptor"
-        },
-        "metadata": {
-          "type": "object",
-          "properties": {
-            "untrustedExtensionEntrypoint": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Path A P0.4: this procedure's implementation is an author-supplied, hash-pinned untrusted extension (a relative path into the sibling untrusted-extension-manifest.json) rather than a normal DSL-declared body -- admitted through the same bytecode/AST safety gate as a mounted plugin. 'Untrusted' names the safety posture the platform treats it with, not a judgement on the author."
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
     "generatedActionDescriptor": {
       "type": "object",
       "properties": {
@@ -5022,7 +4929,7 @@
       },
       "additionalProperties": false
     },
-    "procedureParameter": {
+    "queryParameter": {
       "type": "object",
       "required": [
         "name",
@@ -5051,169 +4958,6 @@
           "type": "string",
           "minLength": 1,
           "description": "REG-313 (b): QUERY parameters only. An expression -- literals and the registered value functions (addDays, daysBetween, today, concat, coalesce, trim, uppercase, lowercase), no field references -- the runtime evaluates when the caller does not supply this parameter, e.g. addDays(today(), -7). Refused on a procedure parameter."
-        }
-      },
-      "additionalProperties": false
-    },
-    "procedureVariable": {
-      "type": "object",
-      "required": [
-        "name"
-      ],
-      "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "type": {
-          "type": "string",
-          "minLength": 1
-        },
-        "schema": {
-          "$ref": "#/$defs/schemaObject"
-        },
-        "initialValue": {}
-      },
-      "additionalProperties": false
-    },
-    "procedureStep": {
-      "type": "object",
-      "required": [
-        "type"
-      ],
-      "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "type": {
-          "type": "string",
-          "enum": [
-            "assign",
-            "mapValue",
-            "condition",
-            "if",
-            "loop",
-            "forEach",
-            "mapList",
-            "conceptQuery",
-            "readConcept",
-            "listConcepts",
-            "runQuery",
-            "conceptCreate",
-            "conceptUpdate",
-            "saveConcept",
-            "conceptDelete",
-            "deleteConcept",
-            "capabilityCall",
-            "callCapability",
-            "eventPublish",
-            "publishEvent",
-            "patchConcept",
-            "computeValue",
-            "return"
-          ]
-        },
-        "target": {
-          "type": "string",
-          "minLength": 1
-        },
-        "value": {},
-        "set": {
-          "type": "object"
-        },
-        "left": {
-          "description": "Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, final item / REG-78): computeValue's first operand -- a literal by default, or a $ref into procedure state (the same literal-vs-$ref convention patchConcept's set and mapList's select already use)."
-        },
-        "right": {
-          "description": "Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, final item / REG-78): computeValue's second operand -- same literal-vs-$ref convention as left."
-        },
-        "params": {
-          "type": "object",
-          "description": "runQuery only: binds the query's declared parameters by name -- each value is a literal or a $ref into procedure state (the same literal-vs-$ref rule as patchConcept.set). Every key must be a parameter of the named query and every required parameter must be given (or have a defaultExpression)."
-        },
-        "errorTarget": {
-          "type": "string",
-          "minLength": 1,
-          "description": "capabilityCall only: a state key. When the outside call FAILS the step still succeeds, `target` stays unset and this key holds {code, message, kind, retryable, httpStatus?, details}; on success it is cleared. Follow it with an `if` on the key (a bare ref is truthy when an error happened). Without errorTarget a failed call fails the whole procedure."
-        },
-        "createIfMissing": {
-          "type": "boolean",
-          "default": false,
-          "description": "Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md): opts a patchConcept step into creating a brand-new record (generated id, built from set alone) when id does not resolve to an existing one, instead of failing CONCEPT_NOT_FOUND. Default false preserves patchConcept's original patch-not-upsert semantics (REG-75)."
-        },
-        "select": {
-          "type": "object",
-          "description": "Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 3A): mapList's per-item field map -- one output object per item in items, built by resolving each declared field against the current loop item (bound as `as`) using the same literal-vs-$ref convention as patchConcept's set."
-        },
-        "condition": {
-          "type": "string",
-          "minLength": 1
-        },
-        "items": {
-          "type": "string",
-          "minLength": 1
-        },
-        "as": {
-          "type": "string",
-          "minLength": 1
-        },
-        "concept": {
-          "type": "string",
-          "minLength": 1
-        },
-        "query": {
-          "type": "string",
-          "minLength": 1
-        },
-        "data": {
-          "type": "object"
-        },
-        "id": {
-          "type": "string",
-          "minLength": 1
-        },
-        "capability": {
-          "type": "string",
-          "minLength": 1
-        },
-        "operation": {
-          "type": "string",
-          "minLength": 1
-        },
-        "event": {
-          "type": "string",
-          "minLength": 1
-        },
-        "args": {
-          "type": "object"
-        },
-        "then": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/procedureStep"
-          }
-        },
-        "else": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/procedureStep"
-          }
-        },
-        "steps": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/procedureStep"
-          }
-        },
-        "trace": {
-          "type": "boolean"
-        },
-        "audit": {
-          "type": "boolean"
-        },
-        "metadata": {
-          "type": "object"
         }
       },
       "additionalProperties": false

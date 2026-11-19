@@ -188,6 +188,10 @@
       "invocation": "manual-runbook",
       "documentedIn": "docs/archive/programme-history/REG17_ONION_HARVEST_PLAN.md"
     },
+    "scripts/docs/generate_dsl_keyword_reference.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "docs/DSL_KEYWORD_REFERENCE.md"
+    },
     "scripts/docs/generate_dsl_reference.py": {
       "invocation": "ci-gate"
     },
@@ -354,6 +358,9 @@
       "invocation": "ci-gate"
     },
     "scripts/quality/check-dsl-keyword-budget.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-dsl-keyword-reference.py": {
       "invocation": "ci-gate"
     },
     "scripts/quality/check-config-schema.py": {

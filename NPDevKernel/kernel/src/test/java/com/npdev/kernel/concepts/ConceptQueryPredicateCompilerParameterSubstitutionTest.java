@@ -1,6 +1,6 @@
 package com.npdev.kernel.concepts;
 
-import com.npdev.dsl.v1.compiled.CompiledProcedureParameter;
+import com.npdev.dsl.v1.compiled.CompiledQueryParameter;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.concepts.GovernedTestGateways.ConceptSpec;
 import org.junit.jupiter.api.Test;
@@ -35,8 +35,8 @@ class ConceptQueryPredicateCompilerParameterSubstitutionTest {
 
     private static final ExecutionContext CTX = ExecutionContext.of("tenant-a", "actor-a");
     private static final String WHERE = "storeId == $params.storeId";
-    private static final List<CompiledProcedureParameter> SALES_BY_STORE_PARAMETERS =
-            List.of(new CompiledProcedureParameter("storeId", "uuid", true, null, null));
+    private static final List<CompiledQueryParameter> SALES_BY_STORE_PARAMETERS =
+            List.of(new CompiledQueryParameter("storeId", "uuid", true, null, null));
 
     private static ConceptGateway seededSalesGateway() {
         ConceptGateway gateway = GovernedTestGateways.forConcepts(ConceptSpec.of("Sale", "storeId", "amount"));

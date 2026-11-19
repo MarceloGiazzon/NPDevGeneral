@@ -141,19 +141,6 @@
         ]
       }
     },
-    "procedures": {
-      "type": "array",
-      "items": {
-        "oneOf": [
-          {
-            "$ref": "model.schema.json#/$defs/procedure"
-          },
-          {
-            "$ref": "model.schema.json#/$defs/localModelRef"
-          }
-        ]
-      }
-    },
     "properties": {
       "type": "array",
       "items": {

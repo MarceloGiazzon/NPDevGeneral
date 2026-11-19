@@ -107,12 +107,7 @@ class FlowStepTypeConformanceTest {
                 { "name": "OrderReminder", "payload": [] },
                 { "name": "OrderApproved", "payload": [] }
               ],
-              "procedures": [
-                { "name": "ConformanceProcedure", "steps": [
-                  { "name": "return-input", "type": "return", "value": "$input" } ] }
-              ],
-              "flows": [
-                { "name": "ConformanceFlow", "concept": "Order", "steps": %s }
+              "flows": [ {"name": "ConformanceProcedure", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}, { "name": "ConformanceFlow", "concept": "Order", "steps": %s }
               ]
             }
             """.formatted(STEPS_JSON);

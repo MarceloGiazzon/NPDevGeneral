@@ -66,7 +66,7 @@ function Get-TrustedReferencesFromJson {
     foreach ($procedure in @($json.procedures)) {
         if ($null -ne $procedure.implementation -and [string]$procedure.implementation.mode -eq "untrustedExtension") {
             $refs += [pscustomobject]@{
-                kind = "procedure"
+                kind = "flow"
                 id = [string]$procedure.procedureId
                 relativePath = [string]$procedure.implementation.entrypoint
                 language = [string]$procedure.implementation.language
@@ -88,7 +88,7 @@ function Get-TrustedReferencesFromJson {
         }
     }
     if ($null -ne $json.implementation -and [string]$json.implementation.mode -eq "untrustedExtension") {
-        $kind = if ($JsonPath -like "*custom-panel*") { "panel" } else { "procedure" }
+        $kind = if ($JsonPath -like "*custom-panel*") { "panel" } else { "flow" }
         $refs += [pscustomobject]@{
             kind = $kind
             id = if ($kind -eq "panel") { [string]$json.panelId } else { [string]$json.procedureId }
@@ -1446,7 +1446,7 @@ foreach ($scenarioDir in @(Get-ChildItem -LiteralPath $scenarioRootFull -Directo
             $checks += New-Check ("manifest-lock:" + [string]$entry.entryId) ($entryFailures.Count -eq 0) "hash" $sourcePath ([pscustomobject]@{ expectedSha256 = [string]$entry.sha256; actualSha256 = $actualHash; manifestPath = $manifestPath }) @($entryFailures)
             foreach ($failure in @($entryFailures)) { Add-Failure $scenarioFailures $failure }
             if ($entryFailures.Count -eq 0) {
-                if ([string]$entry.kind -eq "procedure") {
+                if ([string]$entry.kind -eq "flow") {
                     $sourceCheck = Test-JavaSourceContainment $sourcePath
                     $checks += $sourceCheck
                     if (-not [bool]$sourceCheck.passed) { foreach ($failure in @($sourceCheck.failures)) { Add-Failure $scenarioFailures $failure } }

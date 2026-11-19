@@ -5,7 +5,7 @@ import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledModelCanonicalJson;
 import com.npdev.dsl.v1.compiled.CompiledModelCanonicalJsonReader;
-import com.npdev.dsl.v1.compiled.CompiledProcedureParameter;
+import com.npdev.dsl.v1.compiled.CompiledQueryParameter;
 import com.npdev.dsl.v1.compiler.ModelCompiler;
 import com.npdev.dsl.v1.parser.JsonModelParser;
 import com.npdev.dsl.v1.validation.SemanticValidator;
@@ -40,11 +40,7 @@ class QueryParameterDefaultExpressionTest {
                 { "name": "OverdueVisits", "concept": "Visit", "where": "dueDate < $params.asOf",
                   "parameters": [ %s ] }
               ],
-              "procedures": [
-                { "name": "Touch", "parameters": [ %s ],
-                  "steps": [ { "name": "r", "type": "return", "value": "$input.x" } ] }
-              ]
-            }
+              "flows": [{"name": "Touch", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}]}
             """.formatted(queryParam, procedureParam);
     }
 
@@ -135,15 +131,7 @@ class QueryParameterDefaultExpressionTest {
                 && e.contains("defaultExpression")), "got: " + errors);
     }
 
-    @Test
-    void aProcedureParameterDefaultIsRefusedBecauseNothingWouldEvaluateIt() throws Exception {
-        List<String> errors = validate(modelJson(asOf("today()"),
-                "{ \"name\": \"x\", \"type\": \"string\", \"defaultExpression\": \"today()\" }"));
-        assertTrue(errors.stream().anyMatch(e -> e.contains("Procedure Touch") && e.contains("defaultExpression")
-                && e.contains("query")), "got: " + errors);
-    }
-
-    private static CompiledProcedureParameter parameter(CompiledModel model) {
+    private static CompiledQueryParameter parameter(CompiledModel model) {
         return model.getQueries().get(0).parameters().get(0);
     }
 }

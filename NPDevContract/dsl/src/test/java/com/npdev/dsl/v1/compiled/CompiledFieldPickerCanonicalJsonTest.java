@@ -70,7 +70,7 @@ class CompiledFieldPickerCanonicalJsonTest {
         CompiledModel model = new CompiledModel(
                 "wms.agg", "1.0.0", "1.0", Map.of(),
                 List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(),
                 List.of(rich));
 
         String json = CompiledModelCanonicalJson.toJson(model);

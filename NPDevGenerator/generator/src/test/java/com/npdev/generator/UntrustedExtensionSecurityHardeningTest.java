@@ -2,7 +2,7 @@ package com.npdev.generator;
 
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
-import com.npdev.dsl.v1.compiled.CompiledProcedure;
+import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.generator.emitters.UntrustedExtensionEmitter;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.strategy.RegenerationPolicy;
@@ -351,16 +351,7 @@ class UntrustedExtensionSecurityHardeningTest {
     }
 
     private static CompiledModel procedureModel() {
-        CompiledProcedure procedure = new CompiledProcedure(
-                "escape",
-                "",
-                List.of(),
-                List.of(),
-                List.of(),
-                null,
-                List.of("admin"),
-                Map.of("untrustedExtensionEntrypoint", "procedure/EscapeProcedure.java")
-        );
+        CompiledFlow procedure = new CompiledFlow("escape", null, null, List.of(), null, null, null, false, null, null, null, "ui", null, "", Map.of("untrustedExtensionEntrypoint", "procedure/EscapeProcedure.java"));
         return new CompiledModel(
                 "trusted.source.security.procedure",
                 "1.0.0",
@@ -370,24 +361,14 @@ class UntrustedExtensionSecurityHardeningTest {
                 List.of(),
                 List.of(),
                 List.of(),
-                List.of(),
-                List.of(),
                 List.of(procedure),
+                List.of(),
                 List.of()
         );
     }
 
     private static CompiledModel generatedProcedureModel() {
-        CompiledProcedure procedure = new CompiledProcedure(
-                "create-users",
-                "",
-                List.of(),
-                List.of(),
-                List.of(),
-                null,
-                List.of("admin"),
-                Map.of("untrustedExtensionEntrypoint", "procedure/CreateUsersProcedure.java")
-        );
+        CompiledFlow procedure = new CompiledFlow("create-users", null, null, List.of(), null, null, null, false, null, null, null, "ui", null, "", Map.of("untrustedExtensionEntrypoint", "procedure/CreateUsersProcedure.java"));
         return new CompiledModel(
                 "trusted.source.security.bytecode",
                 "1.0.0",
@@ -397,9 +378,8 @@ class UntrustedExtensionSecurityHardeningTest {
                 List.of(),
                 List.of(),
                 List.of(),
-                List.of(),
-                List.of(),
                 List.of(procedure),
+                List.of(),
                 List.of()
         );
     }
@@ -430,7 +410,6 @@ class UntrustedExtensionSecurityHardeningTest {
                 List.of(),
                 List.of(),
                 List.of(),
-                List.of(),
                 List.of(panel)
         );
     }
@@ -445,7 +424,7 @@ class UntrustedExtensionSecurityHardeningTest {
                   "entries": [
                     {
                       "entryId": "procedure-escape",
-                      "kind": "procedure",
+                      "kind": "flow",
                       "relativePath": "procedure/EscapeProcedure.java",
                       "language": "java",
                       "sha256": "%s",
@@ -470,7 +449,7 @@ class UntrustedExtensionSecurityHardeningTest {
                   "entries": [
                     {
                       "entryId": "procedure-create-users",
-                      "kind": "procedure",
+                      "kind": "flow",
                       "relativePath": "procedure/CreateUsersProcedure.java",
                       "language": "java",
                       "sha256": "%s",

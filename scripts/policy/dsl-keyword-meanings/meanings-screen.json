@@ -1,0 +1,253 @@
+{
+  "$comment": "Hand-written English meanings for the Screen noun (screens, document bands, panels, auto panels and the aggregate workbench) of docs/DSL_KEYWORD_REFERENCE.md. See meanings-concept.json for the file format.",
+  "schemaVersion": "npdev-keyword-meanings.v1",
+  "defs": {
+    "screen": {
+      "summary": "One screen of the app, of one archetype chosen by `kind`: `list` (rows of a concept or query), `detail` (one record), `form` (create or edit), `status` (the one row that matters to the viewer, picked with `pick`), `inbox` (items waiting for action), `board` (columns by an enum field, with drag to move), `map` (rows as points), `dashboard` (tiles, charts and tables), `workbench` (an aggregate edited whole), `document` (a printable PDF or CSV report), `picker` (chooses a row for another screen) or `custom` (an app-supplied component). A screen is driven by a concept or query plus expressions, every button starts a flow, and a screen never widens access: `where` only narrows what row-level access already allows. Screen names are unique across the model.",
+      "example": {
+        "name": "OpenRides",
+        "kind": "board",
+        "concept": "Ride",
+        "groupBy": "status",
+        "columns": [
+          "pickup",
+          "dropoff",
+          "fare"
+        ],
+        "actions": [
+          {
+            "label": "Assign",
+            "flow": "AssignDriver",
+            "style": "move",
+            "moveTo": "ASSIGNED"
+          }
+        ]
+      }
+    },
+    "column": {
+      "summary": "A column or field entry of a screen: a field name, or an object that sets a label, a display format and how the value is scaled.",
+      "example": {
+        "value": "fare",
+        "label": "Fare",
+        "format": "money",
+        "currency": "BRL",
+        "unitScale": 0.01
+      }
+    },
+    "screenAction": {
+      "summary": "A button on a screen. It starts a flow; it is hidden when the user's roles may not start that flow.",
+      "example": {
+        "label": "Approve",
+        "flow": "ApproveExpense",
+        "confirm": "Approve this expense?",
+        "style": "primary",
+        "then": "Inbox"
+      }
+    },
+    "mapSpec": {
+      "summary": "How a `map` screen (or a form with a map) places rows: which fields hold latitude, longitude and label, the starting center and the tile source."
+    },
+    "widget": {
+      "summary": "A widget of a `dashboard` screen: a tile (one aggregate number), a chart, or an embedded table, list or map screen."
+    },
+    "documentColumn": {
+      "summary": "A printed column of a report document, with an optional total."
+    },
+    "documentBand": {
+      "summary": "One printable band of an aggregate-bound document: a `header` band reads fields off the aggregate root, a `lineItems` band reads the rows of one of the aggregate's top-level collections."
+    },
+    "documentLogo": {
+      "summary": "A document's logo, bound to a property of the document's root concept. Never a URL: the renderer reads the stored bytes and inlines them."
+    },
+    "panel": {
+      "summary": "A hand-composed screen made of data sources, a layout, field bindings and actions. The older way to build a screen; new models use `screens`. A panel is served at its `route`.",
+      "example": {
+        "name": "OrdersPanel",
+        "route": "orders",
+        "title": "Orders",
+        "dataSources": [
+          {
+            "name": "orders",
+            "concept": "Order"
+          }
+        ],
+        "layout": {
+          "type": "table"
+        }
+      }
+    },
+    "panelDataSource": {
+      "summary": "A source of rows for a panel: a concept, a query or a procedure, optionally nested under a parent data source."
+    },
+    "panelLayout": {
+      "summary": "How a panel is laid out: a table or grid of its data sources, or a console or dashboard of declarative widgets; children nest layouts."
+    },
+    "panelWidget": {
+      "summary": "A declarative widget of a console or dashboard panel layout, computed in the browser over the panel's own data sources."
+    },
+    "panelSlot": {
+      "summary": "A hand-authored region inside a generated panel: an app-owned component mounted above, below or in place of the generated body."
+    },
+    "panelFieldBinding": {
+      "summary": "Binds a field of a data source to the panel's form or table, with visibility and editability rules and presentation hints. Also used by document bands."
+    },
+    "panelAction": {
+      "summary": "A button of a panel. It runs a query, a concept mutation, a procedure or a flow."
+    },
+    "autoPanel": {
+      "summary": "A panel generated from a concept or an aggregate: up to four surfaces (selection, detail, transaction, prompt) are synthesized and each can be tuned or replaced. The older way; new models use `screens`."
+    },
+    "autoPanelSurface": {
+      "summary": "One generated surface of an auto panel. A surface keyword is used only by the surface kinds it makes sense for (for example `layout` and `dataSource` on selection, `regions` and `actions` on the aggregate workbench transaction)."
+    },
+    "autoPanelDataSource": {
+      "summary": "Replaces the rows of a selection surface with the output of a procedure instead of the concept's table."
+    },
+    "workbenchAction": {
+      "summary": "A button on the aggregate workbench. It either runs a procedure over the current draft or checks balance rules; exactly one of `procedure` or `checkBalances`, enforced by the semantic validator."
+    },
+    "workbenchActionApplyTo": {
+      "summary": "How an action's result is folded into the draft: appended as a row of a collection."
+    },
+    "workbenchBandPicker": {
+      "summary": "A modal row picker offered for one band (collection) of the aggregate workbench."
+    },
+    "regionMount": {
+      "summary": "How an addressable region of the aggregate workbench is filled: generated (default), by an app component, or as a paintable cell grid. A mounted component edits through the workbench store, never around it."
+    },
+    "cellGrid": {
+      "summary": "Configuration of a `cellGrid` region: a child collection painted as a board where each row is one cell at (row, column) holding a value chosen from a palette."
+    },
+    "transactionHooks": {
+      "summary": "Closed set of hooks around the aggregate workbench: when the draft loads, when a field changes, before an action and on validate and commit. Each names a procedure or flow."
+    },
+    "transactionDerivedField": {
+      "summary": "A display-only value recomputed from the current workbench draft, either in the browser (`expression`) or on the server (`procedure`)."
+    },
+    "transactionUiState": {
+      "summary": "A piece of transient UI state (for example a record-type toggle) that `$ui.<name>` predicates on the surface can read. Never part of the commit payload."
+    }
+  },
+  "slots": {
+    "screen.title": "Heading shown on the screen and in navigation.",
+    "screen.kind": "The archetype of the screen (see the summary above). It decides which of the other keywords apply.",
+    "screen.concept": "The concept whose rows the screen shows or edits.",
+    "screen.params": "Binds the query's declared parameters: a map from parameter name to a literal or an expression (for example `$user.id`).",
+    "screen.map": "Where rows are placed on a `map` screen, or which form fields a map picks.",
+    "screen.widgets": "The widgets of a `dashboard` screen.",
+    "screen.actions": "The buttons of the screen; each starts a flow.",
+    "screen.countdown": "Shows a live countdown to an instant, for example a reservation deadline.",
+    "screen.empty": "What is shown when the screen has no rows.",
+    "screen.logo": "The logo of a `document` screen.",
+    "screenAction.label": "Caption of the button.",
+    "screenAction.input": "Input handed to the flow: a map from the flow's input name to an expression over the current row.",
+    "screenAction.visibleWhen": "Expression over the current row; the button is shown only while it is true.",
+    "mapSpec.lat": "Field (or expression) holding the latitude.",
+    "mapSpec.lng": "Field (or expression) holding the longitude.",
+    "mapSpec.label": "Field (or expression) used as the point's label.",
+    "widget.kind": "The widget type: `tile` (one number), `chart`, `table`, `map` or `list`.",
+    "widget.title": "Heading of the widget.",
+    "widget.chart": "For a chart: `bar`, `line` or `donut`.",
+    "widget.span": "Width in a 4-column grid (1 to 4).",
+    "documentColumn.field": "The property of the report's concept to print.",
+    "documentBand.name": "The band's name, unique within the document.",
+    "documentBand.kind": "`header` (fields of the aggregate root) or `lineItems` (rows of a top-level collection).",
+    "documentBand.label": "Heading printed above the band.",
+    "documentLogo.field": "The property of the document's root concept that holds the logo image.",
+    "panel.name": "The panel's name, unique within the model.",
+    "panel.route": "The URL segment the panel is served at.",
+    "panel.title": "Heading of the panel.",
+    "panel.dataSources": "The row sources of the panel.",
+    "panel.layout": "How the data sources are laid out.",
+    "panel.fieldBindings": "Binds fields of the data sources to the panel, with rules and hints.",
+    "panel.visibility": "Expression; the panel is visible only while it is true.",
+    "panel.enabledWhen": "Expression; the panel is interactive only while it is true.",
+    "panel.actions": "The buttons of the panel.",
+    "panel.explainability": "Free-form object describing, for AI and audit tools, why the panel exists and what it shows.",
+    "panel.metadata": "Free-form notes carried into the compiled model unchanged.",
+    "panel.guidePage": "Name of the back-office guide page (dashboard) that hosts this panel.",
+    "panelDataSource.name": "The data source's name, referenced by field bindings, widgets and row actions.",
+    "panelDataSource.concept": "Read rows of this concept.",
+    "panelDataSource.query": "Read rows from this query.",
+    "panelDataSource.procedure": "Replace the row source entirely with the output of this procedure (or a flow of that name).",
+    "panelDataSource.params": "Binds the query's or procedure's parameters: a map from name to a literal or an expression.",
+    "panelDataSource.parentDataSource": "Name of the data source this one is nested under (a master-detail relation).",
+    "panelDataSource.parentField": "Field of the parent row that links to the child rows.",
+    "panelDataSource.childField": "Field of this data source's rows that holds the parent link.",
+    "panelDataSource.rowOps": "The row operations the user may do on this nested data source: `add` and/or `delete`.",
+    "panelDataSource.addFormFields": "Fields shown in the form that adds a row.",
+    "panelLayout.children": "Nested layouts, laid out inside this one.",
+    "panelLayout.fields": "The fields shown by this layout, in order.",
+    "panelLayout.metadata": "Free-form notes carried into the compiled model unchanged.",
+    "panelWidget.title": "Heading of the widget.",
+    "panelFieldBinding.field": "The field being bound.",
+    "panelFieldBinding.source": "Name of the data source the field comes from (defaults to the panel's primary one).",
+    "panelFieldBinding.visibleWhen": "Expression; the field is shown only while it is true.",
+    "panelFieldBinding.enabledWhen": "Expression; the field is editable only while it is true.",
+    "panelFieldBinding.readonlyWhen": "Expression; while true the field is read-only.",
+    "panelFieldBinding.ui": "Presentation hints for this binding.",
+    "panelFieldBinding.editable": "True: the user may edit the field in the panel.",
+    "panelAction.name": "The action's name, unique within the panel.",
+    "panelAction.label": "Caption of the button.",
+    "panelAction.binding": "What the button does: run a `conceptQuery`, a `conceptMutation`, a `procedure` or a `flow`.",
+    "panelAction.concept": "For a concept binding: the concept.",
+    "panelAction.operation": "For `conceptQuery` / `conceptMutation`: `query`, `create`, `update` or `delete`.",
+    "panelAction.procedure": "For a `procedure` binding: the procedure (or flow of that name) to run.",
+    "panelAction.flow": "For a `flow` binding: the flow to start.",
+    "panelAction.visibleWhen": "Expression; the button is shown only while it is true.",
+    "panelAction.enabledWhen": "Expression; the button is clickable only while it is true.",
+    "panelAction.permissionRequirements": "Permissions the user must hold to see and run the action.",
+    "panelAction.explainability": "Free-form object describing why the action exists, for AI and audit tools.",
+    "panelAction.metadata": "Free-form notes carried into the compiled model unchanged.",
+    "autoPanel.name": "The panel's name. Defaults to one derived from the concept or aggregate.",
+    "autoPanel.concept": "The concept the panel is generated for. Give `concept` or `aggregate`.",
+    "autoPanel.aggregate": "The aggregate root concept the panel is generated for (opens the aggregate workbench).",
+    "autoPanel.route": "The URL segment the panel is served at.",
+    "autoPanel.surfaces": "Which surfaces to generate: `selection`, `detail`, `transaction`, `prompt`. Defaults to the usual ones for the kind of panel.",
+    "autoPanel.selection": "Settings of the selection surface (the list of rows).",
+    "autoPanel.detail": "Settings of the detail surface (one record).",
+    "autoPanel.transaction": "Settings of the transaction surface (the aggregate workbench).",
+    "autoPanel.prompt": "Settings of the prompt surface (a row picker used by other surfaces).",
+    "autoPanel.metadata": "Free-form notes carried into the compiled model unchanged.",
+    "autoPanelSurface.filters": "Fields the user can filter by on this surface.",
+    "autoPanelSurface.columns": "Columns shown on this surface, in order.",
+    "autoPanelSurface.fields": "Fields shown on this surface, in order.",
+    "autoPanelSurface.computed": "Extra read-only columns computed live from an expression.",
+    "autoPanelSurface.labelField": "Field used as the display text of a row (for a prompt or selection).",
+    "autoPanelSurface.hooks": "Hooks around the workbench transaction.",
+    "autoPanelSurface.metadata": "Free-form notes carried into the compiled model unchanged.",
+    "workbenchBandPicker.label": "Caption of the picker button.",
+    "workbenchBandPicker.columns": "Columns shown in the picker.",
+    "workbenchBandPicker.multiSelect": "True: several rows may be picked at once.",
+    "regionMount.cellGrid": "With `render: cellGrid`: the board configuration.",
+    "cellGrid.palette": "Where the paintable values come from.",
+    "transactionHooks.onValidate": "Name of a procedure or flow run before the commit; a failure vetoes it.",
+    "transactionHooks.onCommit": "Name of a procedure or flow run after the commit.",
+    "transactionDerivedField.label": "Caption of the derived value.",
+    "transactionDerivedField.expression": "For the `client` tier: the expression evaluated in the browser over the draft.",
+    "transactionDerivedField.procedure": "For the `server` tier: the procedure invoked over the draft."
+  },
+  "inline": {
+    "screen.countdown.label": "Text shown with the countdown.",
+    "screen.empty.text": "Message shown instead of rows.",
+    "mapSpec.pickPoints.name": "Name of the point, for example `pickup`.",
+    "mapSpec.pickPoints.label": "Caption of the point on the map.",
+    "mapSpec.pickPoints.lng": "Form field that receives the longitude.",
+    "widget.value.label": "Label of the data point.",
+    "autoPanelSurface.computed.col": "Name of the computed column.",
+    "autoPanelSurface.computed.expr": "The expression computing the column.",
+    "column.format": "How the value is displayed: text, money, number, date, datetime, relative-time, stars, badge, distance or duration.",
+    "column.label": "The column heading.",
+    "column.currency": "ISO currency code used when the format is money.",
+    "column.value": "The field name or expression to show.",
+    "column.unitScale": "A factor applied before display, for example 0.01 for an amount stored in cents.",
+    "agentAccess.channels.mcp": "Switch for the MCP endpoint.",
+    "agentAccess.channels.telegram": "Switch for the Telegram bot.",
+    "agentAccess.channels.whatsapp": "Switch for the WhatsApp bot.",
+    "agentAccess.photoIntake.concept": "The concept a photo becomes a row of.",
+    "agentAccess.photoIntake.description": "A sentence shown to the user describing what the photo creates.",
+    "externalAi.prompts.name": "The prompt's name, the first argument of `externalAi.generate`.",
+    "externalAi.prompts.description": "A sentence saying what the prompt is for.",
+    "externalAi.prompts.maxOutputTokens": "Upper bound on the length of the vendor's answer."
+  }
+}

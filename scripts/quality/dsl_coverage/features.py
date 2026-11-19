@@ -26,7 +26,7 @@ from .detectors_model import (  # noqa: F401 - every name the table below refere
     _has_flow_start_endpoint, _has_groupby_cross_context_join, _has_groupby_join,
     _has_groupby_multi_hop_join, _has_await_timeout, _has_on_failure, _has_parallel_await_foreach,
     _has_parallel_await_multistep_foreach, _has_post_checkpoint,
-    _has_procedure_create_if_missing, _has_procedure_step_type, _has_query_where_v2, _has_query_where_user, _has_renamed_field,
+    _has_query_where_v2, _has_query_where_user, _has_renamed_field,
     _has_schedule_event_with_delay, _has_sensitive_field, _has_settings, _has_step_type,
     _has_widened_branch_condition, _nonempty,
 )
@@ -103,7 +103,6 @@ FEATURE_DETECTORS = {
     "query.where.v2": _has_query_where_v2,
     # Pigmentampas friction #24: $user.* on a where's right-hand side, bound from the caller.
     "query.where.user": _has_query_where_user,
-    "procedures": lambda m: _nonempty(m, "procedures"),
     "panels": lambda m: _nonempty(m, "panels"),
     "packs": lambda m: _nonempty(m, "packs"),
     # PACK-8 (PACK-ROADMAP card PK-5): a remote pack import via packs[].from -- an OCI/git+...
@@ -168,18 +167,6 @@ FEATURE_DETECTORS = {
     # satisfied by either mode alone, so a corpus carrying only one leaves the other unexercised.
     "step.scheduleEvent.deferred": lambda m: _has_schedule_event_with_delay(m, True),
     "step.scheduleEvent.immediate": lambda m: _has_schedule_event_with_delay(m, False),
-    # Move 4 (docs/MOVE4_CROSS_RECORD_WRITE_PLAN.md): procedure.patchConcept and aggregate.onCommit
-    # are new features, not caught by the flow-only _all_steps() above -- a procedure's steps live
-    # under "procedures", not "flows". Tracked separately so a regression to either has the same
-    # zero-coverage-fails-the-build guarantee as every other feature this gate already tracks.
-    "procedure.patchConcept": lambda m: _has_procedure_step_type(m, "patchConcept"),
-    # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 3A / Gap 6): mapList produces a NEW list
-    # (one output object per input item), unlike forEach which only iterates for side effects.
-    "procedure.mapList": lambda m: _has_procedure_step_type(m, "mapList"),
-    # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, final item / REG-78): computeValue -- the
-    # add/subtract arithmetic primitive procedures previously had none of, blocking
-    # SyncOcupacaoProcedure's find-or-increment semantics.
-    "procedure.computeValue": lambda m: _has_procedure_step_type(m, "computeValue"),
     # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5): capabilityPolicy (retry/timeout/circuit/
     # bulkhead/idempotency) -- previously zero declarations anywhere in the corpus; the circuit/
     # bulkhead halves were also found to be silently dropped by the compiler (fixed alongside).
@@ -298,10 +285,6 @@ FEATURE_DETECTORS = {
     # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 4 / Gap 7): a panelAction's resultAs
     # ("download") -- inventario.html's Gerar Template had no declared surface for this before.
     "panelAction.resultAs.download": _has_panel_action_download,
-    # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1B): patchConcept's create-if-missing opt-in
-    # (the create half of REG-77) is a boolean flag on an existing step type, not a new step type
-    # itself -- tracked separately so a regression to just this flag still fails the build.
-    "procedure.createIfMissing": _has_procedure_create_if_missing,
     # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 2A): a Workbench transaction action's applyTo
     # mapping lives inside the untyped autoPanel.transaction.metadata.actions[] blob (not a schema
     # property -- regular, non-Workbench panels have no client-held draft to fold a result into),

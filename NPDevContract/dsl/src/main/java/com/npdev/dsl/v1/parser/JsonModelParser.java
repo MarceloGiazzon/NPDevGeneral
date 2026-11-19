@@ -168,6 +168,22 @@ public final class JsonModelParser {
                     "legacy-custom-capabilities-root-key"
             ));
         }
+        if (root.has("procedures")) {
+            throw new DeprecationException(new ValidationDiagnostic(
+                    ValidationLayer.STRUCTURAL,
+                    ValidationSeverity.ERROR,
+                    "LEGACY_PROCEDURES_ROOT_KEY",
+                    "Root 'procedures' was removed (REG-342): every procedure is a flow.",
+                    "NPDevContract",
+                    "$.procedures",
+                    null,
+                    null,
+                    "flows",
+                    null,
+                    "Rewrite each procedure as a flow in 'flows' (steps keep their shape; a code procedure is a flow with metadata.untrustedExtensionEntrypoint).",
+                    "legacy-procedures-root-key"
+            ));
+        }
         if (root.has("fragments")) {
             throw new DeprecationException(new ValidationDiagnostic(
                     ValidationLayer.STRUCTURAL,
@@ -357,7 +373,6 @@ public final class JsonModelParser {
         List<EventAst> events = new ArrayList<>();
         List<FlowAst> flows = new ArrayList<>();
         List<QueryAst> queries = new ArrayList<>();
-        List<ProcedureAst> procedures = new ArrayList<>();
         List<PanelAst> panels = new ArrayList<>();
         List<GuidePageAst> guidePages = new ArrayList<>();
         List<AggregateAst> aggregates = new ArrayList<>();
@@ -801,7 +816,6 @@ public final class JsonModelParser {
         }
 
         queries.addAll(parseQueries(root.get("queries"), originByQualifiedMemberName.getOrDefault("queries", Map.of())));
-        procedures.addAll(parseProcedures(root.get("procedures")));
         panels.addAll(parsePanels(root.get("panels"), originByQualifiedMemberName.getOrDefault("panels", Map.of())));
         // FORM P5-T9c: the pages live under the root backOffice.pages (see parseBackOffice below).
         aggregates.addAll(parseCompositions(root.get("concepts")));
@@ -835,7 +849,6 @@ public final class JsonModelParser {
                 events,
                 flows,
                 queries,
-                procedures,
                 panels,
                 guidePages,
                 aggregates,
@@ -1459,7 +1472,7 @@ public final class JsonModelParser {
                     readText(queryNode, "where"),
                     parseTextArray(queryNode.get("orderBy")),
                     readOptionalInt(queryNode, "limit"),
-                    parseProcedureParameters(queryNode.get("parameters"), "queries[" + name + "].parameters"),
+                    parseQueryParameters(queryNode.get("parameters"), "queries[" + name + "].parameters"),
                     parseTextArray(queryNode.get("permissionRequirements")),
                     parseObjectMap(queryNode.get("metadata")),
                     parseGroupByFields(queryNode.get("groupBy")),
@@ -1551,59 +1564,9 @@ public final class JsonModelParser {
         return out;
     }
 
-    private static List<ProcedureAst> parseProcedures(JsonNode node) throws IOException {
-        List<ProcedureAst> out = new ArrayList<>();
-        if (node == null || node.isNull()) {
-            return out;
-        }
-        if (!node.isArray()) {
-            throw new IOException("procedures must be an array");
-        }
-        for (JsonNode procedureNode : node) {
-            String name = requiredText(procedureNode, "name");
-            List<ProcedureVariableAst> variables = new ArrayList<>();
-            variables.addAll(parseProcedureVariables(procedureNode.get("locals"), "procedures[" + name + "].locals"));
-            variables.addAll(parseProcedureVariables(procedureNode.get("variables"), "procedures[" + name + "].variables"));
-            out.add(new ProcedureAst(
-                    name,
-                    readText(procedureNode, "description"),
-                    parseProcedureParameters(procedureNode.get("parameters"), "procedures[" + name + "].parameters"),
-                    variables,
-                    parseProcedureSteps(procedureNode.get("steps"), "procedures[" + name + "].steps", true),
-                    parseSchema(procedureNode.get("returns"), "procedures[" + name + "].returns"),
-                    parseTextArray(procedureNode.get("permissionRequirements")),
-                    parseGeneratedActionDescriptor(procedureNode.get("actionDescriptor"), "procedures[" + name + "].actionDescriptor"),
-                    parseObjectMap(procedureNode.get("metadata")),
-                    readText(procedureNode, "uid"),
-                    readText(procedureNode, "runAs")
-            ));
-        }
-        return out;
-    }
-
-    private static GeneratedActionDescriptorAst parseGeneratedActionDescriptor(JsonNode node, String fieldPath)
+    private static List<QueryParameterAst> parseQueryParameters(JsonNode node, String fieldPath)
             throws IOException {
-        if (node == null || node.isNull()) {
-            return null;
-        }
-        if (!node.isObject()) {
-            throw new IOException(fieldPath + " must be an object");
-        }
-        return new GeneratedActionDescriptorAst(
-                readText(node, "actionName"),
-                parseTextArray(node.get("affectedConcepts")),
-                readText(node, "sideEffectConcept"),
-                readText(node, "eventNameOnSuccess"),
-                readText(node, "auditResourceType"),
-                readText(node, "idempotencyPolicy"),
-                readText(node, "tracePolicy"),
-                readText(node, "correlationPolicy")
-        );
-    }
-
-    private static List<ProcedureParameterAst> parseProcedureParameters(JsonNode node, String fieldPath)
-            throws IOException {
-        List<ProcedureParameterAst> out = new ArrayList<>();
+        List<QueryParameterAst> out = new ArrayList<>();
         if (node == null || node.isNull()) {
             return out;
         }
@@ -1613,85 +1576,13 @@ public final class JsonModelParser {
         for (JsonNode parameterNode : node) {
             String name = requiredText(parameterNode, "name");
             Boolean required = readOptionalBoolean(parameterNode, "required");
-            out.add(new ProcedureParameterAst(
+            out.add(new QueryParameterAst(
                     name,
                     requiredText(parameterNode, "type"),
                     required != null && required,
                     parseSchema(parameterNode.get("schema"), fieldPath + "[" + name + "].schema"),
                     readText(parameterNode, "description"),
                     readText(parameterNode, "defaultExpression")
-            ));
-        }
-        return out;
-    }
-
-    private static List<ProcedureVariableAst> parseProcedureVariables(JsonNode node, String fieldPath)
-            throws IOException {
-        List<ProcedureVariableAst> out = new ArrayList<>();
-        if (node == null || node.isNull()) {
-            return out;
-        }
-        if (!node.isArray()) {
-            throw new IOException(fieldPath + " must be an array");
-        }
-        for (JsonNode variableNode : node) {
-            String name = requiredText(variableNode, "name");
-            out.add(new ProcedureVariableAst(
-                    name,
-                    readText(variableNode, "type"),
-                    parseSchema(variableNode.get("schema"), fieldPath + "[" + name + "].schema"),
-                    parseJsonValue(variableNode.get("initialValue"))
-            ));
-        }
-        return out;
-    }
-
-    private static List<ProcedureStepAst> parseProcedureSteps(JsonNode node, String fieldPath, boolean required)
-            throws IOException {
-        List<ProcedureStepAst> out = new ArrayList<>();
-        if (node == null || node.isNull()) {
-            if (required) {
-                throw new IOException(fieldPath + " must be an array");
-            }
-            return out;
-        }
-        if (!node.isArray()) {
-            throw new IOException(fieldPath + " must be an array");
-        }
-        for (JsonNode stepNode : node) {
-            String type = requiredText(stepNode, "type");
-            String name = readText(stepNode, "name");
-            out.add(new ProcedureStepAst(
-                    name,
-                    type,
-                    readText(stepNode, "target"),
-                    parseJsonValue(stepNode.get("value")),
-                    readText(stepNode, "condition"),
-                    readText(stepNode, "items"),
-                    readText(stepNode, "as"),
-                    readText(stepNode, "concept"),
-                    readText(stepNode, "query"),
-                    parseObjectMap(stepNode.get("data")),
-                    readText(stepNode, "id"),
-                    readText(stepNode, "procedure"),
-                    readText(stepNode, "flow"),
-                    readText(stepNode, "capability"),
-                    readText(stepNode, "operation"),
-                    readText(stepNode, "event"),
-                    parseObjectMap(stepNode.get("args")),
-                    parseProcedureSteps(stepNode.get("then"), fieldPath + "[" + (name == null ? type : name) + "].then", false),
-                    parseProcedureSteps(stepNode.get("else"), fieldPath + "[" + (name == null ? type : name) + "].else", false),
-                    parseProcedureSteps(stepNode.get("steps"), fieldPath + "[" + (name == null ? type : name) + "].steps", false),
-                    readOptionalBoolean(stepNode, "trace"),
-                    readOptionalBoolean(stepNode, "audit"),
-                    parseObjectMap(stepNode.get("metadata")),
-                    parseObjectMap(stepNode.get("set")),
-                    readOptionalBoolean(stepNode, "createIfMissing"),
-                    parseObjectMap(stepNode.get("select")),
-                    parseJsonValue(stepNode.get("left")),
-                    parseJsonValue(stepNode.get("right")),
-                    parseObjectMap(stepNode.get("params")),
-                    readText(stepNode, "errorTarget")
             ));
         }
         return out;

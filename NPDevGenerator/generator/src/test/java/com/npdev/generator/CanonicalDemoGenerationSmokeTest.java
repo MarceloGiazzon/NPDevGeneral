@@ -67,9 +67,7 @@ class CanonicalDemoGenerationSmokeTest {
         assertEquals(12, metadataRoot.path("catalogs").path("actions").size()); // FORM P3-T5c: the 3 declared procedures became flows, and a flow is an action
 
         JsonNode metadataIndex = MAPPER.readTree(Files.readString(metadataIndexPath));
-        assertEquals(13, metadataIndex.path("catalogs").size());
-        assertTrue(metadataRoot.path("catalogs").path("procedures").isArray(),
-                "Expected procedure catalog in generated metadata.");
+        assertEquals(12, metadataIndex.path("catalogs").size());
         assertTrue(metadataRoot.path("catalogs").path("panels").isArray(),
                 "Expected panel catalog in generated metadata.");
 

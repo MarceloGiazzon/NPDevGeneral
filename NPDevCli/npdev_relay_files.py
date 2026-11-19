@@ -23,6 +23,7 @@ import fnmatch
 import hashlib
 import json
 import os
+import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -204,11 +205,29 @@ def _locked_sources(lock_path: Path) -> set:
     return {str(v.get("from")) for v in (packs.values() if isinstance(packs, dict) else []) if isinstance(v, dict)}
 
 
-def _pack_failure(entries: list, text: str) -> PackError:
+_DEPENDENCY_FILE = re.compile(r"packs[/\\]+([A-Za-z0-9_.-]+)[/\\]+pack\.json", re.IGNORECASE)
+
+
+def missing_dependencies(text: str, beside) -> list:
+    """The pack ids a failure message names as `packs/<id>/pack.json` that are NOT there beside the staged model -- a
+    dependency of an imported pack (those resolve only from the model's own folder). Decided by the file system, not by
+    the wording of the error: the real message is localized ("O sistema nao pode encontrar o caminho especificado")."""
+    base = Path(beside)
+    return sorted({m.group(1) for m in _DEPENDENCY_FILE.finditer(text or "")
+                   if not (base / "packs" / m.group(1) / "pack.json").is_file()})
+
+
+def _pack_failure(entries: list, text: str, beside=None) -> PackError:
     lowered = text.lower()
     if any(hint in lowered for hint in _OFFLINE_HINTS):
         return PackError(OFFLINE_MESSAGE)
     names = ", ".join(sorted({pack_name(e) for e in entries}))
+    needed = missing_dependencies(text, beside) if beside is not None else []
+    if needed:
+        # REG-332: a pack's own `packs[]` dependencies resolve only beside the importing model, never from the catalog, so
+        # an answer must list every pack it needs too. Name them: this is a fix the AI can make in one round.
+        return PackError(f"packs[] - the pack(s) {names} need {', '.join(needed)} as well: add each to this model's "
+                         "packs[] with its own `from` coordinate copied from the list in the briefing")
     if "unsigned" in lowered or "unknown_signer" in lowered or "bad_signature" in lowered:
         return PackError(f"packs[] - pack {names} is not signed by a key NPDev trusts - import only packs from the "
                          "list in the briefing, or model those concepts yourself")
@@ -244,9 +263,9 @@ def resolve_packs(staged_model, model) -> str | None:
         with contextlib.redirect_stdout(buffer):
             code = cli.run_pack_update(args)
     except (cli.CliError, OSError, ValueError, SystemExit) as exc:
-        raise _pack_failure(entries, str(exc)) from exc
+        raise _pack_failure(entries, str(exc), staged_model.parent) from exc
     if code != 0 or not lock_path.is_file():
-        raise _pack_failure(entries, buffer.getvalue())
+        raise _pack_failure(entries, buffer.getvalue(), staged_model.parent)
     return lock_path.read_text(encoding="utf-8")
 
 

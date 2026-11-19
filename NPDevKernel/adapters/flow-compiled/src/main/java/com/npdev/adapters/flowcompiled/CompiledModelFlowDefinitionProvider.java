@@ -421,6 +421,12 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
             }
             Map<String, String> flowByAction = new LinkedHashMap<>();
             for (CompiledFlow flow : compiledModel.getFlows()) {
+                // REG-342: a flow implemented by a hash-pinned Java class (metadata.untrustedExtensionEntrypoint) is what the
+                // generated-action capability of the packaged app runs; its declared steps are a placeholder, so it is NOT run in process.
+                Object entrypoint = flow.getMetadata() == null ? null : flow.getMetadata().get("untrustedExtensionEntrypoint");
+                if (entrypoint instanceof String text && !text.isBlank()) {
+                    continue;
+                }
                 flowByAction.putIfAbsent(normalize(flow.getName()), flow.getName());
             }
             return new ModelFacts(computeRequiredRefsByConcept(compiledModel), flowByAction, conceptByQuery);

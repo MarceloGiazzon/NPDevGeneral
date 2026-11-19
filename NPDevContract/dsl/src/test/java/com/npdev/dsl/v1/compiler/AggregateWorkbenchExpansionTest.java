@@ -259,11 +259,7 @@ class AggregateWorkbenchExpansionTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "movimentoId", "type": "uuid" } ] }
               ],
-              "procedures": [
-                { "name": "SeedContext", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] },
-                { "name": "RecalcularTotais", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] },
-                { "name": "ValidarSugestao", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] }
-              ],
+              "flows": [{"name": "SeedContext", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}, {"name": "RecalcularTotais", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}, {"name": "ValidarSugestao", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
               "autoPanels": [ { "aggregate": "Movimento",
                 "transaction": { "hooks": {
                   "onLoad": "SeedContext",
@@ -306,9 +302,7 @@ class AggregateWorkbenchExpansionTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "movimentoId", "type": "uuid" } ] }
               ],
-              "procedures": [
-                { "name": "CalcularSaldoFiscal", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] }
-              ],
+              "flows": [{"name": "CalcularSaldoFiscal", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
               "autoPanels": [ { "aggregate": "Movimento",
                 "transaction": { "derivedFields": {
                   "origemTotal": { "expression": "sum(itens[].quantidade)" },
@@ -547,9 +541,7 @@ class AggregateWorkbenchExpansionTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "itemSeq", "type": "uuid" }, { "name": "local", "type": "string" } ] }
               ],
-              "procedures": [
-                { "name": "GerarDemanda", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] }
-              ],
+              "flows": [{"name": "GerarDemanda", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
               "autoPanels": [ { "aggregate": "Expedicao",
                 "transaction": {
                   "actions": [

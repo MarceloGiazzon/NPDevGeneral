@@ -183,7 +183,7 @@ class StorageCapabilityGateTest {
     private static CompiledModel model(java.util.Map<String, CompiledConcept> concepts,
                                        List<CompiledQuery> queries) {
         return new CompiledModel("test", "2.0", "1.0.0", concepts, List.of(), List.of(), List.of(),
-                List.of(), List.of(), queries, List.of(), List.of(), List.of());
+                List.of(), List.of(), queries, List.of(), List.of());
     }
 
     private static CompiledField field(String name, boolean id, boolean unique, String reference) {

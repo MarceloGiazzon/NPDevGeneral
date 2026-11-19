@@ -43,10 +43,7 @@ class AllowedActionsCrossReferenceValidationTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "expedicaoId", "type": "uuid" } ] }
               ],
-              "procedures": [
-                { "name": "GerarDemanda", "steps": [{ "name": "done", "type": "return", "value": "ok" }] },
-                { "name": "Recalcular", "steps": [{ "name": "done", "type": "return", "value": "ok" }] }
-              ],
+              "flows": [{"name": "GerarDemanda", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}, {"name": "Recalcular", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
               "autoPanels": [ { "aggregate": "Expedicao",
                 "transaction": { "actions": [
                   { "label": "Gerar Demanda", "procedure": "GerarDemanda" },

@@ -23,7 +23,6 @@ import com.npdev.dsl.v1.ast.OriginAst;
 import com.npdev.dsl.v1.ast.PresentationMetadataAst;
 import com.npdev.dsl.v1.ast.PanelAst;
 import com.npdev.dsl.v1.ast.GuidePageAst;
-import com.npdev.dsl.v1.ast.ProcedureAst;
 import com.npdev.dsl.v1.ast.QueryAst;
 import com.npdev.dsl.v1.ast.StateMachineStateAst;
 import com.npdev.dsl.v1.ast.StateTransitionAst;
@@ -59,8 +58,6 @@ public final class ModelResolver {
         List<FlowAst> resolvedFlows = resolveFlows(flowsByName);
         List<QueryAst> resolvedQueries = new ArrayList<>(source.getQueries());
         resolvedQueries.sort(Comparator.comparing(query -> normalize(query.name())));
-        List<ProcedureAst> resolvedProcedures = new ArrayList<>(source.getProcedures());
-        resolvedProcedures.sort(Comparator.comparing(procedure -> normalize(procedure.name())));
         List<PanelAst> resolvedPanels = new ArrayList<>(source.getPanels());
         resolvedPanels.sort(Comparator.comparing(panel -> normalize(panel.name())));
         List<GuidePageAst> resolvedGuidePages = new ArrayList<>(source.getGuidePages());
@@ -76,7 +73,6 @@ public final class ModelResolver {
                 resolvedEvents,
                 resolvedFlows,
                 resolvedQueries,
-                resolvedProcedures,
                 resolvedPanels,
                 resolvedGuidePages,
                 source.getAggregates(),

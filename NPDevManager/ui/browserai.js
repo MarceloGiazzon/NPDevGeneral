@@ -162,7 +162,7 @@
 
   function setBusy(on) {
     S.busy = on;
-    for (const id of ["browserai-continue", "browserai-check", "browserai-pick-file", "browserai-undo", "browserai-rebuild", "browserai-fix", "browserai-else", "browserai-again"]) {
+    for (const id of ["browserai-continue", "browserai-check", "browserai-pick-file", "browserai-undo", "browserai-rebuild", "browserai-fix", "browserai-else", "browserai-else-copy", "browserai-else-wait", "browserai-again"]) {
       const el = $(id);
       // Undo and Update would fight the build that is running: they wait for it. Asking for something else does not.
       if (el) el.disabled = on || (S.launching && (id === "browserai-undo" || id === "browserai-rebuild"));
@@ -260,6 +260,13 @@
   function onAppChanged(userPicked) {
     const has = !!$("browserai-app").value;
     $("browserai-intent-change").disabled = !has;
+    // A finished conversation (applied, nothing building any more) is over: picking an app is the person asking for something
+    // new, so step 1 opens again by itself -- without this its choices stay folded away under the finished steps and the
+    // person must find "Ask for something else" first. A build or an apply still running keeps its screen.
+    if (userPicked && S.phase === "done" && !S.launching && !S.busy) {
+      forgetConversation();
+      setPhase("compose");
+    }
     // Once a conversation is open its kind is fixed (a re-read of the app list must not turn a change into a create).
     if (S.code && !userPicked) return;
     if (userPicked) S.intentByHand = false; // a pick decides again
@@ -1487,6 +1494,9 @@
     $("browserai-outcome-button").addEventListener("click", onOutcomeButton);
     $("browserai-apply").addEventListener("click", onApply);
     $("browserai-else").addEventListener("click", () => startOver(true));
+    // The way out must exist wherever the person can be stuck: while waiting for the answer (also after "mistakes to fix") and before it.
+    $("browserai-else-copy").addEventListener("click", () => startOver(true));
+    $("browserai-else-wait").addEventListener("click", () => startOver(true));
     // After a plain apply the conversation is already closed; after an Undo it is open again, so give it up.
     $("browserai-again").addEventListener("click", () => startOver(S.undone));
     $("browserai-rebuild").addEventListener("click", launch);

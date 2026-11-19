@@ -26,11 +26,7 @@ class PanelActionResultAsValidationTest {
                 { "name": "Widget", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }
               ],
-              "procedures": [
-                { "name": "ExportProcedure", "steps": [
-                    { "name": "echo", "type": "mapValue", "value": "$input", "target": "out" },
-                    { "name": "ret", "type": "return", "value": "$out" } ] }
-              ],
+              "flows": [{"name": "ExportProcedure", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
               "panels": [
                 { "name": "TestPanel", "route": "/test-panel",
                   "dataSources": [ { "name": "widgets", "concept": "Widget" } ],

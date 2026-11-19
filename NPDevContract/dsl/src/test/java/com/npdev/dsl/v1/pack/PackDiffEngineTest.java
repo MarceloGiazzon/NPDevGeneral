@@ -306,7 +306,7 @@ class PackDiffEngineTest {
     }
 
     @Test
-    void newProcedure_isAdditive() {
+    void newFlow_isAdditive() {
         JsonNode oldPack = pack("""
                 { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0", "concepts": [
                   { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
@@ -315,14 +315,13 @@ class PackDiffEngineTest {
         JsonNode newPack = pack("""
                 { "dslVersion": "3.0.0", "pack": "widgets", "version": "1.1.0",
                   "concepts": [ { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
-                  "procedures": [ { "name": "ArchiveWidget" } ]
-                }
+                  "flows": [{"name": "ArchiveWidget", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}]}
                 """);
 
         PackDiffResult result = PackDiffEngine.diff(oldPack, newPack);
 
         assertEquals(Optional.of(PackChangeClassification.ADDITIVE), result.worstClassification());
-        assertEquals(PackChangeClassification.ADDITIVE, classificationOf(result.findings(), "procedures.ArchiveWidget"));
+        assertEquals(PackChangeClassification.ADDITIVE, classificationOf(result.findings(), "flows.ArchiveWidget"));
     }
 
     @Test

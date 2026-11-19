@@ -1,0 +1,372 @@
+{
+  "$comment": "Hand-written English meanings for the Capability, Role, Experience, Pack, Module and Property nouns, and for the model root and pack file keys, of docs/DSL_KEYWORD_REFERENCE.md. See meanings-concept.json for the file format.",
+  "schemaVersion": "npdev-keyword-meanings.v1",
+  "defs": {
+    "capability": {
+      "summary": "A door to the outside world. Outbound: a set of named operations that flows call with a `capabilityCall` step, implemented by an adapter (an HTTP connector, a payment or AI provider, a mounted code extension). Inbound: a webhook door that publishes an event. The platform's own persistence, event bus and notification capabilities are implicit and need no declaration.",
+      "example": {
+        "name": "payments",
+        "type": "HttpConnector",
+        "adapter": "http-connector",
+        "http": {
+          "baseUrl": "https://api.payments.example/v1",
+          "auth": {
+            "type": "bearer",
+            "secretEnvVar": "NPDEV_CONNECTOR_PAYMENTS_TOKEN"
+          }
+        },
+        "operations": [
+          {
+            "name": "createCharge",
+            "sideEffects": "external",
+            "http": {
+              "method": "POST",
+              "path": "/charges",
+              "params": [
+                "amount"
+              ],
+              "body": {
+                "amount": "{amount}"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "capabilityOperation": {
+      "summary": "One operation of a capability: its contract (input and output), resilience policy, declared errors, side-effect class and who may call it. In `capability.operations` an operation may also be written as a bare name string when it needs none of these."
+    },
+    "capabilityContractSchemaRef": {
+      "summary": "A reference to the type of an operation's input or output: either a named schema or a concept (exactly one of the two). The other form of an operation's input and output is an inline `schemaObject`."
+    },
+    "capabilityPolicy": {
+      "summary": "Resilience settings of a capability call: retries, timeout, circuit breaker, concurrency limit and idempotency. Set on an operation (`capabilityOperation.policy`) and optionally overridden per flow step (`flowStep.policy`). It describes only how the call is protected; what it may fail with is in `errors`, and whether it writes is `sideEffects`."
+    },
+    "failureClassification": {
+      "summary": "How a failure is treated: `TRANSIENT` (worth retrying), `PERMANENT` (retrying will not help) or `CONTRACT` (the caller broke the operation's contract). Lower-case spellings are accepted."
+    },
+    "capabilityOperationError": {
+      "summary": "A named failure an operation can end with, and how that failure is classified."
+    },
+    "capabilityAuth": {
+      "summary": "Who may call an operation: the caller must hold at least one of the roles and all of the scopes listed."
+    },
+    "httpConnector": {
+      "summary": "Connection settings of a capability bound to the `http-connector` adapter: the remote API root, how to authenticate, static headers, deadline and retries. Credentials are never written in the model: only the NAMES of environment variables that hold them."
+    },
+    "httpConnectorAuth": {
+      "summary": "How an HTTP connector authenticates. `none` sends nothing; `bearer` sends an Authorization bearer token; `basic` sends a username and password; `apiKeyHeader` and `apiKeyQuery` send a key in a header or query parameter."
+    },
+    "httpConnectorOperation": {
+      "summary": "The HTTP request an operation of an HTTP connector performs. `{name}` placeholders in the path, query, headers and body are filled from `params`, in declared order."
+    },
+    "inboundDoor": {
+      "summary": "A capability's inbound webhook door: `POST /api/hooks/<path>` verifies the provider's HMAC signature, then publishes an event and starts the flows whose trigger is `{webhook: <capability name>}`. Repeated deliveries are recognized with `idempotencyKey`."
+    },
+    "role": {
+      "summary": "A kind of user. Roles are the anchor of default-deny authorization: `concepts` grants per-concept operations and `grants` lists platform permissions the role may hold. Experiences, screens, flows and agent exposures name roles.",
+      "example": {
+        "name": "Clerk",
+        "concepts": {
+          "Invoice": [
+            "read",
+            "create",
+            "update"
+          ]
+        }
+      }
+    },
+    "agentAccess": {
+      "summary": "What an AI agent may see and do in this app, and on which channels (MCP, Telegram, WhatsApp). Every tool call runs through the app's own REST API as the calling or linked user, so roles and row-level access still decide what happens; this block only decides what is offered to the agent.",
+      "example": {
+        "channels": {
+          "mcp": {
+            "enabled": true
+          }
+        },
+        "expose": [
+          {
+            "concept": "Invoice",
+            "operations": [
+              "list",
+              "get"
+            ],
+            "roles": [
+              "Clerk"
+            ],
+            "description": "Customer invoices."
+          }
+        ]
+      }
+    },
+    "agentAccessChannel": {
+      "summary": "One channel switch (`mcp`, `telegram` or `whatsapp`)."
+    },
+    "agentAccessExposure": {
+      "summary": "One concept, flow or aggregate offered to agents. Exactly one of `concept`, `flow` or `aggregate`."
+    },
+    "experience": {
+      "summary": "What one group of roles sees when it signs in. A user lands in the first experience (declaration order) whose `for` contains one of their roles; a role with no experience lands in the generated back office. An experience is served at `/x/<name>/`.",
+      "example": {
+        "name": "driver",
+        "for": [
+          "Driver"
+        ],
+        "device": "mobile",
+        "home": "MyRides",
+        "navigation": [
+          {
+            "screen": "MyRides",
+            "label": "Rides"
+          }
+        ]
+      }
+    },
+    "backOffice": {
+      "summary": "The optional configuration of the generated back office: language, string overrides, default route, grouped navigation and dashboard pages. Omit it entirely for the default behavior (navigation derived from the concepts)."
+    },
+    "appShellNavItem": {
+      "summary": "One entry of the back office navigation."
+    },
+    "guidePage": {
+      "summary": "A back-office dashboard page made of gadgets (KPIs, charts, tables, recent items), with optional side regions and theme."
+    },
+    "guidePageRegions": {
+      "summary": "Which regions around the gadgets a guide page shows."
+    },
+    "guidePageRegion": {
+      "summary": "Settings of one side region of a guide page."
+    },
+    "guidePageTheme": {
+      "summary": "Visual settings of a guide page."
+    },
+    "guidePageGadget": {
+      "summary": "One widget on a guide page."
+    },
+    "packRef": {
+      "summary": "One entry of the root `packs` array: a pack the model consumes, either from a local file (`$ref`) or from a remote coordinate (`from`, resolved only from the local pack cache pinned by `npdev.lock`). Exactly one of the two.",
+      "example": {
+        "$ref": "packs/identity/pack.json",
+        "as": "identity"
+      }
+    },
+    "localModelRef": {
+      "summary": "A pointer to a local JSON file that holds one item (for example one concept). It may be written wherever a model array accepts an object kind. The path is relative, ends in `.json` and may not climb out of the model's folder."
+    },
+    "context": {
+      "summary": "A bounded context (module): a named fragment file whose concepts, queries, panels and flows belong to the context. Other contexts reference its members as `context::Concept` and must list it in the fragment's `imports`."
+    },
+    "conversion": {
+      "summary": "A declarative data conversion that runs at boot when the schema changes (rename, split, merge, lookup, convert, coalesce, case), compiled to the same hook shape the conversion runner already executes. Exactly one of `op` or `javaHook`.",
+      "example": {
+        "id": "split-name",
+        "concept": "Person",
+        "op": "split",
+        "from": "fullName",
+        "into": [
+          {
+            "field": "firstName",
+            "take": "before-first-space"
+          },
+          {
+            "field": "lastName",
+            "take": "after-first-space"
+          }
+        ]
+      }
+    },
+    "conversionSplitTarget": {
+      "summary": "One target of a `split` conversion."
+    },
+    "conversionLookupMatch": {
+      "summary": "How a `lookup` conversion finds the row to copy a value from."
+    },
+    "conversionCaseWhen": {
+      "summary": "One branch of a `case` conversion."
+    },
+    "property": {
+      "summary": "A typed runtime setting resolved through the scoped cascade of `propertyScopes`: the most specific scope with a value wins, otherwise the `default`. Read in expressions as `$prop.<name>`.",
+      "example": {
+        "name": "maxDiscount",
+        "type": "int",
+        "default": 10,
+        "settableAt": [
+          "tenant"
+        ]
+      }
+    },
+    "propertyScope": {
+      "summary": "One level of the property cascade. The order of `propertyScopes` is the resolution order, most specific first.",
+      "example": {
+        "name": "user",
+        "from": "$user.id"
+      }
+    },
+    "externalAi": {
+      "summary": "The app's opt-in to delegating work to an outside AI. Absent means denied: no code path may send anything to a vendor without this block. It selects the vendors, defines named prompts that flows run and sets cost limits."
+    }
+  },
+  "slots": {
+    "root:$schema": "Optional URL of the JSON Schema, for editor completion.",
+    "root:schemaVersion": "Version of the model file container; always `1.0.0`.",
+    "root:namespace": "The model's namespace (required): the Java package root of the generated app and the prefix of generated identifiers.",
+    "root:version": "The model's own version string (required), for example `1.0.0`.",
+    "root:concepts": "The record types of the app (required, at least one). See Concept.",
+    "root:domainTypes": "Reusable named field types.",
+    "root:capabilities": "Outbound operations and inbound webhooks to the outside world.",
+    "root:events": "Named facts that flows publish, trigger on and await.",
+    "root:flows": "What the app does: durable step lists started by a trigger.",
+    "root:queries": "Named, parameterised reads over concepts.",
+    "root:conversions": "Declarative data conversions applied at boot when the schema changes.",
+    "root:panels": "Hand-composed screens (the older way; screens are the current one).",
+    "root:autoPanels": "Panels generated from a concept or aggregate (the older way; screens are the current one).",
+    "root:metadata": "Free-form notes about the model. Never carries behavior.",
+    "root:packs": "The packs this model consumes, each a local file or a remote coordinate.",
+    "root:externalAi": "The opt-in to delegating work to an outside AI, with vendors, prompts and limits.",
+    "root:roles": "The kinds of user and what each may do.",
+    "root:backOffice": "Optional configuration of the generated back office.",
+    "root:agentAccess": "What AI agents are offered and on which channels.",
+    "capability.name": "The capability's name, referenced by `capabilityCall` steps and `trigger.webhook`. With pack composition it becomes `pack::name`.",
+    "capability.type": "A free-form kind label for the capability, for example `HttpConnector`, `Payment` or `Notification`; used by tooling and specialization.",
+    "capability.specializes": "Name of a base capability (typically from a pack) this capability specializes.",
+    "capability.http": "Connection settings when the capability is an HTTP connector.",
+    "capability.inbound": "Declares an inbound webhook door for this capability.",
+    "capability.operations": "The operations flows can call. An entry is a bare operation name or a full `capabilityOperation` object.",
+    "capabilityOperation.name": "The operation's name, used in a `capabilityCall` step's `operation`.",
+    "capabilityOperation.input": "The type of the operation's input: a `schemaRef` / `conceptRef` reference or an inline `schemaObject`.",
+    "capabilityOperation.output": "The type of the operation's result, in the same forms as `input`.",
+    "capabilityOperation.policy": "Resilience settings (retries, timeout, circuit breaker, bulkhead, idempotency).",
+    "capabilityOperation.errors": "The failures the operation can end with, each classified.",
+    "capabilityOperation.sideEffects": "What the operation does to the world: `none`, `reads`, `writes` or `external` (an outside party is changed). Drives retry safety.",
+    "capabilityOperation.auth": "Roles and scopes a caller must hold.",
+    "capabilityOperation.http": "The HTTP request, when the capability is an HTTP connector.",
+    "capabilityContractSchemaRef.schemaRef": "Name of a declared schema to use as the type.",
+    "capabilityContractSchemaRef.conceptRef": "Name of a concept whose record shape is the type.",
+    "capabilityPolicy.retryCount": "How many times a failed call is retried.",
+    "capabilityPolicy.retryDelayMs": "Milliseconds to wait between retries.",
+    "capabilityPolicy.timeoutMs": "Milliseconds after which a call is abandoned.",
+    "capabilityPolicy.circuitOpenAfterFailures": "Consecutive failures after which the circuit breaker opens and calls fail fast.",
+    "capabilityPolicy.circuitOpenMs": "Milliseconds the circuit stays open before a trial call is allowed.",
+    "capabilityPolicy.bulkheadMaxConcurrent": "Maximum number of calls in flight at once for this capability.",
+    "capabilityPolicy.idempotencyKeyField": "Name of an input field whose value deduplicates repeated calls.",
+    "capabilityPolicy.idempotencyKey": "An expression giving the deduplication key of the call.",
+    "capabilityPolicy.failureClassification": "How failures of this call are classified by default.",
+    "capabilityOperationError.name": "The error's name (a code callers can match).",
+    "capabilityOperationError.classification": "Whether the error is transient, permanent or a contract violation.",
+    "capabilityOperationError.description": "A sentence saying when the error occurs.",
+    "capabilityAuth.roles": "Role names; a caller needs at least one.",
+    "capabilityAuth.scopes": "Permission scopes; a caller needs all of them.",
+    "httpConnector.baseUrl": "Absolute `http(s)://` root of the remote API. One of `baseUrl` and `baseUrlProperty` is required.",
+    "httpConnector.baseUrlProperty": "Name of a `properties[]` entry; when it resolves to a value for the calling tenant it overrides `baseUrl` (for example sandbox versus production per tenant).",
+    "httpConnector.auth": "How requests are authenticated. Absent means `none`.",
+    "httpConnector.headers": "Static headers sent on every call.",
+    "httpConnector.timeoutMs": "Per-attempt deadline in milliseconds (1 to 120000, default 10000).",
+    "httpConnector.maxRetries": "Extra attempts for idempotent methods only (0 to 5, default 0).",
+    "httpConnectorAuth.type": "The scheme: `none`, `bearer`, `basic`, `apiKeyHeader` or `apiKeyQuery`.",
+    "httpConnectorAuth.secretEnvVar": "Name of the environment variable holding the token, password or API key. Never the secret itself.",
+    "httpConnectorAuth.usernameEnvVar": "Name of the environment variable holding the username (for `basic`).",
+    "httpConnectorAuth.name": "The header or query parameter name that carries the key (for `apiKeyHeader` and `apiKeyQuery`).",
+    "httpConnectorOperation.method": "The HTTP method: `GET`, `POST`, `PUT`, `PATCH` or `DELETE`.",
+    "httpConnectorOperation.path": "The request path, starting with `/`; `{name}` placeholders are filled from `params`.",
+    "httpConnectorOperation.params": "Names of the arguments, in the order the caller passes them. Every `{name}` used in the operation must be listed.",
+    "httpConnectorOperation.query": "Query parameters; a value that renders empty drops its key.",
+    "httpConnectorOperation.headers": "Extra headers for this operation; values may use `{name}`.",
+    "httpConnectorOperation.body": "A JSON template (object) or a string sent as the body. Ignored for `GET` and `DELETE`.",
+    "httpConnectorOperation.bodyEncoding": "`json` (default) or `form` (`application/x-www-form-urlencoded`, flat object only).",
+    "httpConnectorOperation.response": "Which part of the response is returned.",
+    "role.name": "The role's name, referenced by `for`, `roles`, `access` rules and `capabilityAuth`.",
+    "agentAccess.channels": "Which channels are on: `mcp`, `telegram`, `whatsapp`, each an `agentAccessChannel`. All are off by default.",
+    "agentAccess.expose": "The concepts, flows and aggregates offered to agents, at least one.",
+    "agentAccessExposure.concept": "Offer this concept's records as tools.",
+    "agentAccessExposure.flow": "Offer this flow as a tool.",
+    "experience.title": "Display title of the experience.",
+    "experience.navigation": "The navigation entries (a bottom tab bar on mobile, at most 5 there).",
+    "guidePage.name": "The page's name; a concept or panel can point at it with `guidePage`.",
+    "guidePage.default": "True: this is the page shown by default.",
+    "guidePage.regions": "Which regions around the gadgets are shown.",
+    "guidePage.theme": "Visual settings of the page.",
+    "guidePage.gadgets": "The widgets on the page.",
+    "guidePageRegions.top": "True: show the top region.",
+    "guidePageRegions.left": "Settings of the left region.",
+    "guidePageRegions.right": "Settings of the right region.",
+    "guidePageRegion.enabled": "True: the region is shown.",
+    "guidePageRegion.collapsible": "True: the user can collapse the region.",
+    "guidePageRegion.defaultCollapsed": "True: the region starts collapsed.",
+    "guidePageRegion.width": "Width of the region.",
+    "guidePageTheme.mode": "Color mode of the page.",
+    "guidePageTheme.accent": "Accent color of the page.",
+    "guidePageTheme.density": "Spacing density of the page.",
+    "guidePageTheme.logoText": "Text shown as the logo.",
+    "guidePageTheme.logoUrl": "URL of the logo image.",
+    "guidePageGadget.name": "The gadget's name, unique on the page.",
+    "guidePageGadget.type": "The gadget kind: `recent-items`, `context-info`, `page-fragment`, `kpi`, `bar`, `line`, `donut` or `table`.",
+    "guidePageGadget.title": "Heading of the gadget.",
+    "guidePageGadget.query": "Name of the query that feeds a `kpi`, chart or `table` gadget.",
+    "guidePageGadget.x": "For a chart: the query column used for the categories (x axis).",
+    "guidePageGadget.y": "For a chart or KPI: the query column used for the values.",
+    "guidePageGadget.series": "Query column that splits a chart into several series.",
+    "packRef.$ref": "Relative path of a local pack file (`.json`). Mutually exclusive with `from`.",
+    "localModelRef.$ref": "Relative path of the JSON file that holds the item.",
+    "context.name": "The context's name; the prefix of its members (`name::Concept`).",
+    "context.$ref": "Relative path of the fragment file whose members belong to the context.",
+    "context.physicallyIsolate": "True: the context's data is stored apart from the rest of the app.",
+    "conversion.id": "Unique id of the conversion; it names the generated hook directory `db/conversion-hooks/<id>`.",
+    "conversion.concept": "The concept whose rows are converted.",
+    "conversion.op": "The conversion: `copy` a field, `split` one into several, `lookup` a value from another concept, `merge` several into one, `convert` the type, `coalesce` the first non-empty of several or `case` map literal values.",
+    "conversion.to": "The target field the result is written to.",
+    "conversion.into": "For `split`: the target fields and which part each receives.",
+    "conversion.match": "For `lookup`: how the source row is found.",
+    "conversion.set": "For `lookup`: the field of this concept that receives the id of the matched row.",
+    "conversionSplitTarget.field": "The target field that receives a part.",
+    "conversionSplitTarget.take": "Which part: `before-first-space` or `after-first-space`.",
+    "conversionLookupMatch.concept": "The concept whose rows are matched.",
+    "conversionLookupMatch.on": "Field of that concept compared with this concept's `equals` field.",
+    "conversionLookupMatch.equals": "Field of the converted concept (the one the conversion belongs to) whose value must equal the matched concept's `on` field.",
+    "conversionCaseWhen.equals": "The literal value to compare with.",
+    "conversionCaseWhen.then": "The literal value written when it matches.",
+    "property.name": "The property's name, read in expressions as `$prop.<name>`.",
+    "property.label": "The name shown in the admin surface.",
+    "propertyScope.name": "The scope's name, referenced by `settableAt`.",
+    "pack:$schema": "Optional URL of the JSON Schema, for editor completion.",
+    "pack:dslVersion": "The DSL version the pack is written in (required); `3.0.0`.",
+    "pack:version": "The pack's own version (required), `major.minor.patch`.",
+    "pack:description": "A sentence saying what the pack provides.",
+    "pack:concepts": "Concepts the pack contributes; consumers reference them as `pack::Concept`.",
+    "pack:domainTypes": "Domain types the pack contributes.",
+    "pack:capabilities": "Capabilities the pack contributes.",
+    "pack:events": "Events the pack contributes.",
+    "pack:flows": "Flows the pack contributes.",
+    "pack:queries": "Queries the pack contributes.",
+    "pack:conversions": "Data conversions the pack contributes.",
+    "pack:panels": "Panels the pack contributes.",
+    "pack:autoPanels": "Auto panels the pack contributes.",
+    "pack:roles": "Roles the pack contributes.",
+    "pack:propertyScopes": "Property scopes the pack contributes.",
+    "pack:properties": "Properties the pack contributes.",
+    "pack:metadata": "Free-form notes about the pack.",
+    "pack:fragments": "Local files whose members are merged into the pack."
+  },
+  "inline": {
+    "root:provides.roleBindings": "Maps each logical role name used by a pack (`role('name')`) to this app's concrete role.",
+    "pack:packs.pack": "Identifier of the dependency pack.",
+    "pack:packs.version": "Minimal version constraint: exact (`2.0.3`) or caret (`^2.0`, same major).",
+    "pack:requires.roles": "Roles the composing app must provide.",
+    "pack:requires.capabilities": "Capabilities the composing app must provide.",
+    "pack:requires.network": "Hosts the pack needs network access to.",
+    "pack:backOffice.pages": "Guide pages the pack adds to the composed model's back office.",
+    "pack:forkedFrom.pack": "Identifier of the pack this one was derived from.",
+    "pack:forkedFrom.version": "Version of the original pack at the time of the fork.",
+    "pack:forkedFrom.originAuthor": "Author of the original pack.",
+    "pack:migrations.op": "The migration step kind: `renameField`, `renameConcept`, `addField` or `dropField`.",
+    "pack:migrations.concept": "The concept the step applies to.",
+    "pack:migrations.from": "Old name.",
+    "pack:migrations.to": "New name.",
+    "pack:migrations.field": "The field the step adds or drops.",
+    "pack:signature.algorithm": "The signing algorithm: `Ed25519` or `SHA256withRSA`.",
+    "pack:signature.digest": "The signed SHA-256 content digest, `sha256:<hex>`.",
+    "pack:deprecated.reason": "Why the version is deprecated.",
+    "root:provides.roles": "Roles this app provides for packs' `requires.roles`.",
+    "root:provides.capabilities": "Capabilities this app provides for packs' `requires.capabilities`.",
+    "root:provides.network": "Hosts this app allows packs to reach."
+  }
+}

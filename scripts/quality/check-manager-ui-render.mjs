@@ -1316,8 +1316,16 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
     await page.click("#browserai-continue");
     await page.waitForTimeout(250);
   };
-  await page.click("#browserai-again");
+  // A finished conversation ends by itself when the person picks an app: no "Ask for something else" first (REG-321 real-window feedback).
+  await page.evaluate(() => {
+    const p = document.getElementById("browserai-app");
+    const opt = [...p.options].find((o) => /auxscreen/i.test(o.textContent));
+    if (opt) { p.value = opt.value; p.dispatchEvent(new Event("change", { bubbles: true })); }
+  });
   await page.waitForTimeout(200);
+  const stepStates = await page.evaluate(() => [1, 2, 3, 4, 5].map((n) => document.getElementById("browserai-step-" + n).dataset.state).join(","));
+  check("browser AI: picking an app after a finished conversation opens step 1 again by itself (no 'Ask for something else' needed)",
+    stepStates === "current,todo,todo,todo,todo" && (await shown("#browserai-intent-change")), stepStates);
   await pickChange();
   await page.evaluate(() => { window.__removalAnswer = { ok: false, error: "upgrade-rolled-back", undone: true, upgrade: { ok: false, outcome: "ROLLED_BACK" } }; });
   await page.click("#browserai-copy");
@@ -1465,6 +1473,26 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   await page.waitForTimeout(200);
   check("browser AI: 'Ask for something else' on a preview closes that conversation",
     (await page.evaluate(() => window.__relayAborts.length)) === 2 && (await shown("#browserai-ask")), "");
+
+  // The way out exists on EVERY step of an open conversation (real window: after "mistakes to fix" the person sat on step 3 with no exit).
+  await page.fill("#browserai-ask", "leave while waiting");
+  await page.click("#browserai-continue");
+  await page.waitForTimeout(200);
+  check("browser AI: step 2 (before copying) offers 'Ask for something else'", await shown("#browserai-else-copy"), "");
+  await page.click("#browserai-copy");
+  await page.waitForTimeout(150);
+  check("browser AI: step 3 (waiting for the answer) offers 'Ask for something else'", await shown("#browserai-else-wait"), "");
+  await page.click("#browserai-else-wait");
+  await page.waitForTimeout(200);
+  check("browser AI: leaving from the waiting step closes that conversation and returns to step 1",
+    (await page.evaluate(() => window.__relayAborts.length)) === 3 && (await shown("#browserai-ask")), String(await page.evaluate(() => window.__relayAborts.length)));
+  await page.fill("#browserai-ask", "leave before copying");
+  await page.click("#browserai-continue");
+  await page.waitForTimeout(200);
+  await page.click("#browserai-else-copy");
+  await page.waitForTimeout(200);
+  check("browser AI: leaving from the copy step closes that conversation and returns to step 1",
+    (await page.evaluate(() => window.__relayAborts.length)) === 4 && (await shown("#browserai-ask")), String(await page.evaluate(() => window.__relayAborts.length)));
 
   // REG-323 F4: what the AI asked for OUTSIDE the model (the app's look) is an OPTIONAL tick the CLI describes: it starts unticked,
   // never gates Apply, only an applicable one is a box (the rest is told as a line), and only the ticked one is sent back.

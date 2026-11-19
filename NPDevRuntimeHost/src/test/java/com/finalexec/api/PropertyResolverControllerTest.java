@@ -50,7 +50,7 @@ class PropertyResolverControllerTest {
                 "wms.props", "1.0.0", "1.0",
                 Map.of(),
                 List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 null, null, List.of(),
                 List.of(TENANT),
                 List.of(PAGE_ROWS));

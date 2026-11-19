@@ -236,6 +236,20 @@ class PackBuildCatalogTest(unittest.TestCase):
             self.assertEqual(
                 "git+https://github.com/MarceloGiazzon/NPR.git//packs/alpha@v1.2.0", entry["from"])
 
+    def test_the_index_lists_a_packs_dependencies_as_needs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp) / "repo"
+            _write(repo_dir / "packs" / "alpha" / "pack.json", {"dslVersion": "3.0.0", "pack": "alpha", "version": "1.0.0"})
+            _write(repo_dir / "packs" / "beta" / "pack.json", {
+                "dslVersion": "3.0.0", "pack": "beta", "version": "1.0.0",
+                "packs": [{"pack": "alpha", "version": "^1.0"}]})
+            entries, problems = npdev_cli._scan_pack_catalog_entries(
+                repo_dir, "https://github.com/MarceloGiazzon/NPR", "{pack}-{version}")
+            self.assertEqual([], problems)
+            by_id = {e["pack"]: e for e in entries}
+            self.assertEqual(["alpha"], by_id["beta"]["needs"])
+            self.assertNotIn("needs", by_id["alpha"])  # only when there are any
+
     def test_repository_url_already_ending_in_dot_git_is_not_doubled(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo_dir = Path(tmp) / "repo"

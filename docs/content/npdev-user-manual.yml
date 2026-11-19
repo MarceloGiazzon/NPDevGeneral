@@ -63,7 +63,6 @@ sections:
     | **Event** | An announcement your app broadcasts when something happens (`UserCreated`, `InvoiceIssued`). Other parts of the app can react to it. |
     | **Event-triggered flow** | A flow whose `trigger` names an event: "when event X happens, automatically do Y" — no manual trigger needed. |
     | **Reference / bond** | A link from one concept to another, like a foreign key — e.g. an `Invoice` field that points at the `User` who owns it. |
-    | **Procedure** | A small server-side routine (declarative steps like "read this", "compute that", "save this") for logic that doesn't need to be a public web action. |
 
     ---
 - level: 2
@@ -366,7 +365,7 @@ sections:
 
     This is where your app "happens": `version` (your own app
     version string), `namespace` (a Java-style package name), and `concepts` (at least one) are
-    required. (`dslVersion` is optional: omit it, or write `"3.0.0"`.) Everything else — `flows`, `events`, `queries`, `procedures`, `panels`,
+    required. (`dslVersion` is optional: omit it, or write `"3.0.0"`.) Everything else — `flows`, `events`, `queries`, `panels`,
     `capabilities` — is optional and is exactly what
     the four levels below add, one at a time.
 

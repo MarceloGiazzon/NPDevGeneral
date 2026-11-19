@@ -2,10 +2,10 @@
   "schemaVersion" : "npdev-lock.v1",
   "packs" : {
     "workspace" : {
-      "resolvedVersion" : "1.1.0",
-      "digest" : "sha256:780c03bb61996a6da3ddf6df8282c3f3eeb1a8267844058cca51601f2965dbb1",
+      "resolvedVersion" : "1.1.1",
+      "digest" : "sha256:6be6b3990239420b1dd64035ef55913c133c8e627c9d35f2a08440128116b6d3",
       "sourcePath" : "packs/workspace/pack.json",
-      "migratedVersion" : "1.1.0"
+      "migratedVersion" : "1.1.1"
     }
   }
 }

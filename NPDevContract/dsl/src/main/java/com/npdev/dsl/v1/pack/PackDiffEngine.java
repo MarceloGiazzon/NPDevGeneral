@@ -401,7 +401,6 @@ public final class PackDiffEngine {
             case "events" -> "event";
             case "flows" -> "flow";
             case "queries" -> "query";
-            case "procedures" -> "procedure";
             case "conversions" -> "conversion";
             case "panels" -> "panel";
             case "roles" -> "role";

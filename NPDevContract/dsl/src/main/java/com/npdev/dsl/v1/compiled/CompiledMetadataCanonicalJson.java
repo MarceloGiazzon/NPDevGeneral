@@ -72,7 +72,6 @@ public final class CompiledMetadataCanonicalJson {
 
         ObjectNode catalogs = JsonNodeFactory.instance.objectNode();
         catalogs.set("concepts", toConceptCatalog(model));
-        catalogs.set("procedures", toProcedureCatalog(model));
         catalogs.set("queries", toQueryCatalog(model));
         catalogs.set("panels", toPanelCatalog(model));
         catalogs.set("domainTypes", toDomainTypeCatalog(model));
@@ -607,35 +606,6 @@ public final class CompiledMetadataCanonicalJson {
         return concepts;
     }
 
-    private static ArrayNode toProcedureCatalog(CompiledModel model) {
-        List<ObjectNode> entries = new ArrayList<>();
-        for (CompiledProcedure procedure : sortedProcedures(model)) {
-            LinkedHashSet<String> stepTypes = new LinkedHashSet<>();
-            LinkedHashSet<String> concepts = new LinkedHashSet<>();
-            LinkedHashSet<String> queries = new LinkedHashSet<>();
-            LinkedHashSet<String> calledProcedures = new LinkedHashSet<>();
-            collectProcedureStepMetadata(procedure.steps(), stepTypes, concepts, queries, calledProcedures);
-
-            ObjectNode node = JsonNodeFactory.instance.objectNode();
-            node.put("kind", "procedure");
-            node.put("ownerName", safe(procedure.name()));
-            node.put("name", safe(procedure.name()));
-            node.put("description", safe(procedure.description()));
-            node.put("parameterCount", procedure.parameters().size());
-            node.put("variableCount", procedure.variables().size());
-            node.put("stepCount", countProcedureSteps(procedure.steps()));
-            node.set("stepTypes", toStringArray(new ArrayList<>(stepTypes)));
-            node.set("concepts", toStringArray(new ArrayList<>(concepts)));
-            node.set("queries", toStringArray(new ArrayList<>(queries)));
-            node.set("calledProcedures", toStringArray(new ArrayList<>(calledProcedures)));
-            node.set("permissionRequirements", toStringArray(procedure.permissionRequirements()));
-            node.put("returnsType", procedure.returns() == null ? "" : safe(procedure.returns().getType()));
-            entries.add(node);
-        }
-        entries.sort(Comparator.comparing(node -> text(node, "name")));
-        return toArray(entries);
-    }
-
     /**
      * ENF-1 (2026-10-24): one entry per declared query -- name, concept, filter/sort/limit, parameters, the
      * permissions it requires, whether it aggregates, and its free-form {@code metadata} (a query has no
@@ -660,7 +630,7 @@ public final class CompiledMetadataCanonicalJson {
                 node.put("limit", query.limit());
             }
             ArrayNode parameters = JsonNodeFactory.instance.arrayNode();
-            for (CompiledProcedureParameter parameter : query.parameters()) {
+            for (CompiledQueryParameter parameter : query.parameters()) {
                 ObjectNode parameterNode = JsonNodeFactory.instance.objectNode();
                 parameterNode.put("name", safe(parameter.name()));
                 parameterNode.put("type", safe(parameter.type()));
@@ -2559,53 +2529,10 @@ public final class CompiledMetadataCanonicalJson {
         return flows;
     }
 
-    private static List<CompiledProcedure> sortedProcedures(CompiledModel model) {
-        List<CompiledProcedure> procedures = new ArrayList<>(model.getProcedures());
-        procedures.sort(Comparator.comparing(procedure -> normalize(procedure.name())));
-        return procedures;
-    }
-
     private static List<CompiledPanel> sortedPanels(CompiledModel model) {
         List<CompiledPanel> panels = new ArrayList<>(model.getPanels());
         panels.sort(Comparator.comparing(panel -> normalize(panel.name())));
         return panels;
-    }
-
-    private static int countProcedureSteps(List<CompiledProcedureStep> steps) {
-        int count = 0;
-        for (CompiledProcedureStep step : steps) {
-            count++;
-            count += countProcedureSteps(step.thenSteps());
-            count += countProcedureSteps(step.elseSteps());
-            count += countProcedureSteps(step.steps());
-        }
-        return count;
-    }
-
-    private static void collectProcedureStepMetadata(
-            List<CompiledProcedureStep> steps,
-            LinkedHashSet<String> stepTypes,
-            LinkedHashSet<String> concepts,
-            LinkedHashSet<String> queries,
-            LinkedHashSet<String> calledProcedures
-    ) {
-        for (CompiledProcedureStep step : steps) {
-            if (step.type() != null && !step.type().isBlank()) {
-                stepTypes.add(step.type());
-            }
-            if (step.concept() != null && !step.concept().isBlank()) {
-                concepts.add(step.concept());
-            }
-            if (step.query() != null && !step.query().isBlank()) {
-                queries.add(step.query());
-            }
-            if (step.procedure() != null && !step.procedure().isBlank()) {
-                calledProcedures.add(step.procedure());
-            }
-            collectProcedureStepMetadata(step.thenSteps(), stepTypes, concepts, queries, calledProcedures);
-            collectProcedureStepMetadata(step.elseSteps(), stepTypes, concepts, queries, calledProcedures);
-            collectProcedureStepMetadata(step.steps(), stepTypes, concepts, queries, calledProcedures);
-        }
     }
 
     private static ArrayNode toPanelDataSourceSummaries(List<CompiledPanelDataSource> dataSources) {

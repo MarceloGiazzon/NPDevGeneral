@@ -80,7 +80,7 @@ class PostgresPersistenceCapabilityAdapterNullToleranceTest {
         return new CompiledModel(
                 "arch8b.test", "1.0.0", "1.0.0",
                 Map.of("Widget", widget),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
     }
 
     private static DataSource fakeDataSource() {

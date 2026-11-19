@@ -28,19 +28,8 @@ def _all_steps(model: dict):
                 yield from _walk_steps(hook.get("steps"))
 
 
-def _all_procedure_steps(model: dict):
-    for procedure in model.get("procedures", None) or []:
-        if not isinstance(procedure, dict):
-            continue
-        yield from _walk_steps(procedure.get("steps"))
-
-
 def _has_step_type(model: dict, step_type: str) -> bool:
     return any(str(s.get("type", "")).lower() == step_type.lower() for s in _all_steps(model))
-
-
-def _has_procedure_step_type(model: dict, step_type: str) -> bool:
-    return any(str(s.get("type", "")).lower() == step_type.lower() for s in _all_procedure_steps(model))
 
 
 def _has_date_field(model: dict) -> bool:
@@ -464,13 +453,6 @@ def _has_aggregate_collection_lookup_fields(model: dict) -> bool:
     return any(
         isinstance(a, dict) and walk(a.get("collections"))
         for a in (model.get("aggregates", None) or [])
-    )
-
-
-def _has_procedure_create_if_missing(model: dict) -> bool:
-    return any(
-        str(s.get("type", "")).lower() == "patchconcept" and s.get("createIfMissing")
-        for s in _all_procedure_steps(model)
     )
 
 

@@ -120,7 +120,6 @@ public final class BuiltinPackComposer {
                 app.getEvents(),
                 app.getFlows(),
                 app.getQueries(),
-                app.getProcedures(),
                 app.getPanels(),
                 app.getGuidePages(),
                 app.getAggregates(),

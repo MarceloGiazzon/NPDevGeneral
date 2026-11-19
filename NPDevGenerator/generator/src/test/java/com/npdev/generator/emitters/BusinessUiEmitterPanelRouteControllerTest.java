@@ -129,8 +129,7 @@ public class BusinessUiEmitterPanelRouteControllerTest {
         );
         CompiledModel model = new CompiledModel(
                 "trusted.source.route.test", "1.0.0", "1.0",
-                Map.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(trustedPanel));
+                Map.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(trustedPanel));
 
         Path out = Files.createTempDirectory("npdev-panel-route-trusted-out-");
         new BusinessUiEmitter(new TemplateEngine("npdev-templates/"), new GeneratedSourceWriter(out, new RegenerationPolicy()))

@@ -22,16 +22,13 @@ import com.npdev.dsl.v1.ast.PanelDataSourceAst;
 import com.npdev.dsl.v1.ast.PanelFieldBindingAst;
 import com.npdev.dsl.v1.ast.PanelLayoutAst;
 import com.npdev.dsl.v1.ast.PresentationMetadataAst;
-import com.npdev.dsl.v1.ast.ProcedureAst;
-import com.npdev.dsl.v1.ast.ProcedureStepAst;
 import com.npdev.dsl.v1.ast.QueryAst;
 import com.npdev.dsl.v1.ast.ReferenceSemanticsAst;
 import com.npdev.dsl.v1.ast.SelectorAst;
 import com.npdev.dsl.v1.ast.StepAst;
 import com.npdev.dsl.v1.ast.TransactionHooksAst;
 import com.npdev.dsl.v1.ast.WorkbenchActionAst;
-import com.npdev.dsl.v1.ast.ProcedureParameterAst;
-import com.npdev.dsl.v1.ast.ProcedureVariableAst;
+import com.npdev.dsl.v1.ast.QueryParameterAst;
 import com.npdev.dsl.v1.query.GroupByJoinGrammar;
 import com.npdev.dsl.v1.query.QueryPredicateGrammar;
 import com.npdev.dsl.v1.validation.ExpressionReferences;
@@ -137,14 +134,6 @@ public final class ReferenceIndex {
     public static final String SITE_QUERY_WHERE_V2 = "query.where.v2";
     public static final String SITE_QUERY_HAVING_V2 = "query.having.v2";
 
-    public static final String SITE_PROCEDURE_STEP_CONCEPT = "procedure.steps.concept";
-    public static final String SITE_PROCEDURE_STEP_QUERY = "procedure.steps.query";
-    public static final String SITE_PROCEDURE_STEP_PROCEDURE = "procedure.steps.procedure";
-    public static final String SITE_PROCEDURE_STEP_FLOW = "procedure.steps.flow";
-    public static final String SITE_PROCEDURE_STEP_CAPABILITY = "procedure.steps.capability";
-    public static final String SITE_PROCEDURE_STEP_EVENT = "procedure.steps.event";
-    public static final String SITE_PROCEDURE_STEP_SET_FIELD = "procedure.steps.set";
-    public static final String SITE_PROCEDURE_STEP_VAR_FIELD = "procedure.steps.varField";
 
     public static final String SITE_FLOW_CONCEPT = "flow.concept";
     public static final String SITE_FLOW_STEP_CAPABILITY = "flow.steps.capability";
@@ -280,12 +269,6 @@ public final class ReferenceIndex {
          *  reads as a capability that does not exist -- 2 of the 6 false positives the first run of
          *  this index produced on dsl-conformance-max. */
         private final Set<String> generatedActionNames = new LinkedHashSet<>();
-        /** Per procedure, every name it can accept as an action input: its declared
-         *  {@code parameters} and {@code variables}, PLUS every {@code $var} its own steps read.
-         *  The last part is not optional -- {@code RenameOrderStatusProcedure} declares no
-         *  parameters and reads {@code $newStatus}, so a parameters-only set reports a correct
-         *  model as broken. */
-        private final Map<String, Set<String>> procedureInputsByLower = new LinkedHashMap<>();
         private final List<ReferenceEdge> edges = new ArrayList<>();
 
         Walker(ModelAst model) {
@@ -301,27 +284,8 @@ public final class ReferenceIndex {
                     queriesByLower.put(lower(query.name()), query);
                 }
             }
-            collectNames(procedureNames, nullSafe(model.getProcedures()), ProcedureAst::name);
-            // FORM P3-T5c: a screen's procedure reference may name the flow that replaced the procedure
+            // a screen's `procedure` reference names a flow (every procedure became one: REG-342)
             collectNames(procedureNames, nullSafe(model.getFlows()), com.npdev.dsl.v1.ast.FlowAst::getName);
-            for (ProcedureAst procedure : nullSafe(model.getProcedures())) {
-                if (procedure == null || !hasText(procedure.name())) {
-                    continue;
-                }
-                Set<String> accepted = new LinkedHashSet<>();
-                for (ProcedureParameterAst parameter : nullSafe(procedure.parameters())) {
-                    if (parameter != null && hasText(parameter.name())) {
-                        accepted.add(lower(parameter.name()));
-                    }
-                }
-                for (ProcedureVariableAst variable : nullSafe(procedure.variables())) {
-                    if (variable != null && hasText(variable.name())) {
-                        accepted.add(lower(variable.name()));
-                    }
-                }
-                collectDollarReads(procedure.steps(), accepted);
-                procedureInputsByLower.put(lower(procedure.name()), accepted);
-            }
             for (FlowAst flow : nullSafe(model.getFlows())) {
                 if (flow != null && hasText(flow.getName())) {
                     flowNames.add(lower(flow.getName()));
@@ -356,33 +320,6 @@ public final class ReferenceIndex {
                 if (flow != null) {
                     collectGeneratedActions(flow.getSteps());
                 }
-            }
-        }
-
-        /** Every {@code $name} a procedure's own steps read, at any depth. This is the only
-         *  declaration surface a client-collected action input has. */
-        private static void collectDollarReads(List<ProcedureStepAst> steps, Set<String> into) {
-            for (ProcedureStepAst step : nullSafe(steps)) {
-                if (step == null) {
-                    continue;
-                }
-                for (String text : new String[]{step.condition(), step.items(), asText(step.value()),
-                        asText(step.left()), asText(step.right())}) {
-                    collectDollarNames(text, into);
-                }
-                if (step.select() != null) {
-                    for (Object selected : step.select().values()) {
-                        collectDollarNames(asText(selected), into);
-                    }
-                }
-                if (step.set() != null) {
-                    for (Object assigned : step.set().values()) {
-                        collectDollarNames(asText(assigned), into);
-                    }
-                }
-                collectDollarReads(step.thenSteps(), into);
-                collectDollarReads(step.elseSteps(), into);
-                collectDollarReads(step.steps(), into);
             }
         }
 
@@ -440,7 +377,6 @@ public final class ReferenceIndex {
             eventTriggerModeEdges();
             panelEdges();
             queryEdges();
-            procedureEdges();
             flowEdges();
             aggregateEdges();
             autoPanelEdges();
@@ -930,110 +866,6 @@ public final class ReferenceIndex {
             }
         }
 
-        // -- procedures ---------------------------------------------------------------------
-
-        private void procedureEdges() {
-            for (ProcedureAst procedure : nullSafe(model.getProcedures())) {
-                if (procedure == null) {
-                    continue;
-                }
-                String owner = safe(procedure.name());
-                // A procedure's variables are typed by declaration; a step's `as`/`target` binds
-                // more. Both feed $var.field resolution below.
-                Map<String, String> varConcepts = new LinkedHashMap<>();
-                procedureSteps(owner, "procedures[" + owner + "].steps", procedure.steps(), varConcepts);
-            }
-        }
-
-        private void procedureSteps(String owner, String base, List<ProcedureStepAst> steps,
-                                    Map<String, String> varConcepts) {
-            int position = 0;
-            for (ProcedureStepAst step : nullSafe(steps)) {
-                if (step == null) {
-                    position++;
-                    continue;
-                }
-                String stepBase = base + "[" + position + "]";
-                concept(owner, SITE_PROCEDURE_STEP_CONCEPT, stepBase + ".concept", step.concept(),
-                        KIND_PROCEDURE);
-                named(KIND_PROCEDURE, owner, SITE_PROCEDURE_STEP_QUERY, stepBase + ".query",
-                        KIND_QUERY, step.query(), queryNames);
-                named(KIND_PROCEDURE, owner, SITE_PROCEDURE_STEP_PROCEDURE, stepBase + ".procedure",
-                        KIND_PROCEDURE, step.procedure(), procedureNames);
-                named(KIND_PROCEDURE, owner, SITE_PROCEDURE_STEP_FLOW, stepBase + ".flow",
-                        KIND_FLOW, step.flow(), flowNames);
-                capabilityEdge(KIND_PROCEDURE, owner, SITE_PROCEDURE_STEP_CAPABILITY,
-                        stepBase + ".capability", step.capability());
-                named(KIND_PROCEDURE, owner, SITE_PROCEDURE_STEP_EVENT, stepBase + ".event",
-                        KIND_EVENT, step.event(), eventNames);
-
-                // Coverage class 4: bind `$var` to a concept where the producing step says so.
-                String binding = hasText(step.as()) ? step.as() : step.target();
-                if (hasText(binding) && hasText(step.concept())) {
-                    varConcepts.put(stripDollar(binding), step.concept());
-                } else if (hasText(binding) && hasText(step.query())) {
-                    QueryAst source = queriesByLower.get(lower(step.query()));
-                    if (source != null && hasText(source.concept())) {
-                        varConcepts.put(stripDollar(binding), source.concept());
-                    }
-                }
-
-                if (step.set() != null && hasText(step.concept())) {
-                    for (String key : step.set().keySet()) {
-                        fieldOf(KIND_PROCEDURE, owner, SITE_PROCEDURE_STEP_SET_FIELD,
-                                stepBase + ".set." + key, step.concept(), key);
-                    }
-                }
-                varFieldEdges(owner, stepBase, step, varConcepts);
-
-                procedureSteps(owner, stepBase + ".thenSteps", step.thenSteps(), varConcepts);
-                procedureSteps(owner, stepBase + ".elseSteps", step.elseSteps(), varConcepts);
-                procedureSteps(owner, stepBase + ".steps", step.steps(), varConcepts);
-                position++;
-            }
-        }
-
-        /**
-         * Coverage class 4: {@code $var.field} on the READ side. Resolves {@code $var} back to the
-         * step that produced it; anything whose producer is a {@code capabilityCall} (or any step
-         * whose output shape is declared elsewhere) is UNDECIDABLE, never guessed.
-         */
-        private void varFieldEdges(String owner, String stepBase, ProcedureStepAst step,
-                                   Map<String, String> varConcepts) {
-            // Keyed by the STEP KEY the text came from, not just the text: the path has to address
-            // the real JSON string so `--cascade` can edit it. An earlier version emitted
-            // `steps[0].$p.birthDay`, which names the variable and points at nothing.
-            Map<String, String> expressions = new LinkedHashMap<>();
-            putIfText(expressions, "condition", step.condition());
-            putIfText(expressions, "items", step.items());
-            putIfText(expressions, "value", asText(step.value()));
-            putIfText(expressions, "left", asText(step.left()));
-            putIfText(expressions, "right", asText(step.right()));
-            if (step.select() != null) {
-                for (Map.Entry<String, Object> entry : step.select().entrySet()) {
-                    putIfText(expressions, "select." + entry.getKey(), asText(entry.getValue()));
-                }
-            }
-            for (Map.Entry<String, String> entry : expressions.entrySet()) {
-                int position = 0;
-                for (String reference : dollarFieldReferences(entry.getValue())) {
-                    int dot = reference.indexOf('.');
-                    String variable = reference.substring(1, dot);
-                    String field = reference.substring(dot + 1);
-                    String concept = varConcepts.get(variable);
-                    String path = stepBase + "." + entry.getKey() + "#" + position;
-                    if (concept == null) {
-                        add(KIND_PROCEDURE, owner, SITE_PROCEDURE_STEP_VAR_FIELD,
-                                path, KIND_FIELD, reference, null, Resolution.UNDECIDABLE);
-                    } else {
-                        fieldOf(KIND_PROCEDURE, owner, SITE_PROCEDURE_STEP_VAR_FIELD,
-                                path, concept, field);
-                    }
-                    position++;
-                }
-            }
-        }
-
         // -- flows --------------------------------------------------------------------------
 
         private void flowEdges() {
@@ -1412,8 +1244,6 @@ public final class ReferenceIndex {
             if (fields.isEmpty()) {
                 return;
             }
-            Set<String> accepted = hasText(procedure)
-                    ? procedureInputsByLower.get(lower(procedure)) : null;
             Set<String> conceptFields = hasText(concept) ? effectiveFields(concept) : null;
             int position = 0;
             for (String field : fields) {
@@ -1423,11 +1253,6 @@ public final class ReferenceIndex {
                 }
                 String entryPath = path + "[" + position + "]";
                 position++;
-                if (accepted != null && accepted.contains(lower(field))) {
-                    add(fromKind, fromName, site, entryPath, KIND_PARAMETER,
-                            procedure + "." + field, null, Resolution.RESOLVED);
-                    continue;
-                }
                 if (conceptFields != null && conceptFields.contains(lower(field))) {
                     add(fromKind, fromName, site, entryPath, KIND_FIELD,
                             concept + "." + field, concept, Resolution.RESOLVED);

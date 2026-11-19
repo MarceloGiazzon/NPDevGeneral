@@ -1,0 +1,258 @@
+{
+  "$comment": "Hand-written English meanings for the Query, Flow, Event and Function nouns of docs/DSL_KEYWORD_REFERENCE.md. See meanings-concept.json for the file format.",
+  "schemaVersion": "npdev-keyword-meanings.v1",
+  "defs": {
+    "query": {
+      "summary": "A named, parameterised read over one concept. It filters, orders and limits rows, may join through reference fields, and may group and aggregate. A query never widens access: row-level access of the concept still applies.",
+      "example": {
+        "name": "OpenInvoicesByCustomer",
+        "concept": "Invoice",
+        "where": "status == 'OPEN'",
+        "groupBy": [
+          "customerId"
+        ],
+        "aggregates": [
+          {
+            "name": "openTotal",
+            "fn": "sum",
+            "field": "total"
+          }
+        ],
+        "orderBy": [
+          "openTotal desc"
+        ],
+        "limit": 50
+      }
+    },
+    "queryLookup": {
+      "summary": "A per-key aggregate over another concept, merged into each grouped row of the query as an extra output column."
+    },
+    "queryComputedColumn": {
+      "summary": "An output column computed per grouped row from other output columns."
+    },
+    "groupByField": {
+      "summary": "One `groupBy` entry of a query: a plain field name, or an object `{field, bucket}` that buckets a date or datetime field to day, week, month, quarter or year. The field may also be a join through a chain of reference fields (for example `customer.region`)."
+    },
+    "aggregateFunction": {
+      "summary": "One aggregate output column of a grouped query.",
+      "example": {
+        "name": "total",
+        "fn": "sum",
+        "field": "amount"
+      }
+    },
+    "queryParameter": {
+      "summary": "A named, typed parameter. Used as a `query.parameters` entry (and, for the legacy procedures, as a `procedure.parameters` entry).",
+      "example": {
+        "name": "since",
+        "type": "date",
+        "required": false,
+        "defaultExpression": "addDays(today(), -7)"
+      }
+    },
+    "flow": {
+      "summary": "Something the app does: an ordered list of steps started by a trigger. A flow is durable (each step is checkpointed, and a flow can wait for an event or a human), can compensate with `onFailure`, and is the only place where behavior is written. Exactly one of `steps` or (for a specializing flow) `hooks` must be present; `input` needs `steps` or `specializes`.",
+      "example": {
+        "name": "SubmitExpense",
+        "concept": "Expense",
+        "expose": "ui",
+        "steps": [
+          {
+            "name": "saved",
+            "type": "createConcept",
+            "scope": "Expense",
+            "input": "$input"
+          },
+          {
+            "type": "emitEvent",
+            "event": "ExpenseSubmitted",
+            "payload": "$saved"
+          },
+          {
+            "type": "return",
+            "value": "$saved"
+          }
+        ]
+      }
+    },
+    "flowInput": {
+      "summary": "Declares that the flow's input has the shape of a concept's request body, for a given mode."
+    },
+    "flowSchedule": {
+      "summary": "Recurring start of a flow: a cron expression and the tenants it runs for. The scheduler starts the flow like an HTTP call, under the system principal.",
+      "example": {
+        "cron": "0 0 6 * * *",
+        "tenantScope": [
+          "default"
+        ]
+      }
+    },
+    "flowHook": {
+      "summary": "Extra steps inserted before or after a named step of the flow being specialized. Lets an app extend a flow it got from a pack without copying it."
+    },
+    "flowStep": {
+      "summary": "One step of a flow. `type` decides what the step does and which other keywords it uses; the schema requires the keywords listed under Conditional rules for each type. Steps reference earlier results with `$name.field` flow-state references and use the one expression language for conditions.",
+      "example": {
+        "name": "approval",
+        "type": "awaitEvent",
+        "awaitEvent": "ExpenseApproved",
+        "awaitRef": "approval",
+        "timeout": 86400,
+        "match": {
+          "correlation": true
+        }
+      }
+    },
+    "awaitMatch": {
+      "summary": "How an arriving event is matched to a parked `awaitEvent` step."
+    },
+    "humanTask": {
+      "summary": "Turns an `awaitEvent` step into a task in a person's inbox. The flow resumes when the person picks an outcome and fills the form."
+    },
+    "generatedActionDescriptor": {
+      "summary": "Legacy. Describes the audit, idempotency, trace and correlation behavior of a procedure exposed as a generated action.",
+      "status": {
+        "label": "Legacy - retiring",
+        "note": "Part of the procedure family being removed (REG-342)."
+      }
+    },
+    "event": {
+      "summary": "A named fact that happened. Declared at the model root or inside a concept; flows publish it with `emitEvent` or `scheduleEvent`, are triggered by it (`trigger.event`) or wait for it (`awaitEvent`). A concept-nested event with `mode` is also published automatically by the generated create, update or delete.",
+      "example": {
+        "name": "ExpenseSubmitted",
+        "payload": [
+          {
+            "name": "expenseId",
+            "type": "uuid"
+          },
+          {
+            "name": "amount",
+            "type": "decimal"
+          }
+        ]
+      }
+    },
+    "eventPayloadField": {
+      "summary": "One field of an event's payload."
+    },
+    "function": {
+      "summary": "A named pure function callable from any expression, for example `surgeMultiplier(open, free)`. The call is replaced by the body at compile time. A function may not read a row field and may not call itself. A pack's functions are called `pack::name`.",
+      "example": {
+        "name": "surgeMultiplier",
+        "params": [
+          {
+            "name": "open",
+            "type": "integer"
+          },
+          {
+            "name": "free",
+            "type": "integer"
+          }
+        ],
+        "returns": "decimal",
+        "body": "open > free ? 1.5 : 1.0"
+      }
+    }
+  },
+  "slots": {
+    "query.name": "The query's name, unique within the model; screens, panels, flows and agents refer to it by this name.",
+    "query.concept": "The concept whose rows the query reads.",
+    "query.where": "Filter expression over the concept's fields and the query parameters (`$user.id` is available). Row-level access of the concept always applies on top.",
+    "query.orderBy": "Fields to sort by, first sorts first. Each entry is a field or output column name, optionally followed by a direction.",
+    "query.limit": "Maximum number of rows returned.",
+    "query.parameters": "The query's declared parameters; callers bind them by name.",
+    "query.permissionRequirements": "Permissions a caller must hold to run the query.",
+    "query.metadata": "Free-form notes carried into the compiled model unchanged.",
+    "query.groupBy": "Fields (or date buckets, or reference paths) that group the rows. Makes the query an aggregate query.",
+    "query.aggregates": "Aggregate output columns (count, sum, avg, min, max) computed per group.",
+    "query.having": "Filter over the grouped output columns, applied after grouping, lookups and computed columns.",
+    "queryComputedColumn.name": "Name of the computed output column.",
+    "aggregateFunction.name": "Name of the output column.",
+    "aggregateFunction.fn": "The aggregate: `count`, `sum`, `avg`, `min` or `max`.",
+    "aggregateFunction.field": "The field the function reads (not used by `count`).",
+    "queryParameter.name": "The parameter's name; callers bind it by this name and the query refers to it as `$name`.",
+    "queryParameter.type": "The parameter's type, a field type name such as `string`, `int`, `date` or `uuid`.",
+    "queryParameter.required": "True: the caller must supply it (unless a `defaultExpression` exists).",
+    "queryParameter.schema": "A `schemaObject` for a structured parameter.",
+    "queryParameter.description": "A sentence describing the parameter.",
+    "flow.name": "The flow's name, unique within the model. It addresses the flow in the API (`/api/flows/<name>/execute`), in `callFlow` steps, screen buttons and agent exposures.",
+    "flow.concept": "The concept the flow works on by default; concept steps without their own `scope` use it.",
+    "flow.specializes": "Name of a base flow (typically from a pack) that this flow specializes; it may then add `hooks` instead of declaring all `steps`.",
+    "flow.input": "Declares that the flow's input is shaped like a concept body (see `flowInput`).",
+    "flow.inputSchema": "A `schemaObject` describing the flow's input.",
+    "flow.outputSchema": "A `schemaObject` describing the flow's output (the value of its `return` step).",
+    "flow.action": "How a button that starts this flow is presented (label, confirmation, danger level).",
+    "flow.startEndpoint": "Whether the generated app offers a start endpoint for the flow. `expose` is the current way to control who may start it.",
+    "flow.schedule": "Recurring start by cron (the older spelling of `trigger.schedule`).",
+    "flow.metadata": "Binds an author-supplied, hash-pinned Java class to the flow instead of its steps. Holds `untrustedExtensionEntrypoint`.",
+    "flow.hooks": "Steps to run before or after named steps of the specialized base flow.",
+    "flow.steps": "The ordered steps, at least one. Required unless the flow specializes another and only adds hooks.",
+    "flowHook.position": "`before` or `after` the target step.",
+    "flowHook.targetStep": "Name of the step of the base flow the hook attaches to.",
+    "flowHook.steps": "The steps to insert, at least one.",
+    "flowStep.name": "The step's name: unique within the flow, shown in traces, and the way a hook's `targetStep` refers to the step.",
+    "flowStep.type": "What the step does. `invariantCheck` evaluates invariants; `capabilityCall` calls a capability operation; `generatedAction` runs a generated action; `createConcept`, `updateConcept`, `deleteConcept`, `readConcept`, `listConcepts` and `runQuery` work with concepts and queries; `emitEvent` publishes an event now and `scheduleEvent` later; `awaitEvent` parks until an event arrives; `branch` chooses between step lists; `forEach` loops; `map` and `set` compute values; `callFlow` starts another flow; `notify` sends a notification; `return` ends the flow with a value.",
+    "flowStep.checkpoint": "On an `invariantCheck`: `pre` or `post`, when the invariants are evaluated relative to the surrounding work.",
+    "flowStep.phase": "Alias of `checkpoint`.",
+    "flowStep.scope": "On an `invariantCheck`, `createConcept` or other concept step: the concept the step applies to.",
+    "flowStep.invariants": "On an `invariantCheck`: the names of the invariants to evaluate.",
+    "flowStep.capability": "On a `capabilityCall`: the name of the capability to call (a declared capability, or a platform one such as `notification`).",
+    "flowStep.operation": "On a `capabilityCall`: the operation of that capability.",
+    "flowStep.input": "The value handed to the step, as a flow-state reference or expression (for example `$input`). For a concept step it is the record body.",
+    "flowStep.output": "The flow-state key under which the step stores its result; later steps read it as `$key`.",
+    "flowStep.args": "On a `capabilityCall`: positional arguments, each a literal or a flow-state reference.",
+    "flowStep.policy": "Overrides the called operation's execution policy (retries, timeout, circuit breaker, idempotency) for this step.",
+    "flowStep.event": "On `emitEvent` and `scheduleEvent`: the name of the event to publish (a declared event).",
+    "flowStep.payload": "On `emitEvent` and `scheduleEvent`: the event payload, a flow-state reference.",
+    "flowStep.from": "A flow-state reference giving the step's source value: for `map` the value copied, for `emitEvent` / `scheduleEvent` the event payload (alternative to `payload` and `data`).",
+    "flowStep.data": "An object built in place - a map from name to literal or flow-state reference - used as the event payload of `emitEvent` / `scheduleEvent` instead of `payload` or `from`.",
+    "flowStep.condition": "On a `branch`: the expression that chooses `then` (true) or `else` (false).",
+    "flowStep.action": "How the step is presented in traces and action histories (label, danger level).",
+    "flowStep.actionName": "On a `generatedAction`: the name of the generated action to run.",
+    "flowStep.then": "On a `branch`: the steps run when the condition is true.",
+    "flowStep.else": "On a `branch`: the steps run when the condition is false.",
+    "flowStep.awaitEvent": "On an `awaitEvent`: the name of the event the flow waits for.",
+    "flowStep.awaitRef": "On an `awaitEvent`: the flow-state key under which the arriving event's payload is stored.",
+    "flowStep.match": "On an `awaitEvent`: how an arriving event is matched to this flow instance.",
+    "flowStep.delaySeconds": "On a `scheduleEvent`: seconds to wait before the event is published.",
+    "flowStep.delayMinutes": "On a `scheduleEvent`: minutes to wait before the event is published.",
+    "flowStep.delayMs": "On a `scheduleEvent`: milliseconds to wait before the event is published.",
+    "flowStep.value": "On a `return`: the value the flow ends with. On a `set`: the expression whose result is stored in `output`.",
+    "flowInput.concept": "The concept whose request body the flow's input mirrors.",
+    "flowInput.mode": "Which request body: `create`, `update`, `delete` or `query`.",
+    "flowSchedule.cron": "The cron expression: classic 5 fields (minute hour day month weekday) or Spring's 6 fields with seconds.",
+    "flowSchedule.tenantScope": "A tenant id or a list of tenant ids the flow runs for, one independent schedule per tenant. Omitted means the default tenant.",
+    "awaitMatch.correlation": "True: only an event carrying the same correlation id as this flow instance resumes it.",
+    "awaitMatch.payload": "A map from event payload field to an expression; the event matches only when each field equals the value of its expression.",
+    "humanTask.description": "Longer text shown with the task in the inbox.",
+    "humanTask.assignee": "Who may complete the task: a specific user (a flow-state reference) and/or one or more roles.",
+    "humanTask.outcomes": "The buttons the person can choose from, at least one; the chosen value is stored under `outcomeField`.",
+    "humanTask.fields": "The form fields the person fills in; their values are delivered with the completed event.",
+    "event.name": "The event's name, unique within the model; the string flows publish, trigger on and await.",
+    "event.specializes": "Name of a base event (typically from a pack) this event specializes.",
+    "event.version": "Version label of the event's payload contract.",
+    "event.payloadSchemaRef": "Reference to a schema describing the payload, as an alternative to `payload`.",
+    "event.payload": "The payload fields: each a field name string or an object with a name and a type.",
+    "eventPayloadField.name": "The payload field's name.",
+    "eventPayloadField.type": "The payload field's type (a scalar field type).",
+    "function.description": "A sentence describing what the function computes."
+  },
+  "inline": {
+    "function.params.name": "The parameter's name, used in the body.",
+    "function.params.type": "The parameter's type (the same names as `returns`).",
+    "flow.trigger.event": "Name of the event whose publication starts the flow.",
+    "flow.trigger.condition": "Optional expression over `$event` that must be true for the event to start the flow.",
+    "flow.trigger.schedule": "A `flowSchedule` (cron and tenant scope): the flow starts on that schedule.",
+    "flow.trigger.webhook": "Name of a capability that declares an `inbound` door; the flow starts on every verified delivery to that door.",
+    "humanTask.assignee.roles": "Role names; any user holding one of them may complete the task.",
+    "humanTask.outcomes.value": "The outcome value stored when this button is chosen.",
+    "humanTask.outcomes.label": "The caption of the button.",
+    "humanTask.fields.name": "The form field's name; its value arrives under this key.",
+    "humanTask.fields.type": "The form field's type.",
+    "humanTask.fields.label": "The caption of the form field.",
+    "humanTask.fields.required": "True: the person must fill the field in.",
+    "humanTask.fields.maxLength": "Maximum length of a text value.",
+    "groupByField.field": "The date or datetime field (or reference path) to group by.",
+    "groupByField.bucket": "The time bucket the values are truncated to: day, week, month, quarter or year."
+  }
+}

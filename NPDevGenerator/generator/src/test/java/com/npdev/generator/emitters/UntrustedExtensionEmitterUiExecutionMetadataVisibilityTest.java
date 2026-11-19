@@ -3,10 +3,9 @@ package com.npdev.generator.emitters;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.npdev.dsl.v1.compiled.CompiledGeneratedActionDescriptorSpec;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
-import com.npdev.dsl.v1.compiled.CompiledProcedure;
+import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.strategy.RegenerationPolicy;
 
@@ -131,27 +130,7 @@ final class UntrustedExtensionEmitterUiExecutionMetadataVisibilityTest {
     }
 
     private static CompiledModel model() {
-        CompiledProcedure procedure = new CompiledProcedure(
-                "CreateItem13User",
-                "Create Item 13 user",
-                List.of(),
-                List.of(),
-                List.of(),
-                null,
-                List.of("ADMIN"),
-                new CompiledGeneratedActionDescriptorSpec(
-                        "CreateItem13User",
-                        List.of("Item13User"),
-                        "Item13User",
-                        "generated.action.item13-user.completed",
-                        "ITEM13_USER",
-                        "record",
-                        "record",
-                        "claim",
-                        true
-                ),
-                Map.of("untrustedExtensionEntrypoint", "trusted/CreateItem13UserProcedure.java")
-        );
+        CompiledFlow procedure = new CompiledFlow("CreateItem13User", null, null, List.of(), null, null, null, false, null, null, null, "ui", null, "Create Item 13 user", Map.of("untrustedExtensionEntrypoint", "trusted/CreateItem13UserProcedure.java"));
         CompiledPanel panel = new CompiledPanel(
                 "item13-panel",
                 "/item13-panel",
@@ -175,9 +154,8 @@ final class UntrustedExtensionEmitterUiExecutionMetadataVisibilityTest {
                 List.of(),
                 List.of(),
                 List.of(),
-                List.of(),
-                List.of(),
                 List.of(procedure),
+                List.of(),
                 List.of(panel)
         );
     }
@@ -189,7 +167,7 @@ final class UntrustedExtensionEmitterUiExecutionMetadataVisibilityTest {
                   "entries": [
                     {
                       "entryId": "procedure-create-item13-user",
-                      "kind": "procedure",
+                      "kind": "flow",
                       "relativePath": "trusted/CreateItem13UserProcedure.java",
                       "language": "java",
                       "sha256": "%s",

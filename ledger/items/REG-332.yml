@@ -33,6 +33,31 @@ detail: |
   can be imported through the relay today. FIXED here: the relay's message for that case (npdev_relay_files._pack_failure) now says the published copy does not match this
   NPDev's model format yet instead of "could not download" (test_relay_packs.py, 20/20). NOT fixable by a session: publishing the current packs to the public NPR
   (owner confirms each `npdev pack push --confirm-public <id>@<version>`; no local NPR clone exists on this machine). Until then done_when below cannot be met.
+  PUBLISHED 2026-11-18 (owner: "pode publicar"): contacts-1.1.0, identity-1.5.0, products-1.0.0, sales-2.0.0, inventory-2.0.0, purchasing-2.0.0 are now
+  on the public NPR (main synced with origin). `npdev pack push` needed a fix first: its probe app staged only the pack itself, so a pack with `packs[]`
+  dependencies (sales, inventory, purchasing) failed ("cannot find packs/contacts"), then "no npdev.lock", then unbound role('x'); notification and
+  tracing failed on an unprovided capability / undeclared property scope. npdev_relay_pack.stage_probe now copies the dependency packs from the pack's
+  sibling folder, writes the npdev.lock (resolved version + sha256 of the bytes), binds every role('x') the staged packs name, and probe_model declares
+  provides.capabilities / propertyScopes the pack needs. STILL UNPUBLISHED (need a version bump first, the local copy changed but kept the version the
+  public tag already holds): workspace 1.1.0, tracing 1.0.2, notification 1.0.0 (patch bump), approvals 1.2.1 / helpdesk 1.2.0 / leave 1.2.1 (the gate
+  says BREAKING, a major bump to 2.0.0 is required). project-tracker-demo 1.0.0 is unchanged.
+  PUBLISHED 2026-11-18 (second batch, owner "Sim" to the bumps): workspace-1.1.1 (+ no-op migration "1.1.0 -> 1.1.1": [] -- the chain must reach the
+  version), tracing-1.0.3, notification-2.0.0 (customCapabilities 'mailer' removed = BREAKING), approvals-2.0.0, helpdesk-2.0.0, leave-2.0.0; sample copies
+  (dom-approvals, dom-helpdesk, dom-leave, path-a workspace) and the path-a / pigmentampas locks follow the new versions. Only project-tracker-demo stays at
+  1.0.0 (unchanged). PROVEN against the real public NPR (scratchpad npr-import): a model importing contacts-1.1.0, products-1.0.0 and sales-2.0.0 by `from`
+  runs `pack update` (lock written) and validates with 0 errors. NEW FINDING that still blocks done_when: importing ONLY sales by `from` fails with
+  "packs/contacts/pack.json: path not found" -- a pack's own packs[] dependency resolves only from <model dir>/packs/<id>/pack.json, never from the
+  catalog (documented in npdev_cli.py near _add_pack_from_catalog). So the relay briefing / pack catalog must make an AI list every dependency of a pack it
+  imports (contacts + products for sales), or the relay must add them; neither exists yet.
+  DEPENDENCIES 2026-11-19: (1) `pack build-catalog` / `pack publish --push` now write `needs: [ids]` on an index entry whose pack.json
+  has packs[] (npdev_cli._scan_pack_catalog_entries); (2) the briefing's Pack catalog line then reads `- sales 2.0.0 [also import: contacts,
+  products] - ...` with the rule once above the list (npdev_relay_engine.pack_catalog_text); (3) when the answer still misses one, the
+  failure is no longer "could not download": npdev_relay_files._pack_failure names the missing ids and tells the AI to add each to
+  packs[] -- a one-round fix. Reproduced against the real public NPR (model importing only sales-2.0.0): `pack update` fails with
+  `...\packs\contacts\pack.json (<OS-localized "cannot find the path">)`, so the ids are taken from the `packs/<id>/pack.json` paths in
+  the failure that do not exist beside the staged model, never from English wording. Tests: test_relay_packs.py (+2),
+  test_pack_catalog.py (+1). THE PUBLIC INDEX STILL LACKS `needs` until the owner regenerates and pushes it (`pack publish --push`),
+  so today only (3) is live.
   NOT done: `pack update` always clones (a cached pack is not reused offline) -- offline therefore fails with the sentence above
   even when the pack is cached; the catalog list itself does fall back to its cache. The real relay round with a real chat AI on the
   owner's machine (P2 "Verify") has not been run.

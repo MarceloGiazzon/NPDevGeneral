@@ -3,8 +3,9 @@ title: >-
   The top-level procedures[] array and its schema family are still in the DSL although every in-repo procedure became a flow
 type: FEATURE
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-11-18
+closed: 2026-11-19
 source: >-
   FORM P3-T5c stage 6 / P3-T7 (2026-11-16..18). Every procedure in the in-repo corpus was rewritten as a flow and DefaultProcedureExecutor was cut to the
   eight concept steps, but procedures[] stays in model.schema.json because two untrusted-extension apps under AppGen/apps (WmsOffice, WmsOfficePackTest)
@@ -13,6 +14,23 @@ surface: dsl/procedures, contract/model.schema.json, kernel/procedures
 detail: |
   On a bare CI checkout (no AppGen/apps) check-dsl-coverage.py sees no model declaring procedures[], so the feature and the four procedure.* step
   features are carried by reviewed entries in scripts/quality/dsl-coverage-allowlist.json that cite this item. They go away together with the schema family.
+  DONE 2026-11-19 (one change, see BREAKING.md): procedures[] and $defs procedure/procedureVariable/procedureStep removed from the four model.schema.json
+  copies, both pack.schema.json copies and model-fragment.schema.json (procedureParameter -> queryParameter, still used by queries[].parameters); ModelAst and
+  CompiledModel lost the positional constructor parameter (168 files; a generics-aware audit against HEAD found no wrong-argument drops); the parser refuses
+  a root `procedures` with LEGACY_PROCEDURES_ROOT_KEY; ModelCompiler, the canonical JSON writer/reader pair, ModelResolver, ModelSourceResolver (MODEL_ARRAY_KEYS
+  and the procedure rewrite kind), ReferenceIndex (SITE_PROCEDURE_STEP_*), PackValidation (the whole validateProcedures chain), AggregateValidation,
+  PanelValidation, ExternalAiValidation, CompiledPluginRequirementGraphBuilder, PackDiffEngine, the metadata catalog (procedures.manifest.json, the runtime
+  /metadata/procedures endpoint, catalogs.procedures: 13 -> 12 catalogs) and the generator (untrusted-extension manifest kind `procedure`, the procedure
+  actionDescriptor path, AuthoringDiffGate) all cleaned; a screen/hook/aggregate `procedure` reference now names a flow only. Deleted: ProcedureAst,
+  ProcedureStepAst, ProcedureVariableAst, CompiledProcedure*, GeneratedActionDescriptorAst, CompiledGeneratedActionDescriptorSpec,
+  ComputeValueOperandValidation and 17 procedure-only DSL tests; the inline test models became flows. CLI: `npdev add procedure`, `npdev migrate
+  procedure-args-order` and the Java `list-procedures` are gone; Normalize-AiContract.ps1 maps an ai-model.v1 procedure to a flow. The five
+  dsl-coverage-allowlist entries are deleted; the keyword budget fell 802 -> 757 (baseline slots, meanings data, layout and DSL_KEYWORD_REFERENCE.md regenerated).
+  KEPT ON PURPOSE: the kernel's com.npdev.kernel.procedures package (DefaultProcedureExecutor etc.) -- since FORM P3-T7 it is the concept-step engine flows run
+  through (ProcedureFlowStep), not a procedures[] feature; renaming it is cosmetic. Verified: DSL 1469 tests green, generator 791/792 (the one red,
+  PigmentampasSampleTest, is a pack-cache digest mismatch in the previous session's UNCOMMITTED pack-version sync, not this change), runtimehost-core 704/704,
+  kernel + adapters, CLI add/migration/xref tests, keyword budget/reference, twin-pair, schema-mirror, dsl-coverage, concept-map and the paperwork checks.
+  NOT run: the assembled RuntimeHost root suite (run-runtimehost-gate.ps1), enf-behavior-probes, jrn-journeys, the browser scenarios and the full T2 gates.
   Plan task: P4-T5 (rung 4, code capabilities), which merges customCapabilities into capabilities[] and needs the owner present (D14).
   PROGRESS 2026-11-18 (owner chose option A: a hash-pinned Java class binds to a FLOW). DONE: flows[].metadata (untrustedExtensionEntrypoint) in the four
   model.schema.json copies, FlowAst/CompiledFlow/parser/resolver/compiler/canonical JSON writer+reader; the generator pairs a flow's entrypoint with an
@@ -34,7 +52,13 @@ detail: |
 files:
   - NPDevContract/schemas/model.schema.json
   - scripts/quality/dsl-coverage-allowlist.json
-verification: NOT_VERIFIED
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/ContractSurfaceSupportTest.java#rejectsRemovedRootProceduresWithTheFlowReplacement
+  asserts: >-
+    a model carrying the root key `procedures` is refused with a message that names `flow` as the replacement.
+  provenRed: false
 done_when: >-
   model.schema.json (all four copies) has no procedures[] and no procedure $def family, no corpus model declares it, and the five procedures entries in
   scripts/quality/dsl-coverage-allowlist.json are deleted.

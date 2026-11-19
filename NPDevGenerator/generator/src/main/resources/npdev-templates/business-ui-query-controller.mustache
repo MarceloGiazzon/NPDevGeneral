@@ -5,7 +5,7 @@ import com.finalexec.api.NamedQueryPermissions;
 import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledAggregateFunction;
 import com.npdev.dsl.v1.compiled.CompiledGroupByField;
-import com.npdev.dsl.v1.compiled.CompiledProcedureParameter;
+import com.npdev.dsl.v1.compiled.CompiledQueryParameter;
 import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.dsl.v1.compiled.CompiledReferenceDisplay;
 import com.npdev.dsl.v1.compiled.CompiledQueryComputedColumn;
@@ -96,7 +96,7 @@ public class GeneratedQueryController {
      * integer / decimal / string) so the compiled filter literal matches the stored column type.
      */
     private static Map<String, Object> bindParameters(
-            HttpServletRequest request, List<CompiledProcedureParameter> parameters) {
+            HttpServletRequest request, List<CompiledQueryParameter> parameters) {
         try {
             // REP-1: the binding rule lives in com.finalexec.api.NamedQueryBinding so a list-report
             // document binds its named query's parameters exactly as this endpoint does.

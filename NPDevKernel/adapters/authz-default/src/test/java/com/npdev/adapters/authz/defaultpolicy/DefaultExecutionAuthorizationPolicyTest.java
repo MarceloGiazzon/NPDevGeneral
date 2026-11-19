@@ -34,7 +34,7 @@ class DefaultExecutionAuthorizationPolicyTest {
     private static CompiledModel compiledModelWithRoles(CompiledRole... roles) {
         return new CompiledModel(
                 "ns", "2.0", "1.0.0", Map.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 List.of(), List.of(), List.of(), List.of(), List.of(),
                 null, null,
                 List.of(roles)
@@ -316,7 +316,7 @@ class DefaultExecutionAuthorizationPolicyTest {
         }
         CompiledModel compiledModel = new CompiledModel(
                 "ns", "2.0", "1.0.0", identity,
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 List.of(), List.of(), List.of(), List.of(), List.of(),
                 null, null,
                 List.of(new CompiledRole("WarehouseManager", List.of("EXECUTE_FLOW"))));

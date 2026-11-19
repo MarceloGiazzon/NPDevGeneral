@@ -204,10 +204,10 @@ class JdbcBusinessConceptStorePredicateV2Test {
         assertEquals(List.of("Far", "Origin"), names(store, "withinKm(lat, lng, 0, 0, 50) || name == 'Far'"));
 
         // the origin and the radius arrive as bound parameters, never spliced
-        List<com.npdev.dsl.v1.compiled.CompiledProcedureParameter> parameters = List.of(
-                new com.npdev.dsl.v1.compiled.CompiledProcedureParameter("lat", "decimal", true, null, null),
-                new com.npdev.dsl.v1.compiled.CompiledProcedureParameter("lng", "decimal", true, null, null),
-                new com.npdev.dsl.v1.compiled.CompiledProcedureParameter("km", "decimal", true, null, null));
+        List<com.npdev.dsl.v1.compiled.CompiledQueryParameter> parameters = List.of(
+                new com.npdev.dsl.v1.compiled.CompiledQueryParameter("lat", "decimal", true, null, null),
+                new com.npdev.dsl.v1.compiled.CompiledQueryParameter("lng", "decimal", true, null, null),
+                new com.npdev.dsl.v1.compiled.CompiledQueryParameter("km", "decimal", true, null, null));
         List<ConceptQuery.Filter> filters = com.npdev.kernel.concepts.ConceptQueryPredicateCompiler
                 .compileToConceptQueryFilters("withinKm(lat, lng, $params.lat, $params.lng, $params.km)", parameters,
                         Map.of("lat", "0", "lng", "1", "km", "112"));

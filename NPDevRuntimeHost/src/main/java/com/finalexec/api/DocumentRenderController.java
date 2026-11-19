@@ -6,7 +6,7 @@ import com.npdev.dsl.v1.compiled.CompiledDocument;
 import com.npdev.dsl.v1.compiled.CompiledDocumentBand;
 import com.npdev.dsl.v1.compiled.CompiledDocumentLogo;
 import com.npdev.dsl.v1.compiled.CompiledPanelFieldBinding;
-import com.npdev.dsl.v1.compiled.CompiledProcedureParameter;
+import com.npdev.dsl.v1.compiled.CompiledQueryParameter;
 import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.CapabilityCall;
@@ -209,7 +209,7 @@ public class DocumentRenderController {
         }
         java.util.Set<String> parameterNames = new java.util.HashSet<>();
         if (query != null) {
-            for (CompiledProcedureParameter parameter : query.parameters()) {
+            for (CompiledQueryParameter parameter : query.parameters()) {
                 parameterNames.add(parameter.name().toLowerCase(Locale.ROOT));
             }
         }

@@ -51,7 +51,7 @@ function Write-TrustedProcedureScenario {
         entries = @(
             [ordered]@{
                 entryId = "procedure-test"
-                kind = "procedure"
+                kind = "flow"
                 relativePath = $RelativePath
                 language = "java"
                 sha256 = $hash
@@ -206,7 +206,7 @@ Set-Content -LiteralPath (Join-Path $missingRef "procedure/TestProcedure.java") 
     scenarioId = "reference-missing-from-manifest"
     policyVersion = "test"
     expectedOutcome = "fail"
-    entries = @(@{ entryId = "placeholder"; kind = "procedure"; relativePath = "procedure/OtherProcedure.java"; language = "java"; sha256 = ("0" * 64); runtimeBinding = "procedure:other"; className = "OtherProcedure"; method = "execute"; requiredRole = "admin"; tenantScoped = $true })
+    entries = @(@{ entryId = "placeholder"; kind = "flow"; relativePath = "procedure/OtherProcedure.java"; language = "java"; sha256 = ("0" * 64); runtimeBinding = "procedure:other"; className = "OtherProcedure"; method = "execute"; requiredRole = "admin"; tenantScoped = $true })
 } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $missingRef "untrusted-extension-manifest.json") -Encoding UTF8
 $unexpected = Join-Path $manifestRoot "unexpected-manifest-entry"
 New-Item -ItemType Directory -Force -Path (Join-Path $unexpected "procedure") | Out-Null
@@ -217,7 +217,7 @@ $unexpectedHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $unexp
     scenarioId = "unexpected-manifest-entry"
     policyVersion = "test"
     expectedOutcome = "fail"
-    entries = @(@{ entryId = "unexpected"; kind = "procedure"; relativePath = "procedure/TestProcedure.java"; language = "java"; sha256 = $unexpectedHash; runtimeBinding = "procedure:test"; className = "TestProcedure"; method = "execute"; requiredRole = "admin"; tenantScoped = $true })
+    entries = @(@{ entryId = "unexpected"; kind = "flow"; relativePath = "procedure/TestProcedure.java"; language = "java"; sha256 = $unexpectedHash; runtimeBinding = "procedure:test"; className = "TestProcedure"; method = "execute"; requiredRole = "admin"; tenantScoped = $true })
 } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $unexpected "untrusted-extension-manifest.json") -Encoding UTF8
 $manifestRun = Invoke-Proof -ScenarioRoot $manifestRoot -Name "manifest-negative" -StaticOnlyPass
 if ($manifestRun.report.overallStatus -ne "passed") { throw "Manifest negative cases did not pass fail-closed proof." }

@@ -54,7 +54,6 @@ public final class CompiledModelCanonicalJson {
         root.set("events", toEvents(model));
         root.set("flows", toFlows(model));
         root.set("queries", toQueries(model));
-        root.set("procedures", toProcedures(model));
         root.set("panels", toPanels(model));
         root.set("guidePages", toGuidePages(model));
         root.set("aggregates", toAggregates(model));
@@ -1406,7 +1405,7 @@ public final class CompiledModelCanonicalJson {
             node.put("where", safe(query.where()));
             node.set("orderBy", toStringArray(query.orderBy()));
             putNullableInteger(node, "limit", query.limit());
-            node.set("parameters", toProcedureParameters(query.parameters()));
+            node.set("parameters", toQueryParameters(query.parameters()));
             node.set("permissionRequirements", toStringArray(query.permissionRequirements()));
             node.set("metadata", toObjectMap(query.metadata()));
             node.set("groupBy", toGroupByFields(query.groupBy()));
@@ -1467,55 +1466,14 @@ public final class CompiledModelCanonicalJson {
         return array;
     }
 
-    private static ArrayNode toProcedures(CompiledModel model) {
-        ArrayNode procedures = JsonNodeFactory.instance.arrayNode();
-        List<CompiledProcedure> sorted = new ArrayList<>(model.getProcedures());
-        sorted.sort(Comparator.comparing(procedure -> normalize(procedure.name())));
-        for (CompiledProcedure procedure : sorted) {
-            ObjectNode node = JsonNodeFactory.instance.objectNode();
-            node.put("name", safe(procedure.name()));
-            node.put("description", safe(procedure.description()));
-            node.set("parameters", toProcedureParameters(procedure.parameters()));
-            node.set("variables", toProcedureVariables(procedure.variables()));
-            node.set("steps", toProcedureSteps(procedure.steps()));
-            node.set("returns", toSchema(procedure.returns()));
-            node.set("permissionRequirements", toStringArray(procedure.permissionRequirements()));
-            node.set("actionDescriptor", toGeneratedActionDescriptor(procedure.actionDescriptor()));
-            node.set("metadata", toObjectMap(procedure.metadata()));
-            node.put("uid", safe(procedure.uid()));
-            if (procedure.runAs() != null && !procedure.runAs().isBlank()) {
-                node.put("runAs", procedure.runAs());
-            }
-            procedures.add(node);
-        }
-        return procedures;
-    }
-
-    private static ObjectNode toGeneratedActionDescriptor(CompiledGeneratedActionDescriptorSpec descriptor) {
-        ObjectNode node = JsonNodeFactory.instance.objectNode();
-        if (descriptor == null) {
-            return node;
-        }
-        node.put("actionName", safe(descriptor.actionName()));
-        node.set("affectedConcepts", toStringArray(descriptor.affectedConcepts()));
-        node.put("sideEffectConcept", safe(descriptor.sideEffectConcept()));
-        node.put("eventNameOnSuccess", safe(descriptor.eventNameOnSuccess()));
-        node.put("auditResourceType", safe(descriptor.auditResourceType()));
-        node.put("idempotencyPolicy", safe(descriptor.idempotencyPolicy()));
-        node.put("tracePolicy", safe(descriptor.tracePolicy()));
-        node.put("correlationPolicy", safe(descriptor.correlationPolicy()));
-        node.put("explicit", descriptor.explicit());
-        return node;
-    }
-
-    private static ArrayNode toProcedureParameters(List<CompiledProcedureParameter> parameters) {
+    private static ArrayNode toQueryParameters(List<CompiledQueryParameter> parameters) {
         ArrayNode out = JsonNodeFactory.instance.arrayNode();
         if (parameters == null) {
             return out;
         }
-        List<CompiledProcedureParameter> sorted = new ArrayList<>(parameters);
+        List<CompiledQueryParameter> sorted = new ArrayList<>(parameters);
         sorted.sort(Comparator.comparing(parameter -> normalize(parameter.name())));
-        for (CompiledProcedureParameter parameter : sorted) {
+        for (CompiledQueryParameter parameter : sorted) {
             ObjectNode node = JsonNodeFactory.instance.objectNode();
             node.put("name", safe(parameter.name()));
             node.put("type", safe(parameter.type()));
@@ -1529,78 +1487,6 @@ public final class CompiledModelCanonicalJson {
             out.add(node);
         }
         return out;
-    }
-
-    private static ArrayNode toProcedureVariables(List<CompiledProcedureVariable> variables) {
-        ArrayNode out = JsonNodeFactory.instance.arrayNode();
-        if (variables == null) {
-            return out;
-        }
-        List<CompiledProcedureVariable> sorted = new ArrayList<>(variables);
-        sorted.sort(Comparator.comparing(variable -> normalize(variable.name())));
-        for (CompiledProcedureVariable variable : sorted) {
-            ObjectNode node = JsonNodeFactory.instance.objectNode();
-            node.put("name", safe(variable.name()));
-            node.put("type", safe(variable.type()));
-            node.set("schema", toSchema(variable.schema()));
-            node.set("initialValue", toAnyValueNode(variable.initialValue()));
-            out.add(node);
-        }
-        return out;
-    }
-
-    private static ArrayNode toProcedureSteps(List<CompiledProcedureStep> procedureSteps) {
-        ArrayNode steps = JsonNodeFactory.instance.arrayNode();
-        if (procedureSteps == null) {
-            return steps;
-        }
-        for (CompiledProcedureStep step : procedureSteps) {
-            ObjectNode node = JsonNodeFactory.instance.objectNode();
-            node.put("name", safe(step.name()));
-            node.put("type", safe(step.type()));
-            node.put("target", safe(step.target()));
-            node.set("value", toAnyValueNode(step.value()));
-            node.put("condition", safe(step.condition()));
-            node.put("items", safe(step.items()));
-            node.put("as", safe(step.as()));
-            node.put("concept", safe(step.concept()));
-            node.put("query", safe(step.query()));
-            node.set("data", toObjectMap(step.data()));
-            node.put("id", safe(step.id()));
-            node.put("procedure", safe(step.procedure()));
-            // LNCH-1 P0.2 (found by the reflective CanonicalJsonRoundTripCompletenessTest ratchet):
-            // flow was read by CompiledModelCanonicalJsonReader#toProcedureSteps but never written
-            // here, silently dropping a procedure step's flow reference across the canonical-JSON
-            // round trip every generated app's NPDevModelProvider reads at boot -- same bug class
-            // as LNCH-6's indexes/LNCH-13's access/LNCH-12's schedule/LNCH-17's loopSteps.
-            node.put("flow", safe(step.flow()));
-            node.put("capability", safe(step.capability()));
-            node.put("operation", safe(step.operation()));
-            node.put("event", safe(step.event()));
-            // #34: positional -- written in declared order, unlike every sibling map here.
-            node.set("args", toDeclaredOrderObjectMap(step.args()));
-            node.set("thenSteps", toProcedureSteps(step.thenSteps()));
-            node.set("elseSteps", toProcedureSteps(step.elseSteps()));
-            node.set("steps", toProcedureSteps(step.steps()));
-            putNullableBoolean(node, "trace", step.trace());
-            putNullableBoolean(node, "audit", step.audit());
-            node.set("metadata", toObjectMap(step.metadata()));
-            node.set("set", toObjectMap(step.set()));
-            // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1B): patchConcept's create-if-missing opt-in.
-            putNullableBoolean(node, "createIfMissing", step.createIfMissing());
-            // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 3A): mapList's per-item field map.
-            node.set("select", toObjectMap(step.select()));
-            // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, final item / REG-78): computeValue's operands.
-            node.set("left", toAnyValueNode(step.left()));
-            node.set("right", toAnyValueNode(step.right()));
-            // K2: runQuery's bound query parameters; K3: capabilityCall's soft-failure state key.
-            node.set("params", toObjectMap(step.params()));
-            if (step.errorTarget() != null && !step.errorTarget().isBlank()) {
-                node.put("errorTarget", step.errorTarget());
-            }
-            steps.add(node);
-        }
-        return steps;
     }
 
     private static ArrayNode toPanels(CompiledModel model) {

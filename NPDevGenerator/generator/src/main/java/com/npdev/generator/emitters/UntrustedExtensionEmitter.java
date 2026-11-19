@@ -107,7 +107,7 @@ public final class UntrustedExtensionEmitter {
             ManifestEntry entry = entryByKey.get(key(reference.kind(), reference.relativePath()));
             validateHash(sourceRoot, entry);
             String ownerKey = reference.kind() + "::" + reference.id();
-            if ("procedure".equals(reference.kind()) || "flow".equals(reference.kind())) {
+            if ("flow".equals(reference.kind())) {
                 TrustedProcedure procedure = toProcedure(reference, entry, sourceRoot);
                 procedures.add(procedure);
                 generatedPathsByOwner.computeIfAbsent(ownerKey, k -> new ArrayList<>())

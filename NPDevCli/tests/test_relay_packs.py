@@ -116,6 +116,20 @@ class ResolvePacksTests(unittest.TestCase):
         self.assertIn("contacts", str(raised.exception))
         self.assertNotIn("--allow-unsigned", str(raised.exception), "the AI cannot pass flags")
 
+    def test_a_missing_dependency_names_the_packs_the_answer_must_also_import(self):
+        # REG-332: importing only `sales` fails because its dependencies resolve beside the model, never from the catalog.
+        # the wording is the OS's (here Portuguese Windows), so the pack ids are found by path, not by the sentence
+        failure = npdev_cli.CliError("C:\\app\\packs\\contacts\\pack.json (O sistema nao pode encontrar o caminho)\n"
+                                     "packs/products/pack.json: path not found")
+        with mock.patch.object(npdev_cli, "run_pack_update", side_effect=failure):
+            with self.assertRaises(files_mod.PackError) as raised:
+                files_mod.resolve_packs(self.model_path, self.model)
+        message = str(raised.exception)
+        self.assertIn("contacts, products", message)
+        self.assertIn("packs[]", message)
+        self.assertNotIn("could not download", message)
+        self.assertEqual(files_mod.missing_dependencies("nothing relevant", self.model_path.parent), [])
+
     def test_a_downloaded_pack_that_fails_the_current_schema_says_the_catalog_is_out_of_date(self):
         failure = npdev_cli.CliError("Model schema validation failed for pack.json:\n"
                                      " - $.dslVersion: $.dslVersion: must be the constant '3.0.0'")
@@ -187,6 +201,17 @@ class CatalogBriefingTests(unittest.TestCase):
         self.assertIn("-- from: `git+https://example.org/other.git//p@v1`", text)  # off-pattern: its own coordinate
         sales = next(line for line in text.splitlines() if line.startswith("- sales"))
         self.assertTrue(sales.endswith("..."), sales)  # a long description is cut to one short line
+
+    def test_a_pack_with_dependencies_says_to_import_them_too(self):
+        catalog = {"repository": "https://github.com/MarceloGiazzon/NPR.git", "packs": [
+            {"pack": "sales", "version": "2.0.0", "needs": ["contacts", "products"],
+             "from": "git+https://github.com/MarceloGiazzon/NPR.git//packs/sales@sales-2.0.0"},
+            {"pack": "contacts", "version": "1.1.0",
+             "from": "git+https://github.com/MarceloGiazzon/NPR.git//packs/contacts@contacts-1.1.0"}]}
+        text = engine.pack_catalog_text(catalog)
+        self.assertIn("- sales 2.0.0 [also import: contacts, products]", text)
+        self.assertNotIn("- contacts 1.1.0 [also import", text)
+        self.assertIn("[also import: ...]", text)  # the rule is stated once, above the list
 
     def test_no_catalog_no_section(self):
         self.assertEqual(engine.pack_catalog_text(None), "")

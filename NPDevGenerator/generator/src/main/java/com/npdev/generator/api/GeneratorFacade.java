@@ -532,7 +532,6 @@ public final class GeneratorFacade {
                 model.getEvents(),
                 model.getFlows(),
                 model.getQueries(),
-                model.getProcedures(),
                 model.getPanels(),
                 model.getGuidePages(),
                 model.getAggregates(),

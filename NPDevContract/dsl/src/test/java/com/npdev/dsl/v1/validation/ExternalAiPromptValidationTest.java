@@ -170,26 +170,6 @@ class ExternalAiPromptValidationTest {
     }
 
     @Test
-    void aProcedureCallNamingAnUndeclaredPromptIsRejected() throws Exception {
-        String json = """
-            {
-              "dslVersion": "3.0.0", "namespace": "wms.externalai", "version": "1.0",
-              "concepts": [ { "name": "Mosaic", "fields": [
-                  { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
-              "capabilities": [ { "name": "externalAi", "type": "ExternalAiCapability", "adapter": "externalAi", "operations": ["generate"] } ],
-              "procedures": [ { "name": "PaintProc", "steps": [
-                { "name": "ask", "type": "capabilityCall", "capability": "externalAi", "operation": "generate",
-                  "args": { "prompt": "PaintMosiac", "input": "$input" }, "target": "answer" },
-                { "name": "done", "type": "return", "value": "$answer" } ] } ],
-              "externalAi": { "egress": "apiEnabled", "vendors": ["gemini"], "prompts": [ %s ] }
-            }
-            """.formatted(GOOD_PROMPT);
-        List<String> errors = new SemanticValidator().validate(new JsonModelParser().parse(MAPPER.readTree(json)));
-        assertTrue(errors.stream().anyMatch(e -> e.startsWith("Procedure PaintProc step ask")
-                && e.contains("names prompt 'PaintMosiac'")), errors.toString());
-    }
-
-    @Test
     void promptsAndLimitsSurviveTheCanonicalJsonRoundTrip() throws Exception {
         ModelAst ast = parse("""
                 { "egress": "apiEnabled", "vendors": ["gemini"], "prompts": [ %s ],

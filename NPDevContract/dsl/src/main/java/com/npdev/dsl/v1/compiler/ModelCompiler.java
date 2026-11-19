@@ -46,7 +46,6 @@ import com.npdev.dsl.v1.ast.EnumOptionAst;
 import com.npdev.dsl.v1.ast.FlowAst;
 import com.npdev.dsl.v1.ast.FlowScheduleAst;
 import com.npdev.dsl.v1.ast.FlowTriggerAst;
-import com.npdev.dsl.v1.ast.GeneratedActionDescriptorAst;
 import com.npdev.dsl.v1.ast.AggregateAst;
 import com.npdev.dsl.v1.ast.AggregateInvariantAst;
 import com.npdev.dsl.v1.ast.AggregateBalanceAst;
@@ -74,10 +73,7 @@ import com.npdev.dsl.v1.ast.PanelLayoutAst;
 import com.npdev.dsl.v1.ast.PanelSlotAst;
 import com.npdev.dsl.v1.ast.PanelWidgetAst;
 import com.npdev.dsl.v1.ast.PresentationMetadataAst;
-import com.npdev.dsl.v1.ast.ProcedureAst;
-import com.npdev.dsl.v1.ast.ProcedureParameterAst;
-import com.npdev.dsl.v1.ast.ProcedureStepAst;
-import com.npdev.dsl.v1.ast.ProcedureVariableAst;
+import com.npdev.dsl.v1.ast.QueryParameterAst;
 import com.npdev.dsl.v1.ast.QueryAst;
 import com.npdev.dsl.v1.ast.ReferenceSemanticsAst;
 import com.npdev.dsl.v1.ast.StateMachineStateAst;
@@ -118,7 +114,6 @@ import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledFlowSchedule;
 import com.npdev.dsl.v1.compiled.CompiledFlowTrigger;
 import com.npdev.dsl.v1.compiled.CompiledFlowStep;
-import com.npdev.dsl.v1.compiled.CompiledGeneratedActionDescriptorSpec;
 import com.npdev.dsl.v1.compiled.CompiledGuidePage;
 import com.npdev.dsl.v1.compiled.CompiledGuidePageGadget;
 import com.npdev.dsl.v1.compiled.CompiledGuidePageRegion;
@@ -161,10 +156,7 @@ import com.npdev.dsl.v1.compiled.CompiledPanelLayout;
 import com.npdev.dsl.v1.compiled.CompiledPanelSlot;
 import com.npdev.dsl.v1.compiled.CompiledPanelWidget;
 import com.npdev.dsl.v1.compiled.CompiledPresentationMetadata;
-import com.npdev.dsl.v1.compiled.CompiledProcedure;
-import com.npdev.dsl.v1.compiled.CompiledProcedureParameter;
-import com.npdev.dsl.v1.compiled.CompiledProcedureStep;
-import com.npdev.dsl.v1.compiled.CompiledProcedureVariable;
+import com.npdev.dsl.v1.compiled.CompiledQueryParameter;
 import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.dsl.v1.compiled.CompiledReferenceSemantics;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
@@ -204,7 +196,6 @@ public final class ModelCompiler {
         List<CompiledEvent> events = new ArrayList<>();
         List<CompiledFlow> flows = new ArrayList<>();
         List<CompiledQuery> queries = new ArrayList<>();
-        List<CompiledProcedure> procedures = new ArrayList<>();
         List<CompiledPanel> panels = new ArrayList<>();
         List<CompiledDocument> documents = new ArrayList<>();
         CompiledSettings settings = toCompiledSettings(modelAst.getSettings());
@@ -501,7 +492,7 @@ public final class ModelCompiler {
                     queryAst.where(),
                     copyStrings(queryAst.orderBy()),
                     queryAst.limit(),
-                    compileProcedureParameters(queryAst.parameters()),
+                    compileQueryParameters(queryAst.parameters()),
                     sortedStrings(queryAst.permissionRequirements()),
                     sortObjectMap(queryAst.metadata()),
                     toCompiledGroupByFields(queryAst.groupBy()),
@@ -517,24 +508,6 @@ public final class ModelCompiler {
                             .map(column -> new com.npdev.dsl.v1.compiled.CompiledQueryComputedColumn(
                                     column.name(), column.expression()))
                             .toList()
-            ));
-        }
-
-        List<ProcedureAst> orderedProcedures = new ArrayList<>(modelAst.getProcedures());
-        orderedProcedures.sort(Comparator.comparing(procedure -> normalize(procedure.name())));
-        for (ProcedureAst procedureAst : orderedProcedures) {
-            procedures.add(new CompiledProcedure(
-                    procedureAst.name(),
-                    procedureAst.description(),
-                    compileProcedureParameters(procedureAst.parameters()),
-                    compileProcedureVariables(procedureAst.variables()),
-                    compileProcedureSteps(procedureAst.steps()),
-                    toCompiledSchema(procedureAst.returns()),
-                    sortedStrings(procedureAst.permissionRequirements()),
-                    compileGeneratedActionDescriptor(procedureAst),
-                    sortObjectMap(procedureAst.metadata()),
-                    procedureAst.uid(),
-                    procedureAst.runAs()
             ));
         }
 
@@ -659,7 +632,6 @@ public final class ModelCompiler {
                 events,
                 flows,
                 queries,
-                procedures,
                 panels,
                 guidePages,
                 aggregates,
@@ -1760,48 +1732,6 @@ public final class ModelCompiler {
                 qualifiedName, physicalQualifierByConceptName.get(qualifiedName), contextPhysicallyIsolateByName);
     }
 
-    private static CompiledGeneratedActionDescriptorSpec compileGeneratedActionDescriptor(ProcedureAst procedureAst) {
-        GeneratedActionDescriptorAst explicit = procedureAst.actionDescriptor();
-        if (explicit != null) {
-            String actionName = firstNonBlank(explicit.actionName(), procedureAst.name());
-            String sideEffectConcept = blankToNull(explicit.sideEffectConcept());
-            List<String> affectedConcepts = copyStrings(explicit.affectedConcepts());
-            if (affectedConcepts.isEmpty() && sideEffectConcept != null) {
-                affectedConcepts = List.of(sideEffectConcept);
-            }
-            return new CompiledGeneratedActionDescriptorSpec(
-                    actionName,
-                    affectedConcepts,
-                    sideEffectConcept,
-                    firstNonBlank(explicit.eventNameOnSuccess(), defaultGeneratedActionEvent(actionName)),
-                    firstNonBlank(explicit.auditResourceType(), "GENERATED_ACTION"),
-                    firstNonBlank(explicit.idempotencyPolicy(), "record"),
-                    firstNonBlank(explicit.tracePolicy(), "record"),
-                    firstNonBlank(explicit.correlationPolicy(), "claim"),
-                    true
-            );
-        }
-
-        Map<String, Object> metadata = procedureAst.metadata();
-        String actionName = firstNonBlank(metadataText(metadata, "actionName"), procedureAst.name());
-        String sideEffectConcept = firstNonBlank(metadataText(metadata, "sideEffectConcept"), inferLegacyConceptName(procedureAst.name()));
-        List<String> affectedConcepts = splitMetadataList(metadataText(metadata, "affectedConcepts"));
-        if (affectedConcepts.isEmpty()) {
-            affectedConcepts = List.of(sideEffectConcept);
-        }
-        return new CompiledGeneratedActionDescriptorSpec(
-                actionName,
-                affectedConcepts,
-                sideEffectConcept,
-                firstNonBlank(metadataText(metadata, "eventNameOnSuccess"), defaultGeneratedActionEvent(actionName)),
-                firstNonBlank(metadataText(metadata, "auditResourceType"), "GENERATED_ACTION"),
-                firstNonBlank(metadataText(metadata, "idempotencyPolicy"), "record"),
-                firstNonBlank(metadataText(metadata, "tracePolicy"), "record"),
-                firstNonBlank(metadataText(metadata, "correlationPolicy"), "claim"),
-                false
-        );
-    }
-
     private static String metadataText(Map<String, Object> metadata, String key) {
         if (metadata == null || key == null) {
             return "";
@@ -2234,13 +2164,13 @@ public final class ModelCompiler {
         return new CompiledFlowSchedule(CronSchedules.normalize(schedule.getCron()), schedule.getTenantScope());
     }
 
-    private static List<CompiledProcedureParameter> compileProcedureParameters(List<ProcedureParameterAst> parameters) {
-        List<CompiledProcedureParameter> out = new ArrayList<>();
+    private static List<CompiledQueryParameter> compileQueryParameters(List<QueryParameterAst> parameters) {
+        List<CompiledQueryParameter> out = new ArrayList<>();
         if (parameters == null) {
             return out;
         }
-        for (ProcedureParameterAst parameter : parameters) {
-            out.add(new CompiledProcedureParameter(
+        for (QueryParameterAst parameter : parameters) {
+            out.add(new CompiledQueryParameter(
                     parameter.name(),
                     parameter.type(),
                     parameter.required(),
@@ -2250,67 +2180,6 @@ public final class ModelCompiler {
             ));
         }
         out.sort(Comparator.comparing(parameter -> normalize(parameter.name())));
-        return out;
-    }
-
-    private static List<CompiledProcedureVariable> compileProcedureVariables(List<ProcedureVariableAst> variables) {
-        List<CompiledProcedureVariable> out = new ArrayList<>();
-        if (variables == null) {
-            return out;
-        }
-        for (ProcedureVariableAst variable : variables) {
-            out.add(new CompiledProcedureVariable(
-                    variable.name(),
-                    variable.type(),
-                    toCompiledSchema(variable.schema()),
-                    variable.initialValue()
-            ));
-        }
-        out.sort(Comparator.comparing(variable -> normalize(variable.name())));
-        return out;
-    }
-
-    private static List<CompiledProcedureStep> compileProcedureSteps(List<ProcedureStepAst> steps) {
-        List<CompiledProcedureStep> out = new ArrayList<>();
-        if (steps == null) {
-            return out;
-        }
-        for (ProcedureStepAst step : steps) {
-            out.add(new CompiledProcedureStep(
-                    step.name(),
-                    step.type(),
-                    step.target(),
-                    step.value(),
-                    step.condition(),
-                    step.items(),
-                    step.as(),
-                    step.concept(),
-                    step.query(),
-                    sortObjectMap(step.data()),
-                    step.id(),
-                    step.procedure(),
-                    step.flow(),
-                    step.capability(),
-                    step.operation(),
-                    step.event(),
-                    // #34: args binds POSITIONALLY to a capability method's parameters, so it
-                    // keeps the author's declared order -- never sortObjectMap's alphabetical one.
-                    declaredOrderObjectMap(step.args()),
-                    compileProcedureSteps(step.thenSteps()),
-                    compileProcedureSteps(step.elseSteps()),
-                    compileProcedureSteps(step.steps()),
-                    step.trace(),
-                    step.audit(),
-                    sortObjectMap(step.metadata()),
-                    sortObjectMap(step.set()),
-                    step.createIfMissing(),
-                    sortObjectMap(step.select()),
-                    step.left(),
-                    step.right(),
-                    sortObjectMap(step.params()),
-                    step.errorTarget()
-            ));
-        }
         return out;
     }
 

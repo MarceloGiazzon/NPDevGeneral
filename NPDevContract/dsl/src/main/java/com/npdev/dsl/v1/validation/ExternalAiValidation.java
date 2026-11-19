@@ -7,8 +7,6 @@ import com.npdev.dsl.v1.ast.ExternalAiPromptAst;
 import com.npdev.dsl.v1.ast.ExternalAiProviderAst;
 import com.npdev.dsl.v1.ast.FlowAst;
 import com.npdev.dsl.v1.ast.ModelAst;
-import com.npdev.dsl.v1.ast.ProcedureAst;
-import com.npdev.dsl.v1.ast.ProcedureStepAst;
 import com.npdev.dsl.v1.ast.PropertyAst;
 import com.npdev.dsl.v1.ast.StepAst;
 import com.npdev.dsl.v1.compiler.AiCatalogueProfiles;
@@ -184,9 +182,6 @@ final class ExternalAiValidation {
 
         for (FlowAst flow : modelAst.getFlows()) {
             validateGenerateCalls(flow, flow.getSteps(), promptNames, reviewRequired, errors);
-        }
-        for (ProcedureAst procedure : modelAst.getProcedures()) {
-            validateProcedureGenerateCalls(procedure.name(), procedure.steps(), promptNames, reviewRequired, errors);
         }
     }
 
@@ -401,38 +396,6 @@ final class ExternalAiValidation {
         if (!gated) {
             errors.add(prefix + "prompt '" + promptName + "' has review: required, so the next step must be an awaitEvent"
                     + " task whose proposal.value is '" + output + "'" + fix);
-        }
-    }
-
-    private static void validateProcedureGenerateCalls(
-            String procedureName, List<ProcedureStepAst> steps, Set<String> promptNames, Set<String> reviewRequired,
-            List<String> errors) {
-        if (steps == null) {
-            return;
-        }
-        for (ProcedureStepAst step : steps) {
-            if (step == null) {
-                continue;
-            }
-            if (isGenerate(step.capability(), step.operation())) {
-                // A procedure's args object reaches the runtime positional in ALPHABETICAL key order
-                // (CompiledProcedureStep), so "first" means nothing here: the runtime takes the one
-                // string arg as the prompt name, and so does this check -- the literal (non-$) value.
-                String literal = step.args().values().stream()
-                        .filter(value -> value instanceof String text && !text.trim().startsWith("$"))
-                        .map(String::valueOf)
-                        .findFirst().orElse(null);
-                String prefix = "Procedure " + procedureName + " step " + step.name() + ": ";
-                checkPromptArg(literal, prefix, promptNames, errors);
-                if (reviewRequired.contains(trim(literal))) {
-                    errors.add(prefix + "prompt '" + trim(literal) + "' has review: required, and a procedure cannot wait"
-                            + " for a human -- suggestedFix: call it from a flow, followed by an awaitEvent task whose"
-                            + " proposal.value is the call's output");
-                }
-            }
-            validateProcedureGenerateCalls(procedureName, step.thenSteps(), promptNames, reviewRequired, errors);
-            validateProcedureGenerateCalls(procedureName, step.elseSteps(), promptNames, reviewRequired, errors);
-            validateProcedureGenerateCalls(procedureName, step.steps(), promptNames, reviewRequired, errors);
         }
     }
 

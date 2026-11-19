@@ -42,9 +42,7 @@ class AgentPhotoIntakeValidationTest {
                   { "name": "secret", "type": "string", "sensitive": true },
                   { "name": "count", "type": "integer" } ]%s }
               ],
-              "procedures": [
-                { "name": "Identify", "steps": [ { "name": "done", "type": "return", "value": "$input" } ] }
-              ],
+              "flows": [{"name": "Identify", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
               "agentAccess": {
                 "channels": %s,
                 "expose": [ { "concept": "Cap", "operations": ["list"] } ],

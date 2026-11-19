@@ -48,7 +48,7 @@ sections:
   body: |2
 
     1. **Every object is closed (`additionalProperties: false`)** except the free-form `metadata` maps on
-       panels and procedures. An invented key fails generation; it is not ignored.
+       panels and flows. An invented key fails generation; it is not ignored.
     2. **Exactly one field per concept has `"id": true`**; conventionally
        `{"name":"id","type":"uuid","id":true,"required":true}`.
     3. **`reference.target` names a concept in the composed model** (own or from a pack/fragment).
@@ -89,7 +89,7 @@ sections:
     | Event | `events[]` (or nested in a concept) | A broadcast fact; emitted by a flow step or a lifecycle transition. |
     | Event-triggered flow | `flows[]` with `trigger` | "when event X → do Y": a flow whose `trigger` is `{"event":"X"}` (optional `condition`) runs by itself whenever X is published. |
     | Function | `functions[]` | A named pure computation: `{"name":"surgeFactor","params":[{"name":"zone","type":"decimal"}],"returns":"decimal","body":"round(min(zone * 3, 3), 2)"}`, then call `surgeFactor(x)` in any expression (a pack's: `pack::name`). The body reads only its parameters. |
-    | Query / Panel / Procedure | `queries[]` / `panels[]` / `procedures[]` | A named filtered list; a hand-designed screen; server logic for a panel button. Only when the generic UI is not enough. |
+    | Query / Panel | `queries[]` / `panels[]` | A named filtered list; a hand-designed screen. Only when the generic UI is not enough. Server logic for a panel button is a flow (`"expose":"ui"`). |
 - level: 2
   title: Totals, reports and reactions
   body: |2
@@ -109,9 +109,8 @@ sections:
     - **Status change through a flow** (only if the flow does more than the REST update; `updateConcept` takes the
       same `scope`/`input`/`output` as `createConcept`; the caller sends `{"id":...,"status":"CLOSED"}`):
       `"flows":[{"name":"CloseTicket","concept":"Ticket","input":{"concept":"Ticket","mode":"update"},"steps":[{"name":"save","type":"updateConcept","scope":"Ticket","input":"$input","output":"$saved"},{"name":"done","type":"return","value":"$saved"}]}]`.
-      Flows and procedures use OVERLAPPING `steps[].type` vocabularies: flow = invariantCheck|capabilityCall|generatedAction|emitEvent|
-      scheduleEvent|return|branch|awaitEvent|createConcept|updateConcept|map|forEach|set|readConcept|listConcepts|runQuery|deleteConcept|callFlow; procedure = assign|condition|
-      conceptQuery|readConcept|conceptCreate|conceptUpdate|conceptDelete|capabilityCall|eventPublish|computeValue|return|... (full enum in the value reference).
+      Flow `steps[].type` vocabulary: invariantCheck|capabilityCall|generatedAction|emitEvent|
+      scheduleEvent|return|branch|awaitEvent|createConcept|updateConcept|map|forEach|set|readConcept|listConcepts|runQuery|deleteConcept|callFlow (full enum in the value reference).
     - **Lifecycle** (on the concept): `"lifecycle":{"statusField":"status","states":[{"value":"OPEN","initial":true},{"value":"CLOSED","terminal":true}],
       "transitions":[{"from":"OPEN","to":"CLOSED","event":"TicketClosed"}]}` (`from`/`to` are single states; `initial`/`terminal` live on the state, `event` on the transition).
     - **Reaction to a status change:** the lifecycle transition names an `event`, `events[]` declares it with a
@@ -162,7 +161,7 @@ sections:
     `{"type":"set","value":"$input.name","output":"$wanted"}` and `{"type":"callFlow","flow":"Helper","input":"$input","output":"$answer"}` (the concept is the flow's own, or the step's `scope`).
     An `updateConcept` may write chosen fields instead of `$input`: `{"type":"updateConcept","scope":"Ticket","id":"$input.id","set":{"status":"CLOSED","note":"$input.note"},"createIfMissing":true,"output":"$row"}` (each value a literal or a `$ref`; `createIfMissing` makes a new row when the id has none).
     A flow may also say who may start it and as whom it runs: `"expose":"api|ui|internal"` (default `api`; `ui` and `internal` flows have no public POST, it answers 404; an `internal` flow is only started by a `callFlow`)
-    and `"runAs":"caller|system"`. For multi-step logic put the steps in another flow and run it with a `callFlow` step. Procedure-style steps (still accepted in a flow where the vocabularies overlap): `{"type":"runQuery","query":"AvailableDrivers","concept":"Driver","target":"free"}`,
+    and `"runAs":"caller|system"`. For multi-step logic put the steps in another flow and run it with a `callFlow` step. More step shapes: `{"type":"runQuery","query":"AvailableDrivers","concept":"Driver","target":"free"}`,
     `{"type":"mapList","items":"$free","as":"d","select":{"id":"$d.id","lat":"$d.lat"},"target":"rows"}`,
     `{"type":"capabilityCall","capability":"geo","operation":"closest","args":{"lat":"$input.pickupLat","lng":"$input.pickupLng","candidates":"$rows"},"target":"best"}`,
     `{"type":"if","condition":"$best.found","then":[...],"else":[...]}`,
@@ -171,17 +170,17 @@ sections:
     (every required parameter must be given; a literal or a `$ref`).
     An outside call that may fail as a normal answer (a declined card, a route service down): add `"errorTarget":"chargeError"` to the
     `capabilityCall`; on failure the step still succeeds, `target` stays unset and `$chargeError` holds `{code,message,kind,retryable,httpStatus}`;
-    follow it with an `if` on `$chargeError`. Without `errorTarget` a failed call fails the whole procedure.
+    follow it with an `if` on `$chargeError`. Without `errorTarget` a failed call fails the whole flow.
     The `query` is declared in `queries[]`; the flow step is
-    `{"type":"callProcedure","procedure":"MatchDriver","input":"$created","output":"$matched"}`.
+    `{"type":"callFlow","flow":"MatchDriver","input":"$created","output":"$matched"}`.
     A computed price is a field with `derivedExpression` (`+ - * /`), e.g. `"300 + 120 * tripDistanceKm"`; `computeValue`
     `computeValue` does `add`, `subtract`, `multiply`, `divide` (by zero fails the step), `min`, `max`, `round` (`right` = decimals 0..10),
     `addDays`, `daysBetween`, `today`.
 
-    **A procedure that must act on rows the caller may not touch** (a rider's request marking a driver busy, writing the driver's login
-    onto the ride) declares `"runAs":"system"`: its steps, and the procedures it calls, run as the tenant's system principal
-    (`$user.isSystem`), and the audit records who it acted for. Rules written `... || $user.isSystem` let only it through. Only a flow
-    or another procedure may call it (not an action); check the state first with an `if` step.
+    **A flow that must act on rows the caller may not touch** (a rider's request marking a driver busy, writing the driver's login
+    onto the ride) declares `"runAs":"system"`: its steps, and the flows it calls, run as the tenant's system principal
+    (`$user.isSystem`), and the audit records who it acted for. Rules written `... || $user.isSystem` let only it through. Only another flow
+    may call it (not an action); check the state first with an `if` step.
 
     **A third party that calls you (a payment confirmation) needs an inbound door:** a capability entry
     `{"name":"payment-processor","inbound":{"eventName":"PaymentConfirmed","fieldMapping":{"correlationId":"orderId"}}}`

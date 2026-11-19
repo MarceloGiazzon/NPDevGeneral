@@ -41,7 +41,7 @@ class ReviewGateValidationTest {
             }
             """;
 
-    private static String model(String review, String stepsAfterAsk, String procedureCall) {
+    private static String model(String review, String stepsAfterAsk) {
         return """
             {
               "dslVersion": "3.0.0", "namespace": "demo.review", "version": "1.0",
@@ -51,8 +51,6 @@ class ReviewGateValidationTest {
               ],
               "capabilities": [ { "name": "externalAi", "type": "ExternalAiCapability", "adapter": "externalAi", "operations": ["generate"] } ],
               "events": [ { "name": "Reviewed", "payload": [] } ],
-              "procedures": [ { "name": "AskInProcedure", "steps": [ %s
-                { "name": "done", "type": "return", "value": "$input" } ] } ],
               "flows": [ { "name": "SuggestFlow", "input": { "concept": "Mosaic", "mode": "query" }, "steps": [
                 { "name": "ask", "type": "capabilityCall", "capability": "externalAi", "operation": "generate",
                   "args": [ "Paint", "$input" ], "output": "$answer" },
@@ -62,15 +60,8 @@ class ReviewGateValidationTest {
                 { "name": "Paint", "vendor": "gemini", "template": "Paint {{id}}"%s,
                   "outputSchema": { "type": "object", "properties": { "x": { "type": "string" } } } } ] }
             }
-            """.formatted(procedureCall, stepsAfterAsk, review);
+            """.formatted(stepsAfterAsk, review);
     }
-
-    private static final String NO_PROCEDURE_CALL = """
-            { "name": "noop", "type": "mapValue", "value": "$input", "target": "x" },""";
-
-    private static final String PROCEDURE_ASK = """
-            { "name": "ask-p", "type": "capabilityCall", "capability": "externalAi", "operation": "generate",
-              "args": { "prompt": "Paint", "input": "$input" }, "target": "answer" },""";
 
     private static final String AWAIT = """
             { "name": "await-review", "type": "awaitEvent", "awaitEvent": "Reviewed", "awaitRef": "review",
@@ -88,12 +79,12 @@ class ReviewGateValidationTest {
     @Test
     void requiredPromptFollowedByItsProposalTaskPasses() throws Exception {
         assertEquals(List.of(), errors(model(", \"review\": \"required\"",
-                AWAIT.formatted(PROPOSAL_TASK), NO_PROCEDURE_CALL)));
+                AWAIT.formatted(PROPOSAL_TASK))));
     }
 
     @Test
     void requiredPromptWithoutAnyReviewStepIsRejected() throws Exception {
-        List<String> errors = errors(model(", \"review\": \"required\"", "", NO_PROCEDURE_CALL));
+        List<String> errors = errors(model(", \"review\": \"required\"", ""));
         assertTrue(errors.stream().anyMatch(e -> e.contains("review: required, so the next step must be an awaitEvent")),
                 errors.toString());
     }
@@ -101,7 +92,7 @@ class ReviewGateValidationTest {
     @Test
     void requiredPromptWithATaskThatDoesNotPresentTheOutputIsRejected() throws Exception {
         List<String> errors = errors(model(", \"review\": \"required\"",
-                AWAIT.formatted(PLAIN_TASK), NO_PROCEDURE_CALL));
+                AWAIT.formatted(PLAIN_TASK)));
         assertTrue(errors.stream().anyMatch(e -> e.contains("proposal.value is '$answer'")), errors.toString());
     }
 
@@ -109,33 +100,26 @@ class ReviewGateValidationTest {
     void aStepBetweenTheCallAndTheReviewIsRejected() throws Exception {
         String between = "{ \"name\": \"peek\", \"type\": \"map\", \"input\": \"$answer\", \"output\": \"$copy\" },"
                 + AWAIT.formatted(PROPOSAL_TASK);
-        List<String> errors = errors(model(", \"review\": \"required\"", between, NO_PROCEDURE_CALL));
+        List<String> errors = errors(model(", \"review\": \"required\"", between));
         assertTrue(errors.stream().anyMatch(e -> e.contains("review: required")), errors.toString());
     }
 
     @Test
     void optionalAndNonePromptsNeedNoGate() throws Exception {
-        assertEquals(List.of(), errors(model(", \"review\": \"optional\"", "", NO_PROCEDURE_CALL)));
-        assertEquals(List.of(), errors(model("", "", NO_PROCEDURE_CALL)));
-    }
-
-    @Test
-    void aProcedureCannotCallARequiredPrompt() throws Exception {
-        List<String> errors = errors(model(", \"review\": \"required\"",
-                AWAIT.formatted(PROPOSAL_TASK), PROCEDURE_ASK));
-        assertTrue(errors.stream().anyMatch(e -> e.contains("a procedure cannot wait for a human")), errors.toString());
+        assertEquals(List.of(), errors(model(", \"review\": \"optional\"", "")));
+        assertEquals(List.of(), errors(model("", "")));
     }
 
     @Test
     void anUnknownReviewModeIsRejectedBySchema() {
-        String json = model(", \"review\": \"sometimes\"", "", NO_PROCEDURE_CALL);
+        String json = model(", \"review\": \"sometimes\"", "");
         assertThrows(ModelSchemaValidationException.class, () -> parse(json));
     }
 
     @Test
     void proposalRefsMustBeFlowStateRefs() throws Exception {
         String task = PROPOSAL_TASK.replace("\"$answer\"", "\"answer\"");
-        List<String> errors = errors(model("", AWAIT.formatted(task), NO_PROCEDURE_CALL));
+        List<String> errors = errors(model("", AWAIT.formatted(task)));
         assertTrue(errors.stream().anyMatch(e -> e.contains("task.proposal.value 'answer' is not a flow-state ref")),
                 errors.toString());
     }
@@ -144,7 +128,7 @@ class ReviewGateValidationTest {
     void aTaskFieldMayNotShadowTheStampedProposalKey() throws Exception {
         String task = PROPOSAL_TASK.replace("\"outcomeField\"",
                 "\"fields\": [ { \"name\": \"proposal\", \"type\": \"string\" } ], \"outcomeField\"");
-        List<String> errors = errors(model("", AWAIT.formatted(task), NO_PROCEDURE_CALL));
+        List<String> errors = errors(model("", AWAIT.formatted(task)));
         assertTrue(errors.stream().anyMatch(e -> e.contains("clashes with a payload key a task.proposal stamps")),
                 errors.toString());
     }
@@ -152,7 +136,7 @@ class ReviewGateValidationTest {
     @Test
     void reviewAndProposalSurviveCompileAndCanonicalRoundTrip() throws Exception {
         CompiledModel compiled = new ModelCompiler().compile(parse(model(", \"review\": \"required\"",
-                AWAIT.formatted(PROPOSAL_TASK), NO_PROCEDURE_CALL)));
+                AWAIT.formatted(PROPOSAL_TASK))));
         String json = CompiledModelCanonicalJson.toJson(compiled);
         CompiledModel restored = CompiledModelCanonicalJsonReader.fromJson(json);
         assertEquals("required", restored.getExternalAi().findPrompt("Paint").orElseThrow().review());
@@ -166,7 +150,7 @@ class ReviewGateValidationTest {
     @Test
     void aModelWithoutReviewKeepsItsCanonicalJsonFreeOfBothKeys() throws Exception {
         CompiledModel compiled = new ModelCompiler().compile(parse(model("",
-                AWAIT.formatted(PLAIN_TASK), NO_PROCEDURE_CALL)));
+                AWAIT.formatted(PLAIN_TASK))));
         String json = CompiledModelCanonicalJson.toJson(compiled);
         assertFalse(json.contains("\"review\":"), "review=none must not appear in canonical JSON");
         assertFalse(json.contains("\"proposal\":"), "no proposal block must not appear in canonical JSON");
@@ -178,7 +162,7 @@ class ReviewGateValidationTest {
     void aProposalCurrentThatIsNotARefAndAReservedOutcomeFieldAreRejected() throws Exception {
         String task = PROPOSAL_TASK.replace("\"current\": \"$input\"", "\"current\": \"input\"")
                 .replace("\"outcomeField\": \"decision\"", "\"outcomeField\": \"recordId\"");
-        List<String> errors = errors(model("", AWAIT.formatted(task), NO_PROCEDURE_CALL));
+        List<String> errors = errors(model("", AWAIT.formatted(task)));
         assertTrue(errors.stream().anyMatch(e -> e.contains("task.proposal.current 'input' is not a flow-state ref")),
                 errors.toString());
         assertTrue(errors.stream().anyMatch(e -> e.contains("task.outcomeField 'recordId' clashes")), errors.toString());
@@ -186,7 +170,7 @@ class ReviewGateValidationTest {
 
     @Test
     void aRequiredPromptCallWithNoOutputHasNothingToReview() throws Exception {
-        String json = model(", \"review\": \"required\"", AWAIT.formatted(PROPOSAL_TASK), NO_PROCEDURE_CALL)
+        String json = model(", \"review\": \"required\"", AWAIT.formatted(PROPOSAL_TASK))
                 .replace(", \"output\": \"$answer\"", "");
         List<String> errors = errors(json);
         assertTrue(errors.stream().anyMatch(e -> e.contains("has no output to review")), errors.toString());

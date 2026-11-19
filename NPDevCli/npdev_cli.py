@@ -292,7 +292,6 @@ ADD_MEMBER_ARRAY_KEYS = {
     "concept": "concepts",
     "panel": "panels",
     "flow": "flows",
-    "procedure": "procedures",
 }
 
 # FlowValidation.BUILTIN_CAPABILITY_OPERATIONS / PackValidation (dsl module): these capability
@@ -1504,60 +1503,6 @@ def run_migrate_business_packs_2(args: argparse.Namespace) -> int:
     return codemod.run(args.input, write=args.write, packs_source=packs_source, report=report)
 
 
-def run_migrate_procedure_args_order(args: argparse.Namespace) -> int:
-    """#34: wires `dsl_v2_migration.migrate_procedure_args_order` to `npdev migrate
-    procedure-args-order`. Procedure step `args` used to bind in alphabetical key order and now
-    binds in declared order; this rewrites existing models into the old order once so they keep
-    binding exactly as before. Same scan/report/write shape as `run_migrate_label_locales`."""
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from dsl_v2_migration import _looks_compiled, migrate_procedure_args_order  # local import: optional dep
-
-    files: list[Path] = []
-    for p in (Path(raw_path).expanduser().resolve() for raw_path in args.input):
-        if p.is_dir():
-            files.extend(sorted(p.rglob("*.json")))
-        elif p.is_file():
-            files.append(p)
-        else:
-            print(f"npdev migrate procedure-args-order: input not found: {p}", file=sys.stderr)
-            return 2
-
-    changed_count = 0
-    invalid_count = 0
-    report_entries = []
-    for f in files:
-        try:
-            doc = read_json(f)
-        except CliError as exc:
-            invalid_count += 1
-            print(f"  [SKIP] {f}: {exc}", file=sys.stderr)
-            continue
-        if not isinstance(doc, dict) or _looks_compiled(doc):
-            continue
-        result = migrate_procedure_args_order(doc)
-        report_entries.append({"file": str(f), "changed": result.changed, "changes": result.changes})
-        if result.changed:
-            changed_count += 1
-            verb = "CHANGED" if args.write else "WOULD CHANGE"
-            for c in result.changes:
-                print(f"  [{verb}] {f}: {c}")
-            if args.write:
-                text = json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
-                if b"\r\n" in f.read_bytes():
-                    text = text.replace("\n", "\r\n")
-                f.write_bytes(text.encode("utf-8"))
-
-    print(f"\n{len(files)} file(s) scanned: {changed_count} changed, {invalid_count} invalid JSON (skipped)")
-    if not args.write and changed_count > 0:
-        print("Dry run -- pass --write to apply.")
-    if args.report:
-        report_path = Path(args.report).expanduser()
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(json.dumps(report_entries, indent=2) + "\n", encoding="utf-8")
-        print(f"Report written: {report_path}")
-    return 1 if invalid_count > 0 else 0
-
-
 def run_migrate_dsl2(args: argparse.Namespace) -> int:
     """2.A.3 (docs/DSL2_AND_DECOMPOSITION_PLAN.md): rewrite flowStep.type spellings and field
     aliases to their DSL 2.0 canonical form, across one or more files/directories. Dry-run by
@@ -1827,7 +1772,7 @@ def run_migrate_assign_uids(args: argparse.Namespace) -> int:
     if not has_concepts and not any(
             isinstance(doc.get(key), list)
             for key in ("capabilities", "events", "flows",
-                        "procedures", "panels", "queries")
+                        "panels", "queries")
     ):
         print(f"npdev migrate assign-uids: {model_path} has no concepts[] array -- nothing to stamp")
         return 0
@@ -1876,7 +1821,6 @@ def run_migrate_assign_uids(args: argparse.Namespace) -> int:
     # P2.1 (Path A Phase 2): the seven element types uid was extended to alongside concept/field.
     already_present += _stamp_named_items_uid(doc.get("capabilities"), "capability", stamped, args.write)
     already_present += _stamp_named_items_uid(doc.get("events"), "event", stamped, args.write)
-    already_present += _stamp_named_items_uid(doc.get("procedures"), "procedure", stamped, args.write)
     already_present += _stamp_named_items_uid(doc.get("panels"), "panel", stamped, args.write)
 
     verb = "STAMPED" if args.write else "WOULD STAMP"
@@ -11841,7 +11785,7 @@ def _scan_pack_catalog_entries(repo_dir: Path, repository_url: str, tag_template
         tag = tag_template.format(pack=pack_id, version=version)
         subpath = pack_json.parent.relative_to(repo_dir).as_posix()
         coordinate = f"git+{repo_url}.git//{subpath}@{tag}"
-        entries.append({
+        entry = {
             "pack": pack_id,
             "version": version,
             "description": data.get("description", ""),
@@ -11849,7 +11793,13 @@ def _scan_pack_catalog_entries(repo_dir: Path, repository_url: str, tag_template
             "author": data.get("author", ""),
             "path": subpath,
             "from": coordinate,
-        })
+        }
+        # REG-332: a pack's own packs[] dependencies resolve only beside the importing model, so whoever imports it (a
+        # person, or a chat AI through the relay) must import them too -- the index says which, only when there are any.
+        needs = sorted({str(d["pack"]) for d in data.get("packs") or [] if isinstance(d, dict) and d.get("pack")})
+        if needs:
+            entry["needs"] = needs
+        entries.append(entry)
     return entries, problems
 
 
@@ -12313,29 +12263,6 @@ _ADD_PROCEDURE_CALL_STEP_TYPES = {"procedurecall", "callprocedure", "call_proced
 _ADD_PROCEDURE_CAPABILITY_STEP_TYPES = {"capabilitycall", "callcapability", "call_capability"}
 
 
-def _add_scan_procedure_references(member: dict, known: dict[str, set[str]]) -> list[str]:
-    missing = []
-    procedure_name = member.get("name", "?")
-    for step in _add_flatten_steps(member.get("steps")):
-        step_type = _add_normalize_step_type(step.get("type"))
-        label = f"{procedure_name}.steps[{step.get('name', '?')}]"
-        if step_type in _ADD_PROCEDURE_CONCEPT_STEP_TYPES:
-            concept = step.get("concept")
-            if not (isinstance(concept, str) and _add_bare_name(concept) in known["concepts"]):
-                missing.append(f"{label}.concept -> {concept!r} (concept not found)")
-        if step_type in _ADD_PROCEDURE_CALL_STEP_TYPES:
-            procedure = step.get("procedure")
-            if not (isinstance(procedure, str) and _add_bare_name(procedure) in known["procedures"]):
-                missing.append(f"{label}.procedure -> {procedure!r} (procedure not found)")
-        if step_type in _ADD_PROCEDURE_CAPABILITY_STEP_TYPES:
-            capability = step.get("capability")
-            if not (isinstance(capability, str) and (
-                    capability.lower() in ADD_BUILTIN_CAPABILITIES
-                    or _add_bare_name(capability) in known["capabilities"])):
-                missing.append(f"{label}.capability -> {capability!r} (capability not found)")
-    return missing
-
-
 def _add_scan_member_references(kind: str, member: dict, resolved_model: dict) -> list[str]:
     """--from's safety net: an exemplar copied out of another sample can carry references (a
     concept's own `reference`/`extends`/`specializes`, a panel's dataSource/action, a flow's
@@ -12355,7 +12282,7 @@ def _add_scan_member_references(kind: str, member: dict, resolved_model: dict) -
     known = {
         "concepts": _add_known_names(resolved_model, "concepts"),
         "queries": _add_known_names(resolved_model, "queries"),
-        "procedures": _add_known_names(resolved_model, "procedures"),
+        "procedures": _add_known_names(resolved_model, "flows"),  # a screen's `procedure` names a flow (REG-342)
         "flows": _add_known_names(resolved_model, "flows"),
         "events": _add_known_names(resolved_model, "events"),
         "capabilities": {c.get("name") for c in (resolved_model.get("capabilities") or [])
@@ -12367,8 +12294,6 @@ def _add_scan_member_references(kind: str, member: dict, resolved_model: dict) -
         return _add_scan_panel_references(member, known)
     if kind == "flow":
         return _add_scan_flow_references(member, known)
-    if kind == "procedure":
-        return _add_scan_procedure_references(member, known)
     raise CliError(f"unsupported member kind: {kind}")
 
 
@@ -12471,16 +12396,6 @@ def _add_default_stub(kind: str, name: str, concept: str | None) -> dict:
                 {"name": f"save-{_add_lower_first(concept)}", "type": "createConcept",
                  "scope": concept, "input": "$input", "output": "$saved"},
                 {"name": "return-saved", "type": "return", "value": "$saved"},
-            ],
-        }
-    if kind == "procedure":
-        return {
-            "name": name,
-            "parameters": [{"name": "id", "type": "uuid", "required": True}],
-            "steps": [
-                {"name": f"read-{_add_lower_first(concept)}", "type": "readConcept",
-                 "concept": concept, "id": "$id", "target": "result"},
-                {"name": "return-result", "type": "return", "value": "$result"},
             ],
         }
     raise CliError(f"unsupported member kind: {kind}")
@@ -13115,7 +13030,7 @@ def format_inspect_app_human(report: dict) -> str:
     for c in concepts:
         fields = ", ".join(str(f.get("name")) for f in c.get("fields") or [])
         lines.append(f"  {str(c.get('name')).ljust(width)} -- {fields or '(no fields)'}")
-    for key in ("flows", "panels", "procedures", "events"):
+    for key in ("flows", "panels", "events"):
         found = [x.get("name") if isinstance(x, dict) else x for x in report.get(key) or []]
         if found:
             lines.append(f"{key}: {', '.join(str(x) for x in found)}")
@@ -17303,23 +17218,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--packs-source", help="directory holding the built-in packs (default: this checkout's NPDevContract/packs)")
     migrate_business_packs.add_argument("--report", help="write a JSON report of every model's outcome to this path")
 
-    # #34: procedure step args bind in declared order now; this one-shot pass keeps an existing
-    # model's alphabetical binding.
-    migrate_procedure_args = migrate_sub.add_parser(
-        "procedure-args-order",
-        help="Rewrite procedure step args into the alphabetical order they bound in before #34 (run once).",
-    )
-    migrate_procedure_args.add_argument(
-        "--input", required=True, nargs="+",
-        help="one or more files or directories (searched recursively for *.json) to migrate",
-    )
-    migrate_procedure_args.add_argument(
-        "--write", action="store_true",
-        help="apply changes in place; without this flag, reports what would change and exits",
-    )
-    migrate_procedure_args.add_argument(
-        "--report", help="write a JSON report of every file's outcome to this path")
-
     # PK-3: transitive pack dependency resolution -- add/update both resolve the live pack graph
     # and (re)write npdev.lock (same operation, two names for UX clarity); list reads the
     # committed lock (or a live dry-run if none exists); why explains a version selection.
@@ -17672,24 +17570,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--from", dest="from_exemplar", default=None, metavar="SAMPLE[::MEMBER]",
         help="Copy a real flow out of NPDevSamples/<SAMPLE> instead of writing a blank stub, "
              "renamed to NAME. Omit ::MEMBER to take the sample's first flow.",
-    )
-
-    add_procedure = add_sub.add_parser(
-        "procedure",
-        help="Add a procedure with a readConcept/return skeleton bound to --concept, or --from an exemplar.",
-    )
-    add_procedure.add_argument("name", help="New procedure name. Refused if one already exists (by this name).")
-    add_procedure.add_argument("--model", default=None, help="path to the model.json to add into (default: ./model.json)")
-    _add_format_args(add_procedure)
-    add_procedure.add_argument(
-        "--concept", default=None,
-        help="Concept this procedure reads -- must already exist in --model. Required unless --from "
-             "supplies its own concept-bound steps.",
-    )
-    add_procedure.add_argument(
-        "--from", dest="from_exemplar", default=None, metavar="SAMPLE[::MEMBER]",
-        help="Copy a real procedure out of NPDevSamples/<SAMPLE> instead of writing a blank stub, "
-             "renamed to NAME. Omit ::MEMBER to take the sample's first procedure.",
     )
 
     migration = subparsers.add_parser(
@@ -19042,8 +18922,6 @@ def main(argv: list[str] | None = None) -> int:
             return run_migrate_label_locales(args)
         if args.command == "migrate" and args.migrate_command == "business-packs-2":
             return run_migrate_business_packs_2(args)
-        if args.command == "migrate" and args.migrate_command == "procedure-args-order":
-            return run_migrate_procedure_args_order(args)
         if args.command == "migration" and args.migration_command == "diff":
             run_migration_diff(args)
             return 0
@@ -19101,8 +18979,6 @@ def main(argv: list[str] | None = None) -> int:
             return run_add_member(args, "panel")
         if args.command == "add" and args.add_command == "flow":
             return run_add_member(args, "flow")
-        if args.command == "add" and args.add_command == "procedure":
-            return run_add_member(args, "procedure")
         if args.command == "author" and args.author_command == "diff-gate":
             return run_author_diff_gate(args)
         if args.command == "author" and args.author_command == "submit":

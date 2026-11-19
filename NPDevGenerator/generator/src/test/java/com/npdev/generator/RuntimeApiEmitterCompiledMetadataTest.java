@@ -53,8 +53,6 @@ class RuntimeApiEmitterCompiledMetadataTest {
                 "Expected layout catalog in generated compiled metadata.");
         assertTrue(metadataRoot.path("catalogs").path("validation").isArray(),
                 "Expected validation catalog in generated compiled metadata.");
-        assertTrue(metadataRoot.path("catalogs").path("procedures").isArray(),
-                "Expected procedure catalog in generated compiled metadata.");
         assertTrue(metadataRoot.path("catalogs").path("panels").isArray(),
                 "Expected panel catalog in generated compiled metadata.");
         assertTrue(metadataRoot.path("catalogs").path("actions").size() >= 3,

@@ -43,9 +43,7 @@ import com.npdev.dsl.v1.ast.PanelSlotAst;
 import com.npdev.dsl.v1.ast.PanelWidgetAst;
 import com.npdev.dsl.v1.ast.PanelDataSourceAst;
 import com.npdev.dsl.v1.ast.PresentationMetadataAst;
-import com.npdev.dsl.v1.ast.ProcedureAst;
-import com.npdev.dsl.v1.ast.ProcedureParameterAst;
-import com.npdev.dsl.v1.ast.ProcedureStepAst;
+import com.npdev.dsl.v1.ast.QueryParameterAst;
 import com.npdev.dsl.v1.query.PickerFilterGrammar;
 import com.npdev.dsl.v1.ast.QueryAst;
 import com.npdev.dsl.v1.ast.ReferenceSemanticsAst;
@@ -180,10 +178,9 @@ final class PanelValidation {
         Map<String, AggregateAst> aggregatesByNormalizedName = modelAst.getAggregates().stream()
                 .collect(Collectors.toMap(a -> normalize(a.name()), a -> a, (first, second) -> first));
         Set<String> aggregateNames = aggregatesByNormalizedName.keySet();
-        // FORM P3-T5c: a screen names a procedure OR the flow that replaced it (the callers run either)
-        Set<String> procedureNames = java.util.stream.Stream.concat(
-                        modelAst.getProcedures().stream().map(ProcedureAst::name),
-                        modelAst.getFlows().stream().map(com.npdev.dsl.v1.ast.FlowAst::getName))
+        // a screen's `procedure` names a flow (every procedure became one: REG-342)
+        Set<String> procedureNames = modelAst.getFlows().stream()
+                .map(com.npdev.dsl.v1.ast.FlowAst::getName)
                 .map(SemanticValidator::normalize)
                 .collect(Collectors.toSet());
         Set<String> autoPanelNames = new HashSet<>();
@@ -1122,10 +1119,9 @@ final class PanelValidation {
                 .map(QueryAst::name)
                 .map(SemanticValidator::normalize)
                 .collect(Collectors.toSet());
-        // FORM P3-T5c: a screen names a procedure OR the flow that replaced it (the callers run either)
-        Set<String> procedureNames = java.util.stream.Stream.concat(
-                        modelAst.getProcedures().stream().map(ProcedureAst::name),
-                        modelAst.getFlows().stream().map(com.npdev.dsl.v1.ast.FlowAst::getName))
+        // a screen's `procedure` names a flow (every procedure became one: REG-342)
+        Set<String> procedureNames = modelAst.getFlows().stream()
+                .map(com.npdev.dsl.v1.ast.FlowAst::getName)
                 .map(SemanticValidator::normalize)
                 .collect(Collectors.toSet());
         Set<String> flowNames = modelAst.getFlows().stream()

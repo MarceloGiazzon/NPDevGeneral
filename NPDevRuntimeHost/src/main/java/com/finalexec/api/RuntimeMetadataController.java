@@ -72,15 +72,6 @@ public class RuntimeMetadataController {
         return run(() -> runtimeMetadataService.concept(conceptName));
     }
 
-    @GetMapping("/procedures")
-    public Map<String, Object> procedures(
-            HttpServletRequest request,
-            @RequestParam(required = false) String procedure
-    ) {
-        requireAdminContext(request);
-        return run(() -> runtimeMetadataService.procedures(procedure));
-    }
-
     @GetMapping("/panels")
     public Map<String, Object> panels(
             HttpServletRequest request,

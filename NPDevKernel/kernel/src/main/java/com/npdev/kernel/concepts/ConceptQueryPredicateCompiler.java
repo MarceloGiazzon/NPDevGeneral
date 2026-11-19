@@ -1,6 +1,6 @@
 package com.npdev.kernel.concepts;
 
-import com.npdev.dsl.v1.compiled.CompiledProcedureParameter;
+import com.npdev.dsl.v1.compiled.CompiledQueryParameter;
 import com.npdev.dsl.v1.query.GroupByJoinGrammar;
 import com.npdev.dsl.v1.query.QueryPredicateGrammar;
 import com.npdev.dsl.v1.query.QueryPredicateGrammar.Clause;
@@ -98,7 +98,7 @@ public final class ConceptQueryPredicateCompiler {
      *         declared parameter that {@code boundParameters} does not carry a value for
      */
     public static List<ConceptQuery.Filter> compile(
-            String where, List<CompiledProcedureParameter> parameters, Map<String, Object> boundParameters) {
+            String where, List<CompiledQueryParameter> parameters, Map<String, Object> boundParameters) {
         List<Clause> clauses;
         try {
             clauses = QueryPredicateGrammar.parse(where);
@@ -114,7 +114,7 @@ public final class ConceptQueryPredicateCompiler {
     }
 
     private static Object resolveLiteral(
-            String where, Clause clause, List<CompiledProcedureParameter> parameters, Map<String, Object> boundParameters) {
+            String where, Clause clause, List<CompiledQueryParameter> parameters, Map<String, Object> boundParameters) {
         if (clause.literal() instanceof Literal.Value value) {
             return value.value();
         }
@@ -231,7 +231,7 @@ public final class ConceptQueryPredicateCompiler {
      *         an undeclared/unbound {@code :name} placeholder (including inside an {@code in (...)} list)
      */
     public static List<List<ResolvedClause>> compilePredicate(
-            String where, List<CompiledProcedureParameter> parameters, Map<String, Object> boundParameters) {
+            String where, List<CompiledQueryParameter> parameters, Map<String, Object> boundParameters) {
         return compilePredicate(where, parameters, boundParameters, null);
     }
 
@@ -246,7 +246,7 @@ public final class ConceptQueryPredicateCompiler {
      *               {@code $user} reference is then refused, never guessed
      */
     public static List<List<ResolvedClause>> compilePredicate(
-            String where, List<CompiledProcedureParameter> parameters, Map<String, Object> boundParameters,
+            String where, List<CompiledQueryParameter> parameters, Map<String, Object> boundParameters,
             ExecutionContext caller) {
         List<List<PredicateClause>> groups;
         try {
@@ -267,7 +267,7 @@ public final class ConceptQueryPredicateCompiler {
 
     private static ResolvedClause resolvePredicateClause(
             String where, PredicateClause clause,
-            List<CompiledProcedureParameter> parameters, Map<String, Object> boundParameters,
+            List<CompiledQueryParameter> parameters, Map<String, Object> boundParameters,
             ExecutionContext caller) {
         if (clause.operator().isUnary()) {
             return new ResolvedClause(clause.path(), clause.operator(), null);
@@ -300,7 +300,7 @@ public final class ConceptQueryPredicateCompiler {
     /** FORM P3-T4: a withinKm/distanceKm literal becomes a {@link ConceptQuery.Distance} with every value resolved. */
     private static ConceptQuery.Distance resolveDistance(
             String where, PredicateClause clause, PredicateLiteral.Distance distance,
-            List<CompiledProcedureParameter> parameters, Map<String, Object> boundParameters, ExecutionContext caller) {
+            List<CompiledQueryParameter> parameters, Map<String, Object> boundParameters, ExecutionContext caller) {
         return new ConceptQuery.Distance(
                 resolveDistanceOperand(where, clause, distance.lat1(), parameters, boundParameters, caller),
                 resolveDistanceOperand(where, clause, distance.lng1(), parameters, boundParameters, caller),
@@ -312,7 +312,7 @@ public final class ConceptQueryPredicateCompiler {
 
     private static ConceptQuery.DistanceOperand resolveDistanceOperand(
             String where, PredicateClause clause, PredicateLiteral.DistanceOperand operand,
-            List<CompiledProcedureParameter> parameters, Map<String, Object> boundParameters, ExecutionContext caller) {
+            List<CompiledQueryParameter> parameters, Map<String, Object> boundParameters, ExecutionContext caller) {
         if (operand instanceof PredicateLiteral.DistanceOperand.Field field) {
             return ConceptQuery.DistanceOperand.ofField(predicatePathText(field.target()));
         }
@@ -323,7 +323,7 @@ public final class ConceptQueryPredicateCompiler {
 
     private static Object resolvePredicateLiteral(
             String where, PredicateClause clause, PredicateLiteral literal,
-            List<CompiledProcedureParameter> parameters, Map<String, Object> boundParameters,
+            List<CompiledQueryParameter> parameters, Map<String, Object> boundParameters,
             ExecutionContext caller) {
         if (literal instanceof PredicateLiteral.Value value) {
             return value.value();
@@ -393,13 +393,13 @@ public final class ConceptQueryPredicateCompiler {
      *         an undeclared/unbound {@code :name} placeholder (including inside an {@code in (...)} list)
      */
     public static List<ConceptQuery.Filter> compileToConceptQueryFilters(
-            String where, List<CompiledProcedureParameter> parameters, Map<String, Object> boundParameters) {
+            String where, List<CompiledQueryParameter> parameters, Map<String, Object> boundParameters) {
         return compileToConceptQueryFilters(where, parameters, boundParameters, null);
     }
 
     /** {@link #compileToConceptQueryFilters(String, List, Map)} resolving {@code $user.*} against {@code caller}. */
     public static List<ConceptQuery.Filter> compileToConceptQueryFilters(
-            String where, List<CompiledProcedureParameter> parameters, Map<String, Object> boundParameters,
+            String where, List<CompiledQueryParameter> parameters, Map<String, Object> boundParameters,
             ExecutionContext caller) {
         List<List<ResolvedClause>> groups = compilePredicate(where, parameters, boundParameters, caller);
         if (groups.isEmpty()) {

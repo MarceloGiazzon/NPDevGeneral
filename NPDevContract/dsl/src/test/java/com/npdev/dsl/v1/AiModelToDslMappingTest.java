@@ -210,7 +210,7 @@ class AiModelToDslMappingTest {
         Set<String> aiProcedures = stream(aiModel.path("procedures"))
                 .map(node -> node.path("procedureId").asText())
                 .collect(Collectors.toCollection(TreeSet::new));
-        Set<String> officialProcedures = stream(officialModel.path("procedures"))
+        Set<String> officialProcedures = stream(officialModel.path("flows"))
                 .map(node -> node.path("name").asText())
                 .collect(Collectors.toCollection(TreeSet::new));
         assertTrue(officialProcedures.containsAll(aiProcedures), scenarioId + " procedures must map");

@@ -155,7 +155,6 @@ function New-OfficialModel {
     $concepts = @()
     $events = @()
     $flows = @()
-    $procedures = @()
     $panels = @()
     $modelWorkflows = if ($null -eq $Model.workflows) { @() } else { @($Model.workflows | Where-Object { $null -ne $_ }) }
 
@@ -324,49 +323,17 @@ function New-OfficialModel {
     $modelProcedures = if ($null -eq $Model.procedures) { @() } else { @($Model.procedures | Where-Object { $null -ne $_ }) }
     $modelPanels = if ($null -eq $Model.panels) { @() } else { @($Model.panels | Where-Object { $null -ne $_ }) }
     foreach ($procedure in $modelProcedures) {
-        $procedureSteps = @()
-        $steps = if ($null -eq $procedure.steps) { @() } else { @($procedure.steps) }
-        foreach ($step in $steps) {
-            $procedureStep = [ordered]@{ type = [string]$step.type }
-            foreach ($propertyName in @("concept", "query", "procedure", "value")) {
-                $property = $step.PSObject.Properties[$propertyName]
-                if ($null -ne $property -and $null -ne $property.Value) {
-                    $procedureStep[$propertyName] = $property.Value
-                }
-            }
-            $procedureSteps += $procedureStep
-        }
-        if ($procedureSteps.Count -eq 0) {
-            $procedureSteps += [ordered]@{
-                type = "return"
-                value = ([string]$procedure.procedureId + "-ok")
-            }
-        }
-        $parameters = @($procedure.inputs | ForEach-Object {
-            [ordered]@{
-                name = [string]$_.name
-                type = (Convert-FieldType ([string]$_.type))
-                required = if ($null -eq $_.required) { $false } else { [bool]$_.required }
-            }
-        })
-        $procedures += [ordered]@{
+        # REG-342: the DSL has no procedures; an ai-model.v1 procedure becomes a flow of the same name. Its declared
+        # steps are a placeholder when the implementation is an untrusted extension (metadata.untrustedExtensionEntrypoint).
+        $flows += [ordered]@{
             name = [string]$procedure.procedureId
             description = "Expanded Beta 0 procedure " + [string]$procedure.procedureId
-            parameters = $parameters
-            steps = $procedureSteps
-            returns = [ordered]@{ type = "string" }
-            permissionRequirements = @([string]$procedure.requiredRole)
-            # R5.1/REG-301: auditPolicy and tracePolicy retired -- both were schema-declared but consumed by nothing at
-            # runtime. The write/read distinction this used to carry survives in metadata.sideEffectType
-            # below, which is what actually mapped to it (see scripts/policy/ai-model-to-dsl-mapping-policy.json).
-            metadata = [ordered]@{
-                beta0Surface = "custom-procedure"
-                sideEffectType = [string]$procedure.sideEffectType
-                tenantScoped = [bool]$procedure.tenantScoped
-                maxAffectedRows = [int]$procedure.maxAffectedRows
-            }
+            expose = "ui"
+            steps = @([ordered]@{ name = "done"; type = "return"; value = '$input' })
+            metadata = [ordered]@{}
         }
-        Add-UntrustedExtensionEntrypoint -Metadata $procedures[-1].metadata -Implementation $procedure.implementation
+        Add-UntrustedExtensionEntrypoint -Metadata $flows[-1].metadata -Implementation $procedure.implementation
+        if ($flows[-1].metadata.Count -eq 0) { $flows[-1].Remove("metadata") }
     }
 
     foreach ($panel in $modelPanels) {
@@ -428,7 +395,6 @@ function New-OfficialModel {
         )
         events = $events
         flows = $flows
-        procedures = $procedures
         panels = $panels
         metadata = [ordered]@{
             normalizedFrom = "ai-model.v1"

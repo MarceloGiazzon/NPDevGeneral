@@ -103,18 +103,78 @@ def version_errors(new_pack: dict, base_text: str, work: Path, cli) -> tuple[lis
     return [f"pack.json version - {str(report.get('message') or 'the version bump is too small for what changed').strip()}"], report
 
 
-def probe_model(pack_id: str) -> dict:
-    """The smallest application that imports the pack by the same local `$ref` a consumer uses."""
-    return {"namespace": "relay.probe", "dslVersion": "3.0.0", "version": "1.0",
-            "packs": [{"$ref": f"packs/{pack_id}/pack.json", "as": PROBE_ALIAS}],
-            "concepts": [{"name": "Probe", "fields": [{"name": "id", "type": "uuid", "id": True, "required": True}]}]}
+def probe_model(pack_id: str, pack: dict | None = None) -> dict:
+    """The smallest application that imports the pack by the same local `$ref` a consumer uses.
+
+    When the pack itself is known, the probe also satisfies what the pack REQUIRES of an application (the capabilities it
+    names) and declares the property scopes its properties are settable at, so the probe never fails for a thing every
+    real consumer supplies."""
+    model = {"namespace": "relay.probe", "dslVersion": "3.0.0", "version": "1.0",
+             "packs": [{"$ref": f"packs/{pack_id}/pack.json", "as": PROBE_ALIAS}],
+             "concepts": [{"name": "Probe", "fields": [{"name": "id", "type": "uuid", "id": True, "required": True}]}]}
+    if isinstance(pack, dict):
+        needed = (pack.get("requires") or {}).get("capabilities") or []
+        if needed:
+            model["provides"] = {"capabilities": list(needed)}
+        scopes = []
+        for prop in pack.get("properties") or []:
+            for scope in prop.get("settableAt") or []:
+                if scope not in scopes:
+                    scopes.append(scope)
+        if scopes:
+            model["propertyScopes"] = [{"name": scope} for scope in scopes]
+    return model
 
 
-def stage_probe(folder: Path, pack_id: str, pack_text: str, model: dict) -> Path:
+def stage_probe(folder: Path, pack_id: str, pack_text: str, model: dict, *, siblings: Path | None = None) -> Path:
+    """Write the probe application. `siblings` is a folder of other packs (the pack's own parent folder): the packs this one
+    depends on, directly or through each other, are copied beside it so the probe can resolve `packs[]` the way a consumer does."""
     (folder / "packs" / pack_id).mkdir(parents=True, exist_ok=True)
     (folder / "packs" / pack_id / "pack.json").write_text(pack_text, encoding="utf-8")
+    if siblings is not None:
+        pending = [pack_text]
+        while pending:
+            try:
+                declared = json.loads(pending.pop()).get("packs") or []
+            except ValueError:
+                declared = []
+            for dep in declared:
+                dep_id = dep.get("pack") if isinstance(dep, dict) else None
+                source = siblings / str(dep_id) / "pack.json" if dep_id else None
+                target = folder / "packs" / str(dep_id) / "pack.json"
+                if source is not None and source.is_file() and not target.exists():
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    dep_text = source.read_text(encoding="utf-8-sig")
+                    target.write_text(dep_text, encoding="utf-8")
+                    pending.append(dep_text)
+    staged = sorted((folder / "packs").glob("*/pack.json"))
+    if siblings is not None:
+        # Every role('x') a staged pack names must be bound by the application, as any real consumer does.
+        import re
+
+        named = sorted({m for f in staged for m in re.findall(r"role\('([^']+)'\)", f.read_text(encoding="utf-8-sig"))})
+        bindings = dict(((model.get("provides") or {}).get("roleBindings") or {}))
+        for name in named:
+            bindings.setdefault(name, "PROBE_" + re.sub(r"[^A-Za-z0-9]+", "_", name).upper())
+        if bindings:
+            model.setdefault("provides", {})["roleBindings"] = bindings
     path = folder / "model.json"
     path.write_text(json.dumps(model, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    if len(staged) > 1:
+        # A pack graph with transitive dependencies needs an npdev.lock beside the model; a consumer gets it from
+        # `npdev pack update`, the probe writes the same entries (resolved version + sha256 of the file bytes).
+        import hashlib
+
+        entries = {}
+        for pack_file in staged:
+            raw = pack_file.read_bytes()
+            entries[pack_file.parent.name] = {
+                "resolvedVersion": json.loads(raw.decode("utf-8-sig")).get("version"),
+                "digest": "sha256:" + hashlib.sha256(raw).hexdigest(),
+                "sourcePath": f"packs/{pack_file.parent.name}/pack.json",
+            }
+        (folder / "npdev.lock").write_text(
+            json.dumps({"schemaVersion": "npdev-lock.v1", "packs": entries}, indent=2) + "\n", encoding="utf-8")
     return path
 
 
@@ -138,7 +198,7 @@ def after_parsed(session: dict, number: int, result: dict, *, validate, cli) -> 
         result["outcome"] = "NEEDS_FIX"
         result["errorLines"] = errors
         return
-    models = [("probe", probe_model(pack_id))]
+    models = [("probe", probe_model(pack_id, pack))]
     example = next((f for f in result["files"] if f["path"] == "example-model.json" and f["status"] == "allowed"), None)
     if example is not None:
         try:

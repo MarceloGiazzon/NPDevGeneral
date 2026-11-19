@@ -1,6 +1,6 @@
 package com.finalexec.api;
 
-import com.npdev.dsl.v1.compiled.CompiledProcedureParameter;
+import com.npdev.dsl.v1.compiled.CompiledQueryParameter;
 import com.npdev.dsl.v1.expr.DateFunctions;
 import org.junit.jupiter.api.Test;
 
@@ -26,7 +26,7 @@ class NamedQueryBindingTest {
 
     @Test
     void anUnboundDeclaredParameterIsRefusedNotDefaulted() {
-        CompiledProcedureParameter minPrice = new CompiledProcedureParameter("minPrice", "decimal", false, null, null);
+        CompiledQueryParameter minPrice = new CompiledQueryParameter("minPrice", "decimal", false, null, null);
         IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
                 () -> NamedQueryBinding.bind(name -> null, List.of(minPrice)));
         assertEquals("Query parameter 'minPrice' is required (declared in this query's parameters[] but not supplied).",
@@ -37,8 +37,8 @@ class NamedQueryBindingTest {
 
     // ---- REG-313 (b): a declared defaultExpression stands in for an absent value ----
 
-    private static CompiledProcedureParameter withDefault(String expression) {
-        return new CompiledProcedureParameter("asOf", "date", false, null, null, expression);
+    private static CompiledQueryParameter withDefault(String expression) {
+        return new CompiledQueryParameter("asOf", "date", false, null, null, expression);
     }
 
     @Test
@@ -78,7 +78,7 @@ class NamedQueryBindingTest {
 
     @Test
     void parametersWithoutADefaultStillCoexistWithOnesThatHaveOne() {
-        CompiledProcedureParameter minPrice = new CompiledProcedureParameter("minPrice", "decimal", false, null, null);
+        CompiledQueryParameter minPrice = new CompiledQueryParameter("minPrice", "decimal", false, null, null);
         Map<String, Object> bound = DateFunctions.withToday(LocalDate.of(2026, 10, 29), () ->
                 NamedQueryBinding.bind(name -> "minPrice".equals(name) ? "7" : null,
                         List.of(minPrice, withDefault("today()"))));

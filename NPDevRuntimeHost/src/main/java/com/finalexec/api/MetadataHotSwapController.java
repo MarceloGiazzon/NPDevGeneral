@@ -347,7 +347,6 @@ public class MetadataHotSwapController {
             response.put("validationWarnings", preflight.details());
             response.put("concepts", newModel.getConcepts().size());
             response.put("flows", newModel.getFlows().size());
-            response.put("procedures", newModel.getProcedures().size());
             // REG-243: this call does not imply a full apply. It swaps the LIVE CompiledModel (every
             // ModelHolder.get() consumer -- CRUD, panels, invariants, orchestrations, documents -- sees
             // the new model immediately), but RuntimeMetadataService's UI-facing catalogs (labels,

@@ -8,11 +8,6 @@
     "path" : "npdev/metadata/concepts.manifest.json",
     "count" : 4
   }, {
-    "name" : "procedures",
-    "sourceCatalog" : "procedures",
-    "path" : "npdev/metadata/procedures.manifest.json",
-    "count" : 0
-  }, {
     "name" : "panels",
     "sourceCatalog" : "panels",
     "path" : "npdev/metadata/panels.manifest.json",

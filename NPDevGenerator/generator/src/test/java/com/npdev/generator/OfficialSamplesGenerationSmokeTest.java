@@ -70,15 +70,13 @@ class OfficialSamplesGenerationSmokeTest {
                     "Namespace drift in generated metadata for " + expectation.id());
             assertTrue(metadataRoot.path("catalogs").path("actions").isArray(),
                     "Expected actions catalog for " + expectation.id());
-            assertTrue(metadataRoot.path("catalogs").path("procedures").isArray(),
-                    "Expected procedures catalog for " + expectation.id());
             assertTrue(metadataRoot.path("catalogs").path("panels").isArray(),
                     "Expected panels catalog for " + expectation.id());
             assertTrue(metadataRoot.path("catalogs").path("actions").findValuesAsText("name").contains(expectation.mainFlow()),
                     "Expected action catalog to include main flow for " + expectation.id());
 
             JsonNode metadataIndex = MAPPER.readTree(Files.readString(metadataIndexPath));
-            assertEquals(13, metadataIndex.path("catalogs").size(),
+            assertEquals(12, metadataIndex.path("catalogs").size(),
                     "Metadata manifest catalog count drift for " + expectation.id());
 
             String compiledModelJson = Files.readString(compiledModelPath);

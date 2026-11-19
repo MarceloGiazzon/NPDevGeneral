@@ -112,7 +112,7 @@ class InvitationControllerTest {
                 "PasswordResetToken", "PasswordResetToken", "identity_v1_password_reset_tokens", List.of()));
         return new CompiledModel(
                 "test", "2.0", "1.0.0", concepts,
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 List.of(), List.of(), List.of(), List.of(), List.of(),
                 null, null,
                 List.of(new CompiledRole("Member", List.of("EXECUTE_FLOW"))));

@@ -32,9 +32,7 @@ import com.npdev.dsl.v1.ast.PanelActionAst;
 import com.npdev.dsl.v1.ast.PanelAst;
 import com.npdev.dsl.v1.ast.PanelDataSourceAst;
 import com.npdev.dsl.v1.ast.PresentationMetadataAst;
-import com.npdev.dsl.v1.ast.ProcedureAst;
-import com.npdev.dsl.v1.ast.ProcedureParameterAst;
-import com.npdev.dsl.v1.ast.ProcedureStepAst;
+import com.npdev.dsl.v1.ast.QueryParameterAst;
 import com.npdev.dsl.v1.ast.QueryAst;
 import com.npdev.dsl.v1.ast.ReferenceSemanticsAst;
 import com.npdev.dsl.v1.ast.TruthLevel;
@@ -89,9 +87,9 @@ final class ExpressionValidation {
     private static final Set<String> INTERACTION_BOOLEAN_LITERALS =
             Set.of("true", "false", "null");
 
-    static void validateParameterNames(String owner, List<ProcedureParameterAst> parameters, List<String> errors) {
+    static void validateParameterNames(String owner, List<QueryParameterAst> parameters, List<String> errors) {
         Set<String> names = new HashSet<>();
-        for (ProcedureParameterAst parameter : parameters) {
+        for (QueryParameterAst parameter : parameters) {
             if (!names.add(normalize(parameter.name()))) {
                 errors.add(owner + ": duplicate parameter name " + parameter.name());
             }
@@ -108,8 +106,8 @@ final class ExpressionValidation {
      * procedure inputs are not bound by that rule, so a default there would validate and then be ignored.
      */
     static void validateParameterDefaults(
-            String owner, boolean queryParameters, List<ProcedureParameterAst> parameters, List<String> errors) {
-        for (ProcedureParameterAst parameter : parameters) {
+            String owner, boolean queryParameters, List<QueryParameterAst> parameters, List<String> errors) {
+        for (QueryParameterAst parameter : parameters) {
             String expression = parameter.defaultExpression();
             if (expression == null) {
                 continue;

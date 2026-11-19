@@ -52,7 +52,6 @@ class RuntimeApiEmitterMetadataManifestTest {
         Path fieldsOne = outOne.resolve("src/main/resources/npdev/metadata/fields.manifest.json");
         Path enumsOne = outOne.resolve("src/main/resources/npdev/metadata/enums.manifest.json");
         Path referencesOne = outOne.resolve("src/main/resources/npdev/metadata/references.manifest.json");
-        Path proceduresOne = outOne.resolve("src/main/resources/npdev/metadata/procedures.manifest.json");
         Path panelsOne = outOne.resolve("src/main/resources/npdev/metadata/panels.manifest.json");
         Path actionsOne = outOne.resolve("src/main/resources/npdev/metadata/actions.manifest.json");
         Path transitionsOne = outOne.resolve("src/main/resources/npdev/metadata/transitions.manifest.json");
@@ -60,14 +59,14 @@ class RuntimeApiEmitterMetadataManifestTest {
         Path validationOne = outOne.resolve("src/main/resources/npdev/metadata/validation-hints.manifest.json");
         Path invocationsOne = outOne.resolve("src/main/resources/npdev/metadata/invocations.manifest.json");
 
-        for (Path path : List.of(indexOne, conceptsOne, proceduresOne, panelsOne, fieldsOne, enumsOne, referencesOne, actionsOne, transitionsOne, layoutOne, validationOne, invocationsOne)) {
+        for (Path path : List.of(indexOne, conceptsOne, panelsOne, fieldsOne, enumsOne, referencesOne, actionsOne, transitionsOne, layoutOne, validationOne, invocationsOne)) {
             assertTrue(Files.exists(path), "Expected generated metadata manifest artifact: " + path);
         }
 
         JsonNode indexRoot = MAPPER.readTree(Files.readString(indexOne));
         assertEquals("1.0.0", indexRoot.path("metadataManifestVersion").asText());
         assertEquals("1.0.0", indexRoot.path("metadataVersion").asText());
-        assertEquals(13, indexRoot.path("catalogs").size(), "Expected thirteen metadata manifest catalogs (F2.2 added transitions + invocations; ENF-1 queries + domainTypes).");
+        assertEquals(12, indexRoot.path("catalogs").size(), "Expected twelve metadata manifest catalogs (F2.2 added transitions + invocations; ENF-1 queries + domainTypes; REG-342 removed procedures).");
 
         JsonNode invocationsRoot = MAPPER.readTree(Files.readString(invocationsOne));
         assertEquals("invocations", invocationsRoot.path("catalog").asText());
@@ -91,10 +90,6 @@ class RuntimeApiEmitterMetadataManifestTest {
         assertEquals("validationHints", validationRoot.path("catalog").asText());
         assertEquals("validation", validationRoot.path("sourceCatalog").asText());
         assertTrue(validationRoot.path("items").isArray(), "Expected validation-hints manifest items array.");
-
-        JsonNode proceduresRoot = MAPPER.readTree(Files.readString(proceduresOne));
-        assertEquals("procedures", proceduresRoot.path("catalog").asText());
-        assertTrue(proceduresRoot.path("items").isArray(), "Expected procedures manifest items array.");
 
         JsonNode panelsRoot = MAPPER.readTree(Files.readString(panelsOne));
         assertEquals("panels", panelsRoot.path("catalog").asText());

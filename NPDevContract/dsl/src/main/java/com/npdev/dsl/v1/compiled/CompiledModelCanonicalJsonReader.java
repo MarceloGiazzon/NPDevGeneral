@@ -65,10 +65,6 @@ public final class CompiledModelCanonicalJsonReader {
             queries.add(toQuery(node));
         }
 
-        List<CompiledProcedure> procedures = new ArrayList<>();
-        for (JsonNode node : array(root, "procedures")) {
-            procedures.add(toProcedure(node));
-        }
 
         List<CompiledPanel> panels = new ArrayList<>();
         for (JsonNode node : array(root, "panels")) {
@@ -152,7 +148,6 @@ public final class CompiledModelCanonicalJsonReader {
                 events,
                 flows,
                 queries,
-                procedures,
                 panels,
                 guidePages,
                 aggregates,
@@ -1404,7 +1399,7 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "where"),
                 toStringList(node.get("orderBy")),
                 optionalIntegerObject(node.get("limit")),
-                toProcedureParameters(node.get("parameters")),
+                toQueryParameters(node.get("parameters")),
                 toStringList(node.get("permissionRequirements")),
                 toObjectMap(node.get("metadata")),
                 toGroupByFields(node),
@@ -1455,110 +1450,19 @@ public final class CompiledModelCanonicalJsonReader {
         return out;
     }
 
-    private static CompiledProcedure toProcedure(JsonNode node) {
-        return new CompiledProcedure(
-                text(node, "name"),
-                optionalText(node, "description"),
-                toProcedureParameters(node.get("parameters")),
-                toProcedureVariables(node.get("variables")),
-                toProcedureSteps(node.get("steps")),
-                toSchema(node.get("returns")),
-                toStringList(node.get("permissionRequirements")),
-                toGeneratedActionDescriptor(node.get("actionDescriptor")),
-                toObjectMap(node.get("metadata")),
-                optionalText(node, "uid"),
-                optionalText(node, "runAs")
-        );
-    }
-
-    private static CompiledGeneratedActionDescriptorSpec toGeneratedActionDescriptor(JsonNode node) {
-        if (node == null || node.isNull() || !node.isObject() || node.isEmpty()) {
-            return null;
-        }
-        return new CompiledGeneratedActionDescriptorSpec(
-                optionalText(node, "actionName"),
-                toStringList(node.get("affectedConcepts")),
-                optionalText(node, "sideEffectConcept"),
-                optionalText(node, "eventNameOnSuccess"),
-                optionalText(node, "auditResourceType"),
-                optionalText(node, "idempotencyPolicy"),
-                optionalText(node, "tracePolicy"),
-                optionalText(node, "correlationPolicy"),
-                booleanValue(node, "explicit")
-        );
-    }
-
-    private static List<CompiledProcedureParameter> toProcedureParameters(JsonNode node) {
-        List<CompiledProcedureParameter> out = new ArrayList<>();
+    private static List<CompiledQueryParameter> toQueryParameters(JsonNode node) {
+        List<CompiledQueryParameter> out = new ArrayList<>();
         if (node == null || !node.isArray()) {
             return out;
         }
         for (JsonNode parameterNode : node) {
-            out.add(new CompiledProcedureParameter(
+            out.add(new CompiledQueryParameter(
                     text(parameterNode, "name"),
                     text(parameterNode, "type"),
                     booleanValue(parameterNode, "required"),
                     toSchema(parameterNode.get("schema")),
                     optionalText(parameterNode, "description"),
                     optionalText(parameterNode, "defaultExpression")
-            ));
-        }
-        return out;
-    }
-
-    private static List<CompiledProcedureVariable> toProcedureVariables(JsonNode node) {
-        List<CompiledProcedureVariable> out = new ArrayList<>();
-        if (node == null || !node.isArray()) {
-            return out;
-        }
-        for (JsonNode variableNode : node) {
-            out.add(new CompiledProcedureVariable(
-                    text(variableNode, "name"),
-                    optionalText(variableNode, "type"),
-                    toSchema(variableNode.get("schema")),
-                    toObjectValue(variableNode.get("initialValue"))
-            ));
-        }
-        return out;
-    }
-
-    private static List<CompiledProcedureStep> toProcedureSteps(JsonNode node) {
-        List<CompiledProcedureStep> out = new ArrayList<>();
-        if (node == null || !node.isArray()) {
-            return out;
-        }
-        for (JsonNode stepNode : node) {
-            out.add(new CompiledProcedureStep(
-                    optionalText(stepNode, "name"),
-                    text(stepNode, "type"),
-                    optionalText(stepNode, "target"),
-                    toObjectValue(stepNode.get("value")),
-                    optionalText(stepNode, "condition"),
-                    optionalText(stepNode, "items"),
-                    optionalText(stepNode, "as"),
-                    optionalText(stepNode, "concept"),
-                    optionalText(stepNode, "query"),
-                    toObjectMap(stepNode.get("data")),
-                    optionalText(stepNode, "id"),
-                    optionalText(stepNode, "procedure"),
-                    optionalText(stepNode, "flow"),
-                    optionalText(stepNode, "capability"),
-                    optionalText(stepNode, "operation"),
-                    optionalText(stepNode, "event"),
-                    toObjectMap(stepNode.get("args")),
-                    toProcedureSteps(stepNode.get("thenSteps")),
-                    toProcedureSteps(stepNode.get("elseSteps")),
-                    toProcedureSteps(stepNode.get("steps")),
-                    optionalBooleanObject(stepNode.get("trace")),
-                    optionalBooleanObject(stepNode.get("audit")),
-                    toObjectMap(stepNode.get("metadata")),
-                    toObjectMap(stepNode.get("set")),
-                    optionalBooleanObject(stepNode.get("createIfMissing")),
-                    toObjectMap(stepNode.get("select")),
-                    toObjectValue(stepNode.get("left")),
-                    toObjectValue(stepNode.get("right")),
-                    toObjectMap(stepNode.get("params")),
-                    optionalText(stepNode, "errorTarget")
             ));
         }
         return out;

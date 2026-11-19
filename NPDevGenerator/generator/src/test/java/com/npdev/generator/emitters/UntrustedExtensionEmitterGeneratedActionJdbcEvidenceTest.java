@@ -3,9 +3,8 @@ package com.npdev.generator.emitters;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.npdev.dsl.v1.compiled.CompiledConcept;
-import com.npdev.dsl.v1.compiled.CompiledGeneratedActionDescriptorSpec;
 import com.npdev.dsl.v1.compiled.CompiledModel;
-import com.npdev.dsl.v1.compiled.CompiledProcedure;
+import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.generator.dbconfig.DatabaseEngine;
 import com.npdev.generator.dbconfig.GeneratedDatabasePlan;
 import com.npdev.generator.dbconfig.SchemaLifecyclePolicy;
@@ -115,7 +114,7 @@ final class UntrustedExtensionEmitterGeneratedActionJdbcEvidenceTest {
                   "entries": [
                     {
                       "entryId": "create-user",
-                      "kind": "procedure",
+                      "kind": "flow",
                       "relativePath": "trusted/CreateUserProcedure.java",
                       "language": "java",
                       "sha256": "%s",
@@ -131,32 +130,12 @@ final class UntrustedExtensionEmitterGeneratedActionJdbcEvidenceTest {
         Path modelSource = modelRoot.resolve("model.json");
         Files.writeString(modelSource, "{}", StandardCharsets.UTF_8);
 
-        CompiledProcedure procedure = new CompiledProcedure(
-                "CreateUser",
-                "Creates a user through trusted source",
-                List.of(),
-                List.of(),
-                List.of(),
-                null,
-                List.of("ADMIN"),
-                new CompiledGeneratedActionDescriptorSpec(
-                        "CreateUser",
-                        List.of("User"),
-                        "User",
-                        "generated.action.create-user.completed",
-                        "GENERATED_ACTION",
-                        "record",
-                        "record",
-                        "claim",
-                        true
-                ),
-                Map.of(
+        CompiledFlow procedure = new CompiledFlow("CreateUser", null, null, List.of(), null, null, null, false, null, null, null, "ui", null, "Creates a user through trusted source", Map.of(
                         "untrustedExtensionEntrypoint", "trusted/CreateUserProcedure.java",
-                        "sideEffectConcept", "LegacyShouldNotWin",
-                        "affectedConcepts", "LegacyShouldNotWin",
-                        "eventNameOnSuccess", "generated.action.legacy.completed"
-                )
-        );
+                        "sideEffectConcept", "User",
+                        "affectedConcepts", "User",
+                        "eventNameOnSuccess", "generated.action.create-user.completed"
+                ));
         CompiledModel model = new CompiledModel(
                 "trusted-jdbc-test",
                 "1.0.0",
@@ -166,9 +145,8 @@ final class UntrustedExtensionEmitterGeneratedActionJdbcEvidenceTest {
                 List.of(),
                 List.of(),
                 List.of(),
-                List.of(),
-                List.of(),
                 List.of(procedure),
+                List.of(),
                 List.of()
         );
 
@@ -185,7 +163,6 @@ final class UntrustedExtensionEmitterGeneratedActionJdbcEvidenceTest {
                 "1.0.0",
                 "1.0.0",
                 Map.of(),
-                List.of(),
                 List.of(),
                 List.of(),
                 List.of(),

@@ -31,9 +31,7 @@ import com.npdev.dsl.v1.ast.PanelActionAst;
 import com.npdev.dsl.v1.ast.PanelAst;
 import com.npdev.dsl.v1.ast.PanelDataSourceAst;
 import com.npdev.dsl.v1.ast.PresentationMetadataAst;
-import com.npdev.dsl.v1.ast.ProcedureAst;
-import com.npdev.dsl.v1.ast.ProcedureParameterAst;
-import com.npdev.dsl.v1.ast.ProcedureStepAst;
+import com.npdev.dsl.v1.ast.QueryParameterAst;
 import com.npdev.dsl.v1.ast.QueryAst;
 import com.npdev.dsl.v1.ast.ReferenceSemanticsAst;
 import com.npdev.dsl.v1.ast.TruthLevel;
@@ -136,7 +134,6 @@ public final class SemanticValidator {
         FlowValidation.validateFlows(effectiveModel, entitiesByLower, effectiveCache, allowUnboundFlowCapabilities, errors, semanticWarnings);
         HumanTaskValidation.validate(effectiveModel, errors, semanticWarnings);
         PackValidation.validateQueries(effectiveModel, entitiesByLower, errors);
-        PackValidation.validateProcedures(effectiveModel, entitiesByLower, errors);
         PanelValidation.validatePanels(effectiveModel, entitiesByLower, errors);
         PanelValidation.validateGuidePages(effectiveModel, errors);
         PanelValidation.validateAppShell(effectiveModel, entitiesByLower, errors);

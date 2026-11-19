@@ -1,0 +1,29 @@
+{
+  "$comment": "Hand-written English meanings for the legacy procedure family (retiring under REG-342) and a few remaining inline keys of docs/DSL_KEYWORD_REFERENCE.md. See meanings-concept.json for the file format.",
+  "schemaVersion": "npdev-keyword-meanings.v1",
+  "defs": {},
+  "slots": {
+    "autoPanelSurface.dataSource": "Replaces the generated row source of a selection surface (see `autoPanelDataSource`).",
+    "workbenchAction.applyTo": "Folds the procedure's result into the draft as a new row of a collection.",
+    "transactionUiState.label": "Caption of the control that changes the state.",
+    "generatedActionDescriptor.actionName": "The name of the generated action.",
+    "generatedActionDescriptor.affectedConcepts": "Names of the concepts the action changes.",
+    "generatedActionDescriptor.sideEffectConcept": "The concept the action's main side effect is on.",
+    "generatedActionDescriptor.eventNameOnSuccess": "Name of the event published when the action succeeds.",
+    "generatedActionDescriptor.auditResourceType": "Resource type recorded in the audit trail for the action.",
+    "generatedActionDescriptor.idempotencyPolicy": "`record` stores the result so a repeated call is answered from the record; `disabled` does not.",
+    "generatedActionDescriptor.tracePolicy": "`record` stores an execution trace; `disabled` does not.",
+    "generatedActionDescriptor.correlationPolicy": "`claim` links the action to the caller's correlation id; `disabled` does not."
+  },
+  "inline": {
+    "conversion.javaHook.source": "Source-root path of the Java class, in the same shape a mounted code extension uses.",
+    "conversion.javaHook.class": "Fully qualified name of the class.",
+    "conversion.javaHook.method": "Name of the method that performs the conversion.",
+    "experience.navigation.label": "Caption of the navigation entry.",
+    "experience.navigation.screen": "Name of the screen the entry opens.",
+    "httpConnectorOperation.response.pointer": "JSON pointer (for example `/data/id`) of the value to return; absent returns the whole body.",
+    "localizableLabel.default": "The text used when the requested locale and its language have no entry. Other keys are locale tags such as `pt-BR`.",
+    "panelWidget.filter.field": "Field of the data source to compare.",
+    "panelWidget.filter.equals": "Only rows whose field equals this text are aggregated."
+  }
+}

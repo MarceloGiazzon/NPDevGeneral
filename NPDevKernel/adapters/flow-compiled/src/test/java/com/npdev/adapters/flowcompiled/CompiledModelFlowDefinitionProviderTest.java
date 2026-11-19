@@ -811,15 +811,7 @@ class CompiledModelFlowDefinitionProviderTest {
                   "concepts": [
                     { "name": "Order", "fields": [ { "name":"id", "type":"uuid", "id":true, "required":true } ] }
                   ],
-                  "procedures": [
-                    {
-                      "name": "PackagedAction",
-                      "metadata": { "untrustedExtensionEntrypoint": "src/PackagedAction.java" },
-                      "steps": [ { "name":"ret", "type":"return", "value":"$input" } ]
-                    }
-                  ],
-                  "flows": [
-                    {
+                  "flows": [ {"name": "PackagedAction", "expose": "ui", "metadata": { "untrustedExtensionEntrypoint": "src/PackagedAction.java" }, "steps": [{"name": "done", "type": "return", "value": "$input"}]}, {
                       "name": "ScoreOrder",
                       "steps": [
                         { "name":"ret", "type":"return", "value":"$input" }

@@ -84,6 +84,27 @@
       "costSeconds": 2
     },
     {
+      "id": "check-dsl-keyword-reference",
+      "tier": "T0",
+      "maxStaleness": "every-run",
+      "invokedBy": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "run": [
+        "{python}",
+        "scripts/quality/check-dsl-keyword-reference.py"
+      ],
+      "description": "Every DSL keyword slot the keyword budget counts has a meaning (the schema node's own description, or an entry in scripts/policy/dsl-keyword-meanings/), and docs/DSL_KEYWORD_REFERENCE.md matches the SHA-256 stamp of a fresh render. After a schema or meanings change run python scripts/docs/generate_dsl_keyword_reference.py.",
+      "level": "core",
+      "protects": "correctness",
+      "triggers": [
+        "**/model.schema.json",
+        "**/pack.schema.json",
+        "scripts/policy/dsl-keyword-meanings/**",
+        "scripts/policy/dsl-keyword-reference-stamp.json",
+        "scripts/docs/generate_dsl_keyword_reference.py"
+      ],
+      "costSeconds": 2
+    },
+    {
       "id": "model-validate-touched",
       "tier": "T0",
       "maxStaleness": "every-run",

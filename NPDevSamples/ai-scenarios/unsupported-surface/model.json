@@ -7,6 +7,6 @@
       "fields": ["id", "email"]
     }
   ],
-  "procedures": [],
+  "flows": [],
   "panels": []
 }

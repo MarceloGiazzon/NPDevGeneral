@@ -7,7 +7,7 @@
       "fields": ["id", "status"]
     }
   ],
-  "procedures": [],
+  "flows": [],
   "panels": [
     {
       "name": "readiness-panel"

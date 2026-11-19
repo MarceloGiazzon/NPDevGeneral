@@ -32,7 +32,7 @@ class CompiledAutoPanelCanonicalJsonTest {
         return new CompiledModel(
                 "wms.agg", "1.0.0", "1.0", Map.of(),
                 List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(),
                 List.of(slim, rich));
     }
 

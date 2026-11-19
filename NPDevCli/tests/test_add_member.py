@@ -1,4 +1,4 @@
-"""Tests for `npdev add concept|panel|flow|procedure` (R1.5).
+"""Tests for `npdev add concept|panel|flow` (R1.5; `procedure` removed by REG-342).
 
 Before R1.5, `npdev init` scaffolded a whole app and nothing scaffolded a single member --
 growing an existing model.json meant hand-editing it against the 4x-mirrored schema with no help
@@ -86,11 +86,11 @@ class AddMemberUnitTest(unittest.TestCase):
             id_fields = [f for f in order["fields"] if f.get("id") is True]
             self.assertEqual(1, len(id_fields), "ConceptValidation requires exactly one id field")
 
-    def test_default_stubs_for_panel_flow_procedure_bind_to_required_concept(self):
+    def test_default_stubs_for_panel_and_flow_bind_to_required_concept(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
             model_path = _bare_model(tmp_dir)
-            for kind, name in (("panel", "WidgetPanel"), ("flow", "CreateWidget"), ("procedure", "GetWidget")):
+            for kind, name in (("panel", "WidgetPanel"), ("flow", "CreateWidget")):
                 captured = io.StringIO()
                 with redirect_stdout(captured):
                     code = npdev_cli.run_add_member(_add_args(name, model_path, concept="Widget"), kind)
@@ -99,16 +99,12 @@ class AddMemberUnitTest(unittest.TestCase):
             self.assertEqual(["WidgetPanel"], [p["name"] for p in model["panels"]])
             self.assertEqual("Widget", model["panels"][0]["dataSources"][0]["concept"])
             self.assertEqual("Widget", model["flows"][0]["input"]["concept"])
-            self.assertEqual(
-                "Widget",
-                next(s for s in model["procedures"][0]["steps"] if "concept" in s)["concept"],
-            )
 
     def test_refuses_without_concept_and_without_from(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
             model_path = _bare_model(tmp_dir)
-            for kind in ("panel", "flow", "procedure"):
+            for kind in ("panel", "flow"):
                 with self.assertRaises(npdev_cli.CliError) as ctx:
                     npdev_cli.run_add_member(_add_args(f"X{kind}", model_path), kind)
                 self.assertIn("--concept is required", str(ctx.exception))
@@ -202,7 +198,7 @@ class AddMemberRoundTripTest(unittest.TestCase):
     `npdev validate model` (run_validate_semantic -- the R1.1 warm ai-tools-jar path when staged,
     else Gradle's :NPDevContract:dsl:validateModel), asserting zero errors by measurement."""
 
-    def test_all_four_kinds_validate_with_zero_errors(self):
+    def test_all_three_kinds_validate_with_zero_errors(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
             model_path = _bare_model(tmp_dir)
@@ -214,8 +210,6 @@ class AddMemberRoundTripTest(unittest.TestCase):
                     _add_args("OrderPanel", model_path, concept="Order"), "panel"))
                 self.assertEqual(0, npdev_cli.run_add_member(
                     _add_args("CreateOrder", model_path, concept="Order"), "flow"))
-                self.assertEqual(0, npdev_cli.run_add_member(
-                    _add_args("GetOrder", model_path, concept="Order"), "procedure"))
                 # Mix in a --from copy too, proving the reference-scanned path also validates for
                 # real, not just the hand-derived default stubs.
                 self.assertEqual(0, npdev_cli.run_add_member(

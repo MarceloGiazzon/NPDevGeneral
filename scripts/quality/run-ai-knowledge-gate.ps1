@@ -415,6 +415,15 @@ try {
         $failures += "the DSL keyword budget was exceeded or is stale: see scripts/quality/check-dsl-keyword-budget.py output above and scripts/policy/dsl-keyword-budget.json (add an admission record, or lower frozenCount)"
     }
 
+    # The DSL keyword reference (docs/DSL_KEYWORD_REFERENCE.md) is rendered from the schemas plus
+    # scripts/policy/dsl-keyword-meanings/. Every keyword slot the budget counts must have a meaning, and the page must
+    # match its stamp (the same render-hash pattern as docs/reference/ENGINE_MATRIX.md).
+    Write-Host "Checking every DSL keyword has a meaning and the keyword reference is not stale..."
+    & $py "scripts/quality/check-dsl-keyword-reference.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "the DSL keyword reference is incomplete or stale: see scripts/quality/check-dsl-keyword-reference.py output above, then run python scripts/docs/generate_dsl_keyword_reference.py (new keywords need a meaning in scripts/policy/dsl-keyword-meanings/)"
+    }
+
     # ENGM-1: an engine support claim may only stand on a CI job that exists. The matrix lists engines x capabilities,
     # each cell naming its witness workflow#job; this parses the workflow YAML so a claim cannot outlive its witness.
     Write-Host "Checking every engine support claim names a real CI witness job..."

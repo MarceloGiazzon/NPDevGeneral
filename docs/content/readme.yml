@@ -200,7 +200,6 @@ sections:
       | `onFailure` on a step | saga-style compensation: completed steps are undone in reverse order if a later step fails |
       | `forEach`, including parallel | isolated iterations that each resume correctly after a crash |
       | `scheduleEvent` / `schedule` | delayed and recurring work, with no separate scheduler |
-      | a `procedure` | reusable server-side logic with parameters and a return value |
       | a flow `trigger` (`event`, `schedule` or `webhook`) | when *this* event happens, run *that* flow |
       | a `capability` + `binding` | name an operation, swap its implementation without touching the model |
       | an operation `policy` | retries, timeouts, circuit breaker, bulkhead and idempotency keys, declared per operation |
@@ -233,7 +232,7 @@ sections:
       | You write | You get |
       |---|---|
       | `roles` + `grants` | roles and what they may do |
-      | `permissionRequirements` on queries, procedures and panel actions; `visibility` on panels | the permissions a caller needs, declared next to the thing they protect |
+      | `permissionRequirements` on queries and panel actions; `visibility` on panels | the permissions a caller needs, declared next to the thing they protect |
       | row-level rules | control over *which rows* each user sees |
       | `access.public` on a concept | the fields anonymous visitors may read, served at `/api/public/**` |
       | `sensitive` on a field | the value is masked in traces, event payloads, execution records, audit-trail diffs and AI review packs (CSV export does not mask it) |
@@ -462,7 +461,7 @@ sections:
       - **Test it:** `test` runs model-derived, REST and browser checks against one booted app.
         `acceptance` and `seed` are here too.
       - **Start from what you have:** `import db` drafts a model from an existing JDBC database.
-        `add` scaffolds one concept, panel, flow or procedure.
+        `add` scaffolds one concept, panel or flow.
       - **Put it in front of real users:** `host` (`plan`, `check`, `share` through a tunnel,
         `deploy` to your own server), `package` and `upgrade` for a runnable bundle, and `service`
         for OS-level supervision. See [`docs/HOSTING.md`](docs/HOSTING.md).

@@ -13,8 +13,6 @@ import com.npdev.dsl.v1.compiler.ModelCompiler;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledModelCanonicalJson;
-import com.npdev.dsl.v1.compiled.CompiledProcedure;
-import com.npdev.dsl.v1.compiled.CompiledProcedureStep;
 import com.npdev.dsl.v1.parser.JsonModelParser;
 import com.npdev.dsl.v1.paths.CanonicalModelPaths;
 import com.npdev.dsl.v1.repo.FileSystemModelRepository;
@@ -128,7 +126,6 @@ public final class NPDevCliMain {
                 case "list-failures" -> listFailures(args, runtime);
                 case "correlation" -> correlationTimeline(args, runtime);
                 case "list-flows" -> listFlows(args, runtime);
-                case "list-procedures" -> listProcedures(args, runtime);
                 default -> throw new IllegalArgumentException("Unknown command: " + args.command());
             };
         } finally {
@@ -180,7 +177,6 @@ public final class NPDevCliMain {
         payload.put("valid", !validation.hasErrors());
         payload.put("warnings", validation.getWarnings());
         payload.put("errors", validation.getErrors());
-        payload.put("procedureCount", compiled == null ? 0 : compiled.getProcedures().size());
         payload.put("panelCount", compiled == null ? 0 : compiled.getPanels().size());
         payload.put("flowCount", compiled == null ? 0 : compiled.getFlows().size());
 
@@ -341,14 +337,6 @@ public final class NPDevCliMain {
         return 0;
     }
 
-    private int listProcedures(ParsedArgs args, CliRuntime runtime) {
-        List<Map<String, Object>> procedures = runtime.compiledModel().getProcedures().stream()
-                .map(NPDevCliMain::procedureSummary)
-                .toList();
-        printByFormat(args.format(), procedures);
-        return 0;
-    }
-
     private ExecutionContext executionContext(ParsedArgs args) {
         String tenant = args.getOrDefault("tenant", "default");
         String actor = args.getOrDefault("actor", "cli");
@@ -417,49 +405,7 @@ public final class NPDevCliMain {
                   list-failures --model <path> [--tenant <id>] [--limit <n>] [--offset <n>] [--store-dir <dir>] [--format text|json]
                   correlation --model <path> --id <correlationId> [--tenant <id>] [--limit <n>] [--offset <n>] [--store-dir <dir>] [--format text|json]
                   list-flows --model <path> [--format text|json]
-                  list-procedures --model <path> [--format text|json]
                 """);
-    }
-
-    private static Map<String, Object> procedureSummary(CompiledProcedure procedure) {
-        Map<String, Object> summary = new LinkedHashMap<>();
-        summary.put("name", procedure.name());
-        summary.put("parameterCount", procedure.parameters().size());
-        summary.put("variableCount", procedure.variables().size());
-        summary.put("stepCount", countProcedureSteps(procedure.steps()));
-        summary.put("stepTypes", procedureStepTypes(procedure.steps()));
-        return summary;
-    }
-
-    private static int countProcedureSteps(List<CompiledProcedureStep> steps) {
-        int count = 0;
-        for (CompiledProcedureStep step : steps) {
-            count++;
-            count += countProcedureSteps(step.thenSteps());
-            count += countProcedureSteps(step.elseSteps());
-            count += countProcedureSteps(step.steps());
-        }
-        return count;
-    }
-
-    private static List<String> procedureStepTypes(List<CompiledProcedureStep> steps) {
-        LinkedHashSet<String> types = new LinkedHashSet<>();
-        collectProcedureStepTypes(steps, types);
-        List<String> sorted = new ArrayList<>(types);
-        sorted.sort(String.CASE_INSENSITIVE_ORDER);
-        return sorted;
-    }
-
-    private static void collectProcedureStepTypes(List<CompiledProcedureStep> steps, LinkedHashSet<String> types) {
-        for (CompiledProcedureStep step : steps) {
-            String type = normalized(step.type());
-            if (type != null) {
-                types.add(type);
-            }
-            collectProcedureStepTypes(step.thenSteps(), types);
-            collectProcedureStepTypes(step.elseSteps(), types);
-            collectProcedureStepTypes(step.steps(), types);
-        }
     }
 
     private static String normalized(String value) {

@@ -6,7 +6,6 @@ import com.npdev.dsl.v1.ast.ConceptAst;
 import com.npdev.dsl.v1.ast.FieldAst;
 import com.npdev.dsl.v1.ast.InvariantAst;
 import com.npdev.dsl.v1.ast.ModelAst;
-import com.npdev.dsl.v1.ast.ProcedureAst;
 import com.npdev.dsl.v1.ast.QueryAst;
 
 import java.util.ArrayList;
@@ -136,9 +135,6 @@ public final class AuthoringDiffGate {
         }
 
         checkPermissionRequirementsDeltaDeclared(
-                "procedure", previousModel.getProcedures(), submittedModel.getProcedures(),
-                ProcedureAst::name, ProcedureAst::permissionRequirements, manifest, violations);
-        checkPermissionRequirementsDeltaDeclared(
                 "query", previousModel.getQueries(), submittedModel.getQueries(),
                 QueryAst::name, QueryAst::permissionRequirements, manifest, violations);
 
@@ -167,9 +163,6 @@ public final class AuthoringDiffGate {
             checkInvariantDeltaDeclared(submittedConcept, previousConcept, manifest, violations);
         }
 
-        checkPermissionRequirementsDeltaDeclared(
-                "procedure", previousModel.getProcedures(), submittedModel.getProcedures(),
-                ProcedureAst::name, ProcedureAst::permissionRequirements, manifest, violations);
         checkPermissionRequirementsDeltaDeclared(
                 "query", previousModel.getQueries(), submittedModel.getQueries(),
                 QueryAst::name, QueryAst::permissionRequirements, manifest, violations);

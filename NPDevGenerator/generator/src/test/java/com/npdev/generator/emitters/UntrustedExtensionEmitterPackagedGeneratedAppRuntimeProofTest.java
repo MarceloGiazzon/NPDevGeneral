@@ -12,10 +12,8 @@ import com.npdev.dsl.v1.compiled.CompiledCapabilityExecutionPolicy;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledFlowStep;
-import com.npdev.dsl.v1.compiled.CompiledGeneratedActionDescriptorSpec;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
-import com.npdev.dsl.v1.compiled.CompiledProcedure;
 import com.npdev.generator.api.GeneratorFacade;
 import com.npdev.generator.assembly.FinalAppAssembler;
 import com.npdev.generator.dbconfig.DatabaseEngine;
@@ -427,27 +425,7 @@ final class UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest {
                         new CompiledField("name", "string", "String", false, true, false)
                 )
         );
-        CompiledProcedure procedure = new CompiledProcedure(
-                "CreateItem12User",
-                "Creates one Item 12 proof user through trusted source",
-                List.of(),
-                List.of(),
-                List.of(),
-                null,
-                List.of("ADMIN"),
-                new CompiledGeneratedActionDescriptorSpec(
-                        "CreateItem12User",
-                        List.of("Item12User"),
-                        "Item12User",
-                        "generated.action.item12-user.completed",
-                        "ITEM12_USER",
-                        "record",
-                        "record",
-                        "claim",
-                        true
-                ),
-                Map.of("untrustedExtensionEntrypoint", "trusted/CreateItem12UserProcedure.java")
-        );
+        CompiledFlow procedure = new CompiledFlow("CreateItem12User", null, null, List.of(), null, null, null, false, null, null, null, "ui", null, "Creates one Item 12 proof user through trusted source", Map.of("untrustedExtensionEntrypoint", "trusted/CreateItem12UserProcedure.java"));
         CompiledPanel panel = new CompiledPanel(
                 "item12-panel",
                 "/item12-panel",
@@ -639,7 +617,6 @@ final class UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest {
                 List.of(),
                 List.of(flow, waitingFlow),
                 List.of(),
-                List.of(procedure),
                 List.of(panel)
         );
     }
@@ -691,7 +668,7 @@ final class UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest {
                   "entries": [
                     {
                       "entryId": "create-item12-user",
-                      "kind": "procedure",
+                      "kind": "flow",
                       "relativePath": "trusted/CreateItem12UserProcedure.java",
                       "language": "java",
                       "sha256": "%s",
@@ -731,24 +708,7 @@ final class UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest {
                       ]
                     }
                   ],
-                  "procedures": [
-                    {
-                      "name": "CreateItem12User",
-                      "steps": [{ "type": "return" }],
-                      "actionDescriptor": {
-                        "actionName": "CreateItem12User",
-                        "affectedConcepts": ["Item12User"],
-                        "sideEffectConcept": "Item12User",
-                        "eventNameOnSuccess": "generated.action.item12-user.completed",
-                        "auditResourceType": "ITEM12_USER",
-                        "idempotencyPolicy": "record",
-                        "tracePolicy": "record",
-                        "correlationPolicy": "claim"
-                      }
-                    }
-                  ],
-                  "flows": [
-                    {
+                  "flows": [ {"name": "CreateItem12User", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}, {
                       "name": "CreateItem12UserFlow",
                       "concept": "Item12User",
                       "startEndpoint": true,

@@ -53,26 +53,17 @@ class ContractSurfaceSupportTest {
                       ]
                     }
                   ],
-                  "procedures": [
+                  "flows": [
                     {
                       "name": "SubmitWorkItem",
-                      "parameters": [
-                        { "name": "title", "type": "string", "required": true }
-                      ],
+                      "expose": "ui",
                       "steps": [
-                        {
-                          "name": "save-item",
-                          "type": "conceptCreate",
-                          "concept": "WorkItem",
-                          "data": { "title": "title", "status": "open" }
-                        },
                         {
                           "name": "return-item",
                           "type": "return",
-                          "value": "result"
+                          "value": "$input"
                         }
-                      ],
-                      "returns": { "type": "object", "properties": { "id": { "type": "uuid" } } }
+                      ]
                     }
                   ],
                   "panels": [
@@ -102,7 +93,7 @@ class ContractSurfaceSupportTest {
 
         ModelAst ast = new JsonModelParser().parse(modelPath);
         assertEquals(1, ast.getQueries().size());
-        assertEquals(1, ast.getProcedures().size());
+        assertEquals(1, ast.getFlows().size());
         assertEquals(1, ast.getPanels().size());
 
         List<String> errors = new SemanticValidator().validate(ast);
@@ -111,8 +102,8 @@ class ContractSurfaceSupportTest {
         CompiledModel compiled = new ModelCompiler().compile(ast);
         assertEquals(1, compiled.getQueries().size());
         assertEquals("OpenWorkItems", compiled.getQueries().get(0).name());
-        assertEquals(1, compiled.getProcedures().size());
-        assertEquals("SubmitWorkItem", compiled.getProcedures().get(0).name());
+        assertEquals(1, compiled.getFlows().size());
+        assertEquals("SubmitWorkItem", compiled.getFlows().get(0).getName());
         assertEquals(1, compiled.getPanels().size());
         assertEquals("WorkQueue", compiled.getPanels().get(0).name());
 
@@ -121,12 +112,12 @@ class ContractSurfaceSupportTest {
         assertTrue(canonical.has("concepts"));
         assertFalse(canonical.has("entities"));
         assertEquals("OpenWorkItems", canonical.get("queries").get(0).get("name").asText());
-        assertEquals("SubmitWorkItem", canonical.get("procedures").get(0).get("name").asText());
+        assertEquals("SubmitWorkItem", canonical.get("flows").get(0).get("name").asText());
         assertEquals("WorkQueue", canonical.get("panels").get(0).get("name").asText());
 
         CompiledModel restored = CompiledModelCanonicalJsonReader.fromJson(canonicalJson);
         assertEquals("OpenWorkItems", restored.getQueries().get(0).name());
-        assertEquals("SubmitWorkItem", restored.getProcedures().get(0).name());
+        assertEquals("SubmitWorkItem", restored.getFlows().get(0).getName());
         assertEquals("WorkQueue", restored.getPanels().get(0).name());
     }
 
@@ -158,43 +149,10 @@ class ContractSurfaceSupportTest {
     }
 
     @Test
-    void rejectsSupportedSurfaceThatCompilerWouldNotUnderstand() throws Exception {
-        Path modelPath = writeTempModel("""
-                {
-                  "dslVersion": "3.0.0",
-                  "namespace": "close.contract",
-                  "version": "1.0.0",
-                  "concepts": [
-                    {
-                      "name": "WorkItem",
-                      "fields": [
-                        { "name": "id", "type": "uuid", "id": true, "required": true }
-                      ]
-                    }
-                  ],
-                  "procedures": [
-                    {
-                      "name": "MysteryProcedure",
-                      "steps": [
-                        { "type": "runUnboundedScript" }
-                      ]
-                    }
-                  ]
-                }
-                """);
-
-        Exception exception = assertThrows(Exception.class, () -> new JsonModelParser().parse(modelPath));
-        assertTrue(exception.getMessage().contains("Model schema validation failed")
-                        && exception.getMessage().toLowerCase().contains("enum"),
-                "Expected unsupported procedure step to fail fast: " + exception.getMessage());
-    }
-
-    @Test
-    void rejectsRetiredQueryAndProcedureTracePolicy() throws Exception {
+    void rejectsRetiredQueryTracePolicy() throws Exception {
         // REG-301: read by nothing at runtime, so retired from the schema; `npdev migrate dsl-2` strips it.
         for (String declaring : new String[] {
-                "\"queries\": [ { \"name\": \"AllItems\", \"concept\": \"WorkItem\", \"tracePolicy\": \"summary\" } ]",
-                "\"procedures\": [ { \"name\": \"Noop\", \"steps\": [ { \"name\": \"r\", \"type\": \"return\", \"value\": \"x\" } ], \"tracePolicy\": \"detailed\" } ]"}) {
+                "\"queries\": [ { \"name\": \"AllItems\", \"concept\": \"WorkItem\", \"tracePolicy\": \"summary\" } ]"}) {
             Path modelPath = writeTempModel("""
                     {
                       "dslVersion": "3.0.0", "namespace": "close.contract", "version": "1.0.0",
@@ -207,6 +165,21 @@ class ContractSurfaceSupportTest {
                             && exception.getMessage().contains("tracePolicy"),
                     "Expected the retired tracePolicy to be refused: " + exception.getMessage());
         }
+    }
+
+    @Test
+    void rejectsRemovedRootProceduresWithTheFlowReplacement() throws Exception {
+        // REG-342: every procedure is a flow; the root key is gone from the schema and refused by the parser.
+        Path modelPath = writeTempModel("""
+                {
+                  "dslVersion": "3.0.0", "namespace": "close.contract", "version": "1.0.0",
+                  "concepts": [ { "name": "WorkItem", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
+                  "procedures": [ { "name": "Noop", "steps": [ { "name": "r", "type": "return", "value": "x" } ] } ]
+                }
+                """);
+        Exception exception = assertThrows(Exception.class, () -> new JsonModelParser().parse(modelPath));
+        assertTrue(exception.getMessage().contains("procedures") && exception.getMessage().contains("flow"),
+                "Expected a legacy-procedures refusal that names the flow replacement: " + exception.getMessage());
     }
 
     @Test

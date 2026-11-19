@@ -1,6 +1,6 @@
 package com.npdev.kernel.concepts;
 
-import com.npdev.dsl.v1.compiled.CompiledProcedureParameter;
+import com.npdev.dsl.v1.compiled.CompiledQueryParameter;
 import com.npdev.dsl.v1.query.GroupByJoinGrammar;
 import com.npdev.dsl.v1.query.QueryPredicateGrammar.PredicateOperator;
 import org.junit.jupiter.api.Test;
@@ -34,8 +34,8 @@ class ConceptQueryPredicateCompilerPredicateTest {
 
     @Test
     void resolvesAPlaceholderAgainstDeclaredAndBoundParameters() {
-        List<CompiledProcedureParameter> parameters =
-                List.of(new CompiledProcedureParameter("storeId", "uuid", true, null, null));
+        List<CompiledQueryParameter> parameters =
+                List.of(new CompiledQueryParameter("storeId", "uuid", true, null, null));
         List<List<ConceptQueryPredicateCompiler.ResolvedClause>> groups = ConceptQueryPredicateCompiler.compilePredicate(
                 "storeId == $params.storeId", parameters, Map.of("storeId", "store-a"));
         assertEquals("store-a", groups.get(0).get(0).value());
@@ -43,8 +43,8 @@ class ConceptQueryPredicateCompilerPredicateTest {
 
     @Test
     void resolvesEveryValueInsideAnInListIncludingAMixedPlaceholder() {
-        List<CompiledProcedureParameter> parameters =
-                List.of(new CompiledProcedureParameter("first", "string", true, null, null));
+        List<CompiledQueryParameter> parameters =
+                List.of(new CompiledQueryParameter("first", "string", true, null, null));
         List<List<ConceptQueryPredicateCompiler.ResolvedClause>> groups = ConceptQueryPredicateCompiler.compilePredicate(
                 "status in [$params.first, 'CLOSED']", parameters, Map.of("first", "ACTIVE"));
         ConceptQueryPredicateCompiler.ResolvedClause clause = groups.get(0).get(0);
@@ -54,8 +54,8 @@ class ConceptQueryPredicateCompilerPredicateTest {
 
     @Test
     void unboundPlaceholderInsideAnInListIsRefusedNotDefaultedToNull() {
-        List<CompiledProcedureParameter> parameters =
-                List.of(new CompiledProcedureParameter("first", "string", true, null, null));
+        List<CompiledQueryParameter> parameters =
+                List.of(new CompiledQueryParameter("first", "string", true, null, null));
         ConceptQueryPredicateCompiler.UnsupportedPredicateException thrown = assertThrows(
                 ConceptQueryPredicateCompiler.UnsupportedPredicateException.class,
                 () -> ConceptQueryPredicateCompiler.compilePredicate(

@@ -44,8 +44,6 @@ public class RuntimeMetadataService {
     private static final Map<String, String> CATALOG_ALIASES = Map.ofEntries(
             Map.entry("concept", "concepts"),
             Map.entry("concepts", "concepts"),
-            Map.entry("procedure", "procedures"),
-            Map.entry("procedures", "procedures"),
             Map.entry("query", "queries"),
             Map.entry("queries", "queries"),
             Map.entry("domaintype", "domainTypes"),
@@ -188,10 +186,6 @@ public class RuntimeMetadataService {
             response.put("relatedCatalogCounts", relatedCatalogCounts(conceptName));
             return response;
         });
-    }
-
-    public Map<String, Object> procedures(String procedureName) {
-        return withReadLock(() -> buildCatalogResponse("procedures", null, procedureName, null));
     }
 
     public Map<String, Object> panels(String panelName) {

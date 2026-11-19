@@ -22,6 +22,7 @@ release-governance material (still live, just not what a newcomer needs) lives i
 ## Look it up
 
 `DSL_REFERENCE.md` (generated, see below) ·
+[DSL_KEYWORD_REFERENCE.md](DSL_KEYWORD_REFERENCE.md) (every DSL keyword: meaning, where it may be used, values; generated) ·
 [FEATURES.md](FEATURES.md) ·
 [CONFIGURATION.md](CONFIGURATION.md) ·
 [DEPLOYMENT.md](DEPLOYMENT.md) ·
@@ -91,6 +92,7 @@ Never hand-edit these — each has its own regenerate command (`generate_gaps_ro
 repo (md-zero-2026-08-11 PLAN.md Phase 6) — build output, per `BUILD_OUTPUT_LOCATION_POLICY.md`;
 run the commands below to render a local copy into the external Build root.
 
+[DSL_KEYWORD_REFERENCE.md](DSL_KEYWORD_REFERENCE.md) (`NPDevContract/schemas/model.schema.json` + `scripts/policy/dsl-keyword-meanings/` → `python scripts/docs/generate_dsl_keyword_reference.py`; unlike the registers below it IS committed, and `scripts/quality/check-dsl-keyword-reference.py` fails the AI knowledge gate when it is stale or a keyword has no meaning) ·
 `OPEN_ITEMS.md` (`ledger/items/*.yml` → `python scripts/quality/generate_open_items.py`) ·
 `OPEN_GAPS_AND_ROADMAP.md` (`ledger/gaps.yml` → `python scripts/docs/generate_gaps_roadmap.py`) ·
 [SECURITY_PATTERN_SWEEP_2026-07.md](archive/SECURITY_PATTERN_SWEEP_2026-07.md) (archived — dated point-in-time sweep)

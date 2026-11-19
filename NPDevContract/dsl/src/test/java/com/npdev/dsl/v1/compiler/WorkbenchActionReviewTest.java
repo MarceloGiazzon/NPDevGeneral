@@ -36,10 +36,7 @@ class WorkbenchActionReviewTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "finish", "type": "string" } ], "composition": {} }
               ],
-              "procedures": [
-                { "name": "Identify", "steps": [ { "name": "r", "type": "return", "value": "$input" } ] },
-                { "name": "Fold", "steps": [ { "name": "r", "type": "return", "value": "$input" } ] }
-              ],
+              "flows": [{"name": "Identify", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}, {"name": "Fold", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
               "autoPanels": [ { "aggregate": "Cap",
                 "transaction": { "actions": [ %s ] } } ]
             }

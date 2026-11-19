@@ -121,7 +121,6 @@
       "flowNames" : [ ],
       "eventNames" : [ ]
     } ],
-    "procedures" : [ ],
     "panels" : [ ],
     "domainTypes" : [ {
       "name" : "MRN",

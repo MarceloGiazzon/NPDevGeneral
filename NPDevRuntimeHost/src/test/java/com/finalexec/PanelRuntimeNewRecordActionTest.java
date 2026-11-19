@@ -129,7 +129,6 @@ class PanelRuntimeNewRecordActionTest {
                 List.of(),
                 List.of(),
                 List.of(),
-                List.of(),
                 List.of(panel)
         );
     }

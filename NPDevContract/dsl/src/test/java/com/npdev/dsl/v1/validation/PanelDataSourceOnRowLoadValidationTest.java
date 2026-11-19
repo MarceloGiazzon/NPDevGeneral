@@ -26,11 +26,7 @@ class PanelDataSourceOnRowLoadValidationTest {
                   "concepts": [
                     { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
                   ],
-                  "procedures": [
-                    { "name": "EnrichWidgetRowsProcedure", "steps": [
-                        { "name": "echo-rows", "type": "mapValue", "value": "$input.rows", "target": "rows" },
-                        { "name": "ret", "type": "return", "value": "$rows" } ] }
-                  ],
+                  "flows": [{"name": "EnrichWidgetRowsProcedure", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
                   "panels": [
                     {
                       "name": "TestPanel",

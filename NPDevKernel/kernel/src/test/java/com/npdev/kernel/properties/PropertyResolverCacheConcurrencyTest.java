@@ -54,7 +54,7 @@ class PropertyResolverCacheConcurrencyTest {
         return new CompiledModel(
                 "wms.props", "1.0.0", "1.0",
                 Map.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 null, null, List.of(),
                 List.of(TENANT_SCOPE),
                 List.of(PAGE_ROWS)

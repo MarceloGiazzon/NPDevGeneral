@@ -19,7 +19,6 @@ public final class ModelAst {
     private final List<EventAst> events;
     private final List<FlowAst> flows;
     private final List<QueryAst> queries;
-    private final List<ProcedureAst> procedures;
     private final List<PanelAst> panels;
     private final List<GuidePageAst> guidePages;
     private final List<AggregateAst> aggregates;
@@ -111,11 +110,10 @@ public final class ModelAst {
             List<EventAst> events,
             List<FlowAst> flows,
             List<QueryAst> queries,
-            List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<String> parserWarnings
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, List.of(), List.of(), parserWarnings);
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, panels, List.of(), List.of(), parserWarnings);
     }
 
     public ModelAst(
@@ -128,12 +126,11 @@ public final class ModelAst {
             List<EventAst> events,
             List<FlowAst> flows,
             List<QueryAst> queries,
-            List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
             List<String> parserWarnings
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, List.of(), parserWarnings);
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, panels, guidePages, List.of(), parserWarnings);
     }
 
     public ModelAst(
@@ -146,13 +143,12 @@ public final class ModelAst {
             List<EventAst> events,
             List<FlowAst> flows,
             List<QueryAst> queries,
-            List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
             List<String> parserWarnings
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, panels, guidePages, aggregates,
                 List.of(), parserWarnings);
     }
 
@@ -166,14 +162,13 @@ public final class ModelAst {
             List<EventAst> events,
             List<FlowAst> flows,
             List<QueryAst> queries,
-            List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
             List<AutoPanelAst> autoPanels,
             List<String> parserWarnings
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, panels, guidePages, aggregates,
                 autoPanels, parserWarnings, null);
     }
 
@@ -188,7 +183,6 @@ public final class ModelAst {
             List<EventAst> events,
             List<FlowAst> flows,
             List<QueryAst> queries,
-            List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
@@ -196,7 +190,7 @@ public final class ModelAst {
             List<String> parserWarnings,
             ExternalAiAst externalAi
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, panels, guidePages, aggregates, autoPanels,
                 parserWarnings, externalAi, null);
     }
 
@@ -211,7 +205,6 @@ public final class ModelAst {
             List<EventAst> events,
             List<FlowAst> flows,
             List<QueryAst> queries,
-            List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
@@ -220,7 +213,7 @@ public final class ModelAst {
             ExternalAiAst externalAi,
             SettingsAst settings
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, panels, guidePages, aggregates, autoPanels,
                 parserWarnings, externalAi, settings, List.of());
     }
 
@@ -235,7 +228,6 @@ public final class ModelAst {
             List<EventAst> events,
             List<FlowAst> flows,
             List<QueryAst> queries,
-            List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
@@ -245,7 +237,7 @@ public final class ModelAst {
             SettingsAst settings,
             List<RoleAst> roles
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, panels, guidePages, aggregates, autoPanels,
                 parserWarnings, externalAi, settings, roles, List.of(), List.of());
     }
 
@@ -261,7 +253,6 @@ public final class ModelAst {
             List<EventAst> events,
             List<FlowAst> flows,
             List<QueryAst> queries,
-            List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
@@ -273,7 +264,7 @@ public final class ModelAst {
             List<PropertyScopeAst> propertyScopes,
             List<PropertyAst> properties
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, panels, guidePages, aggregates, autoPanels,
                 parserWarnings, externalAi, settings, roles, propertyScopes, properties,
                 List.of());
     }
@@ -289,7 +280,6 @@ public final class ModelAst {
             List<EventAst> events,
             List<FlowAst> flows,
             List<QueryAst> queries,
-            List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
@@ -302,7 +292,7 @@ public final class ModelAst {
             List<PropertyAst> properties,
             List<ContextAst> contexts
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, panels, guidePages, aggregates, autoPanels,
                 parserWarnings, externalAi, settings, roles, propertyScopes, properties,
                 contexts, List.of());
     }
@@ -319,7 +309,6 @@ public final class ModelAst {
             List<EventAst> events,
             List<FlowAst> flows,
             List<QueryAst> queries,
-            List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
@@ -333,7 +322,7 @@ public final class ModelAst {
             List<ContextAst> contexts,
             List<ConversionAst> conversions
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, panels, guidePages, aggregates, autoPanels,
                 parserWarnings, externalAi, settings, roles, propertyScopes, properties,
                 contexts, conversions, Map.of());
     }
@@ -354,7 +343,6 @@ public final class ModelAst {
             List<EventAst> events,
             List<FlowAst> flows,
             List<QueryAst> queries,
-            List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
@@ -369,7 +357,7 @@ public final class ModelAst {
             List<ConversionAst> conversions,
             Map<String, String> physicalQualifierByConceptName
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, panels, guidePages, aggregates, autoPanels,
                 parserWarnings, externalAi, settings, roles, propertyScopes, properties,
                 contexts, conversions, physicalQualifierByConceptName, List.of());
     }
@@ -386,7 +374,6 @@ public final class ModelAst {
             List<EventAst> events,
             List<FlowAst> flows,
             List<QueryAst> queries,
-            List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
@@ -402,7 +389,7 @@ public final class ModelAst {
             Map<String, String> physicalQualifierByConceptName,
             List<SequenceAst> sequences
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, panels, guidePages, aggregates, autoPanels,
                 parserWarnings, externalAi, settings, roles, propertyScopes, properties,
                 contexts, conversions, physicalQualifierByConceptName, sequences, List.of());
     }
@@ -418,7 +405,6 @@ public final class ModelAst {
             List<EventAst> events,
             List<FlowAst> flows,
             List<QueryAst> queries,
-            List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
@@ -435,7 +421,7 @@ public final class ModelAst {
             List<SequenceAst> sequences,
             List<SeedAst> seeds
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, panels, guidePages, aggregates, autoPanels,
                 parserWarnings, externalAi, settings, roles, propertyScopes, properties,
                 contexts, conversions, physicalQualifierByConceptName, sequences, seeds, null);
     }
@@ -452,7 +438,6 @@ public final class ModelAst {
             List<EventAst> events,
             List<FlowAst> flows,
             List<QueryAst> queries,
-            List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
@@ -470,7 +455,7 @@ public final class ModelAst {
             List<SeedAst> seeds,
             AppShellAst appShell
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, panels, guidePages, aggregates, autoPanels,
                 parserWarnings, externalAi, settings, roles, propertyScopes, properties,
                 contexts, conversions, physicalQualifierByConceptName, sequences, seeds, appShell, null);
     }
@@ -487,7 +472,6 @@ public final class ModelAst {
             List<EventAst> events,
             List<FlowAst> flows,
             List<QueryAst> queries,
-            List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
@@ -506,7 +490,7 @@ public final class ModelAst {
             AppShellAst appShell,
             AgentAccessAst agentAccess
     ) {
-        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, events, flows, queries, panels, guidePages, aggregates, autoPanels,
                 parserWarnings, externalAi, settings, roles, propertyScopes, properties,
                 contexts, conversions, physicalQualifierByConceptName, sequences, seeds, appShell, agentAccess, null, null);
     }
@@ -523,7 +507,6 @@ public final class ModelAst {
             List<EventAst> events,
             List<FlowAst> flows,
             List<QueryAst> queries,
-            List<ProcedureAst> procedures,
             List<PanelAst> panels,
             List<GuidePageAst> guidePages,
             List<AggregateAst> aggregates,
@@ -553,7 +536,6 @@ public final class ModelAst {
         this.events = new ArrayList<>(events);
         this.flows = new ArrayList<>(flows);
         this.queries = new ArrayList<>(queries);
-        this.procedures = new ArrayList<>(procedures);
         this.panels = new ArrayList<>(panels);
         this.guidePages = new ArrayList<>(guidePages);
         this.aggregates = new ArrayList<>(aggregates);
@@ -627,10 +609,6 @@ public final class ModelAst {
         return Collections.unmodifiableList(queries);
     }
 
-
-    public List<ProcedureAst> getProcedures() {
-        return Collections.unmodifiableList(procedures);
-    }
 
     public List<PanelAst> getPanels() {
         return Collections.unmodifiableList(panels);

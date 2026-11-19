@@ -58,12 +58,6 @@ class RuntimeMetadataControllerStandaloneTest {
                 .andExpect(jsonPath("$.actionKinds").isArray())
                 .andExpect(jsonPath("$.items[?(@.name=='CreateAppointment')]").exists());
 
-        mockMvc.perform(get("/api/admin/runtime/metadata/procedures")
-                        .header("X-Api-Key", API_KEY))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.resolvedCatalog").value("procedures"))
-                .andExpect(jsonPath("$.items").isArray());
-
         mockMvc.perform(get("/api/admin/runtime/metadata/panels")
                         .header("X-Api-Key", API_KEY))
                 .andExpect(status().isOk())

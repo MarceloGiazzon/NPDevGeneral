@@ -51,7 +51,6 @@ public final class ModelSourceResolver {
             "events",
             "flows",
             "queries",
-            "procedures",
             "conversions",
             "panels",
             // FORM P5-T9c: `guidePages` is NO LONGER an authoring key (the back office's pages are declared under
@@ -1188,21 +1187,6 @@ public final class ModelSourceResolver {
      *  a non-empty one, naming both candidates in a thrown error the moment an ambiguous bare name
      *  is actually referenced (not merely declared twice -- two packs may each harmlessly declare
      *  the same domainType name forever if nothing ever references it unqualified). */
-    /**
-     * FORM P3-T5c: a screen's {@code procedure}/hook reference names a procedure OR the flow that replaced it. A bare name
-     * that a pack's procedure of that name qualifies is rewritten as before; otherwise it is looked up among the pack's flows.
-     */
-    private static MemberNameResolver procedureOrFlowResolver(
-            Map<String, Map<String, String>> rewriteMaps, Map<String, Map<String, Set<String>>> ambiguousNames) {
-        MemberNameResolver procedures = resolverFor(rewriteMaps, ambiguousNames, "procedures");
-        MemberNameResolver flows = resolverFor(rewriteMaps, ambiguousNames, "flows");
-        Map<String, String> procedureMap = mapFor(rewriteMaps, "procedures");
-        Map<String, Set<String>> procedureAmbiguous = ambiguousNames.getOrDefault("procedures", Map.of());
-        return bareName -> procedureMap.containsKey(bareName) || procedureAmbiguous.containsKey(bareName)
-                ? procedures.resolve(bareName)
-                : flows.resolve(bareName);
-    }
-
     private static MemberNameResolver resolverFor(
             Map<String, Map<String, String>> rewriteMaps, Map<String, Map<String, Set<String>>> ambiguousNames, String kind) {
         Map<String, String> map = mapFor(rewriteMaps, kind);
@@ -1274,7 +1258,6 @@ public final class ModelSourceResolver {
             // PK-1: flowStep.capability/procedure/event -- same "safe at any depth" reasoning as
             // scope above, a flow step's own field name, not shared with any other rootKey's shape.
             rewriteTextField(object, "capability", resolverFor(rewriteMaps, ambiguousNames, "capabilities"), qualifiedReferenceValidator);
-            rewriteTextField(object, "procedure", resolverFor(rewriteMaps, ambiguousNames, "procedures"), qualifiedReferenceValidator);
             rewriteTextField(object, "event", resolverFor(rewriteMaps, ambiguousNames, "events"), qualifiedReferenceValidator);
             // FORM P3-T5b: runQuery names a query in `query`, callFlow a flow in `flow` -- keys no other flow object uses.
             rewriteTextField(object, "query", resolverFor(rewriteMaps, ambiguousNames, "queries"), qualifiedReferenceValidator);
@@ -1283,26 +1266,15 @@ public final class ModelSourceResolver {
             // this a pack that declares an event and awaits it (the approvals pack) kept the bare name
             // while the event itself was pack-qualified, and validation rejected it as unknown.
             rewriteTextField(object, "awaitEvent", resolverFor(rewriteMaps, ambiguousNames, "events"), qualifiedReferenceValidator);
-        } else if ("procedures".equals(rootKey)) {
-            rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
-            if ("actionDescriptor".equals(parentKey)) {
-                rewriteTextField(object, "sideEffectConcept", conceptRewriteMap, qualifiedReferenceValidator);
-                rewriteTextArrayField(object, "affectedConcepts", conceptRewriteMap, qualifiedReferenceValidator);
-            }
-            // PK-1: procedureStep.query/procedure/capability/event -- same reasoning as flowStep.
-            rewriteTextField(object, "query", resolverFor(rewriteMaps, ambiguousNames, "queries"), qualifiedReferenceValidator);
-            rewriteTextField(object, "procedure", resolverFor(rewriteMaps, ambiguousNames, "procedures"), qualifiedReferenceValidator);
-            rewriteTextField(object, "capability", resolverFor(rewriteMaps, ambiguousNames, "capabilities"), qualifiedReferenceValidator);
-            rewriteTextField(object, "event", resolverFor(rewriteMaps, ambiguousNames, "events"), qualifiedReferenceValidator);
         } else if ("panels".equals(rootKey)) {
             if ("dataSources".equals(parentKey) || "actions".equals(parentKey)) {
                 rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
             }
             if ("dataSources".equals(parentKey)) {
                 rewriteTextField(object, "query", resolverFor(rewriteMaps, ambiguousNames, "queries"), qualifiedReferenceValidator);
-                rewriteTextField(object, "procedure", procedureOrFlowResolver(rewriteMaps, ambiguousNames), qualifiedReferenceValidator);
+                rewriteTextField(object, "procedure", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
             } else if ("actions".equals(parentKey)) {
-                rewriteTextField(object, "procedure", procedureOrFlowResolver(rewriteMaps, ambiguousNames), qualifiedReferenceValidator);
+                rewriteTextField(object, "procedure", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
                 rewriteTextField(object, "flow", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
             } else if (parentKey.isBlank()) {
                 // The panel object itself (not a nested dataSource/action) -- guidePage names a
@@ -1322,13 +1294,13 @@ public final class ModelSourceResolver {
             // `procedure` on a surface's dataSource, on each workbench action, and on every
             // transaction hook. Rewritten at any depth for the same reason flowStep.scope is: it is
             // this shape's own field name and means nothing else inside an autoPanel.
-            rewriteTextField(object, "procedure", procedureOrFlowResolver(rewriteMaps, ambiguousNames), qualifiedReferenceValidator);
-            rewriteTextField(object, "onLoad", procedureOrFlowResolver(rewriteMaps, ambiguousNames), qualifiedReferenceValidator);
-            rewriteTextField(object, "onFieldChange", procedureOrFlowResolver(rewriteMaps, ambiguousNames), qualifiedReferenceValidator);
-            rewriteTextField(object, "beforeAction", procedureOrFlowResolver(rewriteMaps, ambiguousNames), qualifiedReferenceValidator);
-            rewriteTextField(object, "onValidate", procedureOrFlowResolver(rewriteMaps, ambiguousNames), qualifiedReferenceValidator);
-            rewriteTextField(object, "onCommit", procedureOrFlowResolver(rewriteMaps, ambiguousNames), qualifiedReferenceValidator);
-            rewriteTextField(object, "afterAction", procedureOrFlowResolver(rewriteMaps, ambiguousNames), qualifiedReferenceValidator);
+            rewriteTextField(object, "procedure", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
+            rewriteTextField(object, "onLoad", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
+            rewriteTextField(object, "onFieldChange", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
+            rewriteTextField(object, "beforeAction", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
+            rewriteTextField(object, "onValidate", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
+            rewriteTextField(object, "onCommit", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
+            rewriteTextField(object, "afterAction", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
             rewriteTextField(object, "panel", resolverFor(rewriteMaps, ambiguousNames, "panels"), qualifiedReferenceValidator);
         } else if ("guidePages".equals(rootKey)) {
             // PACK-11: every chart/KPI gadget binds to a named query.

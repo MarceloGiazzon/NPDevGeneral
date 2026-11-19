@@ -8,7 +8,6 @@ import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPresentationMetadata;
-import com.npdev.dsl.v1.compiled.CompiledProcedure;
 import com.npdev.generator.emitters.trustedsource.model.ManifestEntry;
 import com.npdev.generator.emitters.trustedsource.model.PanelAssets;
 import com.npdev.generator.emitters.trustedsource.model.TrustedFlow;
@@ -57,19 +56,6 @@ final class UntrustedExtensionManifest {
         List<TrustedReference> references = new ArrayList<>();
         if (model == null) {
             return references;
-        }
-        for (CompiledProcedure procedure : model.getProcedures()) {
-            String entrypoint = metadataText(procedure.metadata(), "untrustedExtensionEntrypoint");
-            if (!entrypoint.isBlank()) {
-                references.add(new TrustedReference(
-                        "procedure",
-                        procedure.name(),
-                        "",
-                        entrypoint,
-                        firstNonBlank(procedure.permissionRequirements()),
-                        procedure
-                ));
-            }
         }
         // REG-342: a flow whose metadata names an untrusted extension is implemented by that hash-pinned Java class (its
         // declared steps are only the schema-required placeholder). Same trust gate as a procedure; its role comes from
@@ -180,19 +166,19 @@ final class UntrustedExtensionManifest {
     }
 
     private static void validateManifestEntry(Path sourceRoot, ManifestEntry entry) {
-        if (!Set.of("procedure", "flow", "panel", "widget").contains(entry.kind())) {
+        if (!Set.of("flow", "panel", "widget").contains(entry.kind())) {
             throw new IllegalStateException("Unsupported untrusted extension kind: " + entry.kind());
         }
         if (!entry.sha256().matches("[a-f0-9]{64}")) {
             throw new IllegalStateException("Untrusted extension manifest entry has invalid SHA-256: " + entry.relativePath());
         }
         resolveWithinSourceRoot(sourceRoot, entry.relativePath());
-        if ("procedure".equals(entry.kind()) || "flow".equals(entry.kind())) {
+        if ("flow".equals(entry.kind())) {
             if (!isJavaIdentifier(entry.className()) || !isJavaIdentifier(entry.method())) {
-                throw new IllegalStateException("Untrusted extension procedure className/method must be Java identifiers: " + entry.relativePath());
+                throw new IllegalStateException("Untrusted extension flow className/method must be Java identifiers: " + entry.relativePath());
             }
             if (!"java".equals(entry.language())) {
-                throw new IllegalStateException("Untrusted extension procedure language must be java: " + entry.relativePath());
+                throw new IllegalStateException("Untrusted extension flow language must be java: " + entry.relativePath());
             }
         }
         if ("panel".equals(entry.kind()) && !entry.runtimeBinding().startsWith("panel:")) {
@@ -252,14 +238,9 @@ final class UntrustedExtensionManifest {
                 entry.method(),
                 normalizeRole(firstNonBlank(entry.requiredRole(), reference.requiredRole())),
                 entry.tenantScoped(),
-                reference.source() instanceof CompiledProcedure compiledProcedure
-                        ? compiledProcedure.actionDescriptor()
-                        : null,
-                reference.source() instanceof CompiledProcedure compiledProcedure
-                        ? compiledProcedure.metadata()
-                        : reference.source() instanceof CompiledFlow compiledFlow
-                                ? compiledFlow.getMetadata()
-                                : Map.of(),
+                reference.source() instanceof CompiledFlow compiledFlow
+                        ? compiledFlow.getMetadata()
+                        : Map.of(),
                 source
         );
     }

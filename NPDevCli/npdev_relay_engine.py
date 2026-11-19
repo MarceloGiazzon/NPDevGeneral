@@ -70,7 +70,8 @@ def pack_catalog_text(catalog: dict | None) -> str:
     repo = repo[:-4] if repo.endswith(".git") else repo
     lines = ["## Pack catalog", "",
              "Packs you MAY import (`packs[]`, see the contract above). Copy the `from` coordinate exactly; a pack not "
-             "listed here does not exist.", ""]
+             "listed here does not exist. A pack marked `[also import: ...]` only works when every pack named there is "
+             "in your `packs[]` too.", ""]
     pattern_ok = []
     for entry in sorted(entries, key=lambda e: str(e["pack"])):
         description = " ".join(str(entry.get("description") or "").split())
@@ -80,6 +81,9 @@ def pack_catalog_text(catalog: dict | None) -> str:
         regular = repo and entry["from"] == f"git+{repo}.git//packs/{entry['pack']}@{entry['pack']}-{entry.get('version')}"
         pattern_ok.append(bool(regular))
         tail = "" if regular else f" -- from: `{entry['from']}`"
+        needs = [str(n) for n in entry.get("needs") or [] if n]
+        if needs:  # a pack's own dependencies resolve only beside the model: they must be imported too (REG-332)
+            tail = f" [also import: {', '.join(needs)}]" + tail
         lines.append(f"- {entry['pack']} {entry.get('version')}" + (f" - {description}" if description else "") + tail)
     if any(pattern_ok):
         lines += ["", f"Coordinate: `{{\"from\": \"git+{repo}.git//packs/<id>@<id>-<version>\"}}`"

@@ -7,7 +7,7 @@ import com.npdev.dsl.v1.compiled.CompiledContext;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledModel;
-import com.npdev.dsl.v1.compiled.CompiledProcedureParameter;
+import com.npdev.dsl.v1.compiled.CompiledQueryParameter;
 import com.npdev.dsl.v1.compiled.CompiledPublicRead;
 import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
@@ -334,7 +334,7 @@ public final class OpenApiDocumentBuilder {
         schemas.put(component, objectSchema(properties));
 
         List<Object> parameters = new ArrayList<>();
-        for (CompiledProcedureParameter parameter : query.parameters()) {
+        for (CompiledQueryParameter parameter : query.parameters()) {
             // REG-313 (b): NamedQueryBinding takes a declared defaultExpression for an absent parameter.
             boolean defaulted = parameter.defaultExpression() != null && !parameter.defaultExpression().isBlank();
             String description = !defaulted ? parameter.description()

@@ -57,12 +57,7 @@ class TransactionHooksValidationTest {
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "movimentoId", "type": "uuid" } ] }
               ],
-              "procedures": [
-                { "name": "ValidateMovimento", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] },
-                { "name": "SyncOcupacao", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] },
-                { "name": "DirectValidate", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] },
-                { "name": "DirectCommit", "steps": [ { "name": "ret", "type": "return", "value": "$input" } ] }
-              ],
+              "flows": [{"name": "ValidateMovimento", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}, {"name": "SyncOcupacao", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}, {"name": "DirectValidate", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}, {"name": "DirectCommit", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
               "autoPanels": [
                 { "aggregate": "Movimento",
                   "transaction": { "hooks": %s } }

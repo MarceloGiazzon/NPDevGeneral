@@ -1,6 +1,5 @@
 package com.npdev.generator.emitters;
 
-import com.npdev.dsl.v1.compiled.CompiledGeneratedActionDescriptorSpec;
 import com.npdev.generator.emitters.trustedsource.model.TrustedProcedure;
 
 import java.util.ArrayList;
@@ -108,10 +107,6 @@ final class TrustedActionRegistryTemplate {
     }
 
     private static String descriptorActionName(TrustedProcedure procedure) {
-        CompiledGeneratedActionDescriptorSpec descriptor = procedure.actionDescriptor();
-        if (descriptor != null && descriptor.actionName() != null && !descriptor.actionName().isBlank()) {
-            return descriptor.actionName();
-        }
         return procedure.id();
     }
 
@@ -120,10 +115,6 @@ final class TrustedActionRegistryTemplate {
     }
 
     private static List<String> descriptorAffectedConcepts(TrustedProcedure procedure) {
-        CompiledGeneratedActionDescriptorSpec descriptor = procedure.actionDescriptor();
-        if (descriptor != null) {
-            return descriptor.affectedConcepts();
-        }
         String explicit = metadataText(procedure.metadata(), "affectedConcepts");
         if (!explicit.isBlank()) {
             return splitMetadataList(explicit);
@@ -133,10 +124,6 @@ final class TrustedActionRegistryTemplate {
     }
 
     private static String descriptorSideEffectConcept(TrustedProcedure procedure) {
-        CompiledGeneratedActionDescriptorSpec descriptor = procedure.actionDescriptor();
-        if (descriptor != null) {
-            return descriptor.sideEffectConcept() == null ? "" : descriptor.sideEffectConcept();
-        }
         String explicit = metadataText(procedure.metadata(), "sideEffectConcept");
         if (!explicit.isBlank()) {
             return explicit;
@@ -145,10 +132,6 @@ final class TrustedActionRegistryTemplate {
     }
 
     private static String descriptorEventNameOnSuccess(TrustedProcedure procedure) {
-        CompiledGeneratedActionDescriptorSpec descriptor = procedure.actionDescriptor();
-        if (descriptor != null && descriptor.eventNameOnSuccess() != null && !descriptor.eventNameOnSuccess().isBlank()) {
-            return descriptor.eventNameOnSuccess();
-        }
         String explicit = metadataText(procedure.metadata(), "eventNameOnSuccess");
         if (!explicit.isBlank()) {
             return explicit;
@@ -157,27 +140,11 @@ final class TrustedActionRegistryTemplate {
     }
 
     private static String descriptorAuditResourceType(TrustedProcedure procedure) {
-        CompiledGeneratedActionDescriptorSpec descriptor = procedure.actionDescriptor();
-        if (descriptor != null && descriptor.auditResourceType() != null && !descriptor.auditResourceType().isBlank()) {
-            return descriptor.auditResourceType();
-        }
         String explicit = metadataText(procedure.metadata(), "auditResourceType");
         return explicit.isBlank() ? "GENERATED_ACTION" : explicit;
     }
 
     private static String descriptorPolicy(TrustedProcedure procedure, String metadataKey, String defaultValue) {
-        CompiledGeneratedActionDescriptorSpec descriptor = procedure.actionDescriptor();
-        if (descriptor != null) {
-            String value = switch (metadataKey) {
-                case "idempotencyPolicy" -> descriptor.idempotencyPolicy();
-                case "tracePolicy" -> descriptor.tracePolicy();
-                case "correlationPolicy" -> descriptor.correlationPolicy();
-                default -> "";
-            };
-            if (value != null && !value.isBlank()) {
-                return value;
-            }
-        }
         String explicit = metadataText(procedure.metadata(), metadataKey);
         return explicit.isBlank() ? defaultValue : explicit;
     }

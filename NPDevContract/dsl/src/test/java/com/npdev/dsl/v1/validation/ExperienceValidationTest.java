@@ -452,7 +452,7 @@ class ExperienceValidationTest {
 
     private static ModelAst directModel(List<JsonNode> experiences, List<JsonNode> screens) {
         return new ModelAst("direct.demo", "3.0.0", "1.0", List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 null, null, List.of(), List.of(), List.of(), List.of(), List.of(), Map.of(), List.of(), List.of(),
                 null, null, experiences, screens);
     }

@@ -60,15 +60,7 @@ public class BusinessUiEmitterPanelManifestTest {
                       ]
                     }
                   ],
-                  "procedures": [
-                    {
-                      "name": "CountProjects",
-                      "steps": [
-                        { "type": "listConcepts", "concept": "Project", "target": "projects" },
-                        { "type": "return", "value": "$projects" }
-                      ]
-                    }
-                  ],
+                  "flows": [{"name": "CountProjects", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
                   "panels": [
                     {
                       "name": "ProjectsOverviewPanel",
@@ -110,15 +102,7 @@ public class BusinessUiEmitterPanelManifestTest {
                       ]
                     }
                   ],
-                  "procedures": [
-                    {
-                      "name": "CountProjects",
-                      "steps": [
-                        { "type": "listConcepts", "concept": "Project", "target": "projects" },
-                        { "type": "return", "value": "$projects" }
-                      ]
-                    }
-                  ],
+                  "flows": [{"name": "CountProjects", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
                   "panels": [
                     {
                       "name": "AdminOnlyPanel",

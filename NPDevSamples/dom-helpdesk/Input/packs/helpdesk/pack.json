@@ -2,7 +2,7 @@
   "$schema": "../../schemas/pack.schema.json",
   "dslVersion": "3.0.0",
   "pack": "helpdesk",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "namespace": "com.npdev.helpdesk",
   "description": "NPDev helpdesk pack: agents, ticket categories, tickets and ticket comments. A person with the 'requester' role raises tickets and adds comments and sees only the tickets they raised themselves (never the queue, and never another requester's ticket); 'helpdeskAgent' works tickets (takes, waits on the requester, resolves, reopens, closes) and comments; 'helpdeskManager' also maintains agents and categories. A ticket is NEW, then OPEN, PENDING (waiting for the requester) and RESOLVED, and finally CLOSED; a ticket cannot be taken, paused, resolved or reopened without an assigned agent (it may still be closed without action straight from NEW). How many tickets are in each state and how many each agent holds are derived by queries. The three roles are logical: the importing app binds them with provides.roleBindings { \"requester\": ..., \"helpdeskAgent\": ..., \"helpdeskManager\": ... } (composition refuses when one is unbound) and grants them read/create/update on the pack's concepts in its own roles[] (see the dom-helpdesk sample).",
   "category": "other",

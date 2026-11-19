@@ -16,7 +16,6 @@ public final class CompiledModel {
     private final List<CompiledEvent> events;
     private final List<CompiledFlow> flows;
     private final List<CompiledQuery> queries;
-    private final List<CompiledProcedure> procedures;
     private final List<CompiledPanel> panels;
     private final List<CompiledGuidePage> guidePages;
     private final List<CompiledAggregate> aggregates;
@@ -96,10 +95,9 @@ public final class CompiledModel {
             List<CompiledEvent> events,
             List<CompiledFlow> flows,
             List<CompiledQuery> queries,
-            List<CompiledProcedure> procedures,
             List<CompiledPanel> panels
     ) {
-        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, procedures, panels, List.of());
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, panels, List.of());
     }
 
     public CompiledModel(
@@ -113,11 +111,10 @@ public final class CompiledModel {
             List<CompiledEvent> events,
             List<CompiledFlow> flows,
             List<CompiledQuery> queries,
-            List<CompiledProcedure> procedures,
             List<CompiledPanel> panels,
             List<CompiledGuidePage> guidePages
     ) {
-        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, procedures, panels, guidePages, List.of());
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, panels, guidePages, List.of());
     }
 
     public CompiledModel(
@@ -131,12 +128,11 @@ public final class CompiledModel {
             List<CompiledEvent> events,
             List<CompiledFlow> flows,
             List<CompiledQuery> queries,
-            List<CompiledProcedure> procedures,
             List<CompiledPanel> panels,
             List<CompiledGuidePage> guidePages,
             List<CompiledAggregate> aggregates
     ) {
-        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, procedures, panels, guidePages, aggregates, List.of());
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, panels, guidePages, aggregates, List.of());
     }
 
     public CompiledModel(
@@ -150,13 +146,12 @@ public final class CompiledModel {
             List<CompiledEvent> events,
             List<CompiledFlow> flows,
             List<CompiledQuery> queries,
-            List<CompiledProcedure> procedures,
             List<CompiledPanel> panels,
             List<CompiledGuidePage> guidePages,
             List<CompiledAggregate> aggregates,
             List<CompiledAutoPanel> autoPanels
     ) {
-        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, panels, guidePages, aggregates, autoPanels,
                 List.of());
     }
 
@@ -172,14 +167,13 @@ public final class CompiledModel {
             List<CompiledEvent> events,
             List<CompiledFlow> flows,
             List<CompiledQuery> queries,
-            List<CompiledProcedure> procedures,
             List<CompiledPanel> panels,
             List<CompiledGuidePage> guidePages,
             List<CompiledAggregate> aggregates,
             List<CompiledAutoPanel> autoPanels,
             List<CompiledDocument> documents
     ) {
-        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, panels, guidePages, aggregates, autoPanels,
                 documents, null);
     }
 
@@ -195,7 +189,6 @@ public final class CompiledModel {
             List<CompiledEvent> events,
             List<CompiledFlow> flows,
             List<CompiledQuery> queries,
-            List<CompiledProcedure> procedures,
             List<CompiledPanel> panels,
             List<CompiledGuidePage> guidePages,
             List<CompiledAggregate> aggregates,
@@ -203,7 +196,7 @@ public final class CompiledModel {
             List<CompiledDocument> documents,
             CompiledExternalAi externalAi
     ) {
-        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, panels, guidePages, aggregates, autoPanels,
                 documents, externalAi, null);
     }
 
@@ -219,7 +212,6 @@ public final class CompiledModel {
             List<CompiledEvent> events,
             List<CompiledFlow> flows,
             List<CompiledQuery> queries,
-            List<CompiledProcedure> procedures,
             List<CompiledPanel> panels,
             List<CompiledGuidePage> guidePages,
             List<CompiledAggregate> aggregates,
@@ -228,7 +220,7 @@ public final class CompiledModel {
             CompiledExternalAi externalAi,
             CompiledSettings settings
     ) {
-        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, panels, guidePages, aggregates, autoPanels,
                 documents, externalAi, settings, List.of());
     }
 
@@ -244,7 +236,6 @@ public final class CompiledModel {
             List<CompiledEvent> events,
             List<CompiledFlow> flows,
             List<CompiledQuery> queries,
-            List<CompiledProcedure> procedures,
             List<CompiledPanel> panels,
             List<CompiledGuidePage> guidePages,
             List<CompiledAggregate> aggregates,
@@ -254,7 +245,7 @@ public final class CompiledModel {
             CompiledSettings settings,
             List<CompiledRole> roles
     ) {
-        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, panels, guidePages, aggregates, autoPanels,
                 documents, externalAi, settings, roles, List.of(), List.of());
     }
 
@@ -271,7 +262,6 @@ public final class CompiledModel {
             List<CompiledEvent> events,
             List<CompiledFlow> flows,
             List<CompiledQuery> queries,
-            List<CompiledProcedure> procedures,
             List<CompiledPanel> panels,
             List<CompiledGuidePage> guidePages,
             List<CompiledAggregate> aggregates,
@@ -283,7 +273,7 @@ public final class CompiledModel {
             List<CompiledPropertyScope> propertyScopes,
             List<CompiledProperty> properties
     ) {
-        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, panels, guidePages, aggregates, autoPanels,
                 documents, externalAi, settings, roles, propertyScopes, properties, List.of());
     }
 
@@ -299,7 +289,6 @@ public final class CompiledModel {
             List<CompiledEvent> events,
             List<CompiledFlow> flows,
             List<CompiledQuery> queries,
-            List<CompiledProcedure> procedures,
             List<CompiledPanel> panels,
             List<CompiledGuidePage> guidePages,
             List<CompiledAggregate> aggregates,
@@ -312,7 +301,7 @@ public final class CompiledModel {
             List<CompiledProperty> properties,
             List<CompiledContext> contexts
     ) {
-        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, panels, guidePages, aggregates, autoPanels,
                 documents, externalAi, settings, roles, propertyScopes, properties, contexts, List.of());
     }
 
@@ -329,7 +318,6 @@ public final class CompiledModel {
             List<CompiledEvent> events,
             List<CompiledFlow> flows,
             List<CompiledQuery> queries,
-            List<CompiledProcedure> procedures,
             List<CompiledPanel> panels,
             List<CompiledGuidePage> guidePages,
             List<CompiledAggregate> aggregates,
@@ -343,7 +331,7 @@ public final class CompiledModel {
             List<CompiledContext> contexts,
             List<CompiledConversion> conversions
     ) {
-        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, panels, guidePages, aggregates, autoPanels,
                 documents, externalAi, settings, roles, propertyScopes, properties, contexts, conversions, List.of());
     }
 
@@ -360,7 +348,6 @@ public final class CompiledModel {
             List<CompiledEvent> events,
             List<CompiledFlow> flows,
             List<CompiledQuery> queries,
-            List<CompiledProcedure> procedures,
             List<CompiledPanel> panels,
             List<CompiledGuidePage> guidePages,
             List<CompiledAggregate> aggregates,
@@ -375,7 +362,7 @@ public final class CompiledModel {
             List<CompiledConversion> conversions,
             List<CompiledWebhook> webhooks
     ) {
-        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, panels, guidePages, aggregates, autoPanels,
                 documents, externalAi, settings, roles, propertyScopes, properties, contexts, conversions, webhooks,
                 List.of());
     }
@@ -393,7 +380,6 @@ public final class CompiledModel {
             List<CompiledEvent> events,
             List<CompiledFlow> flows,
             List<CompiledQuery> queries,
-            List<CompiledProcedure> procedures,
             List<CompiledPanel> panels,
             List<CompiledGuidePage> guidePages,
             List<CompiledAggregate> aggregates,
@@ -409,7 +395,7 @@ public final class CompiledModel {
             List<CompiledWebhook> webhooks,
             List<CompiledSequence> sequences
     ) {
-        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, panels, guidePages, aggregates, autoPanels,
                 documents, externalAi, settings, roles, propertyScopes, properties, contexts, conversions, webhooks,
                 sequences, List.of());
     }
@@ -426,7 +412,6 @@ public final class CompiledModel {
             List<CompiledEvent> events,
             List<CompiledFlow> flows,
             List<CompiledQuery> queries,
-            List<CompiledProcedure> procedures,
             List<CompiledPanel> panels,
             List<CompiledGuidePage> guidePages,
             List<CompiledAggregate> aggregates,
@@ -443,7 +428,7 @@ public final class CompiledModel {
             List<CompiledSequence> sequences,
             List<CompiledSeed> seeds
     ) {
-        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, panels, guidePages, aggregates, autoPanels,
                 documents, externalAi, settings, roles, propertyScopes, properties, contexts, conversions, webhooks,
                 sequences, seeds, null);
     }
@@ -461,7 +446,6 @@ public final class CompiledModel {
             List<CompiledEvent> events,
             List<CompiledFlow> flows,
             List<CompiledQuery> queries,
-            List<CompiledProcedure> procedures,
             List<CompiledPanel> panels,
             List<CompiledGuidePage> guidePages,
             List<CompiledAggregate> aggregates,
@@ -479,7 +463,7 @@ public final class CompiledModel {
             List<CompiledSeed> seeds,
             CompiledAppShell appShell
     ) {
-        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, panels, guidePages, aggregates, autoPanels,
                 documents, externalAi, settings, roles, propertyScopes, properties, contexts, conversions, webhooks,
                 sequences, seeds, appShell, null);
     }
@@ -497,7 +481,6 @@ public final class CompiledModel {
             List<CompiledEvent> events,
             List<CompiledFlow> flows,
             List<CompiledQuery> queries,
-            List<CompiledProcedure> procedures,
             List<CompiledPanel> panels,
             List<CompiledGuidePage> guidePages,
             List<CompiledAggregate> aggregates,
@@ -516,7 +499,7 @@ public final class CompiledModel {
             CompiledAppShell appShell,
             CompiledAgentAccess agentAccess
     ) {
-        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, procedures, panels, guidePages, aggregates, autoPanels,
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows, queries, panels, guidePages, aggregates, autoPanels,
                 documents, externalAi, settings, roles, propertyScopes, properties, contexts, conversions, webhooks,
                 sequences, seeds, appShell, agentAccess, null, null);
     }
@@ -534,7 +517,6 @@ public final class CompiledModel {
             List<CompiledEvent> events,
             List<CompiledFlow> flows,
             List<CompiledQuery> queries,
-            List<CompiledProcedure> procedures,
             List<CompiledPanel> panels,
             List<CompiledGuidePage> guidePages,
             List<CompiledAggregate> aggregates,
@@ -569,7 +551,6 @@ public final class CompiledModel {
         this.events = new ArrayList<>(events);
         this.flows = new ArrayList<>(flows);
         this.queries = new ArrayList<>(queries);
-        this.procedures = new ArrayList<>(procedures);
         this.panels = new ArrayList<>(panels);
         this.guidePages = new ArrayList<>(guidePages);
         this.aggregates = new ArrayList<>(aggregates);
@@ -666,10 +647,6 @@ public final class CompiledModel {
         return Collections.unmodifiableList(queries);
     }
 
-
-    public List<CompiledProcedure> getProcedures() {
-        return Collections.unmodifiableList(procedures);
-    }
 
     public List<CompiledPanel> getPanels() {
         return Collections.unmodifiableList(panels);

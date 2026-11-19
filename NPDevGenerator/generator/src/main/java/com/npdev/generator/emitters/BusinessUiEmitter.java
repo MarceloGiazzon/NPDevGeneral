@@ -20,7 +20,7 @@ import com.npdev.dsl.v1.compiled.CompiledGuidePageRegions;
 import com.npdev.dsl.v1.compiled.CompiledGuidePageTheme;
 import com.npdev.dsl.v1.compiled.GuidePageDefaults;
 import com.npdev.dsl.v1.compiled.CompiledModel;
-import com.npdev.dsl.v1.compiled.CompiledProcedureParameter;
+import com.npdev.dsl.v1.compiled.CompiledQueryParameter;
 import com.npdev.dsl.v1.compiled.PlatformStrings;
 import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
@@ -1067,7 +1067,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                 List<Map<String, Object>> gadgetParameters = new ArrayList<>();
                 CompiledQuery boundQuery = gadget.query() == null ? null : queriesByName.get(gadget.query());
                 if (boundQuery != null) {
-                    for (CompiledProcedureParameter parameter : boundQuery.parameters()) {
+                    for (CompiledQueryParameter parameter : boundQuery.parameters()) {
                         Map<String, Object> parameterNode = new LinkedHashMap<>();
                         parameterNode.put("name", parameter.name());
                         parameterNode.put("type", parameter.type() == null ? "string" : parameter.type());

@@ -459,7 +459,7 @@ class NPDevCliMainTest {
     }
 
     @Test
-    void validateBundleAndListProceduresAreScriptable() throws Exception {
+    void validateBundleIsScriptable() throws Exception {
         Path model = writeText(procedureModelJson(), "model-procedure", ".json");
 
         CommandResult validate = runCli(
@@ -470,16 +470,6 @@ class NPDevCliMainTest {
 
         assertEquals(0, validate.exitCode());
         assertEquals(Boolean.TRUE, parseObject(validate.stdout()).get("valid"));
-
-        CommandResult list = runCli(
-                "list-procedures",
-                "--model", model.toString(),
-                "--format", "json"
-        );
-
-        assertEquals(0, list.exitCode());
-        assertTrue(list.stdout().contains("EchoInput"));
-        assertTrue(list.stdout().contains("assign"));
     }
 
     private static Path modelPath() {
@@ -642,16 +632,7 @@ class NPDevCliMainTest {
                       ]
                     }
                   ],
-                  "procedures":[
-                    {
-                      "name":"EchoInput",
-                      "steps":[
-                        {"name":"copy-input","type":"assign","target":"copied","value":"$input"},
-                        {"name":"return-copy","type":"return","value":"$copied"}
-                      ]
-                    }
-                  ]
-                }
+                  "flows": [{"name": "EchoInput", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}]}
                 """;
     }
 

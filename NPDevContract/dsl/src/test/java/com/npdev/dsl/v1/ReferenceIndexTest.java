@@ -524,9 +524,7 @@ class ReferenceIndexTest {
                       { "name": "name", "type": "string", "ui": { "label": "Name" } }
                     ] }
                   ],
-                  "procedures": [
-                    { "name": "CountProjects", "steps": [ { "name": "done", "type": "return", "value": "1" } ] }
-                  ],
+                  "flows": [{"name": "CountProjects", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
                   "panels": [
                     {
                       "name": "ProjectsPanel",
@@ -708,52 +706,6 @@ class ReferenceIndexTest {
         List<ReferenceEdge> edges = edgesOf(index, "EitherStatus");
         assertEquals(1, edges.size(), describe(edges));
         assertEquals(Resolution.UNDECIDABLE, edges.get(0).resolution());
-    }
-
-    @Test
-    void anActionInputNamingAProcedureVarIsResolvedNotOrphaned() throws Exception {
-        // RenameOrderStatusProcedure declares NO parameters and reads $newStatus. The workbench
-        // action's inputFields ["newStatus"] is correct, and that $var read is its only declaration.
-        ReferenceIndex index = ReferenceIndex.build(parse("""
-                {
-                  "namespace": "xref.actioninput",
-                  "dslVersion": "3.0.0",
-                  "version": "1.0",
-                  "concepts": [
-                    { "name": "Order", "ui": { "label": "Order" }, "fields": [
-                      { "name": "id", "type": "uuid", "id": true, "required": true },
-                      { "name": "status", "type": "string", "ui": { "label": "Status" } }
-                    ] }
-                  ],
-                  "procedures": [
-                    { "name": "RenameOrderStatus", "steps": [
-                      { "name": "map-status", "type": "mapValue", "value": "$newStatus", "target": "status" },
-                      { "name": "done", "type": "return", "value": "$status" }
-                    ] }
-                  ],
-                  "autoPanels": [
-                    {
-                      "name": "OrderWorkbench",
-                      "concept": "Order",
-                      "route": "/order-wb",
-                      "surfaces": ["transaction"],
-                      "transaction": {
-                        "fields": ["status"],
-                        "actions": [
-                          { "procedure": "RenameOrderStatus", "label": "Apply status",
-                            "inputFields": ["newStatus"] }
-                        ]
-                      }
-                    }
-                  ]
-                }
-                """));
-
-        assertEquals(List.of(), unresolvedOf(index), describe(unresolvedOf(index)));
-        assertTrue(index.edges().stream()
-                        .anyMatch(edge -> edge.toName().equals("RenameOrderStatus.newStatus")
-                                && edge.resolution() == Resolution.RESOLVED),
-                "resolved against the procedure's own $var read");
     }
 
     @Test

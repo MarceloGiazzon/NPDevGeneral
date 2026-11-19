@@ -68,7 +68,7 @@ final class SchemaRealizationEmitterSecondaryIndexTest {
                 "test", "1.0.0", "1.0.0",
                 Map.of(order.getName(), order, orderItem.getName(), orderItem),
                 List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(openOrders), List.of(), List.of(panel), List.of(), List.of(), List.of());
+                List.of(openOrders), List.of(panel), List.of(), List.of(), List.of());
 
         Path outRoot = tempDir.resolve("app");
         new SchemaRealizationEmitter().emit(model, outRoot, plan(), tempDir.resolve("model.json"));
@@ -113,7 +113,7 @@ final class SchemaRealizationEmitterSecondaryIndexTest {
         CompiledModel model = new CompiledModel(
                 "test", "1.0.0", "1.0.0", Map.of(order.getName(), order),
                 List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(openOrders), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+                List.of(openOrders), List.of(), List.of(), List.of(), List.of(), List.of());
 
         Path outRoot = tempDir.resolve("app-manifest");
         new SchemaRealizationEmitter().emit(model, outRoot, plan(), tempDir.resolve("model.json"));

@@ -1,6 +1,6 @@
 package com.finalexec.api;
 
-import com.npdev.dsl.v1.compiled.CompiledProcedureParameter;
+import com.npdev.dsl.v1.compiled.CompiledQueryParameter;
 import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.kernel.concepts.ValueExpressionEvaluator;
 
@@ -34,9 +34,9 @@ public final class NamedQueryBinding {
      * @throws IllegalArgumentException when a declared parameter has no value (callers map this to 400)
      */
     public static Map<String, Object> bind(
-            Function<String, String> lookup, List<CompiledProcedureParameter> parameters) {
+            Function<String, String> lookup, List<CompiledQueryParameter> parameters) {
         Map<String, Object> bound = new LinkedHashMap<>();
-        for (CompiledProcedureParameter parameter : parameters) {
+        for (CompiledQueryParameter parameter : parameters) {
             String raw = lookup.apply(parameter.name());
             bound.put(parameter.name(), raw == null ? defaultValue(parameter) : coerceLiteral(raw));
         }
@@ -48,7 +48,7 @@ public final class NamedQueryBinding {
      * no record in scope (model validation allows only literals and the registered value functions, e.g.
      * {@code addDays(today(), -7)}). With no default, X0 still applies: refused, never silently unfiltered.
      */
-    private static Object defaultValue(CompiledProcedureParameter parameter) {
+    private static Object defaultValue(CompiledQueryParameter parameter) {
         String expression = parameter.defaultExpression();
         if (expression == null || expression.isBlank()) {
             throw new IllegalArgumentException("Query parameter '" + parameter.name()

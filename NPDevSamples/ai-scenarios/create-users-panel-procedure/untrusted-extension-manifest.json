@@ -6,7 +6,7 @@
   "entries": [
     {
       "entryId": "procedure-create-users",
-      "kind": "procedure",
+      "kind": "flow",
       "relativePath": "procedure/CreateUsersProcedure.java",
       "language": "java",
       "sha256": "75eccc3304d52f7ac549fdb38127838f56a2bb55c24edc5616988bd916d4949a",
