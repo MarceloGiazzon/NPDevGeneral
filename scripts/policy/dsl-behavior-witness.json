@@ -64,6 +64,18 @@
         "crossAggregateReasonWaivesTheRuleForThatFlowOnly"
       ],
       "reason": "Validation-time only: it waives the one-aggregate-one-transaction check for one flow and does nothing in a booted app, so no REST probe can witness it; the test asserts the waived flow passes and an unwaived sibling still fails."
+    },
+    {
+      "keywords": [
+        "flow.metadata"
+      ],
+      "category": "generationTest",
+      "testClass": "NPDevGenerator/generator/src/test/java/com/npdev/generator/UntrustedExtensionEmitterFlowKindTest.java",
+      "methods": [
+        "aFlowNamingAnExtensionGeneratesTheTrustedClassAndARegistryEntryUnderTheFlowName",
+        "aFlowNamingAnExtensionWithNoManifestEntryFailsClosed"
+      ],
+      "reason": "Generation-time only: flows[].metadata.untrustedExtensionEntrypoint names the hash-pinned Java class the generator compiles into the app in place of the flow's placeholder steps; a booted REST probe cannot tell it from the flow it replaces. These tests run the real parse, compile and emit and assert the pinned class and a registry entry under the flow name are generated, and that a flow naming an extension with no manifest entry fails closed (REG-342)."
     }
   ]
 }
