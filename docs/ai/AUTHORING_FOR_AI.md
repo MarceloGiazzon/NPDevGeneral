@@ -108,7 +108,19 @@ Exact shapes (verified); copy them, do not invent keys.
   `payload`, and a flow with an event trigger creates a record from it (the event payload arrives as `$input`):
   `"flows":[{"name":"LogReturn","expose":"internal","runAs":"system","trigger":{"event":"LoanReturned"},"steps":[{"name":"build","type":"map","select":{"loan":"$input.id"},"output":"row"},{"name":"log","type":"createConcept","scope":"ReturnLog","input":"$row","output":"created"}]}]`.
 
-## Reuse and extend: packs, file splits, your own code, outside APIs
+## Use a published pack
+
+**Packs: reuse a published concept set instead of inventing it.** Add to `packs[]` (no other keys
+than `from`, optional `as`); concepts of the pack are named `<as or id>::<Concept>`, e.g.
+`"reference":{"target":"identity::User"}`. Import only a pack from the "Pack catalog" list in this
+brief (when it has one), copying its `from` coordinate exactly: never invent a pack, a version or a
+coordinate. NPDev downloads and locks the pack when it checks your answer (on the command line the
+person runs `npdev pack update --model <path>`); you only write the entry. Role-based packs name
+roles your app must bind to its own: if unsure, ask instead of guessing. With no catalog list, or
+no pack that fits, model the concepts yourself (your own `User`, `Customer`...).
+No pack exists for payments or ride-hailing: model those yourself. Distances and "nearest" are built in (see `geo`).
+
+## Reuse and extend: back office, screens, file splits, your own code, outside APIs
 
 **A flow that saves needs nothing declared.** A `createConcept`/`updateConcept` step gets the
 `persistence` capability and its `repository` binding derived, with the operations the flows
@@ -130,16 +142,6 @@ Maps: `"map":{"lat":"pickupLat","lng":"pickupLng","label":"..","center":"me","ti
 Picker (`kind:"picker"`): `multiSelect`, `filters` (searchable fields), `returnMapping` (`{returnedName:field}`). Document (`kind:"document"`): `pageSize`, `marginMm`, `metadata`, `aggregate` + `bands`, `logo`, or `report:true` with `printColumns`, `groupBy`, `subtotals`, `grandTotal`.
 
 **Platform state is not app data.** A concept marked `"system":true` (the identity pack's credentials and sessions) gets no REST route, menu, export or agent tool; a concept of yours that holds a password hash is refused.
-
-**Packs: reuse a published concept set instead of inventing it.** Add to `packs[]` (no other keys
-than `from`, optional `as`); concepts of the pack are named `<as or id>::<Concept>`, e.g.
-`"reference":{"target":"identity::User"}`. Import only a pack from the "Pack catalog" list in this
-brief (when it has one), copying its `from` coordinate exactly: never invent a pack, a version or a
-coordinate. NPDev downloads and locks the pack when it checks your answer (on the command line the
-person runs `npdev pack update --model <path>`); you only write the entry. Role-based packs name
-roles your app must bind to its own: if unsure, ask instead of guessing. With no catalog list, or
-no pack that fits, model the concepts yourself (your own `User`, `Customer`...).
-No pack exists for payments or ride-hailing: model those yourself. Distances and "nearest" are built in (see `geo`).
 
 **Split a big model.** An entry of ANY array may be a `$ref`: `"concepts":[{"$ref":"concepts/billing.json"}]`
 (relative `.json` path, no `..`). If the file is a JSON object holding an array of that same name

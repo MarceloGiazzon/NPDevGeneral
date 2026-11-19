@@ -262,6 +262,19 @@ class UpgradeAppTest(unittest.TestCase):
         result = self._upgrade(allow_destructive=True, ack_items="Customer.name")
         self.assertEqual(result["outcome"], "REFUSED")
 
+    def test_reg321_an_explicit_table_name_is_refused_cleanly_not_acknowledged_blind(self):
+        # A concept with an explicit tableName ("tag_store") drops a table the snake+"s" rule does not
+        # name, so the ticked "Tag" must NOT cover it: a clean REFUSED naming the table, old jar back.
+        self.impact = 3
+        self.impact_text = self._impact_with("DESTRUCTIVE_DROP_TABLE  tag_store  -  DROP TABLE")
+        result = self._upgrade(allow_destructive=True, ack_items="Tag")
+        self.assertEqual(result["outcome"], "REFUSED")
+        diag = [d for d in result["diagnostics"] if d["code"] == "UNACKNOWLEDGED_DESTRUCTIVE_ITEM"]
+        self.assertEqual(len(diag), 1)
+        self.assertIn("tag_store", diag[0]["message"])
+        self.assertEqual(self.app.boot_jars, [b"OLD-JAR"])
+        self.assertNotIn("ab12" * 16, [c.get("destructive_ack") for c in self.app.calls])
+
     def test_reg321_unreadable_rows_fail_closed(self):
         self.impact = 3
         self.impact_text = "  summary: 0 safe / 0 attention / 2 destructive\n  acknowledgment token: " + "ab12" * 16 + "\n"

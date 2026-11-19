@@ -4,7 +4,8 @@
     "Ask before you write",
     "Field types",
     "Writing a pack",
-    "The loop"
+    "The loop",
+    "Reuse and extend"
   ],
   "valueReferencePathPrefixes": [
     "$.concepts[]",
@@ -38,6 +39,7 @@
       "The loop",
       "Which block do I use?",
       "Totals, reports and reactions",
+      "Use a published pack",
       "Reuse and extend"
     ],
     "goldenSamples": [

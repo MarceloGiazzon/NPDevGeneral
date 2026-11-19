@@ -60,6 +60,10 @@ detail: |
   is the CLI-level backstop proven above. Side finding (boundary B5, not a defect here): putting a removed concept BACK on a database that already migrated past it is refused
   at boot ("schema_ahead_detected ... Downgrade is not supported"), so a removal test needs a fresh app/database each time. STILL open: an explicit-tableName model (the
   refusal must be clean) and the decision to drop the "cannot do this from here yet" screen for the other cases.
+  PROGRESS 2026-11-19 (later) -- explicit-tableName refusal pinned at unit level: test_reg321_an_explicit_table_name_is_refused_cleanly_not_acknowledged_blind
+  (test_app_upgrade.py 31/31) -- an impact row for table `tag_store` is not covered by a ticked `Tag` (the rule names `tags`), so the upgrade ends REFUSED with
+  UNACKNOWLEDGED_DESTRUCTIVE_ITEM naming `tag_store`, the old jar is back and no token rebuild happens. Not run against a real app with a tableName override.
+  STILL open: only the owner decision to drop the "cannot do this from here yet" screen for the other cases.
 resolution: >-
   Done when applying a confirmed removal of a record type, on a running app, ends in the app running again with the data of
   that table in the pre-upgrade backup, proven on the real window with a second app, and a destructive item the person did not
