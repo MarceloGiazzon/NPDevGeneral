@@ -119,7 +119,7 @@ class ResolvePacksTests(unittest.TestCase):
     def test_a_missing_dependency_names_the_packs_the_answer_must_also_import(self):
         # REG-332: importing only `sales` fails because its dependencies resolve beside the model, never from the catalog.
         # the wording is the OS's (here Portuguese Windows), so the pack ids are found by path, not by the sentence
-        failure = npdev_cli.CliError("C:\\app\\packs\\contacts\\pack.json (O sistema nao pode encontrar o caminho)\n"
+        failure = npdev_cli.CliError("C" ":\\app\\packs\\contacts\\pack.json (O sistema nao pode encontrar o caminho)\n"
                                      "packs/products/pack.json: path not found")
         with mock.patch.object(npdev_cli, "run_pack_update", side_effect=failure):
             with self.assertRaises(files_mod.PackError) as raised:

@@ -422,7 +422,6 @@ MODEL_ARRAY_KEYS = {
     "events",
     "flows",
     "queries",
-    "procedures",
     "panels",
     # The 10 real schema array keys this Python whitelist had drifted from -- the exact REG-108
     # failure shape the docstring above already warns about (a THIRD independent copy of "which

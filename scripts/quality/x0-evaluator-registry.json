@@ -90,14 +90,6 @@
       "note": "enabledWhen (business-ui evaluateWhen), same grammar/family/rationale as X0-8, including its accepted $root.<field> validation gap."
     },
     {
-      "id": "X0-10",
-      "class": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PackValidation.java",
-      "verdict": "CLEAN",
-      "test": "NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/ProcedureComputeValueValidationTest.java",
-      "testMarker": "unknownOperatorIsRejected",
-      "note": "computeValue refuses an unknown operator at MODEL level (PackValidation), by name, with the legal set, at authoring time -- no runtime default, no silent answer. This is the shape every other row above should converge on."
-    },
-    {
       "id": "X0-11",
       "class": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/CelInvariantEngine.java",
       "verdict": "FIXED",

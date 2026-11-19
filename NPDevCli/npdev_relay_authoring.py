@@ -66,7 +66,6 @@ ITEM_LABELS = {
     "concepts": ("kind of record", "kinds of records"),
     "flows": ("process", "processes"),
     "queries": ("search", "searches"),
-    "procedures": ("action", "actions"),
     "panels": ("screen", "screens"),
     "autoPanels": ("generated screen", "generated screens"),
     "roles": ("role", "roles"),

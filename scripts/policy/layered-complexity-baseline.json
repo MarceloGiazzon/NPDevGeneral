@@ -23,11 +23,6 @@
       "kind": "definitionRequired",
       "requiredCount": 2,
       "required": ["name", "route"]
-    },
-    "procedure": {
-      "kind": "definitionRequired",
-      "requiredCount": 2,
-      "required": ["name", "steps"]
     }
   },
   "measuredOn": "2026-09-14",

@@ -18,7 +18,7 @@ was never in the picture. The runtime worked. The front door was locked. Nobody 
 
 WHAT IT CHECKS (three things, deliberately)
 -------------------------------------------
-For each step kind (`procedureStep`, `flowStep`) declared in model.schema.json:
+For each step kind (`flowStep`; `procedureStep` left with REG-342) declared in model.schema.json:
 
   1. its model-level conformance test EXISTS -- deleting the test is the cheapest way to make this
      kind of coverage evaporate, so absence is a failure, not a skip;
@@ -47,7 +47,6 @@ TEST_ROOT = REPO_ROOT / "NPDevContract" / "dsl" / "src" / "test" / "java" / "com
 
 # stepKind in model.schema.json -> the model-level conformance test that must cover it.
 CONFORMANCE_TESTS = {
-    "procedureStep": TEST_ROOT / "ProcedureStepTypeConformanceTest.java",
     "flowStep": TEST_ROOT / "FlowStepTypeConformanceTest.java",
 }
 
@@ -125,17 +124,17 @@ def calibrate() -> int:
     import tempfile
 
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8-sig"))
-    real_enum = schema_enum(schema, "procedureStep")
-    real_source = CONFORMANCE_TESTS["procedureStep"].read_text(encoding="utf-8")
+    real_enum = schema_enum(schema, "flowStep")
+    real_source = CONFORMANCE_TESTS["flowStep"].read_text(encoding="utf-8")
     ok = True
 
     def report(label: str, source: str | None, expect_fail: bool) -> None:
         nonlocal ok
         with tempfile.TemporaryDirectory() as d:
-            path = Path(d) / "ProcedureStepTypeConformanceTest.java"
+            path = Path(d) / "FlowStepTypeConformanceTest.java"
             if source is not None:
                 path.write_text(source, encoding="utf-8")
-            problems = check_kind("procedureStep", real_enum, path)
+            problems = check_kind("flowStep", real_enum, path)
         fired = bool(problems)
         passed = fired == expect_fail
         ok = ok and passed
@@ -145,9 +144,10 @@ def calibrate() -> int:
 
     print("Calibration -- must catch a missing example and a test that never reaches the validator:")
     report("the real conformance test vs. the real schema enum", real_source, expect_fail=False)
-    # Drop one enum value's example. patchConcept is the right one to drop: it IS REG-89.
-    report("an enum value with no example in the fixture (patchConcept removed)",
-           real_source.replace('"type": "patchConcept"', '"type": "conceptUpdate"'), expect_fail=True)
+    # Drop one enum value's example (the first declared value; the old procedureStep control dropped REG-89's patchConcept).
+    dropped = real_enum[0]
+    report(f"an enum value with no example in the fixture ({dropped} removed)",
+           real_source.replace(f'"type": "{dropped}"', '"type": "notARealStepType"'), expect_fail=True)
     report("a fixture-complete test that never calls SemanticValidator (REG-89's own defect)",
            real_source.replace("new SemanticValidator()", "new NoopValidatorStandIn()"), expect_fail=True)
     report("no conformance test on disk at all", None, expect_fail=True)

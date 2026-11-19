@@ -23,7 +23,7 @@
     },
     {
       "path": "scripts/quality/check-step-type-test-coverage.py",
-      "reads": "$defs.flowStep.properties.type.enum and $defs.procedureStep.properties.type.enum -- every declared step-kind value",
+      "reads": "$defs.flowStep.properties.type.enum -- every declared step-kind value (procedureStep left with REG-342)",
       "breaksIf": "the enum read comes back empty (schema restructured, path changed) -- ALREADY guarded: this script's own run() treats zero enum values as 'this check has gone stale', a hard failure, not a silent pass. No new gate needed.",
       "assertion": "ALREADY ENFORCED by the script's own 'no type enum found in the schema' check (see its source, ~line 106). Listed here for completeness, not because it needed a new gate.",
       "status": "ALREADY PROTECTED (pre-existing)"
@@ -33,13 +33,6 @@
       "reads": "$defs.flowStep.properties.type.enum -- asserts every value has a corresponding FlowValidation step-type case and a minimal model-level fixture",
       "breaksIf": "a new flowStep.type enum value ships with no matching test case -- ALREADY guarded: this is a JUnit conformance test, so a gap fails the build loudly (red X), not silently. No new gate needed.",
       "assertion": "ALREADY ENFORCED by JUnit (this test's own pass/fail IS the gate).",
-      "status": "ALREADY PROTECTED (pre-existing)"
-    },
-    {
-      "path": "NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/ProcedureStepTypeConformanceTest.java",
-      "reads": "$defs.procedureStep.properties.type.enum -- same shape as FlowStepTypeConformanceTest, for procedureStep",
-      "breaksIf": "same as FlowStepTypeConformanceTest -- ALREADY guarded by JUnit.",
-      "assertion": "ALREADY ENFORCED by JUnit.",
       "status": "ALREADY PROTECTED (pre-existing)"
     },
     {

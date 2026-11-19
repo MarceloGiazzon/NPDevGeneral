@@ -4,7 +4,9 @@ title: >-
   runtime (COMPUTE_VALUE_INVALID_OPERAND); no today()/addDays/daysBetween
 type: GAP
 severity: HIGH
-status: DONE
+status: OBSOLETE
+decision: >-
+  Root procedures[] (ProcedureAst, procedure steps, procedure-only validators) was removed end to end in REG-342 (2026-11-19); flows[] is the one executable unit. The surface this item fixed no longer exists, so its guard test was deleted with it.
 opened: 2026-10-29
 closed: 2026-10-29
 source: >-
@@ -44,15 +46,6 @@ files:
   - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ValidationDiagnosticNormalizer.java
   - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/ComputeValueOperandValidationTest.java
 verification: VERIFIED_LIVE
-guard:
-  kind: test
-  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/ComputeValueOperandValidationTest.java#addingADayOffsetToADateFieldIsRejected
-  asserts: >-
-    a computeValue whose operand is $p.enrolmentDate, p being a readConcept of a concept that declares enrolmentDate
-    as a date, is refused with COMPUTE_VALUE_INVALID_OPERAND naming left, Participant.enrolmentDate and date; sibling
-    tests cover datetime/boolean fields, non-numeric literals ("2026-10-01", true, the "$$5" escape), nested
-    branches, and the no-false-positive cases ($input.*, string fields, undeclared fields, a target bound twice).
-  provenRed: true
 note: >-
   The largest domain-fit gap the simulation found: 'enrol on day 0, get your dated windows' is the core of the
   domain. Not reproduced by the lead; agent's repro.

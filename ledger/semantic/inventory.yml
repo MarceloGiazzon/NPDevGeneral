@@ -92,10 +92,6 @@ keys:
     mechanism: "PanelAst + business-ui-app.mustache emitter; UI Contract (docs/UI_CONTRACT.md, docs/SCREEN_TAXONOMY.md)."
     status: shipped
 
-  - key: procedures
-    mechanism: "ProcedureAst."
-    status: shipped
-
   - key: properties
     mechanism: "PropertyAst (Move 13 / REG-108: threaded through MODEL_ARRAY_KEYS, pack.schema.json, ModelResolver, canonical JSON r/w)."
     status: shipped

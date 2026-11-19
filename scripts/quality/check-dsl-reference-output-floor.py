@@ -22,7 +22,7 @@ WHAT THIS CHECKS (two floors, deliberately)
    assume if/then/else specifically, so the NEXT composition keyword the schema grows (anyOf,
    a new discriminator shape, ...) trips this floor the same way, rather than needing this
    script updated every time describe_type() needs a new branch.
-2. BREADTH: the reference must name >= a floor count of flowStep types, procedureStep types,
+2. BREADTH: the reference must name >= a floor count of flowStep types
    and concept fields -- catches the enum/properties silently shrinking even when no field
    renders as "any" (e.g. describe_type() renders each value fine but the loop that gathers
    them drops half the list).
@@ -44,9 +44,8 @@ sys.path.insert(0, str(REPO_ROOT / "scripts" / "docs"))
 import generate_dsl_reference as gdr  # noqa: E402
 
 MIN_FLOWSTEP_TYPES = 10
-MIN_PROCEDURESTEP_TYPES = 15
 MIN_CONCEPT_FIELDS = 8
-MIN_DISCRIMINATED_FIELDS = 10  # 19 at F5/c0ecd84; 15 before FORM P5-T9b/c/e removed root documents/guidePages/aggregates/selectors (BREAKING.md 2026-11-17/18); 11 before FORM P4-T5 folded root customCapabilities into capabilities[] (BREAKING.md 2026-11-18) -- see check_breadth's own guard
+MIN_DISCRIMINATED_FIELDS = 9  # 10 before REG-342 removed root procedures[] and the procedureStep def (BREAKING.md); # 19 at F5/c0ecd84; 15 before FORM P5-T9b/c/e removed root documents/guidePages/aggregates/selectors (BREAKING.md 2026-11-17/18); 11 before FORM P4-T5 folded root customCapabilities into capabilities[] (BREAKING.md 2026-11-18) -- see check_breadth's own guard
 
 
 def discriminated_array_fields(schema: dict) -> list[str]:
@@ -94,11 +93,6 @@ def check_breadth(schema: dict) -> list[str]:
     if len(flowstep_types) < MIN_FLOWSTEP_TYPES:
         problems.append(
             f"flowStep.type enum has only {len(flowstep_types)} value(s), floor is {MIN_FLOWSTEP_TYPES}"
-        )
-    procstep_types = schema.get("$defs", {}).get("procedureStep", {}).get("properties", {}).get("type", {}).get("enum", [])
-    if len(procstep_types) < MIN_PROCEDURESTEP_TYPES:
-        problems.append(
-            f"procedureStep.type enum has only {len(procstep_types)} value(s), floor is {MIN_PROCEDURESTEP_TYPES}"
         )
     concept_fields = schema.get("$defs", {}).get("concept", {}).get("properties", {})
     if len(concept_fields) < MIN_CONCEPT_FIELDS:

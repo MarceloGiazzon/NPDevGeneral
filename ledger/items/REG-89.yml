@@ -2,7 +2,9 @@ id: REG-89
 title: "patchConcept's author-time 'id is required' rule was never relaxed for createIfMissing, so REG-77's shipped create-only runtime path was unreachable from any model"
 type: BUG
 severity: MEDIUM
-status: DONE
+status: OBSOLETE
+decision: >-
+  Root procedures[] (ProcedureAst, procedure steps, procedure-only validators) was removed end to end in REG-342 (2026-11-19); flows[] is the one executable unit. The surface this item fixed no longer exists, so its guard test was deleted with it.
 opened: 2026-07-31
 closed: 2026-07-31
 verification: VERIFIED_LIVE
@@ -54,8 +56,3 @@ detail: |
   rule. With the fix, all 5 pass. Then proven end to end: the model that produced the error above
   now generates, builds, boots, and the created InventarioArquivo row was confirmed at the data
   layer via REST.
-guard:
-  kind: test
-  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/ProcedurePatchConceptCreateIfMissingValidationTest.java#createIfMissingWithNoIdIsAccepted
-  asserts: patchConcept's author-time "id is required" rule is relaxed for createIfMissing, so a model omitting id on a createIfMissing patch validates clean instead of being unreachable.
-  provenRed: true

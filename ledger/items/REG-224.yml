@@ -7,7 +7,9 @@ title: >-
   "NullPointerException" diagnostic instead of a proper structural error, or working at all.
 type: BUG
 severity: MEDIUM
-status: DONE
+status: OBSOLETE
+decision: >-
+  Root procedures[] (ProcedureAst, procedure steps, procedure-only validators) was removed end to end in REG-342 (2026-11-19); flows[] is the one executable unit. The surface this item fixed no longer exists, so its guard test was deleted with it.
 opened: 2026-09-19
 closed: 2026-09-20
 source: >-
@@ -79,19 +81,3 @@ detail: |
   existing `CompiledProcedureStepArgsOrderTest` (args iteration-order guarantees) and
   `ProcedurePatchConceptCreateIfMissingValidationTest` (REG-89) both still green, plus the full
   `:NPDevContract:dsl:test` suite.
-guard:
-  kind: script
-  ref: >-
-    NPDevContract/dsl: gradlew :NPDevContract:dsl:test --tests
-    com.npdev.dsl.v1.ast.ProcedureStepAstNullSetValueTest --tests
-    com.npdev.dsl.v1.compiled.CompiledProcedureStepNullSetValueTest --tests
-    com.npdev.dsl.v1.validation.ProcedurePatchConceptNullSetValueTest, plus
-    scripts/quality/check-twin-pair-consistency.py for the new registry rule.
-  asserts: >-
-    All 3 new test classes green (0 failures). check-twin-pair-consistency.py: "OK: all 38
-    registered twin-pair rule(s) are consistent" (was 37, this fix added the 38th). No regression:
-    CompiledProcedureStepArgsOrderTest, ProcedurePatchConceptCreateIfMissingValidationTest, and the
-    canonical-JSON round-trip suite (CanonicalJsonIdempotenceTest,
-    CanonicalJsonRoundTripCompletenessTest, CompiledModelCanonicalJsonReaderTest,
-    CompiledModelCanonicalJsonTest) all still green after the CompiledProcedureStep change.
-  provenRed: true
