@@ -34,6 +34,11 @@ detail: |
   auto|cloudflare|ngrok, -NgrokDomain (the free ngrok static domain, remembered in tunnel.json) and -StateDir; with ngrok the connector URL
   is fixed, so it is added once. Verified against a fake ngrok only (argument shape, saved domain, auth-failure hint, own-service path);
   a real ngrok run has not happened yet.
+  STAND-IN 2026-11-18 (outside the repo, OutsideRepo/reg335-public-loop/ai_loop_public.py): the service on 8780 and the ngrok static domain were both live
+  (/api/health 200 local and public); a free-tier NVIDIA model, with the catalogue's default model, read npdev_core_context and called npdev_validate through the
+  PUBLIC ngrok /mcp/<token> endpoint (the token read from the state file, never printed) and closed the loop in 1 round: a library app reached `warning`, 7,524 in +
+  455 out tokens, 6.2 s. So the fixed-address tunnel has run for real (the "no real ngrok run" note above is out of date). Still a stand-in, not a chat UI with a
+  connector, and no browser agent on the page.
   NOT done (needs the owner or a real online AI): a real ngrok run of the fixed-address tunnel, B8 on a Free Claude.ai account, the Phase 0
   spikes S4 (an https page calling 127.0.0.1) and S5 (an AI sandbox fetch), A5 (a real browser agent closes the loop), and the optional
   phases (N7 structural mode, B9 OAuth, C Manager card).

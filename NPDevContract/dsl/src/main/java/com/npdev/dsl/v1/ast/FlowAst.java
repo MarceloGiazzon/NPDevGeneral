@@ -22,6 +22,7 @@ public final class FlowAst {
     private final String expose;
     private final String runAs;
     private final OriginAst origin;
+    private final java.util.Map<String, Object> metadata;
 
     public FlowAst(String name, String concept, List<StepAst> steps) {
         this(name, concept, null, null, List.of(), steps, null, null, null);
@@ -181,6 +182,32 @@ public final class FlowAst {
             String description,
             String crossAggregateReason
     ) {
+        this(name, concept, mode, specializesName, hooks, steps, inputSchema, outputSchema, action, startEndpoint, schedule,
+                origin, trigger, expose, runAs, description, crossAggregateReason, null);
+    }
+
+    /** FORM P4-T5 / REG-342: canonical constructor, adding {@code metadata} (today only {@code untrustedExtensionEntrypoint}). */
+    public FlowAst(
+            String name,
+            String concept,
+            String mode,
+            String specializesName,
+            List<FlowHookAst> hooks,
+            List<StepAst> steps,
+            SchemaAst inputSchema,
+            SchemaAst outputSchema,
+            ActionMetadataAst action,
+            boolean startEndpoint,
+            FlowScheduleAst schedule,
+            OriginAst origin,
+            FlowTriggerAst trigger,
+            String expose,
+            String runAs,
+            String description,
+            String crossAggregateReason,
+            java.util.Map<String, Object> metadata
+    ) {
+        this.metadata = metadata == null ? java.util.Map.of() : java.util.Map.copyOf(metadata);
         this.crossAggregateReason = crossAggregateReason;
         this.name = name;
         this.concept = concept;
@@ -199,6 +226,9 @@ public final class FlowAst {
         this.runAs = runAs;
         this.description = description;
     }
+
+    /** REG-342: free-form flow metadata; {@code untrustedExtensionEntrypoint} marks an extension-backed flow. Never null. */
+    public java.util.Map<String, Object> getMetadata() { return metadata; }
 
     /** FORM P3-T5c: what the flow is for (one or two sentences; null = none). */
     public String getDescription() { return description; }

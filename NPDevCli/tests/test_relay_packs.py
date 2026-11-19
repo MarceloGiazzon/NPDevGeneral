@@ -116,6 +116,17 @@ class ResolvePacksTests(unittest.TestCase):
         self.assertIn("contacts", str(raised.exception))
         self.assertNotIn("--allow-unsigned", str(raised.exception), "the AI cannot pass flags")
 
+    def test_a_downloaded_pack_that_fails_the_current_schema_says_the_catalog_is_out_of_date(self):
+        failure = npdev_cli.CliError("Model schema validation failed for pack.json:\n"
+                                     " - $.dslVersion: $.dslVersion: must be the constant '3.0.0'")
+        with mock.patch.object(npdev_cli, "run_pack_update", side_effect=failure):
+            with self.assertRaises(files_mod.PackError) as raised:
+                files_mod.resolve_packs(self.model_path, self.model)
+        text = str(raised.exception)
+        self.assertIn("contacts", text)
+        self.assertIn("out of date", text)
+        self.assertNotIn("could not download", text, "the download worked; the old sentence blamed the wrong thing")
+
     def test_a_failed_update_that_leaves_no_lock_is_refused(self):
         with mock.patch.object(npdev_cli, "run_pack_update", return_value=2):
             with self.assertRaises(files_mod.PackError):

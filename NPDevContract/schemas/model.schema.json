@@ -3643,6 +3643,16 @@
           "minLength": 1,
           "description": "FORM P3-T5c: why this flow may write concepts of more than one aggregate (the one-aggregate-one-transaction rule is waived for this flow only; the reason is mandatory). For a flow migrated from a multi-aggregate procedure."
         },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "untrustedExtensionEntrypoint": {
+              "type": "string",
+              "minLength": 1,
+              "description": "REG-342: this flow's implementation is an author-supplied, hash-pinned untrusted extension (a relative path into the sibling untrusted-extension-manifest.json, entry kind `flow`) rather than its declared steps -- admitted through the same bytecode/AST safety gate as a mounted plugin. The steps stay as the schema-required placeholder. 'Untrusted' names the safety posture the platform treats it with, not a judgement on the author."
+            }
+          }
+        },
         "hooks": {
           "type": "array",
           "items": {

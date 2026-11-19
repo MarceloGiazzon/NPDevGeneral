@@ -1,0 +1,41 @@
+{
+ "$comment": "REG-342 / FORM P4-T5 admission, written 2026-11-18 under the owner's choice of option A (a hash-pinned Java class binds to a FLOW, not to procedures[]). flows[].metadata carries one key today, untrustedExtensionEntrypoint, the same shape procedure.metadata and panel.metadata already had. It is the model-side opt-in the generator pairs with a manifest entry (kind flow): without it a manifest entry attached to any flow by name would let a file next to the model replace an ordinary flow. NET EFFECT: +1 slot now; retiring procedures[] (REG-342, still open) removes the whole procedure family, far more than this one slot.",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "flow.metadata",
+ "slots": [
+  "flow.metadata"
+ ],
+ "rung": 4,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-18",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "a map whose only key is a relative path into the sibling untrusted-extension-manifest.json; no logic, no ordering"
+  },
+  "notLower": {
+   "value": true,
+   "why": "it names hash-pinned Java code that the generator compiles into the app after the bytecode/AST safety gate; no expression, function or step can reference code that is not part of the model, and a Property is resolved at runtime, not baked in at generation"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "AppGen/apps/_official/WmsOffice",
+    "AppGen/apps/_experiments/WmsOfficePackTest"
+   ],
+   "note": "both apps bind RegistrarEntidadeTrustedProcedure and RegistrarProdutoTrustedProcedure through it (they were procedures[] entries before)"
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevGenerator/generator/src/test/java/com/npdev/generator/UntrustedExtensionEmitterFlowKindTest.java",
+   "note": "tests, not a booted probe: a flow naming an extension generates the pinned class and a registry entry under the flow name; a flow naming one with no manifest entry fails closed; a kind procedure entry does not satisfy a flow reference; the metadata survives parse and compile"
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "README extension table (docs/content/readme.yml): `metadata.untrustedExtensionEntrypoint` on a flow | your own Java class (the flow keeps a placeholder step), pinned by hash in the app's `untrusted-extension-manifest.json`, admitted through the same bytecode/AST safety gate as a mounted plugin. Deliberately NOT in the compact AI authoring bundle: an AI author never supplies extension code, a person does."
+  }
+ },
+ "replaces": [
+  "procedure.metadata (when procedures[] is retired)"
+ ]
+}

@@ -767,7 +767,8 @@ public final class JsonModelParser {
                         expose,
                         flowRunAs,
                         readText(flowNode, "description"),
-                        readText(flowNode, "crossAggregateReason")
+                        readText(flowNode, "crossAggregateReason"),
+                        parseObjectMap(flowNode.get("metadata"))
                 ));
             }
         }

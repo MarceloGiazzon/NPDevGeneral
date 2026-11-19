@@ -71,6 +71,22 @@ final class UntrustedExtensionManifest {
                 ));
             }
         }
+        // REG-342: a flow whose metadata names an untrusted extension is implemented by that hash-pinned Java class (its
+        // declared steps are only the schema-required placeholder). Same trust gate as a procedure; its role comes from
+        // the manifest entry's requiredRole (a flow has no permissionRequirements of its own).
+        for (CompiledFlow flow : model.getFlows()) {
+            String entrypoint = flow == null ? "" : metadataText(flow.getMetadata(), "untrustedExtensionEntrypoint");
+            if (!entrypoint.isBlank()) {
+                references.add(new TrustedReference(
+                        "flow",
+                        flow.getName(),
+                        "",
+                        entrypoint,
+                        "",
+                        flow
+                ));
+            }
+        }
         for (CompiledPanel panel : model.getPanels()) {
             String entrypoint = metadataText(panel.metadata(), "untrustedExtensionEntrypoint");
             if (!entrypoint.isBlank()) {
@@ -164,14 +180,14 @@ final class UntrustedExtensionManifest {
     }
 
     private static void validateManifestEntry(Path sourceRoot, ManifestEntry entry) {
-        if (!Set.of("procedure", "panel", "widget").contains(entry.kind())) {
+        if (!Set.of("procedure", "flow", "panel", "widget").contains(entry.kind())) {
             throw new IllegalStateException("Unsupported untrusted extension kind: " + entry.kind());
         }
         if (!entry.sha256().matches("[a-f0-9]{64}")) {
             throw new IllegalStateException("Untrusted extension manifest entry has invalid SHA-256: " + entry.relativePath());
         }
         resolveWithinSourceRoot(sourceRoot, entry.relativePath());
-        if ("procedure".equals(entry.kind())) {
+        if ("procedure".equals(entry.kind()) || "flow".equals(entry.kind())) {
             if (!isJavaIdentifier(entry.className()) || !isJavaIdentifier(entry.method())) {
                 throw new IllegalStateException("Untrusted extension procedure className/method must be Java identifiers: " + entry.relativePath());
             }
@@ -241,7 +257,9 @@ final class UntrustedExtensionManifest {
                         : null,
                 reference.source() instanceof CompiledProcedure compiledProcedure
                         ? compiledProcedure.metadata()
-                        : Map.of(),
+                        : reference.source() instanceof CompiledFlow compiledFlow
+                                ? compiledFlow.getMetadata()
+                                : Map.of(),
                 source
         );
     }

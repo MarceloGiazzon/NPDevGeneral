@@ -19,6 +19,7 @@ public final class CompiledFlow {
     private final String expose;
     private final String runAs;
     private final CompiledOrigin origin;
+    private final java.util.Map<String, Object> metadata;
 
     public CompiledFlow(String name, String concept, List<CompiledFlowStep> steps) {
         this(name, concept, null, steps, null, null, null);
@@ -130,6 +131,29 @@ public final class CompiledFlow {
             String runAs,
             String description
     ) {
+        this(name, concept, mode, steps, inputSchema, outputSchema, action, startEndpoint, schedule, origin, trigger, expose, runAs,
+                description, null);
+    }
+
+    /** REG-342: canonical constructor, adding {@code metadata} ({@code untrustedExtensionEntrypoint} marks an extension-backed flow). */
+    public CompiledFlow(
+            String name,
+            String concept,
+            String mode,
+            List<CompiledFlowStep> steps,
+            CompiledSchema inputSchema,
+            CompiledSchema outputSchema,
+            CompiledActionMetadata action,
+            boolean startEndpoint,
+            CompiledFlowSchedule schedule,
+            CompiledOrigin origin,
+            CompiledFlowTrigger trigger,
+            String expose,
+            String runAs,
+            String description,
+            java.util.Map<String, Object> metadata
+    ) {
+        this.metadata = metadata == null ? java.util.Map.of() : java.util.Map.copyOf(metadata);
         this.name = name;
         this.concept = concept;
         this.mode = mode;
@@ -148,6 +172,9 @@ public final class CompiledFlow {
 
     /** FORM P3-T5c: what the flow is for (one or two sentences; null = none). */
     public String getDescription() { return description; }
+
+    /** REG-342: free-form flow metadata; never null. */
+    public java.util.Map<String, Object> getMetadata() { return metadata; }
 
     public String getName() { return name; }
 

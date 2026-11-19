@@ -487,7 +487,8 @@ public final class ModelCompiler {
                     toCompiledFlowTrigger(flowAst.getTrigger(), inboundDoors),
                     flowAst.getExpose(),
                     flowAst.getRunAs(),
-                    flowAst.getDescription()
+                    flowAst.getDescription(),
+                    flowAst.getMetadata()
             ));
         }
 

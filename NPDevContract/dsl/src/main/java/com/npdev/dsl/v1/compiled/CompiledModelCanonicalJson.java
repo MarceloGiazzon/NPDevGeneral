@@ -1377,6 +1377,9 @@ public final class CompiledModelCanonicalJson {
             if (flow.getDescription() != null) {
                 node.put("description", flow.getDescription());
             }
+            if (!flow.getMetadata().isEmpty()) {
+                node.set("metadata", toObjectMap(flow.getMetadata()));
+            }
             flows.add(node);
         }
         return flows;

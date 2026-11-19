@@ -895,7 +895,8 @@ public final class ModelResolver {
                 flow.getExpose(),
                 flow.getRunAs(),
                 flow.getDescription(),
-                flow.getCrossAggregateReason()
+                flow.getCrossAggregateReason(),
+                flow.getMetadata()
         );
     }
 
@@ -959,7 +960,8 @@ public final class ModelResolver {
                 specialization.getExpose() != null ? specialization.getExpose() : base.getExpose(),
                 specialization.getRunAs() != null ? specialization.getRunAs() : base.getRunAs(),
                 specialization.getDescription() != null ? specialization.getDescription() : base.getDescription(),
-                specialization.getCrossAggregateReason() != null ? specialization.getCrossAggregateReason() : base.getCrossAggregateReason()
+                specialization.getCrossAggregateReason() != null ? specialization.getCrossAggregateReason() : base.getCrossAggregateReason(),
+                !specialization.getMetadata().isEmpty() ? specialization.getMetadata() : base.getMetadata()
         );
     }
 

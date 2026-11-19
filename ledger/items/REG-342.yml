@@ -14,6 +14,23 @@ detail: |
   On a bare CI checkout (no AppGen/apps) check-dsl-coverage.py sees no model declaring procedures[], so the feature and the four procedure.* step
   features are carried by reviewed entries in scripts/quality/dsl-coverage-allowlist.json that cite this item. They go away together with the schema family.
   Plan task: P4-T5 (rung 4, code capabilities), which merges customCapabilities into capabilities[] and needs the owner present (D14).
+  PROGRESS 2026-11-18 (owner chose option A: a hash-pinned Java class binds to a FLOW). DONE: flows[].metadata (untrustedExtensionEntrypoint) in the four
+  model.schema.json copies, FlowAst/CompiledFlow/parser/resolver/compiler/canonical JSON writer+reader; the generator pairs a flow's entrypoint with an
+  untrusted-extension-manifest.json entry of kind `flow` (UntrustedExtensionManifest/Emitter; role from the manifest entry; test
+  UntrustedExtensionEmitterFlowKindTest 4/4); admission record scripts/policy/dsl-keyword-admissions/flow-metadata.json (+1 slot, frozenCount 802; the
+  procedure family removal below takes far more than that back). WmsOffice and WmsOfficePackTest (AppGen, layer 2) migrated: customCapabilities ->
+  capabilities[], their two trusted procedures -> flows, the stale trusted-source-manifest.json (never read by the generator; their procedure/panel
+  entries were missing from the live manifest, so those apps could not have generated) folded into untrusted-extension-manifest.json. WordLab's
+  customCapabilities migrated too. WmsOffice and WordLab validate with 0 errors; WmsOfficePackTest only lacks the pack cache on this machine.
+  STILL OPEN (measured, not started): remove procedures[] and the procedure $def family (procedure, procedureVariable, procedureStep; procedureParameter
+  is also used by query.parameters -- rename it queryParameter) from the four model schemas + pack.schema.json (2 copies) + model-fragment.schema.json;
+  then ~170 call sites in ~28 main files (dsl: CompiledModel, ModelAst, PackValidation, ModelCompiler, ReferenceIndex, AggregateValidation,
+  JsonModelParser, the three canonical JSON classes, ComputeValueOperandValidation, ExternalAiValidation, CompiledPluginRequirementGraphBuilder,
+  PanelValidation, ModelSourceResolver's "procedures" rename map -- panel `procedure` refs must resolve against flows -- , PackDiffEngine; generator:
+  AuthoringDiffGate, PackExtensionComposer, BuiltinPackComposer, RuntimeApiEmitter, GeneratorFacade, the manifest kind `procedure`, TrustedProcedure
+  naming; kernel: procedures/ (DefaultProcedureExecutor + 10 tests), ProcedureFlowStep; runtimehost: ProcedureRunner, MetadataHotSwapController,
+  RuntimeMetadataService catalog; cli: dsl_v2_migration, npdev_cli known-names, npdev_pack_sheet) and ~12 DSL Procedure*ValidationTest classes plus
+  the ai-scenarios fixtures. Refuse a legacy root `procedures` with LEGACY_PROCEDURES_ROOT_KEY like customCapabilities. Do it as one commit.
 files:
   - NPDevContract/schemas/model.schema.json
   - scripts/quality/dsl-coverage-allowlist.json

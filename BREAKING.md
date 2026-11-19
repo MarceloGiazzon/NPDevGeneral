@@ -6,6 +6,10 @@ one-line entry here, in the same commit that makes the change. While NPDev has n
 (owner, 2026-11-12) a change ships without an `npdev migrate` codemod; this repo's own models are
 migrated directly in the same commit. Earlier entries name the codemods written before that.
 
+## 2026-11-18 — a hash-pinned Java class binds to a flow, not a procedure (REG-342, option A)
+
+`flows[]` gained `metadata` (today only `untrustedExtensionEntrypoint`, the same shape a panel or procedure already had). A flow that names an extension is implemented by that hash-pinned Java class; its declared steps stay as the schema-required placeholder. The sibling `untrusted-extension-manifest.json` entry for it has `kind: "flow"` and `runtimeBinding: "flow:<name>"`; its `requiredRole` comes from the manifest entry (a flow has no `permissionRequirements`). The manifest kind `procedure` and `procedures[]` itself still work until the rest of the procedure family is retired (REG-342). WmsOffice and WmsOfficePackTest (AppGen) were migrated: their two trusted procedures are now flows, their `customCapabilities` are in `capabilities[]`, and the stale `trusted-source-manifest.json` (a file the generator never read) was folded into the live `untrusted-extension-manifest.json`.
+
 ## 2026-11-18 — a capability operation with a typed object `input` takes exactly one argument (FORM P4-T5, typed contract)
 
 The validator now checks every `capabilityCall` against the operation's declared contract: when the operation's `input` is an object schema, the step must pass exactly one argument (`args: ["$input"]`, or the single-payload `input` shorthand). Zero or several arguments are refused with "declares a typed object input". All 13 call sites in the corpus already complied.

@@ -76,7 +76,7 @@ That is an `autoPanels[]` entry: a filterable list and an editable detail form, 
 `WidgetOrderTypedActionsWorkbench`; path 3 is `invoice-bonds-demo`'s `InvoiceConsolePanel`, and
 `NPDevSamples/f6-showcase` for the dashboard, console and slot layouts; path 4 is
 `NPDevSamples/pigmentampas` (`studio.html` signed in, `gallery.html` public); path 5 is the
-AppGen `WmsOffice` app, whose panels and procedures declare `metadata.untrustedExtensionEntrypoint`.
+AppGen `WmsOffice` app, whose panels and flows declare `metadata.untrustedExtensionEntrypoint`.
 
 ## 3. The three ways to get a procedure
 

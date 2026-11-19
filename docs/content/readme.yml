@@ -302,7 +302,7 @@ sections:
       |---|---|
       | a hand-made page, `web/*.html` beside the model | **any screen you can build in HTML/JS** (a drawing board, a map, a storefront, a public gallery). It is copied into the app on every generate, wrapped by the shell (navigation, sign-in, roles) or marked public, listed in the menu from `pages.json`, and calls the app through `NPDevShell.api` with the same token and errors as the generated UI. How-to: [`docs/reference/HAND_MADE_PAGES.md`](docs/reference/HAND_MADE_PAGES.md) |
       | a panel `slot`, a custom region, a custom widget | your own component above, below or **instead of** a generated panel body, inside a generated workbench (`render: "component"`), or for one field (`ui.widget: "custom"`) |
-      | `metadata.untrustedExtensionEntrypoint` on a procedure | your own Java class, pinned by hash in the app's `untrusted-extension-manifest.json`, admitted through the same bytecode/AST safety gate as a mounted plugin |
+      | `metadata.untrustedExtensionEntrypoint` on a flow | your own Java class (the flow keeps a placeholder step), pinned by hash in the app's `untrusted-extension-manifest.json`, admitted through the same bytecode/AST safety gate as a mounted plugin |
       | `metadata.untrustedExtensionEntrypoint` on a panel | your own HTML/JS asset, hash-pinned into the app — for bringing an existing page with you |
       | a `capability` with a swapped `binding`, or a `plugin:*` capability entry | the contract stays in the model; the implementation is yours and is resolved at runtime |
       | the generated REST API (with an OpenAPI description) | a separate frontend, mobile app or other service is just another client — outside the blast radius of a regeneration entirely |

@@ -212,6 +212,13 @@ def _pack_failure(entries: list, text: str) -> PackError:
     if "unsigned" in lowered or "unknown_signer" in lowered or "bad_signature" in lowered:
         return PackError(f"packs[] - pack {names} is not signed by a key NPDev trusts - import only packs from the "
                          "list in the briefing, or model those concepts yourself")
+    if "schema validation failed" in lowered:
+        # REG-332: the pack WAS downloaded; its published copy is older than this NPDev's model format (for example a
+        # dslVersion the schema no longer accepts). Calling that "could not download" sent an AI that had done everything
+        # right to model the pack's concepts itself with no explanation.
+        return PackError(f"packs[] - the catalog pack(s) {names} downloaded, but the published copy does not match this "
+                         "NPDev's model format yet (the catalog is out of date): do not import it now - model those "
+                         "concepts yourself")
     return PackError(f"packs[] - NPDev could not download the pack(s) {names}: use only a `from` coordinate copied from "
                      "the list in the briefing (never invent a pack), or model those concepts yourself")
 

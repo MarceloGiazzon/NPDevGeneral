@@ -1223,7 +1223,8 @@ public final class CompiledModelCanonicalJsonReader {
                 toFlowTrigger(node.get("trigger")),
                 optionalText(node, "expose"),
                 optionalText(node, "runAs"),
-                optionalText(node, "description")
+                optionalText(node, "description"),
+                toObjectMap(node.get("metadata"))
         );
     }
 

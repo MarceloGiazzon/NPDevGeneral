@@ -23,6 +23,16 @@ detail: |
   bundle gets a "Pack catalog" section generated from the NPR catalog (live fetch, else the local cache, else no section) by
   npdev_relay_engine.with_pack_catalog. Size: compact bundle 24,275 chars before, 23,650 after the contract edit, +1,498 for the
   generated 13-pack list = 25,149 chars (+874).
+  STAND-IN ROUND 2026-11-18 (a free-tier Gemini plays the chat AI; the REAL relay engine composes, ingests, stages and validates; scripts in
+  OutsideRepo/reg332-real-round): the prompt carried the generated Pack catalog (live fetch). With a generic "use the catalog parts" ask the AI ignored the
+  `sales` pack and modelled everything itself (READY in 2 rounds, no packs[]). With the pack NAMED it copied the exact coordinate
+  (git+https://github.com/MarceloGiazzon/NPR.git//packs/sales@sales-1.0.0) -- and the relay answered "NPDev could not download the pack(s) sales", after which the
+  AI dropped the pack and was READY at round 3 without it. REAL CAUSE (reproduced with `npdev pack update`): the download works; the published sales-1.0.0
+  pack.json fails the current schema ($.dslVersion must be '3.0.0'). The local NPDevContract/packs are migrated and newer (sales 2.0.0, approvals 1.2.1,
+  contacts 1.1.0, helpdesk 1.2.0, identity 1.5.0, inventory 2.0.0, leave 1.2.1, purchasing 2.0.0, ...) but the public NPR still serves the old tags, so NO catalog pack
+  can be imported through the relay today. FIXED here: the relay's message for that case (npdev_relay_files._pack_failure) now says the published copy does not match this
+  NPDev's model format yet instead of "could not download" (test_relay_packs.py, 20/20). NOT fixable by a session: publishing the current packs to the public NPR
+  (owner confirms each `npdev pack push --confirm-public <id>@<version>`; no local NPR clone exists on this machine). Until then done_when below cannot be met.
   NOT done: `pack update` always clones (a cached pack is not reused offline) -- offline therefore fails with the sentence above
   even when the pack is cached; the catalog list itself does fall back to its cache. The real relay round with a real chat AI on the
   owner's machine (P2 "Verify") has not been run.
