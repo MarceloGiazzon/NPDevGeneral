@@ -174,6 +174,7 @@ window.__TAURI__ = {
           return F.catalogue.files[args.id];
         case "theme_share_url": return "https://github.com/MarceloGiazzon/npdev-themes/new/main/themes?filename=" + JSON.parse(args.jsonText).id + ".json&value=x";
         case "open_url": if (window.__openFails) throw "no browser"; window.__opened = args.url; return null;
+        case "open_app_signed_in": if (window.__openFails) throw "no browser"; window.__opened = args.baseUrl; window.__openedAppDir = args.appDir; return null;
         case "theme_delete": window.__userThemes = (window.__userThemes || []).filter((x) => x.id !== args.id); return { removed: true };
         case "manager_log_path": return "C:\\\\x\\\\manager.log";
         // Use a browser AI (the relay_* commands): the CAPTURED answers of the real CLI. A marker in the pasted

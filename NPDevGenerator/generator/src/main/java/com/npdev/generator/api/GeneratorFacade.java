@@ -357,7 +357,8 @@ public final class GeneratorFacade {
         new ServiceEmitter(templates, writer).emit(model, kernelControlled, settingResolver, linkedSealedPacks);
         new ControllerEmitter(templates, writer).emit(model, linkedSealedPacks);
 
-        new RuntimeApiEmitter(templates, writer).emit(model, resolvedModelSource, modelSourcePath, superUserRole);
+        new RuntimeApiEmitter(templates, writer).emit(model, resolvedModelSource, modelSourcePath, superUserRole,
+                settingResolver.value(NpdevSettings.UI_GENERATE_BUSINESS_UI, SettingTarget.app()));
         new SeedFilesEmitter(writer).emit(model, modelSourcePath);
         new CompanionPagesMenuEmitter(writer).emit(modelSourcePath);
         new InfoPageEmitter(templates, writer).emit(model, databasePlan);

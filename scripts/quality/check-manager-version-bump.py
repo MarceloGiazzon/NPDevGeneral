@@ -15,10 +15,17 @@ WHAT THIS CHECKS
 -----------------
 Two independent things, both scoped to NPDevManager/:
 
-1. VERSION BUMPED WHEN BEHAVIOR CHANGED. If `git diff HEAD` touches any of NPDevManager's
-   behavior-affecting paths (src/**/*.rs, ui/**/*.{js,html,css}, build.rs, capabilities/**.json) then
-   Cargo.toml's `version` field must ALSO differ from HEAD's copy. Cargo.lock, fixtures/, and icons/
-   are excluded -- they never carry behavior a user would notice.
+1. VERSION BUMPED WHEN BEHAVIOR CHANGED. Find the last commit that changed Cargo.toml's `version`
+   line (the last bump). If the working tree differs from THAT commit in any of NPDevManager's
+   behavior-affecting paths (src/**/*.rs, ui/**/*.{js,html,css}, build.rs, capabilities/**.json),
+   Cargo.toml's version must differ from the bump commit's. Cargo.lock, fixtures/, and icons/ are
+   excluded -- they never carry behavior a user would notice.
+
+   WHY AGAINST THE LAST BUMP, NOT HEAD (2026-11-20): the first version compared with `git diff HEAD`
+   only, so it saw nothing once a change was committed. Six commits changed the Manager after
+   0.13.39 (REG-321 relay_apply_removal, REG-323 F4, ...) and the owner installed a new build that
+   still said 0.13.39. Measuring from the last bump catches committed drift too. A shallow clone
+   without the bump commit falls back to `git diff HEAD`.
 
 2. THE THREE VERSION LOCATIONS AGREE RIGHT NOW. Cargo.toml's `version`, tauri.conf.json's `version`,
    and the leading "X.Y.Z" in main.rs's `manager_version_description` string must all match the
@@ -45,12 +52,23 @@ BEHAVIOR_PATH_RE = re.compile(
 )
 
 
-def git_diff_paths() -> list[str]:
+def git_lines(*args: str) -> list[str]:
     result = subprocess.run(
-        ["git", "diff", "--name-only", "HEAD", "--", MANAGER_DIR],
-        cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+        ["git", *args], cwd=REPO_ROOT, capture_output=True, text=True, check=True,
     )
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
+def last_bump_commit() -> str | None:
+    """The newest commit whose diff touches Cargo.toml's top-level `version = "..."` line."""
+    commits = git_lines(
+        "log", "-n", "1", "--format=%H", "-G", r'^version = "', "--", f"{MANAGER_DIR}/Cargo.toml",
+    )
+    return commits[0] if commits else None
+
+
+def git_diff_paths(base: str) -> list[str]:
+    return git_lines("diff", "--name-only", base, "--", MANAGER_DIR)
 
 
 def git_show(ref: str, path: str) -> str | None:
@@ -81,26 +99,28 @@ def extract_main_rs_version(text: str) -> str | None:
 def main() -> int:
     failures: list[str] = []
 
-    changed = git_diff_paths()
+    base = last_bump_commit() or "HEAD"
+    changed = git_diff_paths(base)
     behavior_changed = [p for p in changed if BEHAVIOR_PATH_RE.match(p)]
-    cargo_toml_changed = f"{MANAGER_DIR}/Cargo.toml" in changed
+    base_text = git_show(base, f"{MANAGER_DIR}/Cargo.toml")
+    base_version = extract_cargo_version(base_text) if base_text else None
+    now_version = extract_cargo_version(
+        (REPO_ROOT / MANAGER_DIR / "Cargo.toml").read_text(encoding="utf-8")
+    )
 
-    if behavior_changed and not cargo_toml_changed:
-        failures.append(
-            "NPDevManager behavior changed (" + ", ".join(behavior_changed) + ") but "
-            f"{MANAGER_DIR}/Cargo.toml's version was not touched. Bump version in Cargo.toml, "
-            "tauri.conf.json, AND main.rs's manager_version_description/CURRENT_VERSION_TITLE "
-            "together -- see the comment above manager_version_description in main.rs."
+    if behavior_changed and base_version == now_version:
+        commits = git_lines(
+            "log", "--format=%h %s", f"{base}..HEAD", "--",
+            *[f"{MANAGER_DIR}/{d}" for d in ("src", "ui", "build.rs", "capabilities")],
         )
-    elif cargo_toml_changed:
-        old_text = git_show("HEAD", f"{MANAGER_DIR}/Cargo.toml")
-        new_text = (REPO_ROOT / MANAGER_DIR / "Cargo.toml").read_text(encoding="utf-8")
-        old_version = extract_cargo_version(old_text) if old_text else None
-        new_version = extract_cargo_version(new_text)
-        if old_version == new_version:
-            failures.append(
-                f"{MANAGER_DIR}/Cargo.toml changed but its version field did not (still {new_version})."
-            )
+        failures.append(
+            f"NPDevManager behavior changed since the last version bump ({base[:8]}, {now_version}) "
+            "but the version did not move. Changed: " + ", ".join(behavior_changed)
+            + ("" if not commits else ". Commits since the bump: " + " | ".join(commits))
+            + ". Bump version in Cargo.toml, tauri.conf.json, AND main.rs's "
+            "manager_version_description/CURRENT_VERSION_TITLE together -- see the comment above "
+            "manager_version_description in main.rs."
+        )
 
     cargo_text = (REPO_ROOT / MANAGER_DIR / "Cargo.toml").read_text(encoding="utf-8")
     tauri_text = (REPO_ROOT / MANAGER_DIR / "tauri.conf.json").read_text(encoding="utf-8")

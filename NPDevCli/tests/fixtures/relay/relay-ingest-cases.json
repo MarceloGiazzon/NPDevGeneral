@@ -359,7 +359,10 @@
       "round": 2,
       "answer": "NPDEV-BEGIN K7Q2-1\nI created a small workshop app.\n\nNPDEV-FILE model.json\n```json\n{\n  \"namespace\": \"trial.workshop\",\n  \"version\": \"1.0\",\n  \"concepts\": [\n    {\n      \"name\": \"WorkOrder\",\n      \"fields\": [\n        {\n          \"name\": \"id\",\n          \"type\": \"uuid\",\n          \"id\": true,\n          \"required\": true\n        },\n        {\n          \"name\": \"title\",\n          \"type\": \"string\",\n          \"required\": true,\n          \"ui\": {\n            \"label\": \"Título\"\n          }\n        },\n        {\n          \"name\": \"status\",\n          \"type\": \"string\",\n          \"enum\": [\n            \"Open\",\n            \"Done\"\n          ]\n        }\n      ]\n    },\n    {\n      \"name\": \"Customer\",\n      \"fields\": [\n        {\n          \"name\": \"id\",\n          \"type\": \"uuid\",\n          \"id\": true,\n          \"required\": true\n        },\n        {\n          \"name\": \"name\",\n          \"type\": \"string\",\n          \"required\": true\n        }\n      ]\n    }\n  ]\n}\n```\n\nNPDEV-FILE npdev-submission.json\n```json\n{\n  \"request\": \"Workshop app with work orders and customers\",\n  \"renames\": [],\n  \"deliberateRemovals\": [],\n  \"securityChanges\": [],\n  \"couldNotExpress\": [],\n  \"assumptions\": [\n    \"Status has two values\"\n  ]\n}\n```\n\nNPDEV-END K7Q2-1 files=2\n",
       "expect": {
-        "outcome": "STALE_ROUND"
+        "outcome": "PARSED",
+        "findings": [
+          "older-round-accepted"
+        ]
       }
     },
     {

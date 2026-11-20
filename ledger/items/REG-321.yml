@@ -4,8 +4,9 @@ title: >-
   --allow-destructive passes the impact check but the boot step still refuses for lack of the acknowledgment token
 type: GAP
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-11-10
+closed: 2026-11-20
 source: >-
   REG-320 (2026-11-10): choosing between its options (a) "the preview's tick IS the itemized acknowledgment" and (c) "decline
   for now", the way to (a) was read in code and found incomplete.
@@ -64,6 +65,9 @@ detail: |
   (test_app_upgrade.py 31/31) -- an impact row for table `tag_store` is not covered by a ticked `Tag` (the rule names `tags`), so the upgrade ends REFUSED with
   UNACKNOWLEDGED_DESTRUCTIVE_ITEM naming `tag_store`, the old jar is back and no token rebuild happens. Not run against a real app with a tableName override.
   STILL open: only the owner decision to drop the "cannot do this from here yet" screen for the other cases.
+  CLOSED 2026-11-20 -- owner accepted the recommendation: the "cannot do this from here yet" screen stays ONLY for the cases the upgrade
+  still refuses (unknown app folder, explicit tableName, junction table); every other confirmed removal goes through relay_apply_removal.
+  No further manual round required (real-window proof 2026-11-19 stands).
 resolution: >-
   Done when applying a confirmed removal of a record type, on a running app, ends in the app running again with the data of
   that table in the pre-upgrade backup, proven on the real window with a second app, and a destructive item the person did not

@@ -1253,7 +1253,8 @@
   async function onOpenApp() {
     if (!S.openUrl) return;
     try {
-      await invoke("open_url", { url: S.openUrl });
+      // Signed in, on the business screen: the Manager reads the app's key itself (owner decision 2026-11-20).
+      await invoke("open_app_signed_in", { baseUrl: S.openUrl, appDir: S.builtAppDir || S.appDir || null });
     } catch (e) {
       note("browserai-launch", WENT_WRONG, true);
     }

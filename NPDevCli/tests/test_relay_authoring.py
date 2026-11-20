@@ -105,6 +105,35 @@ class TranslateTests(unittest.TestCase):
         self.assertEqual(len(submission["deliberateRemovals"]), 1)
         self.assertIn("requested", submission["deliberateRemovals"][0]["reason"])
 
+    def test_a_reason_under_another_key_is_still_the_reason(self):
+        cand = candidate()
+        cand["concepts"][0]["fields"] = [cand["concepts"][0]["fields"][0]]
+        ai = {"request": "drop it", "deliberateRemovals": [{"kind": "field", "concept": "Customer", "name": "nm",
+                                                            "why": "not needed any more"}]}
+        submission, _, _ = authoring.translate_manifest(SESSION, BASE, cand, ai)
+        self.assertEqual(submission["deliberateRemovals"][0]["reason"], "not needed any more")
+
+    def test_removals_the_ai_did_not_declare_are_declared_for_it_and_still_confirmed(self):
+        # 2026-11-20 REG-321 manual round: a bare model.json (no npdev-submission.json) that removed Tag and its link
+        # concept NoteTag was bounced four times. The person confirms each removal in the preview; the AI need not.
+        base = {"namespace": "app.notas", "version": "1.0", "concepts": [
+            {"name": "Note", "fields": [{"name": "id", "type": "uuid", "id": True}, {"name": "title", "type": "string"}]},
+            {"name": "Tag", "fields": [{"name": "id", "type": "uuid", "id": True}, {"name": "label", "type": "string"}]},
+            {"name": "NoteTag", "fields": [{"name": "id", "type": "uuid", "id": True}]}]}
+        cand = {"namespace": "app.notas", "version": "1.0", "concepts": [
+            {"name": "Note", "fields": [{"name": "id", "type": "uuid", "id": True}]}]}
+        ai = {"request": "x", "deliberateRemovals": [{"kind": "concept", "name": "Tag", "reason": "asked"}]}
+        submission, fixed, findings = authoring.translate_manifest(SESSION, base, cand, ai)
+        got = {(d["kind"], d.get("concept"), d["name"]): d["reason"] for d in submission["deliberateRemovals"]}
+        self.assertEqual(got[("concept", None, "Tag")], "asked")
+        self.assertEqual(got[("concept", None, "NoteTag")], authoring.UNDECLARED_REMOVAL_REASON)
+        self.assertEqual(got[("field", "Note", "title")], authoring.UNDECLARED_REMOVAL_REASON)
+        self.assertEqual(len(got), 3)
+        self.assertEqual(sum(f["code"] == "removal-declared-for-ai" for f in findings), 2)
+        preview = authoring.build_preview(None, base, fixed, ai, "change")
+        confirm = {w["code"] for w in preview["warnings"] if w["needsConfirmation"]}
+        self.assertEqual(confirm, {"REMOVAL:concept:Tag", "REMOVAL:concept:NoteTag", "REMOVAL:field:Note.title"})
+
     def test_the_ais_security_sentences_never_become_manifest_entries(self):
         ai = {"request": "x", "securityChanges": [{"kind": "access", "concept": "Customer", "rationale": "trust me"}]}
         submission, _, _ = authoring.translate_manifest(SESSION, BASE, candidate(version="2.0"), ai)

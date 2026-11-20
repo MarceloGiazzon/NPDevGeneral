@@ -1,0 +1,33 @@
+id: REG-343
+title: >-
+  Use a browser AI: a correct removal answer took four rounds -- a watcher misfire moved the round on, the real answer was then refused as old, a bare
+  model.json was refused, and the refusal text spoke in manifest.* paths and plan codes
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-11-20
+closed: 2026-11-20
+source: >-
+  REG-321 owner manual round (2026-11-19/20) with a real chat AI.
+surface: cli/relay, generator/authoring
+files:
+  - NPDevCli/npdev_relay_engine.py
+  - NPDevCli/npdev_relay_ingest.py
+  - NPDevCli/npdev_relay_authoring.py
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/authoring/AuthoringDiffGate.java
+detail: |
+  Four defects, one round:
+  (1) the clipboard watcher took an instruction text holding `NPDEV-BEGIN <code>-2` with placeholders as a cut-off answer and moved the conversation to
+  round 3;
+  (2) the correct answer, marked round 2, was then bounced as STALE_ROUND;
+  (3) the person copied only the model.json block (no npdev-submission.json), so the removal was refused as undeclared;
+  (4) that refusal (AuthoringDiffGate) said "manifest.deliberateRemovals entry (A2, C2)" / "manifest.renames declares ...", which neither the AI nor the
+  person could act on; and an AI that wrote the reason under "why" lost it.
+  FIXED 2026-11-20: (1) engine._quiet_watch_misfire turns a watcher capture with no file into PROMPT_ECHO (logged, never shown, round unchanged); (2) an
+  earlier round of the same conversation is read on its merits (finding older-round-accepted; duplicates are still caught by _stored_duplicate); (3)
+  _declare_undeclared_removals declares every diff removal for the AI -- safe because each removal is still a needsConfirmation box the person ticks;
+  (4) the four AuthoringDiffGate messages now name "the deliberateRemovals / renames list of npdev-submission.json" and renamedFrom in model.json, no
+  plan codes; reason also read from why/because/rationale.
+  Verified: NPDevCli test_relay_* green, AuthoringDiffGateTest 24/24.
+resolution: >-
+  Done when the defect described is fixed and covered by a test; see detail.

@@ -62,6 +62,13 @@ $cargoToml = Get-Content -LiteralPath (Join-Path $managerDir "Cargo.toml") -Raw
 if ($cargoToml -notmatch '(?m)^version\s*=\s*"([^"]+)"') { Fail "no version in NPDevManager/Cargo.toml" }
 $version = $Matches[1]
 
+# Refuse to build a Manager whose behaviour changed since the last version bump: an installed
+# window that says the same version as the previous one is indistinguishable from it (2026-11-20:
+# seven commits shipped inside a "0.13.39" the owner could not tell apart from the real 0.13.39).
+$python = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "python3" }
+& $python (Join-Path $repoRoot "scripts/quality/check-manager-version-bump.py")
+if ($LASTEXITCODE -ne 0) { Fail "the Manager changed since its last version bump -- bump it (see the message above) before building $version again" }
+
 # ---- 2. Where cargo puts the bundle ------------------------------------------------------------------
 if (-not [string]::IsNullOrWhiteSpace($env:CARGO_TARGET_DIR)) {
     $targetDir = $env:CARGO_TARGET_DIR

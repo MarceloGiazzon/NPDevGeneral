@@ -368,6 +368,9 @@ public class GeneratorTestModelLoaderTest {
                 "Expected generated UI redirect controller to map /npdev-ui and /npdev-ui/");
         assertTrue(uiRedirectControllerContent.contains("redirect:/npdev-ui/index.html"),
                 "Expected generated UI redirect controller root redirect to follow canonical UI selection");
+        // Owner decision 2026-11-20: with the Business UI generated (the default), "/" opens it, not the operator console.
+        assertTrue(uiRedirectControllerContent.contains("return \"redirect:/npdev-business-ui/\";"),
+                "Expected \"/\" to redirect to the business UI when the app ships one");
         String uiIndexContent = Files.readString(uiIndex);
         // REG-316: "/" lands on this operator console, so the way to the app's own screens must be on it.
         assertTrue(uiIndexContent.contains("window.location.href='/npdev-business-ui/'"),

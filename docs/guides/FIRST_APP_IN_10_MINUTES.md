@@ -64,9 +64,8 @@ step. It is done when a line says **ready in …** with an address like `http://
 
 ## 7. Open it and sign in
 
-Click the **App:** link. The page that opens asks for an **API Key**: the log printed it right after
-the **ready in …** line, as `X-Api-Key: …`. Copy the text after `X-Api-Key:`, paste it into the
-**API Key** field, then press **Open business screens** to see your app's own screens.
+Click the **App:** link. Your app opens on its own screens, already signed in: the Manager hands the
+page your app's key, so there is nothing to copy or paste.
 
 That is a working application: a database, screens to list and edit your data, and sign-in.
 

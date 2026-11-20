@@ -1,0 +1,23 @@
+id: REG-345
+title: >-
+  The Manager's version chip showed a stale build date: build.rs only re-ran when tauri.conf.json changed, and the commit was not shown
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-11-20
+closed: 2026-11-20
+source: >-
+  2026-11-19/20 Manager rebuilds: the chip's date did not move between rebuilds of the same version.
+surface: manager/build
+files:
+  - NPDevManager/build.rs
+  - NPDevManager/src/main.rs
+  - scripts/release/New-ManagerInstaller.ps1
+  - scripts/quality/check-manager-version-bump.py
+detail: |
+  tauri_build::build() prints its own cargo:rerun-if-changed lines, which stops cargo re-running build.rs on other changes, so the timestamp only moved
+  on a version bump.
+  FIXED 2026-11-20: build.rs names src, ui, build.rs, Cargo.toml, tauri.conf.json and capabilities as rerun triggers and stamps
+  NPDEV_MANAGER_BUILD_SOURCE (short commit, "+changes" when NPDevManager is dirty, "unknown commit" without git); version 0.13.40.
+resolution: >-
+  Done when the defect described is fixed and covered by a test; see detail.

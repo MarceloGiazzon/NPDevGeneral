@@ -175,8 +175,9 @@ CASES = [
     # ---- session / echo ----------------------------------------------------------------------
     {"name": "wrong-session", "answer": full_answer(session="ZZ99"),
      "expect": {"outcome": "WRONG_SESSION"}},
+    # An earlier round's marker is read on its merits, not bounced (owner, 2026-11-20); a repeat is caught upstream.
     {"name": "stale-round", "round": 2, "answer": full_answer(rnd=1),
-     "expect": {"outcome": "STALE_ROUND"}},
+     "expect": {"outcome": "PARSED", "findings": ["older-round-accepted"]}},
     {"name": "round-ahead-is-only-a-warning", "answer": full_answer(rnd=2),
      "expect": {"outcome": "PARSED", "findings": ["round-ahead"]}},
     {"name": "prompt-echo",

@@ -283,9 +283,9 @@ public final class AuthoringDiffGate {
             if (!declaredRemovedConcepts.contains(name)) {
                 violations.add(Violation.error("AUTHORING_UNACCOUNTED_REMOVAL",
                         "Concept '" + name + "' is present in the previous model and absent from the "
-                                + "submission, but is not accounted for by a renamedFrom marker or a "
-                                + "manifest.deliberateRemovals entry (A2, C2 -- every removal MUST carry "
-                                + "an explicit intent).",
+                                + "submission, but nothing says why: either the concept that replaces it carries "
+                                + "renamedFrom, or the deliberateRemovals list of npdev-submission.json names it "
+                                + "(every removal must be stated on purpose).",
                         "concepts[" + name + "]",
                         "Either add renamedFrom:\"" + name + "\" to whatever concept replaces it, or add "
                                 + "a deliberateRemovals entry naming it and why."));
@@ -332,10 +332,10 @@ public final class AuthoringDiffGate {
                 ConceptAst submitted = submittedConcepts.get(to);
                 if (submitted == null || !from.equals(normalize(submitted.getRenamedFrom()))) {
                     violations.add(Violation.error("AUTHORING_RENAME_NOT_BACKED",
-                            "manifest.renames declares concept '" + from + "' renamed to '" + to + "', but the "
-                                    + "submitted model's concept '" + to + "' does not carry a matching "
-                                    + "renamedFrom (the manifest states intent; the model itself carries the "
-                                    + "mechanism the engine trusts).",
+                            "The renames list of npdev-submission.json says concept '" + from + "' was renamed to '"
+                                    + to + "', but concept '" + to + "' in model.json does not carry renamedFrom:\""
+                                    + from + "\" (the list states the intent; renamedFrom in model.json is what "
+                                    + "keeps the data).",
                             "renames", "Add renamedFrom:\"" + from + "\" to concept '" + to + "' in the submitted model."));
                 }
             } else if ("field".equals(kind)) {
@@ -344,8 +344,9 @@ public final class AuthoringDiffGate {
                 FieldAst submittedField = submittedConcept == null ? null : byName(submittedConcept.getFields(), FieldAst::getName).get(to);
                 if (submittedField == null || !from.equals(normalize(submittedField.getRenamedFrom()))) {
                     violations.add(Violation.error("AUTHORING_RENAME_NOT_BACKED",
-                            "manifest.renames declares field '" + concept + "." + from + "' renamed to '" + to
-                                    + "', but the submitted model does not carry a matching renamedFrom on that field.",
+                            "The renames list of npdev-submission.json says field '" + concept + "." + from
+                                    + "' was renamed to '" + to + "', but that field in model.json does not carry "
+                                    + "renamedFrom:\"" + from + "\".",
                             "renames", "Add renamedFrom:\"" + from + "\" to field '" + concept + "." + to + "'."));
                 }
             }
@@ -389,8 +390,9 @@ public final class AuthoringDiffGate {
             if (!declaredRemovedFields.contains(name)) {
                 violations.add(Violation.error("AUTHORING_UNACCOUNTED_REMOVAL",
                         "Field '" + previousConcept.getName() + "." + name + "' is present in the previous "
-                                + "model and absent from the submission, but is not accounted for by a "
-                                + "renamedFrom marker or a manifest.deliberateRemovals entry (A2, C2).",
+                                + "model and absent from the submission, but nothing says why: either the field "
+                                + "that replaces it carries renamedFrom, or the deliberateRemovals list of "
+                                + "npdev-submission.json names it.",
                         "concepts[" + previousConcept.getName() + "].fields[" + name + "]",
                         "Either add renamedFrom:\"" + name + "\" to whatever field replaces it, or add a "
                                 + "deliberateRemovals entry naming it and why."));

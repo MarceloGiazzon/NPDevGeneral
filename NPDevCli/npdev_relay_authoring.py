@@ -373,7 +373,9 @@ def _translate_removals(ai: dict, base: dict, candidate: dict, request: str, fin
             else:
                 findings.append(_finding("manifest-entry-ignored", "warning", section="deliberateRemovals", name=name))
                 continue
-        reason = _str(entry.get("reason")) or f"requested: {request}"
+        # An AI often says why under another key; any of them is the reason (2026-11-20: "why").
+        reason = next((_str(entry.get(k)) for k in ("reason", "why", "because", "rationale") if _str(entry.get(k))),
+                      None) or f"requested: {request}"
         item = {"kind": kind, "name": name, "reason": reason}
         if kind == "field":
             item = {"kind": kind, "concept": concept, "name": name, "reason": reason}
@@ -381,6 +383,35 @@ def _translate_removals(ai: dict, base: dict, candidate: dict, request: str, fin
         if key not in seen:
             seen.add(key)
             out.append(item)
+    return out
+
+
+UNDECLARED_REMOVAL_REASON = "removed in this answer without a declaration; the person confirms it before anything is applied"
+
+
+def _declare_undeclared_removals(declared: list, base: dict, candidate: dict, findings: list) -> list:
+    """Every concept or field the answer removed but did not declare is declared HERE, like a security change: the
+    person decides, not the AI. Safe because build_preview turns every removal it sees in the diff into a
+    needsConfirmation warning whatever was declared, and Apply waits for each box to be ticked.
+
+    WHY (owner, 2026-11-20): in the REG-321 manual round a correct removal took four rounds -- the person copied only
+    the model.json block (no npdev-submission.json), and the AI-facing refusal ("manifest.deliberateRemovals ... A2,
+    C2") could not tell anyone what was really missing. A bare model.json now reaches the preview directly."""
+    if not isinstance(base, dict) or not isinstance(candidate, dict):
+        return declared
+    diff = diff_models(base, candidate)
+    have = {(d["kind"], d.get("concept"), d["name"]) for d in declared}
+    out = list(declared)
+    for entry in diff["removedConcepts"]:
+        if ("concept", None, entry["name"]) not in have:
+            out.append({"kind": "concept", "name": entry["name"], "reason": UNDECLARED_REMOVAL_REASON})
+            findings.append(_finding("removal-declared-for-ai", "info", kind="concept", name=entry["name"]))
+    for entry in diff["removedFields"]:
+        if ("field", entry["concept"], entry["name"]) not in have:
+            out.append({"kind": "field", "concept": entry["concept"], "name": entry["name"],
+                        "reason": UNDECLARED_REMOVAL_REASON})
+            findings.append(_finding("removal-declared-for-ai", "info", kind="field", concept=entry["concept"],
+                                     name=entry["name"]))
     return out
 
 
@@ -451,7 +482,8 @@ def translate_manifest(session, base_model, candidate_model, ai_manifest, *, pre
         "submittedModelVersion": submitted,
         "request": request,
         "renames": _translate_renames(ai, candidate, findings),
-        "deliberateRemovals": _translate_removals(ai, base_model, candidate, request, findings),
+        "deliberateRemovals": _declare_undeclared_removals(
+            _translate_removals(ai, base_model, candidate, request, findings), base_model, candidate, findings),
         "securityChanges": [],
         "couldNotExpress": _translate_could_not_express(ai),
         "unchangedButSuspect": [],

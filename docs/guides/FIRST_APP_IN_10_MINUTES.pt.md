@@ -67,9 +67,8 @@ etapa. Termina quando uma linha diz **ready in …** com um endereço como `http
 
 ## 7. Abra e entre
 
-Clique no link **App:**. A página que abre pede uma **API Key**: o log a mostrou logo depois da linha
-**ready in …**, como `X-Api-Key: …`. Copie o texto depois de `X-Api-Key:`, cole no campo **API Key**
-e aperte **Open business screens** para ver as telas do seu app.
+Clique no link **App:**. O seu app abre nas telas dele, já com você dentro: o Manager entrega à página
+a chave do app, então não há nada para copiar ou colar.
 
 Pronto: uma aplicação funcionando, com banco de dados, telas para listar e editar os seus dados, e login.
 

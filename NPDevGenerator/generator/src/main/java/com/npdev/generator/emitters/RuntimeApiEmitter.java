@@ -61,6 +61,21 @@ public final class RuntimeApiEmitter extends AbstractEmitter {
             Path modelSourcePath,
             String superUserRole
     ) {
+        emit(model, resolvedModelSource, modelSourcePath, superUserRole, false);
+    }
+
+    /**
+     * {@code rootToBusinessUi}: the app also ships the Business UI (UI_GENERATE_BUSINESS_UI), so {@code /}
+     * opens the screens the app's own people use, not the Operator UI (owner decision 2026-11-20: the root
+     * of a business app is its business screen; the Operator UI stays at {@code /npdev-ui/}).
+     */
+    public void emit(
+            CompiledModel model,
+            ResolvedModelSource resolvedModelSource,
+            Path modelSourcePath,
+            String superUserRole,
+            boolean rootToBusinessUi
+    ) {
         writer.deleteRelativeIfExists("src/main/java/com/npdev/generated/runtime/adapters/InProcEventStoreAdapter.java");
 
         Map<String, Object> ctx = new HashMap<>();
@@ -79,7 +94,7 @@ public final class RuntimeApiEmitter extends AbstractEmitter {
                 : canonicalUiRoute + "/index.html";
         ctx.put("canonicalUiSurface", canonicalSurface);
         ctx.put("canonicalUiRoute", canonicalUiRoute);
-        ctx.put("canonicalUiRootRedirect", canonicalUiRootRedirect);
+        ctx.put("canonicalUiRootRedirect", rootToBusinessUi ? "/npdev-business-ui/" : canonicalUiRootRedirect);
 
         writer.writeRelative(
                 "src/main/java/com/npdev/generated/runtime/model/NPDevModelProvider.java",

@@ -412,7 +412,12 @@ def ingest_text(raw: str, *, session: str, expected_round: int, policy: dict, ph
             return done(WRONG_SESSION)
         result["session"]["found"], result["session"]["foundRound"] = mine[-1]
         if mine[-1][1] < expected_round:
-            return done(STALE_ROUND)
+            # Tolerance (owner, 2026-11-20): an answer marked with an EARLIER round of this same conversation is
+            # read on its merits, not bounced. The round number is the AI's bookkeeping, not the person's; a stray
+            # capture that moved the round on (REG-321 manual round: an instruction text holding NPDEV-BEGIN) left a
+            # correct answer refused as "the previous one". The very same answer arriving twice is caught before this
+            # (engine._stored_duplicate), so nothing is applied twice. STALE_ROUND stays in the protocol for callers.
+            ctx.add("older-round-accepted", "info", found=mine[-1][1])
         if mine[-1][1] > expected_round:
             ctx.add("round-ahead", "warning", found=mine[-1][1])
     else:
@@ -520,6 +525,8 @@ def ingest_text(raw: str, *, session: str, expected_round: int, policy: dict, ph
         elif declared < found_count:
             ctx.add("file-count-over", "warning", declared=declared, found=found_count)
 
+    if (truncated or elided or bad_json) and not files:
+        ctx.add("no-file-read", "info")  # not one block was a file: the engine tells a watcher misfire by this
     if truncated:
         return done(TRUNCATED)
     if elided:

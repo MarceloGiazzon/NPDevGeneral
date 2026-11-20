@@ -545,7 +545,7 @@
     const actions = h("div", { class: "home-app-actions" });
     if (a.health === "running") {
       actions.append(
-        h("button", { type: "button", class: "primary", disabled: !a.baseUrl, on: { click: () => invoke("open_url", { url: a.baseUrl }).catch(() => {}) } }, t(TEXT.open)),
+        h("button", { type: "button", class: "primary", disabled: !a.baseUrl, on: { click: () => invoke("open_app_signed_in", { baseUrl: a.baseUrl, appDir: a.appDir || null }).catch(() => {}) } }, t(TEXT.open)),
         h("button", { type: "button", disabled: busyNow, on: { click: () => stopApp(a) } }, p === "stopping" ? t(TEXT.stopping) : t(TEXT.stop)));
     } else {
       actions.append(h("button", {

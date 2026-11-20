@@ -562,6 +562,7 @@ def ingest(code: str, raw: str, *, source: str | None = None, round_number: int 
         return duplicate
     result = ri.ingest_text(raw, session=session["code"], expected_round=number, policy=ri.load_policy(),
                             phase=session["phase"])
+    _quiet_watch_misfire(source, result)
     for finding in pre_findings or []:
         result["findings"].append(finding)
     if result["outcome"] == ri.PARSED:
@@ -574,6 +575,30 @@ def ingest(code: str, raw: str, *, source: str | None = None, round_number: int 
         kind = "fresh-chat" if nxt.get("messageId") in ("GOING_IN_CIRCLES", "LIMIT_REACHED") else "same-chat"
         rs.add_round(session, nxt["prompt"], kind)
     return result
+
+
+WATCH_SOURCES = ("clipboard-watch", "downloads-watch")
+
+
+def _quiet_watch_misfire(source, result: dict) -> None:
+    """A watcher capture that yielded NO usable file is not treated as the AI's answer: it becomes PROMPT_ECHO, which
+    the session only logs (rs.NOT_AN_ANSWER) and the Manager's watcher never shows (relay_watch.rs SILENT_OUTCOMES), so
+    the round does not move on. WHY (2026-11-20, REG-321 manual round): the person copied an instruction text holding
+    `NPDEV-BEGIN <code>-2` with placeholders instead of files; the watcher took it as a cut-off answer, moved the
+    conversation to round 3 and the real answer was then refused as old. A pasted or dropped text is still judged and
+    shown as before -- the person chose to hand that one over."""
+    if source not in WATCH_SOURCES or result.get("files"):
+        return
+    outcome = result.get("outcome")
+    codes = {f.get("code") for f in result.get("findings") or []}
+    if "cut-before-files" in codes:
+        return  # the AI stopped before its first file: a real failure the person must see
+    if outcome in ("TRUNCATED", "ELIDED", "BAD_JSON") and (
+            "no-file-read" not in codes or codes & {"unclosed-block", "unbalanced-json", "elision", "file-too-large"}):
+        return  # a real answer, cut off or elided inside a real file: shown, so the person can ask for it again
+    if outcome in ("TRUNCATED", "ELIDED", "BAD_JSON", "NO_FILES"):  # FILE_LINK_ONLY has its own guidance: kept
+        result["findings"].append({"code": "watch-capture-not-an-answer", "severity": "info", "detail": {"was": outcome}})
+        result["outcome"] = ri.PROMPT_ECHO
 
 
 def _stored_duplicate(session: dict, raw: str):

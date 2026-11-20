@@ -142,13 +142,39 @@ class IngestTests(EngineCase):
         self.assertIn("duplicate-answer", [f["code"] for f in second["findings"]])
         self.assertEqual(len(sessions.load(code)["rounds"]), 2)
 
-    def test_the_previous_answer_is_stale_once_a_follow_up_exists(self):
+    def test_an_answer_marked_with_an_earlier_round_is_read_on_its_merits(self):
+        # 2026-11-20 REG-321 manual round: a correct answer marked <code>-2 arrived while the conversation was on
+        # round 3 and was refused as "the previous answer". The round number is the AI's bookkeeping, not the person's.
         self.validation_mock.return_value = FAILED
         code = self.start()["code"]
         engine.ingest(code, answer(code, 1), source="paste")
+        self.validation_mock.return_value = PASSED
         older = engine.ingest(code, answer(code, 1, prose="A different sentence."), source="paste")
-        self.assertEqual(older["outcome"], "STALE_ROUND")
-        self.assertEqual(older["next"], {"kind": "user-action", "messageId": "STALE_ROUND"})
+        self.assertEqual(older["outcome"], "READY")
+        self.assertIn("older-round-accepted", [f["code"] for f in older["findings"]])
+
+    def test_a_watcher_capture_with_no_file_does_not_move_the_round(self):
+        # The exact shape of the instruction text the clipboard watcher took for an answer on 2026-11-20: our markers
+        # with a placeholder where the files should be. Captured by a watcher it is ignored; pasted, it is still shown.
+        code = self.start()["code"]
+        stray = (f"Your answer was rejected. Send it again in exactly this shape:\n\nNPDEV-BEGIN {code}-1\nRemovi os tipos.\n"
+                 f"NPDEV-FILE model.json\n{FENCE}json\n(the COMPLETE model.json, exactly as in your last answer)\n{FENCE}\n"
+                 f"NPDEV-FILE npdev-submission.json\n{FENCE}json\n(the declarations)\n{FENCE}\nNPDEV-END {code}-1 files=2\n")
+        watched = engine.ingest(code, stray, source="clipboard-watch")
+        self.assertEqual(watched["outcome"], "PROMPT_ECHO")
+        self.assertIn("watch-capture-not-an-answer", [f["code"] for f in watched["findings"]])
+        session = sessions.load(code)
+        self.assertEqual(len(session["rounds"]), 1)
+        self.assertIsNone(session["rounds"][0].get("outcome"))
+        pasted = engine.ingest(code, stray + " ", source="paste")
+        self.assertNotEqual(pasted["outcome"], "PROMPT_ECHO")
+
+    def test_a_real_answer_cut_off_inside_its_model_is_still_shown_from_the_watcher(self):
+        code = self.start()["code"]
+        cut = answer(code, 1)
+        cut = cut[: cut.index('"concepts"') + 40]  # stops inside model.json: an unclosed block
+        result = engine.ingest(code, cut, source="clipboard-watch")
+        self.assertEqual(result["outcome"], "TRUNCATED")
 
     def test_the_same_mistake_twice_is_going_in_circles(self):
         self.validation_mock.return_value = FAILED

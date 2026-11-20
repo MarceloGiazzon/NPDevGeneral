@@ -43,7 +43,8 @@ class CorpusTests(unittest.TestCase):
 
     def test_corpus_covers_every_outcome(self):
         outcomes = {c["expect"]["outcome"] for c in CASES}
-        every = {ri.PROMPT_ECHO, ri.WRONG_SESSION, ri.STALE_ROUND, ri.LIMIT_REACHED, ri.FILE_LINK_ONLY,
+        # STALE_ROUND stays a protocol word but the text stage no longer produces it (2026-11-20: read on its merits).
+        every = {ri.PROMPT_ECHO, ri.WRONG_SESSION, ri.LIMIT_REACHED, ri.FILE_LINK_ONLY,
                  ri.QUESTIONS, ri.NO_FILES, ri.TRUNCATED, ri.ELIDED, ri.BAD_JSON, ri.PARTIAL, ri.PARSED}
         self.assertEqual(every - outcomes, set())
 

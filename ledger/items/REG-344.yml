@@ -1,0 +1,31 @@
+id: REG-344
+title: >-
+  A generated app's "/" opened the Operator UI and the person had to find secrets/api-key.env and paste the key by hand
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-11-20
+closed: 2026-11-20
+source: >-
+  REG-321 owner manual round (2026-11-20): Open app landed on the operator console and asked for an API key.
+surface: generator/runtime-ui, manager/open-app
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RuntimeApiEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/api/GeneratorFacade.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache
+  - NPDevManager/src/main.rs
+  - NPDevManager/ui/browserai.js
+  - NPDevManager/ui/home.js
+  - NPDevManager/ui/app.js
+  - docs/content/manager-guides.yml
+detail: |
+  Owner decision 2026-11-20: the root of a business app is its business screen, and the Manager hands over the key.
+  FIXED 2026-11-20: with UI_GENERATE_BUSINESS_UI on (the default) the generated UiRedirectController sends "/" to /npdev-business-ui/ (the Operator UI
+  stays at /npdev-ui/); the Business UI takes a key from a "#npdev-key=" fragment (never sent to the server), stores it where its API Key field keeps it
+  and wipes the fragment with history.replaceState before any route reads the hash; the Manager's new Rust command open_app_signed_in reads the first
+  key of the app's secrets/api-key.env (or of the sibling <model>-app) and opens base/#npdev-key=<key> -- the key never passes through page JS. Used by
+  Use a browser AI's Open app, Home's Open and the Run screen's App link; the guide step 7 no longer says to paste a key.
+  Verified: GeneratorTestModelLoaderTest (new "/" assertion), BusinessUiEmitter* tests, Manager Rust open_app_signed_in_tests 2/2, check-manager-ui-
+  render 392/392. NOT yet proven on the real window with a rebuilt app.
+resolution: >-
+  Done when the defect described is fixed and covered by a test; see detail.

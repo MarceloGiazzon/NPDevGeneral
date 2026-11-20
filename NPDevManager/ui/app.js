@@ -1405,7 +1405,7 @@ function setRunState(state) {
 
 document.getElementById("run-open-btn").addEventListener("click", () => {
   const href = document.getElementById("run-link").href;
-  if (href && !href.endsWith("#")) invoke("open_url", { url: href });
+  if (href && !href.endsWith("#")) openRunApp(href);
 });
 
 document.getElementById("run-start-btn").addEventListener("click", async () => {
@@ -1516,10 +1516,16 @@ document.getElementById("db-reset-btn").addEventListener("click", async () => {
   await runDbOperation("reset", DB_RESET_CONFIRMATION);
 });
 
+// The app opens on its business screen, already signed in: the Manager reads the app's key itself.
+function openRunApp(href) {
+  const appDir = document.getElementById("run-app-dir").value.trim() || null;
+  invoke("open_app_signed_in", { baseUrl: href, appDir }).catch(() => invoke("open_url", { url: href }));
+}
+
 document.getElementById("run-link").addEventListener("click", (event) => {
   event.preventDefault();
   const href = event.target.href;
-  if (href && href !== "#") invoke("open_url", { url: href });
+  if (href && href !== "#") openRunApp(href);
 });
 
 document.getElementById("run-widgets-link").addEventListener("click", (event) => {

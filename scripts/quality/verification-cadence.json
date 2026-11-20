@@ -32,6 +32,23 @@
   "schemaVersion": "npdev-verification-cadence.v1",
   "checks": [
     {
+      "id": "check-manager-version-bump",
+      "tier": "T0",
+      "maxStaleness": "every-run",
+      "invokedBy": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "run": [
+        "{python}",
+        "scripts/quality/check-manager-version-bump.py"
+      ],
+      "description": "Any NPDevManager behaviour change since the last version bump (committed or not) needs a new version in Cargo.toml, tauri.conf.json and main.rs. Also refused by New-ManagerInstaller.ps1 before a build.",
+      "level": "core",
+      "protects": "correctness",
+      "triggers": [
+        "NPDevManager/**"
+      ],
+      "costSeconds": 2
+    },
+    {
       "id": "check-schema-mirror-consistency",
       "tier": "T0",
       "maxStaleness": "every-run",

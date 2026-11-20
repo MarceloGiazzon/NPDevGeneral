@@ -23,6 +23,18 @@
   };
 
   const STORAGE_KEY = "npdev.businessUi.apiKey";
+  // The NPDev Manager opens an app already signed in: "/#npdev-key=<key>" (a fragment, so the key never
+  // reaches the server or its logs; it survives the "/" -> "/npdev-business-ui/" redirect). Take it, keep it
+  // where the API Key field keeps it, and wipe it from the address bar and history before any route reads the hash.
+  (function takeKeyFromManager() {
+    const m = /^#npdev-key=([^&]*)/.exec(window.location.hash || "");
+    if (!m) return;
+    try {
+      const key = decodeURIComponent(m[1]).trim();
+      if (key) localStorage.setItem(STORAGE_KEY, key);
+    } catch (e) { /* a bad fragment is ignored, never shown */ }
+    history.replaceState(null, "", window.location.pathname + window.location.search);
+  })();
   const STORE_SECTION = { conceptName: "__store__" };
   const BOX_VIEW_SECTION = { conceptName: "__boxview__" };
   const PROMOTION_SECTION = { conceptName: "__promotion__" };
