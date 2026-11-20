@@ -1,17 +1,20 @@
 {
-  "closedAt": "2026-11-20T10:27:42.4625244Z",
+  "closedAt": "2026-11-20T12:23:57.3958796Z",
   "branch": "main",
-  "head": "5fef169a",
-  "headSubject": "feat(open-app): \"/\" opens the Business UI and the Manager opens an app signed in (REG-344); REG-321 closed; relay tolerances (REG-343); Manager build stamp (REG-345)",
-  "summary": "REG-321 DONE (owner accepted). REG-344: '/' opens the Business UI; Manager open_app_signed_in opens an app signed in via #npdev-key fragment (browser-AI Open app, Home Open, Run link); guide step 7 updated. AuthoringDiffGate refusals no longer say manifest.* / A2,C2. Ledger REG-343 (relay tolerances), REG-344, REG-345 (build stamp) DONE. Committed+pushed 5fef169a. Manager 0.13.40 release exe rebuilt at D:\\WorkSpace\\NPDev\\Build\\manager-target\\release\\npdev-manager.exe.",
-  "nextStep": "Owner-dependent: real-window check of Open app on a REGENERATED app (lands on business screen, signed in, no fragment left in the address bar); then the owner's real chat-AI rounds for REG-332/334/335 per D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\OWNER_REAL_ROUNDS_2026-11-19.md.",
+  "head": "c4a648d5",
+  "headSubject": "fix(gates): T2 green -- dead RuntimeApiEmitter overloads removed (generator coverage), DONE guards for REG-321/343/344/345, validation service drains an unread body before any answer (REG-346)",
+  "summary": "All owner-independent items done. REG-344 proven on a real regenerated app (GET / 302 -> /npdev-business-ui/; headless /#npdev-key= lands signed in as ADMIN, key wiped, API 200 vs 401 without; open-signed-in.mjs 6/6) and on the real Manager 0.13.40 window via CDP (Home Start+Open sends open_app_signed_in with address and folder; tour.mjs 6/6). T2: all four gates green (generator/runtimeHost/kernel in run 2, aiKnowledge in run 3) after removing dead RuntimeApiEmitter overloads (coverage), adding DONE guards (REG-321/343/344/345) and fixing REG-346 (validation service drained no body before a refusal -> WinError 10053 on Windows; test proven red). Bench: relay create arm on gemini 5/5; f4 arm's split fixture used the removed root fragments key (fixed); f4 on gemini 4/5 complete. Commits 5fef169a, c4a648d5 + bench fixture.",
+  "nextStep": "Owner-dependent only: real chat-AI rounds for REG-332/334/335 per D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\OWNER_REAL_ROUNDS_2026-11-19.md; when a round reaches its done_when set that item DONE with a guard: block and commit on main.",
   "plan": "",
   "blocked": "",
-  "verified": "Generator tests (GeneratorTestModelLoader 2/2 new '/' assertion, AuthoringDiffGate 24/24, BusinessUiEmitter* green); Manager Rust open_app_signed_in_tests 2/2; check-manager-ui-render 392/392; NPDevCli relay engine/ingest/authoring/apply 70/70; T1 fast gate PASSED (canary build+boot); version-bump, twin-pair, panel-provenance, doc-inventory, no-markdown-reads OK. NOT run: T2 gates, real window with a regenerated app.",
-  "dirtyCount": 0,
-  "dirtyFiles": [],
+  "verified": "T2 four gates green (run 2 + aiKnowledge run 3); NPDevMcp 150/150; bench test_bench 120/120; relay create gemini 5/5; f4 gemini 4/5 (split READY but page dropped after a BAD_JSON repair, one run); real app + real window checks 6/6 each. Scripts and evidence in D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\reg344-check.",
+  "dirtyCount": 1,
+  "dirtyFiles": [
+    " M scripts/ai/bench/relay_f4_arm.py"
+  ],
   "unpushed": 0,
   "landedCommits": [
-    "5fef169a feat(open-app): \"/\" opens the Business UI and the Manager opens an app signed in (REG-344); REG-321 closed; relay tolerances (REG-343); Manager build stamp (REG-345)"
+    "c4a648d5 fix(gates): T2 green -- dead RuntimeApiEmitter overloads removed (generator coverage), DONE guards for REG-321/343/344/345, validation service drains an unread body before any answer (REG-346)",
+    "b63003a7 chore(session): handoff 2026-11-20"
   ]
 }

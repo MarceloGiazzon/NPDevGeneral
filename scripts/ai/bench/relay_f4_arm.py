@@ -96,11 +96,13 @@ def make_app(root: Path, fixture: str) -> Path:
     model = json.loads((CANARY / "model.json").read_text(encoding="utf-8"))
     if fixture == "split":
         (app / "fragments").mkdir()
+        # A split is a plain $ref include inside the array itself (the root `fragments` key was removed from the DSL;
+        # this fixture still wrote it until 2026-11-20, so the AI was handed an invalid app and f4-all-split could not pass).
         head = {k: v for k, v in model.items() if k != "concepts"}
-        head["fragments"] = []
+        head["concepts"] = []
         for concept in model["concepts"]:
             rel = f"fragments/{concept['name'].lower()}.json"
-            head["fragments"].append({"$ref": rel})
+            head["concepts"].append({"$ref": rel})
             (app / rel).write_text(json.dumps({"concepts": [concept]}, indent=2) + "\n", encoding="utf-8")
         model = head
     (app / "model.json").write_text(json.dumps(model, indent=2) + "\n", encoding="utf-8")
