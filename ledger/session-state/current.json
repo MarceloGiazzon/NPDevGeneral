@@ -1,20 +1,17 @@
 {
-  "closedAt": "2026-11-20T00:41:21.8405467Z",
+  "closedAt": "2026-11-20T10:27:42.4625244Z",
   "branch": "main",
-  "head": "2458324f",
-  "headSubject": "feat(ai-context): standard bundle drops \"Reuse and extend\" (31.6 -> 20.5 KB), pack-use paragraph kept; REG-321 tableName refusal pinned",
-  "summary": "Pinned the REG-321 explicit-tableName refusal with a unit test (test_app_upgrade 31/31). Measured the AI bundle (standard 31.6 KB, 'Reuse and extend' = 12 KB), split that section and dropped it from the standard bundle (now 20.5 KB, pack-use paragraph kept for REG-332), A/B benched it (npdev arm 5/5 on gemini and nemotron, median tokens 10.1k->6.8k and 20.5k->6.8k; relay arm nemotron 5/5 median 8.5k, gemini 3/3 before free quota ran out) and committed + pushed it as 2458324f. Wrote the owner's real-rounds checklist outside the repo.",
-  "nextStep": "Owner-dependent only. (1) Get the owner's Part E results for REG-321 (tags 404? notes count? pre-upgrade backup folder) and the decision on dropping the 'cannot do this from here yet' screen. (2) Owner runs the real chat-AI rounds in D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\OWNER_REAL_ROUNDS_2026-11-19.md (REG-332 sales pack round + build; REG-334 pack + publish; REG-335 validator connector). When a round reaches its done_when, set that item DONE in ledger/items/REG-nnn.yml and commit on main. Optional when free-tier quota is back: finish gemini relay bench-013/015 on the new bundle and run relay_f4_arm.py --profile fast --text with on gemini.",
-  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General\\ledger\\items\\REG-332.yml",
-  "blocked": "REG-332/334/335 done_when need the owner's real chat-AI rounds on the owner's machine; REG-321 needs the owner's Part E results and a decision; Gemini free quota was exhausted during the relay bench.",
-  "verified": "Ran green: NPDevCli test_app_upgrade 31/31; scripts/ai/bench test_bench 120; NPDevCli test_relay_* 524. Bench: npdev arm 5/5 on gemini and nemotron with the 20.5 KB bundle; relay arm nemotron 5/5, gemini 3/3 (bench-013/015 not run, quota). Workspace slimness gate passed at commit time. NOT run: the 4 T2 gates after commit 2458324f (select_checks said 0 checks for the changed paths), f4 arm with the new bundle, journeys, release and paperwork gates, any real chat-AI round.",
-  "dirtyCount": 2,
-  "dirtyFiles": [
-    " M ledger/session-state/current.json",
-    " M ledger/session-state/history.jsonl"
-  ],
+  "head": "5fef169a",
+  "headSubject": "feat(open-app): \"/\" opens the Business UI and the Manager opens an app signed in (REG-344); REG-321 closed; relay tolerances (REG-343); Manager build stamp (REG-345)",
+  "summary": "REG-321 DONE (owner accepted). REG-344: '/' opens the Business UI; Manager open_app_signed_in opens an app signed in via #npdev-key fragment (browser-AI Open app, Home Open, Run link); guide step 7 updated. AuthoringDiffGate refusals no longer say manifest.* / A2,C2. Ledger REG-343 (relay tolerances), REG-344, REG-345 (build stamp) DONE. Committed+pushed 5fef169a. Manager 0.13.40 release exe rebuilt at D:\\WorkSpace\\NPDev\\Build\\manager-target\\release\\npdev-manager.exe.",
+  "nextStep": "Owner-dependent: real-window check of Open app on a REGENERATED app (lands on business screen, signed in, no fragment left in the address bar); then the owner's real chat-AI rounds for REG-332/334/335 per D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\OWNER_REAL_ROUNDS_2026-11-19.md.",
+  "plan": "",
+  "blocked": "",
+  "verified": "Generator tests (GeneratorTestModelLoader 2/2 new '/' assertion, AuthoringDiffGate 24/24, BusinessUiEmitter* green); Manager Rust open_app_signed_in_tests 2/2; check-manager-ui-render 392/392; NPDevCli relay engine/ingest/authoring/apply 70/70; T1 fast gate PASSED (canary build+boot); version-bump, twin-pair, panel-provenance, doc-inventory, no-markdown-reads OK. NOT run: T2 gates, real window with a regenerated app.",
+  "dirtyCount": 0,
+  "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "2458324f feat(ai-context): standard bundle drops \"Reuse and extend\" (31.6 -> 20.5 KB), pack-use paragraph kept; REG-321 tableName refusal pinned"
+    "5fef169a feat(open-app): \"/\" opens the Business UI and the Manager opens an app signed in (REG-344); REG-321 closed; relay tolerances (REG-343); Manager build stamp (REG-345)"
   ]
 }
