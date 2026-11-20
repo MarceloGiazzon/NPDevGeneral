@@ -1,0 +1,31 @@
+id: REG-346
+title: >-
+  The validation service answered a refusal before reading the request body, so on Windows the client often got a connection reset
+  (WinError 10053) instead of the 404/403/415 answer
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-11-20
+closed: 2026-11-20
+source: >-
+  T2 runs of 2026-11-20: the aiKnowledge gate's NPDevMcp suite failed with WinError 10053 on a different test of test_validation_service.py
+  each run (origin guard, token log, wrong token, unsupported media), only under the load of the full gate.
+surface: mcp/validation-service
+files:
+  - NPDevMcp/validation_service.py
+  - NPDevMcp/tests/test_validation_service.py
+detail: |
+  A refusal that comes before the body is read (wrong MCP token, Origin guard, media type, method) closed a socket that still held unread request
+  bytes; Windows answers that close with a reset, and the client could read the reset before the answer. Only the 413 path drained the body.
+  FIXED 2026-11-20: every answer goes through _send, which now drains a body nobody read (bounded at 8x max_body_bytes, chunked bodies not chased,
+  like the 413 drain). New test test_a_refusal_before_the_body_is_read_still_reaches_the_client sends a 512 KB body to a wrong token and with a
+  foreign Origin three times each; proven red without the drain (WinError 10053) and green with it. NPDevMcp suite 150/150.
+guard:
+  kind: test
+  ref: NPDevMcp/tests/test_validation_service.py#test_a_refusal_before_the_body_is_read_still_reaches_the_client
+  asserts: >-
+    a 512 KB request refused before its body is read (wrong token -> 404, foreign Origin -> 403) still delivers its status to the client
+    instead of a connection reset.
+  provenRed: true
+resolution: >-
+  Done when the defect described is fixed and covered by a test; see detail.

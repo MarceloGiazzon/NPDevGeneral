@@ -628,6 +628,17 @@ class McpTransportTest(unittest.TestCase):
             self.assertEqual(405, srv.call("DELETE", f"/mcp/{TOKEN}")[0])
             self.assertEqual(404, srv.call("GET", "/mcp/wrong")[0])  # nothing confirms the route exists
 
+    def test_a_refusal_before_the_body_is_read_still_reaches_the_client(self):
+        # 2026-11-20: a refusal sent before the body was read closed the socket with unread bytes -- a reset on
+        # Windows, so the client saw WinError 10053 instead of the answer (a different test failed each gate run).
+        # A body this size cannot fit in the socket buffers, so without the drain the reset is near-certain.
+        big = "x" * (512 * 1024)
+        with _Served(_mcp_service()) as srv:
+            for _ in range(3):
+                self.assertEqual(404, srv.call("POST", "/mcp/wrong", big, {"Content-Type": "application/json"})[0])
+                status, _, _ = srv.rpc(TOKEN, big, {"Origin": "https://evil.example"})
+                self.assertEqual(403, status)
+
     def test_origin_guard_and_no_open_cors_on_the_mcp_route(self):
         with _Served(_mcp_service()) as srv:
             ping = {"jsonrpc": "2.0", "id": 1, "method": "ping"}

@@ -29,5 +29,14 @@ detail: |
   (4) the four AuthoringDiffGate messages now name "the deliberateRemovals / renames list of npdev-submission.json" and renamedFrom in model.json, no
   plan codes; reason also read from why/because/rationale.
   Verified: NPDevCli test_relay_* green, AuthoringDiffGateTest 24/24.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_relay_engine.py#test_a_watcher_capture_with_no_file_does_not_move_the_round
+  asserts: >-
+    a watcher capture with no file is PROMPT_ECHO and the round does not move;
+    test_an_answer_marked_with_an_earlier_round_is_read_on_its_merits,
+    test_removals_the_ai_did_not_declare_are_declared_for_it_and_still_confirmed and test_a_reason_under_another_key_is_still_the_reason pin the
+    other three tolerances.
+  provenRed: false
 resolution: >-
   Done when the defect described is fixed and covered by a test; see detail.

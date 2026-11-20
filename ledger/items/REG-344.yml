@@ -25,7 +25,19 @@ detail: |
   and wipes the fragment with history.replaceState before any route reads the hash; the Manager's new Rust command open_app_signed_in reads the first
   key of the app's secrets/api-key.env (or of the sibling <model>-app) and opens base/#npdev-key=<key> -- the key never passes through page JS. Used by
   Use a browser AI's Open app, Home's Open and the Run screen's App link; the guide step 7 no longer says to paste a key.
+  PROVEN 2026-11-20 on a real app and the real window (scripts in NPDev_General__OutsideRepo/reg344-check): AppGen scratch app reg321-proof regenerated
+  with the refreshed generator-runtime cache, built and started -- GET / answers 302 -> /npdev-business-ui/; headless Chromium on /#npdev-key=<key> lands on
+  /npdev-business-ui/ signed in as ADMIN, the key gone from the URL, stored under npdev.businessUi.apiKey, every API call 200 (control without the key:
+  401s) -- open-signed-in.mjs 6/6. Manager 0.13.40 release exe via CDP (bridge wrapped, nothing really opened): Home Start then Open on the scratch
+  Reg321Tour-app sends open_app_signed_in with its address and folder (which holds secrets/api-key.env) -- tour.mjs 6/6.
   Verified: GeneratorTestModelLoaderTest (new "/" assertion), BusinessUiEmitter* tests, Manager Rust open_app_signed_in_tests 2/2, check-manager-ui-
-  render 392/392. NOT yet proven on the real window with a rebuilt app.
+  render 392/392. 
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/GeneratorTestModelLoaderTest.java#loadsTestModelAndGeneratesFiles
+  asserts: >-
+    the generated UiRedirectController sends "/" to /npdev-business-ui/ when the app ships the Business UI; the Manager side is pinned by
+    open_app_signed_in_tests in NPDevManager/src/main.rs and the browserai open path by scripts/quality/check-manager-ui-render.mjs.
+  provenRed: false
 resolution: >-
   Done when the defect described is fixed and covered by a test; see detail.

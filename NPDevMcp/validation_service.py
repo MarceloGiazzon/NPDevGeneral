@@ -904,6 +904,7 @@ class ValidatorHandler(BaseHTTPRequestHandler):
     def _send(self, status: int, body: bytes, content_type: str = "application/json; charset=utf-8",
               headers: "dict[str, str] | None" = None) -> None:
         self._code = status
+        self._drain_unread_body()
         try:
             self.send_response(status)
             self.send_header("Content-Type", content_type)
@@ -933,8 +934,29 @@ class ValidatorHandler(BaseHTTPRequestHandler):
         self._send_payload(status, rejected_payload(code, message, validator=self.service.validator_name,
                                                     **extra), cors=cors, extra_headers=extra_headers)
 
+    def _drain_unread_body(self) -> None:
+        """Read (and drop) a request body nobody read before this answer: a refusal that comes before the body is read
+        (wrong token, Origin, media type, method) would otherwise close a socket with unread bytes, which on Windows is
+        a reset -- the client then sees WinError 10053/10054 instead of our answer (the NPDevMcp suite failed this way
+        on a different test each run, 2026-11-20). Bounded like the 413 drain; a chunked body is not chased."""
+        if getattr(self, "_body_read", True):
+            return
+        self._body_read = True
+        if "chunked" in (self.headers.get("Transfer-Encoding") or "").lower():
+            return
+        try:
+            remaining = min(int(self.headers.get("Content-Length") or 0), 8 * self.service.max_body_bytes)
+            while remaining > 0:
+                chunk = self.rfile.read(min(65536, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+        except (ValueError, ConnectionError, OSError):
+            pass
+
     def _read_body(self, limit: int) -> "bytes | None":
         """The request body, or None after a rejection was already sent (413/411/400)."""
+        self._body_read = True
         if "chunked" in (self.headers.get("Transfer-Encoding") or "").lower():
             data = bytearray()
             seen = 0
@@ -993,6 +1015,7 @@ class ValidatorHandler(BaseHTTPRequestHandler):
         started = time.monotonic()
         self._code = 0
         self._body_size = 0
+        self._body_read = False
         self._vstatus = "-"
         self._cors = False
         parts = urlsplit(self.path)

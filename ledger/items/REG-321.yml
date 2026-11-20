@@ -68,6 +68,14 @@ detail: |
   CLOSED 2026-11-20 -- owner accepted the recommendation: the "cannot do this from here yet" screen stays ONLY for the cases the upgrade
   still refuses (unknown app folder, explicit tableName, junction table); every other confirmed removal goes through relay_apply_removal.
   No further manual round required (real-window proof 2026-11-19 stands).
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_app_upgrade.py#test_reg321_an_explicit_table_name_is_refused_cleanly_not_acknowledged_blind
+  asserts: >-
+    an upgrade whose impact report lists a destructive row no ticked item covers (an explicit tableName) ends REFUSED with
+    UNACKNOWLEDGED_DESTRUCTIVE_ITEM, the old jar back and no token rebuild; the other reg321_* tests in the same file pin the token hand-off and
+    the itemized acknowledgment.
+  provenRed: false
 resolution: >-
   Done when applying a confirmed removal of a record type, on a running app, ends in the app running again with the data of
   that table in the pre-upgrade backup, proven on the real window with a second app, and a destructive item the person did not

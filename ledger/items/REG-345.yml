@@ -19,5 +19,13 @@ detail: |
   on a version bump.
   FIXED 2026-11-20: build.rs names src, ui, build.rs, Cargo.toml, tauri.conf.json and capabilities as rerun triggers and stamps
   NPDEV_MANAGER_BUILD_SOURCE (short commit, "+changes" when NPDevManager is dirty, "unknown commit" without git); version 0.13.40.
+guard:
+  kind: manual
+  ref: NPDevManager/build.rs
+  asserts: >-
+    rebuilding the Manager after a src/ or ui/ change moves the build stamp and records the short commit ("+changes" when NPDevManager
+    is dirty); checked in the 0.13.40 release binary of 2026-11-20, which embeds "20-11-2026 07:24:36" and "5fef169a" (the commit it was
+    built from, clean).
+  provenRed: false
 resolution: >-
   Done when the defect described is fixed and covered by a test; see detail.
