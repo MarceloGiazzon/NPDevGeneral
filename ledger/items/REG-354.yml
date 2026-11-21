@@ -38,6 +38,10 @@ detail: |
   `never` for the default behaviour, so the owner's `all` can never leak into them.
   NOT done: Java capabilities and conversion hooks are accepted by the relay but NOT written (REG-355); a Manager control for the setting (it is a CLI/file setting for now) and a Manager button for
   remove-code; the tick boxes were not driven on the REAL Manager window (the generic needsConfirmation rendering and the Rust code check were read, not run); no real chat AI was asked for a JS page.
+  DONE 2026-11-21 (real window): driven on the INSTALLED Manager 0.13.43 (throw-away webview profile, machine setting `all`, a scratch copy of the canary, scripted answer pasted): a change asking for web/hello.js
+  showed TWO required boxes (code, public), Apply stayed off with none and with one ticked and came on with both, nothing was written before Apply, Apply sent both codes, web/hello.js was byte for byte
+  and browser-ai-code.json recorded its sha256, Undo restored model.json byte for byte and removed the page and the record (tour: NPDev_General__OutsideRepo/reg354-355-tour/tour.mjs, 28 of 29 checks; the 29th
+  is the generation check described in REG-355). NOT done: a real chat AI asked for a page.
 guard:
   kind: test
   ref: NPDevCli/tests/test_relay_codepolicy.py

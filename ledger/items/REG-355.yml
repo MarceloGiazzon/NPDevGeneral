@@ -37,7 +37,12 @@ detail: |
   Tests: test_relay_extensions 12, the relay suite 567, UntrustedExtension* generator tests.
   STILL OPEN: (1) the briefing text was not measured with a real browser AI (does it send the class, the flow and a role in one answer?); (3) a refusal by PluginJavaSourcePolicy or the bytecode inspector
   happens at GENERATION and reaches the person only as the generator's own error, not yet as a sentence in the Manager (the relay's scan lists what the class does, in words, before the tick);
-  (5) nothing was seen on the real Manager window and no real chat AI was asked for a Java class.
+  (5) no real chat AI was asked for a Java class. DRIVEN on the real installed Manager 0.13.43 (scratch canary copy, scripted answer): the class showed ONE required box saying it runs on the app's server, Apply was off until
+  it was ticked, nothing was written before Apply, then extensions/Greeter.java was byte for byte, the manifest entry bound it to flow:GreetFlow and role admin with the sha256 of the file on disk, model.json named it,
+  browser-ai-code.json recorded it as java-extension, and Undo removed the class, the entry and the record and restored model.json. NOT proven in the Manager: that the platform's generation accepts the class -- the
+  Manager refused the scratch folder BEFORE generating ("not an npdev-init app (no '<name>-app' suffix on its directory)"; generate_app_from_model); an earlier version of the tour's generation check passed vacuously on the
+  generic "The app could not be built." and was corrected. The generator's acceptance is proven by UntrustedExtensionRelayWrittenTest alone (relay-written folder, trusted class and registry entry bound to flow and role,
+  edited class refused by the hash); the source policy and the bytecode inspector on a real build are still unseen.
 done_when: >-
   With the setting at `all`, a browser AI's answer that adds a Java procedure referenced by the model is confirmed by the owner, written with its manifest entry, generated, and refused in words when
   PluginJavaSourcePolicy or the bytecode inspector rejects it; Undo and remove-code take every part out; proven on the real Manager window.
