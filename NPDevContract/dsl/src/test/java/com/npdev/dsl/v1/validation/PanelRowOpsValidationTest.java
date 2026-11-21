@@ -28,12 +28,11 @@ class PanelRowOpsValidationTest {
                         { "name": "id", "type": "uuid", "id": true, "required": true },
                         { "name": "sku", "type": "string" } ] }
                   ],
-                  "panels": [
+                  "screens": [
                     {
-                      "name": "TestPanel",
+                      "name": "TestPanel", "kind": "custom", "panel": {
                       "route": "/test-panel",
-                      "dataSources": %s
-                    }
+                      "dataSources": %s}}
                   ]
                 }
                 """.formatted(panelDataSourcesJson));

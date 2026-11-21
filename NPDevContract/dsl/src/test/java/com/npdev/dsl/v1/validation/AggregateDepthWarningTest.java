@@ -41,7 +41,7 @@ class AggregateDepthWarningTest {
             {
               "dslVersion": "3.0.0", "namespace": "f6.depthwarn", "version": "1.0",
               "concepts": [ %s ],
-              "autoPanels": [ { "aggregate": "Root" } ]
+              "screens": [{ "name": "Root", "kind": "workbench", "concept": "Root", "admin": { } }]
             }
             """.formatted(concepts);
         return new SemanticValidator().validateWithWarnings(new JsonModelParser().parse(MAPPER.readTree(json))).getWarnings();

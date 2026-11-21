@@ -531,75 +531,87 @@
       ]
     }
   ],
-  "autoPanels": [
+  "screens": [
     {
       "name": "Warehouses",
+      "kind": "list",
       "concept": "Warehouse",
-      "route": "/warehouses",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ],
-      "selection": {
-        "columns": [
-          "code",
-          "name",
-          "active"
-        ]
+      "admin": {
+        "route": "/warehouses",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "code",
+            "name",
+            "active"
+          ]
+        }
       }
     },
     {
       "name": "StorageLocations",
+      "kind": "list",
       "concept": "StorageLocation",
-      "route": "/storage-locations",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ],
-      "selection": {
-        "columns": [
-          "warehouseId",
-          "code",
-          "kind",
-          "active"
-        ]
+      "admin": {
+        "route": "/storage-locations",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "warehouseId",
+            "code",
+            "kind",
+            "active"
+          ]
+        }
       }
     },
     {
       "name": "StockItems",
+      "kind": "list",
       "concept": "StockItem",
-      "route": "/stock-items",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ],
-      "selection": {
-        "columns": [
-          "productId",
-          "minimumStock"
-        ]
+      "admin": {
+        "route": "/stock-items",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "productId",
+            "minimumStock"
+          ]
+        }
       }
     },
     {
       "name": "StockMovements",
+      "kind": "list",
       "concept": "StockMovement",
-      "route": "/stock-movements",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ],
-      "selection": {
-        "columns": [
-          "movementDate",
-          "type",
-          "productId",
-          "quantity",
-          "status"
-        ]
+      "admin": {
+        "route": "/stock-movements",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "movementDate",
+            "type",
+            "productId",
+            "quantity",
+            "status"
+          ]
+        }
       }
     }
   ]

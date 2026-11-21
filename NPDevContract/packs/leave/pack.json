@@ -475,45 +475,51 @@
       ]
     }
   ],
-  "autoPanels": [
+  "screens": [
     {
       "name": "LeaveTypes",
+      "kind": "list",
       "concept": "LeaveType",
-      "route": "/leave-types",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ],
-      "selection": {
-        "columns": [
-          "code",
-          "name",
-          "paid",
-          "annualAllowanceDays",
-          "active"
-        ]
+      "admin": {
+        "route": "/leave-types",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "code",
+            "name",
+            "paid",
+            "annualAllowanceDays",
+            "active"
+          ]
+        }
       }
     },
     {
       "name": "LeaveRequests",
+      "kind": "list",
       "concept": "LeaveRequest",
-      "route": "/leave-requests",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ],
-      "selection": {
-        "columns": [
-          "requestNumber",
-          "employeeName",
-          "leaveTypeId",
-          "startDate",
-          "endDate",
-          "days",
-          "status"
-        ]
+      "admin": {
+        "route": "/leave-requests",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "requestNumber",
+            "employeeName",
+            "leaveTypeId",
+            "startDate",
+            "endDate",
+            "days",
+            "status"
+          ]
+        }
       }
     }
   ]

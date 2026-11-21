@@ -58,14 +58,13 @@ public class BusinessUiEmitterPanelRouteControllerTest {
                       { "name": "id", "type": "uuid", "id": true, "required": true },
                       { "name": "amount", "type": "int" } ] }
                   ],
-                  "panels": [
+                  "screens": [
                     {
-                      "name": "ExpensesApprovalPanel",
+                      "name": "ExpensesApprovalPanel", "kind": "custom", "panel": {
                       "route": "/expenses/approval",
                       "title": "Expenses Approval",
                       "dataSources": [ { "name": "expenses", "concept": "Expense" } ],
-                      "layout": { "type": "table", "fields": ["expenses"] }
-                    }
+                      "layout": { "type": "table", "fields": ["expenses"] }}}
                   ]
                 }
                 """);
@@ -93,7 +92,7 @@ public class BusinessUiEmitterPanelRouteControllerTest {
                       { "name": "id", "type": "uuid", "id": true, "required": true },
                       { "name": "expedicaoId", "type": "uuid" } ] }
                   ],
-                  "autoPanels": [ { "aggregate": "Expedicao" } ]
+                  "screens": [{ "name": "Expedicao", "kind": "workbench", "concept": "Expedicao", "admin": { } }]
                 }
                 """);
 

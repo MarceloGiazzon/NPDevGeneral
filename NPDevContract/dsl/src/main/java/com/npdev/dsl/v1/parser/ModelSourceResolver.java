@@ -52,7 +52,7 @@ public final class ModelSourceResolver {
             "flows",
             "queries",
             "conversions",
-            "panels",
+            // D-1 phase 3: panels is gone as a root key too (a kind "custom" screen's `panel` block replaces it).
             // FORM P5-T9c: `guidePages` is NO LONGER an authoring key (the back office's pages are declared under
             // the root backOffice.pages in a model and under a pack-level backOffice.pages in a pack). It stays in
             // this set as the COMPOSITION kind only: every place that merges, qualifies (`labeling::LabelingOverview`),
@@ -85,7 +85,7 @@ public final class ModelSourceResolver {
             //
             // FORM P5-T9e: `aggregates` is NO LONGER a kind -- an aggregate is its root concept's `composition`, which
             // rides inside the concept (qualified with it); the walker below rewrites composition.collections[].concept.
-            "autoPanels",
+            // D-1: autoPanels is gone as a root key too (a screens[] entry's `admin` block replaces it).
             // R5.3 (2026-08-19): sequences[] threaded the same way. Unlike every other kind in this
             // set, its own `name` field is deliberately EXCLUDED from mergeQualifiedNonConceptArrays'
             // generic pack-qualification (see that method's own "sequences" check) -- a sequence is
@@ -177,7 +177,6 @@ public final class ModelSourceResolver {
         // FORM P5-T9c: a pack fragment declares its back-office pages as `backOffice.pages`; the composition-only
         // `guidePages` kind (in MODEL_ARRAY_KEYS) is not an authoring key any more.
         keys.remove("guidePages");
-        keys.add("backOffice");
         FRAGMENT_KEYS = Set.copyOf(keys);
     }
 
@@ -310,7 +309,21 @@ public final class ModelSourceResolver {
     ) {
     }
 
-    private ObjectNode resolveRoot(ObjectNode root, Path sourceFile, ResolutionState state) throws IOException {
+    private ObjectNode resolveRoot(ObjectNode authoredRoot, Path sourceFile, ResolutionState state) throws IOException {
+        // D-1 phase 4: the back office is the `admin` block of an experiences[] entry. It is lifted out into the transient
+        // root `backOffice` object the pages machinery below has always worked on, and put back as an experiences[] entry
+        // at the end, so the composed JSON stays authoring-shaped.
+        if (authoredRoot.has("backOffice")) {
+            throw error(sourceFile, "/backOffice", "Root 'backOffice' was removed (D-1): declare it as an experiences[] entry "
+                    + "with an `admin` block ({locale, strings, defaultRoute, navigation, pages})");
+        }
+        requireAtMostOneAdminExperience(authoredRoot.get("experiences"), sourceFile, "/experiences");
+        final String adminExperienceName = adminExperienceName(authoredRoot.get("experiences"));
+        final JsonNode adminBlock = JsonModelParser.adminExperienceBlock(authoredRoot.get("experiences"));
+        final ObjectNode root = withoutAdminExperience(authoredRoot);
+        if (adminBlock != null) {
+            root.set("backOffice", adminBlock.deepCopy());
+        }
         ObjectNode resolved = JsonNodeFactory.instance.objectNode();
         for (String key : ROOT_SCALAR_KEYS) {
             if (root.has(key)) {
@@ -367,6 +380,7 @@ public final class ModelSourceResolver {
 
         resolveUnqualifiedReferences(resolved, sourceFile, state);
         foldBackOfficePages(resolved);
+        unfoldBackOffice(resolved, adminExperienceName);
 
         if (rootMetadata != null) {
             resolved.set("metadata", rootMetadata.deepCopy());
@@ -1075,7 +1089,10 @@ public final class ModelSourceResolver {
                     // a defaultExpression string the reference-rewriting machinery cannot reach).
                     // The duplicate-within-this-pack check above still applies unconditionally.
                     // FORM P5-T1: experiences[]/screens[] are excluded for the same reason (see MODEL_ARRAY_KEYS).
-                    if (!"sequences".equals(key) && !"experiences".equals(key) && !"screens".equals(key)) {
+                    // D-1 phase 1: EXCEPT a screen that carries an `admin` block -- it stands for the autoPanel it replaced,
+                    // whose name was always pack-qualified (approvals::ApprovalRequests), and nothing navigates to it by name.
+                    boolean adminScreen = "screens".equals(key) && (rewritten.has("admin") || rewritten.has("panel"));
+                    if (adminScreen || (!"sequences".equals(key) && !"experiences".equals(key) && !"screens".equals(key))) {
                         ((ObjectNode) rewritten).put("name", qualifierId + "::" + localName);
                     }
                 }
@@ -1275,42 +1292,6 @@ public final class ModelSourceResolver {
             // this a pack that declares an event and awaits it (the approvals pack) kept the bare name
             // while the event itself was pack-qualified, and validation rejected it as unknown.
             rewriteTextField(object, "awaitEvent", resolverFor(rewriteMaps, ambiguousNames, "events"), qualifiedReferenceValidator);
-        } else if ("panels".equals(rootKey)) {
-            if ("dataSources".equals(parentKey) || "actions".equals(parentKey)) {
-                rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
-            }
-            if ("dataSources".equals(parentKey)) {
-                rewriteTextField(object, "query", resolverFor(rewriteMaps, ambiguousNames, "queries"), qualifiedReferenceValidator);
-                rewriteTextField(object, "procedure", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
-            } else if ("actions".equals(parentKey)) {
-                rewriteTextField(object, "procedure", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
-                rewriteTextField(object, "flow", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
-            } else if (parentKey.isBlank()) {
-                // The panel object itself (not a nested dataSource/action) -- guidePage names a
-                // guidePages member.
-                rewriteTextField(object, "guidePage", resolverFor(rewriteMaps, ambiguousNames, "guidePages"), qualifiedReferenceValidator);
-            }
-        } else if ("autoPanels".equals(rootKey)) {
-            // PACK-11: an autoPanel names its concept or its aggregate at the top level, and its
-            // transaction/selection surfaces name procedures through hooks and actions. Before this
-            // block a pack-contributed autoPanel composed successfully and then failed validation
-            // with "concept not found: Label" -- the concept IS in the model, as `labeling::Label`.
-            if (parentKey.isBlank()) {
-                rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
-                // FORM P5-T9e: an aggregate IS its root concept now, so the reference is a concept name.
-                rewriteTextField(object, "aggregate", conceptRewriteMap, qualifiedReferenceValidator);
-            }
-            // `procedure` on a surface's dataSource, on each workbench action, and on every
-            // transaction hook. Rewritten at any depth for the same reason flowStep.scope is: it is
-            // this shape's own field name and means nothing else inside an autoPanel.
-            rewriteTextField(object, "procedure", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
-            rewriteTextField(object, "onLoad", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
-            rewriteTextField(object, "onFieldChange", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
-            rewriteTextField(object, "beforeAction", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
-            rewriteTextField(object, "onValidate", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
-            rewriteTextField(object, "onCommit", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
-            rewriteTextField(object, "afterAction", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
-            rewriteTextField(object, "panel", resolverFor(rewriteMaps, ambiguousNames, "panels"), qualifiedReferenceValidator);
         } else if ("guidePages".equals(rootKey)) {
             // PACK-11: every chart/KPI gadget binds to a named query.
             rewriteTextField(object, "query", resolverFor(rewriteMaps, ambiguousNames, "queries"), qualifiedReferenceValidator);
@@ -1340,6 +1321,27 @@ public final class ModelSourceResolver {
                 rewriteTextField(object, "query", resolverFor(rewriteMaps, ambiguousNames, "queries"), qualifiedReferenceValidator);
             } else if ("actions".equals(parentKey)) {
                 rewriteTextField(object, "flow", resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
+            }
+            // D-1 phase 1: inside a screen's `admin` block (the old autoPanel body) a surface's dataSource, a workbench
+            // action and every transaction hook name a flow, and a surface may name a declared panel -- the same keys the
+            // autoPanels branch above rewrites at any depth. They are this shape's own field names, so they mean nothing
+            // else on a screen (a text `panel` is the surface override; an object `panel` is not text and is left alone).
+            for (String flowKey : List.of("procedure", "onLoad", "onFieldChange", "beforeAction", "onValidate", "onCommit", "afterAction")) {
+                rewriteTextField(object, flowKey, resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
+            }
+            rewriteTextField(object, "panel", resolverFor(rewriteMaps, ambiguousNames, "screens"), qualifiedReferenceValidator);
+            // D-1 phase 3: inside a screen's `panel` block (the old panels[] body) a dataSource and an action name a concept,
+            // a dataSource names a query, and the block's own guidePage names a back-office page -- the keys the removed
+            // panels branch rewrote. `concept` is read only under dataSources/actions, as before (a screen's own
+            // top-level concept is handled above; screenAction and widget members carry no concept).
+            if ("dataSources".equals(parentKey) || "actions".equals(parentKey)) {
+                rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
+            }
+            if ("dataSources".equals(parentKey)) {
+                rewriteTextField(object, "query", resolverFor(rewriteMaps, ambiguousNames, "queries"), qualifiedReferenceValidator);
+            }
+            if ("panel".equals(parentKey)) {
+                rewriteTextField(object, "guidePage", resolverFor(rewriteMaps, ambiguousNames, "guidePages"), qualifiedReferenceValidator);
             }
         } else if ("properties".equals(rootKey) && parentKey.isBlank()) {
             rewriteTextArrayField(object, "settableAt", resolverFor(rewriteMaps, ambiguousNames, "propertyScopes"), qualifiedReferenceValidator);
@@ -1515,7 +1517,7 @@ public final class ModelSourceResolver {
     }
 
     ObjectNode resolvePackRoot(
-            ObjectNode rawPack,
+            ObjectNode authoredPack,
             Path packFile,
             ResolutionState state,
             int depth,
@@ -1525,6 +1527,10 @@ public final class ModelSourceResolver {
         if (packDirectory == null) {
             throw error(packFile, "$", "Pack file must have a parent directory");
         }
+        // D-1 phase 4: a pack's back-office pages are the `admin` block of one of its experiences[] entries.
+        requireAtMostOneAdminExperience(authoredPack.get("experiences"), packFile, "/experiences");
+        final JsonNode packAdmin = packAdminBlock(authoredPack, packFile);
+        final ObjectNode rawPack = withoutAdminExperience(authoredPack);
         ObjectNode resolvedPack = JsonNodeFactory.instance.objectNode();
         for (String key : PACK_ROOT_SCALAR_KEYS) {
             if (rawPack.has(key)) {
@@ -1541,7 +1547,7 @@ public final class ModelSourceResolver {
                 resolvedPack.set(key, resolvePackArray(key, value, packFile, packDirectory, state, depth, stack));
             }
         }
-        ArrayNode packPages = liftPackBackOfficePages(rawPack.get("backOffice"), packFile, packDirectory, state, depth, stack);
+        ArrayNode packPages = liftPackBackOfficePages(packAdmin, packFile, packDirectory, state, depth, stack);
         if (packPages != null) {
             resolvedPack.set("guidePages", packPages);
         }
@@ -1598,6 +1604,90 @@ public final class ModelSourceResolver {
             }
         }
         return resolvedPack;
+    }
+
+    /** D-1 phase 4: the experiences[] entries that carry an {@code admin} block configure the back office; there can be one. */
+    private static void requireAtMostOneAdminExperience(JsonNode experiences, Path sourceFile, String pointer) throws IOException {
+        if (experiences == null || !experiences.isArray()) {
+            return;
+        }
+        int count = 0;
+        for (JsonNode experience : experiences) {
+            if (experience != null && experience.has("admin")) {
+                count++;
+            }
+        }
+        if (count > 1) {
+            throw error(sourceFile, pointer, "more than one experiences[] entry carries an `admin` block (" + count
+                    + ") -- suggestedFix: keep one; the back office has a single configuration");
+        }
+    }
+
+    private static String adminExperienceName(JsonNode experiences) {
+        if (experiences != null && experiences.isArray()) {
+            for (JsonNode experience : experiences) {
+                if (experience != null && experience.has("admin") && experience.path("name").isTextual()) {
+                    return experience.get("name").asText();
+                }
+            }
+        }
+        return "admin";
+    }
+
+    /** D-1 phase 4: {@code node} without its {@code admin} experiences[] entry (a deep copy when one is removed). */
+    private static ObjectNode withoutAdminExperience(ObjectNode node) {
+        JsonNode experiences = node.get("experiences");
+        if (JsonModelParser.adminExperienceBlock(experiences) == null) {
+            return node;
+        }
+        ObjectNode copy = node.deepCopy();
+        ArrayNode kept = JsonNodeFactory.instance.arrayNode();
+        for (JsonNode experience : experiences) {
+            if (experience == null || !experience.has("admin")) {
+                kept.add(experience);
+            }
+        }
+        if (kept.isEmpty()) {
+            copy.remove("experiences");
+        } else {
+            copy.set("experiences", kept);
+        }
+        return copy;
+    }
+
+    /** D-1 phase 4: a pack/fragment declares only back-office {@code pages}; anything else under its {@code admin} is refused. */
+    private static JsonNode packAdminBlock(ObjectNode packOrFragment, Path sourceFile) throws IOException {
+        JsonNode admin = JsonModelParser.adminExperienceBlock(packOrFragment.get("experiences"));
+        if (admin == null) {
+            return null;
+        }
+        List<String> extra = new ArrayList<>();
+        admin.fieldNames().forEachRemaining(key -> {
+            if (!"pages".equals(key)) {
+                extra.add(key);
+            }
+        });
+        if (!extra.isEmpty()) {
+            throw error(sourceFile, "/experiences", "a pack's `admin` block may only declare `pages` (found " + extra
+                    + ") -- suggestedFix: configure locale, strings, defaultRoute and navigation in the app's own admin experience");
+        }
+        return admin;
+    }
+
+    /** D-1 phase 4: writes the composed back office ({@code backOffice}, transient) back as an experiences[] entry with an
+     *  {@code admin} block and removes the transient key. */
+    private static void unfoldBackOffice(ObjectNode resolved, String name) {
+        JsonNode backOffice = resolved.remove("backOffice");
+        if (backOffice == null || !backOffice.isObject() || backOffice.isEmpty()) {
+            return;
+        }
+        ArrayNode experiences = resolved.has("experiences") && resolved.get("experiences").isArray()
+                ? (ArrayNode) resolved.get("experiences")
+                : resolved.putArray("experiences");
+        ObjectNode entry = JsonNodeFactory.instance.objectNode();
+        entry.put("name", name);
+        entry.set("admin", backOffice);
+        experiences.add(entry);
     }
 
     /** FORM P5-T9c: copies the model's root {@code backOffice} ({@code defaultRoute}, {@code navigation}) into the
@@ -1681,8 +1771,11 @@ public final class ModelSourceResolver {
         if (!fragmentNode.isObject()) {
             throw error(fragmentFile, "$", "Pack fragment file must contain a JSON object");
         }
-        ObjectNode fragmentObject = (ObjectNode) fragmentNode;
-        validatePackFragmentObject(fragmentObject, fragmentFile);
+        ObjectNode authoredFragment = (ObjectNode) fragmentNode;
+        validatePackFragmentObject(authoredFragment, fragmentFile);
+        requireAtMostOneAdminExperience(authoredFragment.get("experiences"), fragmentFile, "/experiences");
+        final JsonNode fragmentAdmin = packAdminBlock(authoredFragment, fragmentFile);
+        final ObjectNode fragmentObject = withoutAdminExperience(authoredFragment);
 
         ArrayDeque<Path> childStack = new ArrayDeque<>(stack);
         childStack.push(fragmentFile);
@@ -1694,7 +1787,7 @@ public final class ModelSourceResolver {
             }
         }
         ArrayNode fragmentPages = liftPackBackOfficePages(
-                fragmentObject.get("backOffice"), fragmentFile, packDirectory, state, depth + 1, childStack);
+                fragmentAdmin, fragmentFile, packDirectory, state, depth + 1, childStack);
         if (fragmentPages != null) {
             out.set("guidePages", fragmentPages);
         }

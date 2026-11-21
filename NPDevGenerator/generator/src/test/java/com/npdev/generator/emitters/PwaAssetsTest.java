@@ -48,8 +48,8 @@ class PwaAssetsTest {
 
     @Test
     void theDefaultGuidePagesLogoTextAndAccentBrandTheApp() throws Exception {
-        CompiledModel model = model(", \"backOffice\": { \"pages\": [ { \"name\": \"Default\", \"default\": true, "
-                + "\"theme\": { \"accent\": \"#112233\", \"logoText\": \"Acme Warehouse Cloud\" } } ] }");
+        CompiledModel model = model(", \"experiences\": [ { \"name\": \"admin\", \"admin\": { \"pages\": [ { \"name\": \"Default\", \"default\": true, "
+                + "\"theme\": { \"accent\": \"#112233\", \"logoText\": \"Acme Warehouse Cloud\" } } ] } } ]");
         JsonNode manifest = MAPPER.readTree(PwaAssets.manifestJson(model));
         assertEquals("Acme Warehouse Cloud", manifest.get("name").asText());
         assertEquals("Acme Wareho", manifest.get("short_name").asText().substring(0, 11));
@@ -58,7 +58,7 @@ class PwaAssetsTest {
 
     @Test
     void aNonHexAccentIsIgnoredRatherThanWrittenIntoTheManifest() throws Exception {
-        CompiledModel model = model(", \"backOffice\": { \"pages\": [ { \"name\": \"Default\", \"default\": true, \"theme\": { \"accent\": \"red\" } } ] }");
+        CompiledModel model = model(", \"experiences\": [ { \"name\": \"admin\", \"admin\": { \"pages\": [ { \"name\": \"Default\", \"default\": true, \"theme\": { \"accent\": \"red\" } } ] } } ]");
         assertEquals("#2563eb", PwaAssets.accent(model));
     }
 

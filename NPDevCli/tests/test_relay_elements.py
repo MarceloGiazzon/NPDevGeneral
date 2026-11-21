@@ -261,7 +261,9 @@ def _item_schema(key: str):
     for _ in range(10):
         if "$ref" in node and node["$ref"].startswith("#/$defs/"):
             node = SCHEMA["$defs"][node["$ref"].split("/")[-1]]
-        elif "then" in node and "else" in node:
+        elif "then" in node and "else" in node and not node.get("required"):
+            # an if/then/else that carries no `required` of its own: the element shape is the else branch.
+            # (D-1: experience/screen carry their own `required: [name, ...]` beside an if/then/else on the admin block.)
             node = node["else"]
         else:
             break

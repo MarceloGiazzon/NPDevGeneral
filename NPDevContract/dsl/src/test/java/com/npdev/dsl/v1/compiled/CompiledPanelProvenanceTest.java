@@ -31,7 +31,7 @@ class CompiledPanelProvenanceTest {
                   { "name": "nome", "type": "string" },
                   { "name": "email", "type": "string" } ] }
               ],
-              "autoPanels": [ { "concept": "Cliente" } ]
+              "screens": [{ "name": "Cliente", "kind": "list", "concept": "Cliente", "admin": { } }]
             }
             """;
         ModelAst ast = new JsonModelParser().parse(MAPPER.readTree(json));
@@ -87,12 +87,11 @@ class CompiledPanelProvenanceTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "label", "type": "string" } ] }
               ],
-              "panels": [ {
-                "name": "WidgetBoard",
+              "screens": [ {
+                "name": "WidgetBoard", "kind": "custom", "panel": {
                 "route": "/widgets",
                 "dataSources": [ { "name": "rows", "concept": "Widget" } ],
-                "layout": { "type": "table", "fields": ["label"] }
-              } ]
+                "layout": { "type": "table", "fields": ["label"] }}} ]
             }
             """;
         ModelAst ast = new JsonModelParser().parse(MAPPER.readTree(json));

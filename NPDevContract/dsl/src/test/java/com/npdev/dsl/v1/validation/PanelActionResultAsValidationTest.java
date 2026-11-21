@@ -27,10 +27,10 @@ class PanelActionResultAsValidationTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }
               ],
               "flows": [{"name": "ExportProcedure", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
-              "panels": [
-                { "name": "TestPanel", "route": "/test-panel",
+              "screens": [
+                { "name": "TestPanel", "kind": "custom", "panel": { "route": "/test-panel",
                   "dataSources": [ { "name": "widgets", "concept": "Widget" } ],
-                  "actions": [ %s ] }
+                  "actions": [ %s ]}}
               ]
             }
             """.formatted(actionJson);

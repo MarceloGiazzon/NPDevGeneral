@@ -82,27 +82,72 @@
     { "name": "Suppliers", "concept": "Organization", "where": "kind == 'SUPPLIER' && active == true", "orderBy": ["name"] },
     { "name": "ActiveContacts", "concept": "Contact", "where": "active == true", "orderBy": ["lastName", "firstName"] }
   ],
-  "autoPanels": [
+  "screens": [
     {
       "name": "Organizations",
+      "kind": "list",
       "concept": "Organization",
-      "route": "/organizations",
-      "surfaces": ["selection", "detail", "transaction"],
-      "selection": { "columns": ["name", "kind", "email", "phone", "active"] }
+      "admin": {
+        "route": "/organizations",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "name",
+            "kind",
+            "email",
+            "phone",
+            "active"
+          ]
+        }
+      }
     },
     {
       "name": "Contacts",
+      "kind": "list",
       "concept": "Contact",
-      "route": "/contacts",
-      "surfaces": ["selection", "detail", "transaction"],
-      "selection": { "columns": ["lastName", "firstName", "organizationId", "email", "phone"] }
+      "admin": {
+        "route": "/contacts",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "lastName",
+            "firstName",
+            "organizationId",
+            "email",
+            "phone"
+          ]
+        }
+      }
     },
     {
       "name": "Addresses",
+      "kind": "list",
       "concept": "Address",
-      "route": "/addresses",
-      "surfaces": ["selection", "detail", "transaction"],
-      "selection": { "columns": ["organizationId", "kind", "city", "country", "isDefault"] }
+      "admin": {
+        "route": "/addresses",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "organizationId",
+            "kind",
+            "city",
+            "country",
+            "isDefault"
+          ]
+        }
+      }
     }
   ]
 }

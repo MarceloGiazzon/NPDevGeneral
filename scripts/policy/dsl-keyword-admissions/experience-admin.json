@@ -1,0 +1,42 @@
+{
+ "$comment": "D-1 phase 4 admission, 2026-11-21 (owner decision: merge panels/autoPanels/backOffice into screens/experiences). One slot (experiences[].admin) whose body is $defs/backOffice ({locale, strings, defaultRoute, navigation, pages}, unchanged). It replaces the removed root key `backOffice` and a pack's `backOffice` (a pack declares only `pages` in its own experiences[] admin entry; pack:backOffice is out). The compiled model (settings, appShell, guidePages) is unchanged.",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "experiences[].admin",
+ "slots": [
+  "experience.admin"
+ ],
+ "rung": 0,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-21",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "the back office is the admin experience: an experiences[] entry {name: admin, admin: {...}} names the language and text overrides, the route the back office opens on, the menu entries (label, target, group) and the dashboard pages; nothing is computed"
+  },
+  "notLower": {
+   "value": true,
+   "why": "the menu and the dashboard layout are structure the generated shell renders; no expression, function or step can say which entry opens first or which gadget sits in which region -- and a pack needs a place to contribute its own dashboard pages that survives composition (qualified pack::Page names)"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "NPDevSamples/dsl-conformance-max",
+    "NPDevSamples/pigmentampas"
+   ],
+   "note": "both apps configure their back office this way (it was their root `backOffice`); the labeling pack (NPDevSamples/dsl-conformance-max/Input/packs/labeling) contributes pages through its own admin entry"
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/AdminExperienceTest.java",
+   "note": "AdminExperienceTest refuses the removed root/pack backOffice key and a second admin entry, composes a pack's pages (pack::Page after the model's own) into one admin entry, and compiles the entry to the same appShell/settings/guidePages as before; BusinessUiEmitterAppShellManifestTest fails if defaultRoute/navigation/pages stop reaching the generated UI manifest"
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "`experiences[]` entry `{\"name\":\"admin\",\"admin\":{\"locale\":\"pt-BR\",\"strings\":{..},\"defaultRoute\":\"<Concept>\",\"navigation\":[{\"label\":\"..\",\"target\":\"<Concept>\",\"group\":\"..\"}],\"pages\":[<guide pages>]}}` (OPTIONAL, at most one -- omit it unless you want a grouped menu, your own dashboards or your own wording)"
+  }
+ },
+ "replaces": [
+  "pack:backOffice"
+ ],
+ "budgetDelta": 0
+}

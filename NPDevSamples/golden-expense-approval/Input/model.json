@@ -94,34 +94,37 @@
       ]
     }
   ],
-  "panels": [
+  "screens": [
     {
       "name": "ExpenseApprovalPanel",
-      "route": "/expenses/approval",
-      "title": "Expense approval",
-      "dataSources": [
-        {
-          "name": "pendingExpenses",
-          "query": "PendingExpenseRequests"
-        }
-      ],
-      "layout": {
-        "type": "table",
-        "fields": [
-          "employeeEmail",
-          "amount",
-          "needsManagerApproval",
-          "status"
+      "kind": "custom",
+      "panel": {
+        "route": "/expenses/approval",
+        "title": "Expense approval",
+        "dataSources": [
+          {
+            "name": "pendingExpenses",
+            "query": "PendingExpenseRequests"
+          }
+        ],
+        "layout": {
+          "type": "table",
+          "fields": [
+            "employeeEmail",
+            "amount",
+            "needsManagerApproval",
+            "status"
+          ]
+        },
+        "actions": [
+          {
+            "name": "SubmitExpense",
+            "binding": "procedure",
+            "procedure": "SubmitExpenseProcedure",
+            "label": "Submit expense"
+          }
         ]
-      },
-      "actions": [
-        {
-          "name": "SubmitExpense",
-          "binding": "procedure",
-          "procedure": "SubmitExpenseProcedure",
-          "label": "Submit expense"
-        }
-      ]
+      }
     }
   ],
   "flows": [

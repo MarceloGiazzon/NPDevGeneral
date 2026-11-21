@@ -25,7 +25,7 @@
     "writer": "the name of a function registered in npdev_relay_config.WRITERS: the CLI's own pure writer (`npdev config set-default`, npdev_config_defaults.set_default_text), whose output the apply step puts on disk inside its all-or-nothing transaction -- never a raw file write"
   },
   "located": [
-    { "idea": "default UI language", "where": "model.json", "how": "backOffice.locale (informational tag) and backOffice.strings (the text that is actually overridden)" },
+    { "idea": "default UI language", "where": "model.json", "how": "admin.locale (informational tag) and admin.strings (the text that is actually overridden), in the experiences[] entry that carries an `admin` block" },
     { "idea": "date format", "where": "model.json", "how": "no built-in setting: declare a properties[] entry so the scoped-property cascade carries it" },
     { "idea": "rows per page", "where": "model.json", "how": "no built-in setting: declare a properties[] entry so the scoped-property cascade carries it" },
     { "idea": "currency", "where": "model.json", "how": "presentationMetadata.currency on the field or concept that shows money" },

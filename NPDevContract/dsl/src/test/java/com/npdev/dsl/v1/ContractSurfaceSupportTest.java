@@ -66,9 +66,9 @@ class ContractSurfaceSupportTest {
                       ]
                     }
                   ],
-                  "panels": [
+                  "screens": [
                     {
-                      "name": "WorkQueue",
+                      "name": "WorkQueue", "kind": "custom", "panel": {
                       "route": "/work",
                       "title": "Work queue",
                       "dataSources": [
@@ -85,8 +85,7 @@ class ContractSurfaceSupportTest {
                           "procedure": "SubmitWorkItem",
                           "label": "Submit"
                         }
-                      ]
-                    }
+                      ]}}
                   ]
                 }
                 """);

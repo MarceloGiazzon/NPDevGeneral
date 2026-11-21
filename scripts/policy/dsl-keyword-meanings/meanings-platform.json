@@ -123,7 +123,7 @@
       }
     },
     "backOffice": {
-      "summary": "The optional configuration of the generated back office: language, string overrides, default route, grouped navigation and dashboard pages. Omit it entirely for the default behavior (navigation derived from the concepts)."
+      "summary": "The body of the admin experience (an experiences[] entry with an `admin` block): language, string overrides, default route, grouped navigation and dashboard pages. Omit the entry entirely for the default behavior (navigation derived from the concepts)."
     },
     "appShellNavItem": {
       "summary": "One entry of the back office navigation."
@@ -218,13 +218,10 @@
     "root:flows": "What the app does: durable step lists started by a trigger.",
     "root:queries": "Named, parameterised reads over concepts.",
     "root:conversions": "Declarative data conversions applied at boot when the schema changes.",
-    "root:panels": "Hand-composed screens (the older way; screens are the current one).",
-    "root:autoPanels": "Panels generated from a concept or aggregate (the older way; screens are the current one).",
     "root:metadata": "Free-form notes about the model. Never carries behavior.",
     "root:packs": "The packs this model consumes, each a local file or a remote coordinate.",
     "root:externalAi": "The opt-in to delegating work to an outside AI, with vendors, prompts and limits.",
     "root:roles": "The kinds of user and what each may do.",
-    "root:backOffice": "Optional configuration of the generated back office.",
     "root:agentAccess": "What AI agents are offered and on which channels.",
     "capability.name": "The capability's name, referenced by `capabilityCall` steps and `trigger.webhook`. With pack composition it becomes `pack::name`.",
     "capability.type": "A free-form kind label for the capability, for example `HttpConnector`, `Payment` or `Notification`; used by tooling and specialization.",
@@ -279,6 +276,7 @@
     "agentAccess.expose": "The concepts, flows and aggregates offered to agents, at least one.",
     "agentAccessExposure.concept": "Offer this concept's records as tools.",
     "agentAccessExposure.flow": "Offer this flow as a tool.",
+    "experience.admin": "Makes this entry the back office instead of a role experience: the language, string overrides, default route, grouped navigation and dashboard pages of the generated back office. At most one per model; a pack declares only `pages` in it.",
     "experience.title": "Display title of the experience.",
     "experience.navigation": "The navigation entries (a bottom tab bar on mobile, at most 5 there).",
     "guidePage.name": "The page's name; a concept or panel can point at it with `guidePage`.",
@@ -338,8 +336,6 @@
     "pack:flows": "Flows the pack contributes.",
     "pack:queries": "Queries the pack contributes.",
     "pack:conversions": "Data conversions the pack contributes.",
-    "pack:panels": "Panels the pack contributes.",
-    "pack:autoPanels": "Auto panels the pack contributes.",
     "pack:roles": "Roles the pack contributes.",
     "pack:propertyScopes": "Property scopes the pack contributes.",
     "pack:properties": "Properties the pack contributes.",
@@ -353,7 +349,6 @@
     "pack:requires.roles": "Roles the composing app must provide.",
     "pack:requires.capabilities": "Capabilities the composing app must provide.",
     "pack:requires.network": "Hosts the pack needs network access to.",
-    "pack:backOffice.pages": "Guide pages the pack adds to the composed model's back office.",
     "pack:forkedFrom.pack": "Identifier of the pack this one was derived from.",
     "pack:forkedFrom.version": "Version of the original pack at the time of the fork.",
     "pack:forkedFrom.originAuthor": "Author of the original pack.",

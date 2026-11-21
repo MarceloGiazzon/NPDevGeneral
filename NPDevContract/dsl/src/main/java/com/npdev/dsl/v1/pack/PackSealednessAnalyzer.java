@@ -246,7 +246,16 @@ public final class PackSealednessAnalyzer {
     ) {
         List<String> refs = new ArrayList<>();
         collectConceptRefs(refs, packJson.get("queries"), "queries");
-        collectConceptRefs(refs, packJson.get("panels"), "panels");
+        // D-1 phase 3: a pack's hand-written panels are the `panel` blocks of its screens.
+        JsonNode packScreens = packJson.get("screens");
+        if (packScreens != null && packScreens.isArray()) {
+            for (int s = 0; s < packScreens.size(); s++) {
+                JsonNode screenPanel = packScreens.get(s) == null ? null : packScreens.get(s).get("panel");
+                if (screenPanel != null && screenPanel.isObject()) {
+                    collectConceptRefs(refs, screenPanel, "screens[" + s + "].panel");
+                }
+            }
+        }
         JsonNode flows = packJson.get("flows");
         if (flows != null && flows.isArray()) {
             for (int f = 0; f < flows.size(); f++) {

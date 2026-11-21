@@ -790,15 +790,14 @@ final class UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest {
                       ]
                     }
                   ],
-                  "panels": [
+                  "screens": [
                     {
-                      "name": "item12-panel",
+                      "name": "item12-panel", "kind": "custom", "panel": {
                       "route": "/item12-panel",
                       "title": "Item 12 Packaged Proof Panel",
                       "metadata": {
                         "untrustedExtensionEntrypoint": "panel/item12-panel.html"
-                      }
-                    }
+                      }}}
                   ]
                 }
                 """, StandardCharsets.UTF_8);

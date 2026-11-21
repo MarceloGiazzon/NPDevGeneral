@@ -87,22 +87,25 @@ class AggregateRuntimeAllowedActionsTest {
               "composition": {}
             }
           ],
-          "autoPanels": [
+          "screens": [
             {
               "name": "OrdWorkbench",
-              "aggregate": "Ord",
-              "route": "/ords",
-              "transaction": {
-                "actions": [
-                  {
-                    "label": "Stamp",
-                    "procedure": "StampProcedure"
-                  },
-                  {
-                    "label": "Clear",
-                    "procedure": "ClearProcedure"
-                  }
-                ]
+              "kind": "workbench",
+              "concept": "Ord",
+              "admin": {
+                "route": "/ords",
+                "transaction": {
+                  "actions": [
+                    {
+                      "label": "Stamp",
+                      "procedure": "StampProcedure"
+                    },
+                    {
+                      "label": "Clear",
+                      "procedure": "ClearProcedure"
+                    }
+                  ]
+                }
               }
             }
           ],

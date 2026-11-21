@@ -27,7 +27,7 @@ class AutoPanelSelectionDataSourceValidationTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }
               ],
               "flows": [{"name": "RealProcedure", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
-              "autoPanels": [ { "concept": "Cliente", "selection": %s } ]
+              "screens": [ { "name": "Cliente", "kind": "list", "concept": "Cliente", "admin": { "selection": %s } } ]
             }
             """.formatted(selectionJson);
         ModelAst ast = new JsonModelParser().parse(MAPPER.readTree(modelJson));

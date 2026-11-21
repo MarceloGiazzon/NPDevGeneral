@@ -61,7 +61,73 @@ def _merge_context_fragments(model: dict, base_dir: Path) -> dict:
     """The shallow view every detector reads: contexts[] arrays unioned in (``_union_context_fragments``), then FORM
     P5-T9e's derived ``aggregates`` view -- an aggregate is its root concept's ``composition`` now, so the detectors that
     were written against the old top-level ``aggregates[]`` keep reading ``{name, root, collections, ...}`` entries."""
-    return _derive_aggregates(_union_context_fragments(model, base_dir), base_dir)
+    return _derive_admin_backoffice(_derive_screen_panels(_derive_admin_autopanels(
+        _derive_aggregates(_union_context_fragments(model, base_dir), base_dir))))
+
+
+def authoring_back_office(model: dict):
+    """D-1 phase 4: the back office is the ``admin`` block of one experiences[] entry. The block the AUTHORING model
+    declares, in the shape of the old root ``backOffice`` object (``{locale, strings, defaultRoute, navigation, pages}``),
+    or None. A legacy root ``backOffice`` (fixtures only; the parser refuses the key) is returned as is."""
+    experiences = model.get("experiences")
+    if isinstance(experiences, list):
+        for experience in experiences:
+            if isinstance(experience, dict) and isinstance(experience.get("admin"), dict):
+                return experience["admin"]
+    legacy = model.get("backOffice")
+    return legacy if isinstance(legacy, dict) else None
+
+
+def _derive_admin_backoffice(model: dict) -> dict:
+    """D-1 phase 4: the detectors written against the old root ``backOffice`` keep reading it from this view."""
+    admin = authoring_back_office(model)
+    if admin is None or model.get("backOffice") is admin:
+        return model
+    derived = dict(model)
+    derived["backOffice"] = admin
+    return derived
+
+
+def _derive_admin_autopanels(model: dict) -> dict:
+    """D-1 phase 1: a concept's generated back-office pages are a ``screens[]`` entry's ``admin`` block now, so the
+    detectors written against the old top-level ``autoPanels[]`` keep reading ``{name, concept, <admin body>}`` entries."""
+    screens = model.get("screens")
+    if not isinstance(screens, list):
+        return model
+    lifted = []
+    for screen in screens:
+        if isinstance(screen, dict) and isinstance(screen.get("admin"), dict):
+            lifted.append({"name": screen.get("name"), "concept": screen.get("concept"), **screen["admin"]})
+    if not lifted:
+        return model
+    derived = dict(model)
+    derived["autoPanels"] = list(model.get("autoPanels") or []) + lifted
+    return derived
+
+
+def authoring_panels(model: dict) -> list:
+    """D-1 phase 3: a hand-written panel is a ``screens[]`` entry of kind ``custom`` carrying a ``panel`` block. Every
+    panel the AUTHORING model declares, in the shape of the old top-level ``panels[]`` entries (``{name, route,
+    dataSources, layout, actions, ...}``): a legacy root ``panels[]`` entry (fixtures only; the parser refuses the key)
+    plus each ``screens[].panel`` lifted to ``{"name": <screen name>, **panel}``. The screen supplies ``name``."""
+    panels = [p for p in model["panels"] if isinstance(p, dict)] if isinstance(model.get("panels"), list) else []
+    screens = model.get("screens")
+    if isinstance(screens, list):
+        for screen in screens:
+            if isinstance(screen, dict) and isinstance(screen.get("panel"), dict):
+                panels.append({"name": screen.get("name"), **screen["panel"]})
+    return panels
+
+
+def _derive_screen_panels(model: dict) -> dict:
+    """D-1 phase 3: a hand-written panel is a ``screens[].panel`` block now, so the detectors written against the old
+    top-level ``panels[]`` keep reading ``{name, route, dataSources, layout, actions, ...}`` entries."""
+    panels = authoring_panels(model)
+    if not panels:
+        return model
+    derived = dict(model)
+    derived["panels"] = panels
+    return derived
 
 
 def _derive_aggregates(model: dict, base_dir: Path) -> dict:

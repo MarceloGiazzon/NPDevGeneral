@@ -19,9 +19,11 @@
       "steps": []
     }
   ],
-  "panels": [
+  "screens": [
     {
-      "name": "user-admin-panel"
+      "name": "user-admin-panel",
+      "kind": "custom",
+      "panel": {}
     }
   ]
 }

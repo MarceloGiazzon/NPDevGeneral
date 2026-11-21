@@ -451,7 +451,7 @@ def _has_aggregate_collection_lookup_fields(model: dict) -> bool:
 
 def _has_settings(model: dict) -> bool:
     # Move 6 Move A (docs/MOVE6_TYPED_SURFACE_PLAN.md §2), FORM P5-T9g: the app's typed locale/strings, now the
-    # root backOffice.locale / backOffice.strings -- retires the untyped mix of platform-default English and
+    # the admin experience's locale / strings (the corpus view exposes the block as `backOffice`) -- retires the untyped mix of platform-default English and
     # hardcoded Portuguese literal fallbacks a generated app's Aggregate Workbench page used to render.
     back_office = model.get("backOffice")
     return isinstance(back_office, dict) and bool(back_office.get("locale") or back_office.get("strings"))

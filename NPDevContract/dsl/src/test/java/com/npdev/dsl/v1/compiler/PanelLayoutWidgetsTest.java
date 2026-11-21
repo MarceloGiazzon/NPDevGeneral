@@ -40,10 +40,10 @@ class PanelLayoutWidgetsTest {
                   { "name": "status", "type": "string" },
                   { "name": "priority", "type": "integer" } ] }
               ],
-              "panels": [
-                { "name": "Ops", "route": "/ops", "title": "Ops",
+              "screens": [
+                { "name": "Ops", "kind": "custom", "panel": { "route": "/ops", "title": "Ops",
                   "dataSources": [ { "name": "tickets", "concept": "Ticket" } ],
-                  "layout": { "type": "%s"%s } }
+                  "layout": { "type": "%s"%s }}}
               ]
             }
             """.formatted(layoutType, widgetsJson.isEmpty() ? "" : ", \"widgets\": " + widgetsJson);

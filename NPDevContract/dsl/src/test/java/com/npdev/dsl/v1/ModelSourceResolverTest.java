@@ -451,13 +451,12 @@ class ModelSourceResolverTest {
                       "steps": [{ "name": "done", "type": "return", "value": "ok" }]
                     }
                   ],
-                  "panels": [
+                  "screens": [
                     {
-                      "name": "ProductPanel",
+                      "name": "ProductPanel", "kind": "custom", "panel": {
                       "route": "/products",
                       "dataSources": [{ "name": "products", "concept": "Product" }],
-                      "actions": [{ "name": "archive", "binding": "procedure", "concept": "Product" }]
-                    }
+                      "actions": [{ "name": "archive", "binding": "procedure", "concept": "Product" }]}}
                   ]
                 }
                 """);
@@ -481,9 +480,9 @@ class ModelSourceResolverTest {
         assertEquals("cat::Product", resolved.get("queries").get(0).get("concept").asText());
         assertEquals("cat::Product", resolved.get("flows").get(0).get("concept").asText());
         assertEquals("cat::Product",
-                resolved.get("panels").get(0).get("dataSources").get(0).get("concept").asText());
+                resolved.get("screens").get(0).get("panel").get("dataSources").get(0).get("concept").asText());
         assertEquals("cat::Product",
-                resolved.get("panels").get(0).get("actions").get(0).get("concept").asText());
+                resolved.get("screens").get(0).get("panel").get("actions").get(0).get("concept").asText());
     }
 
     @Test

@@ -207,7 +207,7 @@ sources feed it, in cascade order:
    emitted into `generated-ui-manifest.json`'s top-level `theme` block and applied by
    `shell.js`'s `applyAppTheme()` on every boot, before any GuidePage is resolved.
 2. **Per-GuidePage override** — a GuidePage's own `theme.mode`/`theme.density` (model-declared,
-   `backOffice.pages[].theme`), applied by `applyGuidePage()` immediately after. Left `null` in the
+   `admin.pages[].theme`), applied by `applyGuidePage()` immediately after. Left `null` in the
    manifest when a model-declared GuidePage doesn't declare them, so the app-wide default shows for
    every such page. The three built-in GuidePages (`Default`, `Minimal`, `None`) are the exception: they
    are built with a hard-coded theme (`mode: "light"`, `density: "comfortable"`, `GuidePageDefaults.builtin()`),
@@ -308,7 +308,7 @@ merge. Declared Panels/Store/Box View sections are likewise not covered (no conc
 
 ## Panel slots — hand-authored regions inside a generated panel (`layout.slots`)
 
-A declared panel (`panels[]`) can mount app-owned components around or instead of its generated body:
+A declared panel (a `kind: "custom"` screen's `panel` block) can mount app-owned components around or instead of its generated body:
 
 ```json
 "layout": { "type": "table", "slots": [
@@ -332,7 +332,7 @@ A declared panel (`panels[]`) can mount app-owned components around or instead o
 
 ## Console and dashboard layouts — declarative widgets (`layout.widgets`)
 
-A declared panel (`panels[]`) can render as an **operator console** (`layout.type: "console"`) or a
+A declared panel (a `kind: "custom"` screen's `panel` block) can render as an **operator console** (`layout.type: "console"`) or a
 **dashboard** (`"dashboard"`): instead of the generic data-source tables it draws a 4-column grid of
 `layout.widgets[]`, all computed in the browser from the panel's own data sources.
 
@@ -370,7 +370,7 @@ A declared panel (`panels[]`) can render as an **operator console** (`layout.typ
 
 ## Aggregate workbench depth — three editable levels
 
-An aggregate-bound AutoPanel (`autoPanels[].aggregate`) renders as a standalone workbench page
+An aggregate's workbench (a `screens[]` entry of `kind: "workbench"` whose `concept` is the aggregate root and whose settings sit under `admin`) renders as a standalone workbench page
 (`/npdev-workbench/<Panel>Workbench.html`) over the aggregate's owned-collection tree:
 
 | Level | Descriptor key | What the page draws |
@@ -562,7 +562,7 @@ is unchanged.
 
 A model may declare labels per language (`"label": {"default": "Status", "pt-BR": "Situação"}`). The
 manifest's top-level `locales` lists every tag used by a concept/field/enum-option label map (plus
-`backOffice.locale`); with two or more, `views/locale.js` adds a language `<select>` (Auto + each tag) to
+`admin.locale`); with two or more, `views/locale.js` adds a language `<select>` (Auto + each tag) to
 the top bar. The choice is stored in `localStorage` key `npdev.ui.locale` and sent as `X-Tag-locale` on
 every call (`app.js` `headers()`, `shell.js` `authHeaders()`); picking one reloads the page. The server
 resolves labels (kernel `LabelResolver`: exact tag, then language, then default) and the UI copies the
@@ -573,7 +573,7 @@ sign-in pages and the experience client) is a catalogue id with an English and a
 (REG-349): `NPDevGenerator/generator/src/main/resources/npdev-i18n/<fragment>.<lang>.json` plus the
 small contract map `PlatformStrings`. Pages call `NPDevI18n.t(id, englishText, vars)` from the shared
 `/npdev-i18n.js`: the chosen language's catalogue (language part of the tag), then the app's own catalogue
-(`backOffice.locale`, with `backOffice.strings` overrides), then the English text in the call. Not
+(`admin.locale`, with `admin.strings` overrides), then the English text in the call. Not
 translated by design: model labels (the model's own label maps), field/concept names, commands, the
 documentation, the developer pages (info page, model surface, model authoring, operator console) and text
 the server sends. `scripts/quality/check-ui-i18n.py` keeps both languages in step. "Auto" clears the key, so
@@ -585,15 +585,15 @@ The topbar breadcrumb is a projection of the same nav tree `renderSidebar()` alr
 (`deriveNativeGroups()` in `business-ui-app.mustache`), not a second, hand-maintained hierarchy.
 `setContext({ title, path, rows })` accepts an ordered `path` array; `shell.js.mustache` joins it with
 `" / "`. On activating a concept or declared Panel, `business-ui-app.mustache` looks up which group
-(`backOffice`-curated, or the native fallback groups, labelled by the platform strings `shell.navData` /
-`shell.navPanels`: "Data"/"Panels", "Dados"/"Paineis" in a `pt` app, overridable in `backOffice.strings`) contains that target's `hash` and
-passes `[groupLabel, title]` — a nested route (e.g. `backOffice.navigation` placing `WidgetOrder` under
+(`admin.navigation`-curated, or the native fallback groups, labelled by the platform strings `shell.navData` /
+`shell.navPanels`: "Data"/"Panels", "Dados"/"Paineis" in a `pt` app, overridable in `admin.strings`) contains that target's `hash` and
+passes `[groupLabel, title]` — a nested route (e.g. `admin.navigation` placing `WidgetOrder` under
 group `"Operations"`) renders `/ Operations / Widget order`. A target with no group (the superuser-only
 Store/Box View/Promotion sections, which have no home in that tree) falls back to a flat `/ Title`,
 unchanged from before this task. Callers that only pass `title` (none remain in-repo, but an
 Untrusted Extension page could) still get the same single-segment breadcrumb they always did.
 
-Cold entry (`bootstrap()`, no URL hash present) already honours `backOffice.defaultRoute` ahead of the
+Cold entry (`bootstrap()`, no URL hash present) already honours `admin.defaultRoute` ahead of the
 positional `concepts[0]` fallback — built and validated in W1.1, unchanged here.
 
 Recents stay a per-viewer `localStorage` convenience (`RECENT_ITEMS_KEY`, capped at 10) — deliberately

@@ -19,10 +19,11 @@
       "requiredCount": 2,
       "required": ["name", "type"]
     },
-    "panel": {
+    "screenPanel": {
       "kind": "definitionRequired",
-      "requiredCount": 2,
-      "required": ["name", "route"]
+      "requiredCount": 1,
+      "required": ["route"],
+      "note": "D-1 phase 3: the hand-written panel is a custom screen's `panel` block (the screen supplies the name), so the floor shrinks from 2 to 1."
     }
   },
   "measuredOn": "2026-09-14",

@@ -90,14 +90,32 @@ class CanonicalJsonIdempotenceTest {
               { "name": "movimentoId", "type": "uuid" },
               { "name": "quantidade", "type": "integer" } ] }
           ],
-          "autoPanels": [
-            { "aggregate": "Movimento", "transaction": {
-                "uiState": { "detalhe": { "values": ["Completo", "Resumo"], "default": "Completo" } },
-                "visibleWhen": { "itens": "$ui.detalhe == 'Completo'" } } }
+          "screens": [
+            {
+              "name": "Movimento",
+              "kind": "workbench",
+              "concept": "Movimento",
+              "admin": {
+                "transaction": {
+                  "uiState": {
+                    "detalhe": {
+                      "values": [
+                        "Completo",
+                        "Resumo"
+                      ],
+                      "default": "Completo"
+                    }
+                  },
+                  "visibleWhen": {
+                    "itens": "$ui.detalhe == 'Completo'"
+                  }
+                }
+              }
+            }
           ],
-          "panels": [
-            { "name": "MovimentoConsole", "route": "/movimentos/console",
-              "dataSources": [ { "name": "movimentos", "concept": "Movimento" } ] }
+          "screens": [
+            { "name": "MovimentoConsole", "kind": "custom", "panel": { "route": "/movimentos/console",
+              "dataSources": [ { "name": "movimentos", "concept": "Movimento" } ]}}
           ]
         }
         """;

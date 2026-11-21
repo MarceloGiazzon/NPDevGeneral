@@ -46,9 +46,9 @@ class PackRoleBindingRewriteTest {
                   }
                 }
               ],
-              "panels": [
+              "screens": [
                 {
-                  "name": "LabelCuratorPanel",
+                  "name": "LabelCuratorPanel", "kind": "custom", "panel": {
                   "route": "/labeling/curator",
                   "visibility": "role:role('curator')",
                   "actions": [
@@ -60,8 +60,7 @@ class PackRoleBindingRewriteTest {
                       "permissionRequirements": [ "role('curator')" ],
                       "metadata": { "permissionHint": "role('curator')" }
                     }
-                  ]
-                }
+                  ]}}
               ]
             }
             """;
@@ -170,9 +169,10 @@ class PackRoleBindingRewriteTest {
     }
 
     private static JsonNode findPanel(JsonNode resolvedRoot, String qualifiedName) {
-        for (JsonNode panel : resolvedRoot.path("panels")) {
-            if (qualifiedName.equals(panel.path("name").asText())) {
-                return panel;
+        // D-1 phase 3: a panel is a screen's `panel` block; the screen carries the (pack-qualified) name.
+        for (JsonNode screen : resolvedRoot.path("screens")) {
+            if (screen.has("panel") && qualifiedName.equals(screen.path("name").asText())) {
+                return screen.path("panel");
             }
         }
         throw new AssertionError("panel not found: " + qualifiedName);

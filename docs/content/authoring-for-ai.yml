@@ -73,7 +73,7 @@ sections:
     2. Does the app **do** something, or react to something? -> **Flow** (steps, started by api / ui / event / schedule / webhook). A fact other flows react to -> **Event**. A pure calculation reused in expressions -> **Function** (today: write the expression inline).
     3. Does it reach **outside** the app (HTTP API, payment, mail, your own code)? -> **Capability**.
     4. Does it say **who may** do what? -> **Role**.
-    5. Does it decide **what a user sees**? -> **Screen** (one page: list, detail, form, board, ...) inside an **Experience** (one role's home and navigation). Today: `panels[]`; the optional root `backOffice` configures the generated back office; a reusable picker (kind `picker`, named by `picker.selectorRef`) and a printable document (kind `document`: `aggregate`/`bands`/`logo`, or `report: true` with `printColumns`; PDF and CSV at `/api/documents/<name>/render.pdf|csv`) are already screens.
+    5. Does it decide **what a user sees**? -> **Screen** (one page: list, detail, form, board, ...) inside an **Experience** (one role's home and navigation). Today: `screens[]`; a hand-written page is a `kind: "custom"` screen with a `panel` block (route, dataSources, layout, actions); the optional root `backOffice` configures the generated back office; a reusable picker (kind `picker`, named by `picker.selectorRef`) and a printable document (kind `document`: `aggregate`/`bands`/`logo`, or `report: true` with `printColumns`; PDF and CSV at `/api/documents/<name>/render.pdf|csv`) are already screens.
     6. Is it a **setting** changed without regenerating? -> **Property**.
     7. Is it **someone else's** library to reuse? -> **Pack**. A boundary inside your own project? -> **Module** (`modules[]`).
 
@@ -89,7 +89,7 @@ sections:
     | Event | `events[]` (or nested in a concept) | A broadcast fact; emitted by a flow step or a lifecycle transition. |
     | Event-triggered flow | `flows[]` with `trigger` | "when event X → do Y": a flow whose `trigger` is `{"event":"X"}` (optional `condition`) runs by itself whenever X is published. |
     | Function | `functions[]` | A named pure computation: `{"name":"surgeFactor","params":[{"name":"zone","type":"decimal"}],"returns":"decimal","body":"round(min(zone * 3, 3), 2)"}`, then call `surgeFactor(x)` in any expression (a pack's: `pack::name`). The body reads only its parameters. |
-    | Query / Panel | `queries[]` / `panels[]` | A named filtered list; a hand-designed screen. Only when the generic UI is not enough. Server logic for a panel button is a flow (`"expose":"ui"`). |
+    | Query / Panel | `queries[]` / a `kind: "custom"` entry of `screens[]` with a `panel` block | A named filtered list; a hand-designed screen. Only when the generic UI is not enough. Server logic for a panel button is a flow (`"expose":"ui"`). |
 - level: 2
   title: Totals, reports and reactions
   body: |2
@@ -108,14 +108,15 @@ sections:
       date/datetime field, `{"field":"createdAt","bucket":"month"}` (`bucket` required: day|week|month|quarter|year).
     - **Status change through a flow** (only if the flow does more than the REST update; `updateConcept` takes the
       same `scope`/`input`/`output` as `createConcept`; the caller sends `{"id":...,"status":"CLOSED"}`):
-      `"flows":[{"name":"CloseTicket","concept":"Ticket","input":{"concept":"Ticket","mode":"update"},"steps":[{"name":"save","type":"updateConcept","scope":"Ticket","input":"$input","output":"$saved"},{"name":"done","type":"return","value":"$saved"}]}]`.
+      `"flows":[{"name":"CloseTicket","concept":"Ticket","input":{"concept":"Ticket","mode":"update"},"steps":[{"type":"updateConcept","scope":"Ticket","input":"$input","output":"$saved"},{"type":"return","value":"$saved"}]}]`.
+      A step needs only its `type`: leave `name` out (the platform numbers the steps itself); give a step a `name` only when a hook's `targetStep` must point at it.
       Flow `steps[].type` vocabulary: invariantCheck|capabilityCall|generatedAction|emitEvent|
       scheduleEvent|return|branch|awaitEvent|createConcept|updateConcept|map|forEach|set|readConcept|listConcepts|runQuery|deleteConcept|callFlow (full enum in the value reference).
     - **Lifecycle** (on the concept): `"lifecycle":{"statusField":"status","states":[{"value":"OPEN","initial":true},{"value":"CLOSED","terminal":true}],
       "transitions":[{"from":"OPEN","to":"CLOSED","event":"TicketClosed"}]}` (`from`/`to` are single states; `initial`/`terminal` live on the state, `event` on the transition).
     - **Reaction to a status change:** the lifecycle transition names an `event`, `events[]` declares it with a
       `payload`, and a flow with an event trigger creates a record from it (the event payload arrives as `$input`):
-      `"flows":[{"name":"LogReturn","expose":"internal","runAs":"system","trigger":{"event":"LoanReturned"},"steps":[{"name":"build","type":"map","select":{"loan":"$input.id"},"output":"row"},{"name":"log","type":"createConcept","scope":"ReturnLog","input":"$row","output":"created"}]}]`.
+      `"flows":[{"name":"LogReturn","expose":"internal","runAs":"system","trigger":{"event":"LoanReturned"},"steps":[{"type":"map","select":{"loan":"$input.id"},"output":"row"},{"type":"createConcept","scope":"ReturnLog","input":"$row","output":"created"}]}]`.
 - level: 2
   title: 'Use a published pack'
   body: |2
@@ -137,7 +138,7 @@ sections:
     `persistence` capability and its `repository` binding derived, with the operations the flows
     use. Declare them yourself only to bind a different adapter; an explicit declaration wins.
 
-    **Back office (optional).** `backOffice` is OPTIONAL: omit it unless you want a grouped menu, your own dashboards or your own wording (without it the generated back office lists the concepts, shows the built-in guide pages and speaks the platform's English). When present: `"backOffice":{"defaultRoute":"<Concept>","navigation":[{"label":"..","target":"<Concept>","group":".."}],"pages":[<guide pages>],"locale":"pt-BR","strings":{"action.save":"Gravar"}}`; it needs no role or experience. `strings` overrides platform text by id (a closed list, see the schema); an id you leave out keeps the English default.
+    **Back office (optional).** The back office is an `experiences[]` entry with an `admin` block (the entry is not a role experience, at most one): omit it unless you want a grouped menu, your own dashboards or your own wording (without it the generated back office lists the concepts, shows the built-in guide pages and speaks the platform's English). When present: `{"name":"admin","admin":{"defaultRoute":"<Concept>","navigation":[{"label":"..","target":"<Concept>","group":".."}],"pages":[<guide pages>],"locale":"pt-BR","strings":{"action.save":"Gravar"}}}`; it needs no role. `strings` overrides platform text by id (a closed list, see the schema); an id you leave out keeps the English default. A pack declares only `pages` in its own admin entry.
 
     **Screens for each role (optional).** `experiences[]` says who lands where and `screens[]` says what they see, e.g.
     `"experiences":[{"name":"driver","for":["Driver"],"home":"offers","navigation":[{"screen":"offers","label":"Offers"}]}],

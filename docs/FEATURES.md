@@ -102,17 +102,17 @@ processes, screens, permissions, and how it all changes over time.
 | Feature | What it does for you |
 |---|---|
 | **Generated admin UI** | list, create, edit, search for every concept, from day one, with no work |
-| **`autoPanels`** | richer screens derived automatically from the model |
-| **`panels`** | declared screens with a real `route`, multiple `dataSources`, layout, field bindings, and actions |
+| **`screens[]` with `admin`** | richer back-office pages (and an aggregate's workbench) derived automatically from the model |
+| **`screens[]` of `kind: "custom"` with a `panel` block** | declared screens with a real `route`, multiple `dataSources`, layout, field bindings, and actions |
 | **Dashboards and consoles** | a panel with `layout.type: "dashboard"` or `"console"` renders declared `widgets[]`: `tile` (one aggregate number), `chart` (bar, line or donut per `groupBy` value), `table`, `actions` and `history`. Example: `NPDevSamples/f6-showcase` |
 | **Panel `slots`** | mount your own component `above`, `below` or instead of (`replace`) a generated panel body |
-| **Back-office menu** (optional root `backOffice`: `defaultRoute`, `navigation`) | your own navigation tree and default route for the app's shell |
-| **`backOffice.strings` / `backOffice.locale`, themes** | replace any of the platform's UI text in your language, and pick a built-in theme or your own `themes/<id>.json` (`ui.theme.name`, plus `ui.theme.choices` for an end-user picker) — see `NPDEV_FEATURE_GUIDE.md` §11 |
+| **Back-office menu** (the `admin` block of an `experiences[]` entry: `defaultRoute`, `navigation`) | your own navigation tree and default route for the app's shell |
+| **`admin.strings` / `admin.locale` (in that same entry), themes** | replace any of the platform's UI text in your language, and pick a built-in theme or your own `themes/<id>.json` (`ui.theme.name`, plus `ui.theme.choices` for an end-user picker) — see `NPDEV_FEATURE_GUIDE.md` §11 |
 | **`visibility` / `enabledWhen`** | show and enable things conditionally, by rule rather than by JavaScript |
 | **`actions`** | buttons that call flows or procedures, including ones that **stream a generated file back** |
 | **`concepts[].composition` (workbenches)** | master-detail-detail screens editing a root and its collections **in one transaction**, with `onValidate` and `onCommit` hooks |
 | **Document screens** (`screens[]` kind `document`) | generated documents and printable output: one-record and aggregate documents (`aggregate`, `bands`, `logo`), and `report: true` multi-record reports (named query, `printColumns`, grouping, subtotals, grand total) as PDF and CSV, computed over what the viewer may read |
-| **Guide pages** (`backOffice.pages`) **/ `explainability`** | attach guidance to a screen so users are told what it is for — in the model, beside the thing it explains |
+| **Guide pages** (`admin.pages`) **/ `explainability`** | attach guidance to a screen so users are told what it is for — in the model, beside the thing it explains |
 | **Widget catalogue** | field types map to appropriate inputs, validated for compatibility at authoring time |
 | **Paintable boards (`render: "cellGrid"`)** | a workbench collection drawn as a square or hex board instead of a row grid: each child row is one painted cell (row, col, value), the palette is a query's rows (label, image, colour), with paint/fill/erase/undo/zoom, and Save still commits the whole aggregate in one transaction. Examples: Pigmentampas `Mosaics` (20×33 hex mosaic of caps), `dsl-conformance-max` `ShelfLayoutWorkbench` (warehouse shelf map) |
 | **Hand-made pages (`web/*.html`)** | when no declaration fits — a drawing board, a map — write the page yourself beside the model. It is copied into the app on every generate, wrapped by the shell (nav, sign-in, roles), listed in the menu from `pages.json`, and talks to the app through `NPDevShell.api` (`get`/`post`/`fileUrl`, same token and errors as the generated UI). Example: `NPDevSamples/pigmentampas/Input/web/studio.html`; how-to: [reference/HAND_MADE_PAGES.md](reference/HAND_MADE_PAGES.md) |

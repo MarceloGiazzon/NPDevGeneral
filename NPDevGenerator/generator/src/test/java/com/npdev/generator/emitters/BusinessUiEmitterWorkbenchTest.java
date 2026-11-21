@@ -45,7 +45,7 @@ public class BusinessUiEmitterWorkbenchTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "expedicaoId", "type": "uuid" } ] }
               ],
-              "autoPanels": [ { "aggregate": "Expedicao" } ]
+              "screens": [{ "name": "Expedicao", "kind": "workbench", "concept": "Expedicao", "admin": { } }]
             }
             """);
 
@@ -115,8 +115,8 @@ public class BusinessUiEmitterWorkbenchTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "expedicaoId", "type": "uuid" } ] }
               ],
-              "autoPanels": [ { "aggregate": "Expedicao" } ],
-              "backOffice": { "locale": "pt-BR", "strings": { "action.save": "Salvar" } }
+              "screens": [{ "name": "Expedicao", "kind": "workbench", "concept": "Expedicao", "admin": { } }],
+              "experiences": [ { "name": "admin", "admin": { "locale": "pt-BR", "strings": { "action.save": "Salvar" } } } ]
             }
             """);
 

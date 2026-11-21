@@ -4,13 +4,18 @@
   "concepts": [
     {
       "name": "Learner",
-      "fields": ["id", "status"]
+      "fields": [
+        "id",
+        "status"
+      ]
     }
   ],
   "flows": [],
-  "panels": [
+  "screens": [
     {
-      "name": "readiness-panel"
+      "name": "readiness-panel",
+      "kind": "custom",
+      "panel": {}
     }
   ]
 }

@@ -174,7 +174,9 @@ def build_card(entry: dict) -> tuple[dict | None, str | None]:
     functions = [function_text(f) for f in doc.get("functions", [])]
     if functions:
         provides["functions"] = functions
-    screens = [f"{p.get('name')} {p.get('route', '')}".strip() for p in doc.get("autoPanels", []) if isinstance(p, dict)]
+    # D-1: a concept's back-office pages are a screens[] entry's `admin` block (kind list); the legacy autoPanels[] still counts.
+    admin_pages = [{"name": s.get("name"), **s["admin"]} for s in doc.get("screens", []) if isinstance(s, dict) and isinstance(s.get("admin"), dict)]
+    screens = [f"{p.get('name')} {p.get('route', '')}".strip() for p in list(doc.get("autoPanels", [])) + admin_pages if isinstance(p, dict)]
     if screens:
         provides["screens"] = screens
     points = [p.get("name", str(p)) if isinstance(p, dict) else str(p) for p in doc.get("extensionPoints", [])]

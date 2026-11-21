@@ -47,7 +47,7 @@ class ComputedCollectionColumnsTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "lineId", "type": "uuid" }, { "name": "qty", "type": "integer" } ] }
               ],
-              "autoPanels": [ { "aggregate": "Ord", "transaction": { "computed": %s%s } } ]
+              "screens": [ { "name": "Ord", "kind": "workbench", "concept": "Ord", "admin": { "transaction": { "computed": %s%s } } } ]
             }
             """.formatted(computedJson, derivedJson.isEmpty() ? "" : ", \"derivedFields\": " + derivedJson);
     }
@@ -152,7 +152,7 @@ class ComputedCollectionColumnsTest {
               "dslVersion": "3.0.0", "namespace": "f6.computedcol2", "version": "1.0",
               "concepts": [ { "name": "Thing", "fields": [
                 { "name": "id", "type": "uuid", "id": true, "required": true }, { "name": "a", "type": "integer" } ] } ],
-              "autoPanels": [ { "concept": "Thing", "selection": { "computed": [ { "col": "t", "expr": "a", "collection": "x" } ] } } ]
+              "screens": [{ "name": "Thing", "kind": "list", "concept": "Thing", "admin": { "selection": { "computed": [{ "col": "t", "expr": "a", "collection": "x" }]}}}]
             }
             """;
         ValidationResult result = new SemanticValidator().validateWithWarnings(parse(json));

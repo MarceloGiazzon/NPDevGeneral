@@ -218,7 +218,8 @@ class AiModelToDslMappingTest {
         Set<String> aiPanels = stream(aiModel.path("panels"))
                 .map(node -> node.path("panelId").asText())
                 .collect(Collectors.toCollection(TreeSet::new));
-        Set<String> officialPanels = stream(officialModel.path("panels"))
+        Set<String> officialPanels = stream(officialModel.path("screens"))
+                .filter(node -> node.has("panel"))
                 .map(node -> node.path("name").asText())
                 .collect(Collectors.toCollection(TreeSet::new));
         assertTrue(officialPanels.containsAll(aiPanels), scenarioId + " panels must map");

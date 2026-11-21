@@ -1,12 +1,11 @@
 {
- "$comment": "FORM P5-T9c admission, written 2026-11-18 (owner decision option A): the top-level appShell + guidePages became ONE optional ROOT `backOffice` {defaultRoute, navigation, pages}, independent of experiences and roles (experiences[].backOffice stays a boolean link). Same menu/page entries, so the net budget change is +1 slot (3 backOffice.* and pack:backOffice in; appShell.defaultRoute, appShell.navigation and pack:guidePages out).",
+ "$comment": "FORM P5-T9c admission, written 2026-11-18 (owner decision option A): the top-level appShell + guidePages became ONE optional ROOT `backOffice` {defaultRoute, navigation, pages}, independent of experiences and roles (experiences[].backOffice stays a boolean link). Same menu/page entries, so the net budget change is +1 slot (3 backOffice.* and pack:backOffice in; appShell.defaultRoute, appShell.navigation and pack:guidePages out). D-1 phase 4 (2026-11-21): the root key is gone -- $defs/backOffice is now the body of experiences[].admin (experience-admin.json); pack:backOffice was removed (a pack declares pages in its own admin experience).",
  "schemaVersion": "npdev-keyword-admission.v1",
- "keyword": "backOffice (root object)",
+ "keyword": "backOffice block (body of experiences[].admin)",
  "slots": [
   "backOffice.defaultRoute",
   "backOffice.navigation",
-  "backOffice.pages",
-  "pack:backOffice"
+  "backOffice.pages"
  ],
  "rung": 0,
  "adr": "docs/adr/ADR-0013-twelve-nouns.md",

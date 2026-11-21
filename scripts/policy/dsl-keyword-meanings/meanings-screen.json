@@ -59,10 +59,9 @@
     "documentLogo": {
       "summary": "A document's logo, bound to a property of the document's root concept. Never a URL: the renderer reads the stored bytes and inlines them."
     },
-    "panel": {
-      "summary": "A hand-composed screen made of data sources, a layout, field bindings and actions. The older way to build a screen; new models use `screens`. A panel is served at its `route`.",
+    "screenPanel": {
+      "summary": "The body of a hand-written panel, declared in the `panel` key of a `custom` screen: data sources, a layout, field bindings and actions. The screen supplies the name; the panel is served at its `route` and is not an experience navigation target.",
       "example": {
-        "name": "OrdersPanel",
         "route": "orders",
         "title": "Orders",
         "dataSources": [
@@ -154,18 +153,17 @@
     "documentBand.kind": "`header` (fields of the aggregate root) or `lineItems` (rows of a top-level collection).",
     "documentBand.label": "Heading printed above the band.",
     "documentLogo.field": "The property of the document's root concept that holds the logo image.",
-    "panel.name": "The panel's name, unique within the model.",
-    "panel.route": "The URL segment the panel is served at.",
-    "panel.title": "Heading of the panel.",
-    "panel.dataSources": "The row sources of the panel.",
-    "panel.layout": "How the data sources are laid out.",
-    "panel.fieldBindings": "Binds fields of the data sources to the panel, with rules and hints.",
-    "panel.visibility": "Expression; the panel is visible only while it is true.",
-    "panel.enabledWhen": "Expression; the panel is interactive only while it is true.",
-    "panel.actions": "The buttons of the panel.",
-    "panel.explainability": "Free-form object describing, for AI and audit tools, why the panel exists and what it shows.",
-    "panel.metadata": "Free-form notes carried into the compiled model unchanged.",
-    "panel.guidePage": "Name of the back-office guide page (dashboard) that hosts this panel.",
+    "screenPanel.route": "The URL segment the panel is served at.",
+    "screenPanel.title": "Heading of the panel.",
+    "screenPanel.dataSources": "The row sources of the panel.",
+    "screenPanel.layout": "How the data sources are laid out.",
+    "screenPanel.fieldBindings": "Binds fields of the data sources to the panel, with rules and hints.",
+    "screenPanel.visibility": "Expression; the panel is visible only while it is true.",
+    "screenPanel.enabledWhen": "Expression; the panel is interactive only while it is true.",
+    "screenPanel.actions": "The buttons of the panel.",
+    "screenPanel.explainability": "Free-form object describing, for AI and audit tools, why the panel exists and what it shows.",
+    "screenPanel.metadata": "Free-form notes carried into the compiled model unchanged.",
+    "screenPanel.guidePage": "Name of the back-office guide page (dashboard) that hosts this panel.",
     "panelDataSource.name": "The data source's name, referenced by field bindings, widgets and row actions.",
     "panelDataSource.concept": "Read rows of this concept.",
     "panelDataSource.query": "Read rows from this query.",

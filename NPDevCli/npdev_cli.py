@@ -290,7 +290,8 @@ def _document_kind(raw: dict, path: Path) -> str:
 # agreement for the four member kinds this verb supports.
 ADD_MEMBER_ARRAY_KEYS = {
     "concept": "concepts",
-    "panel": "panels",
+    # D-1 phase 3: a hand-written panel is a `screens[]` entry {name, kind: "custom", panel: {...}}.
+    "panel": "screens",
     "flow": "flows",
 }
 
@@ -422,7 +423,7 @@ MODEL_ARRAY_KEYS = {
     "events",
     "flows",
     "queries",
-    "panels",
+    # (D-1 phase 3: root `panels` is gone -- a hand-written panel is a screens[] entry with a `panel` block.)
     # The 10 real schema array keys this Python whitelist had drifted from -- the exact REG-108
     # failure shape the docstring above already warns about (a THIRD independent copy of "which
     # top-level keys exist", now caught stale against NPDevContract/schemas/model.schema.json's
@@ -430,9 +431,8 @@ MODEL_ARRAY_KEYS = {
     # (WmsOffice) over its `aggregates` key. roles/propertyScopes/properties are the exact three
     # REG-108 named on the Java side; conversions/documents/guidePages/aggregates/autoPanels/
     # contexts were never added here at all. (selectors and documents: folded into screens[], P5-T9a/T9b;
-    # guidePages: now the root backOffice.pages, P5-T9c -- a PACK's pages are composed below.)
+    # guidePages: now the `admin` experience's pages, P5-T9c / D-1 phase 4 -- a PACK's pages are composed below.)
     "conversions",
-    "autoPanels",
     "roles",
     "propertyScopes",
     "properties",
@@ -458,7 +458,7 @@ MODEL_ARRAY_KEYS = {
     "screens",
 }
 UNQUALIFIED_NAME_KEYS = ("experiences", "screens")
-PACK_PAGES_KEY = "__packBackOfficePages"  # transient: pack-contributed back-office pages awaiting the root backOffice
+PACK_PAGES_KEY = "__packBackOfficePages"  # transient: pack-contributed back-office pages awaiting the root admin experience
 ROOT_SCALAR_KEYS = {
     "$schema", "schemaVersion", "dslVersion", "namespace", "version",
     # Same drift fix as MODEL_ARRAY_KEYS above, for the object-shaped (not array-shaped) top-level
@@ -467,8 +467,9 @@ ROOT_SCALAR_KEYS = {
     # `{"$ref", "as"}` entries) -- REG-186 added the separate composition of pack-CONTRIBUTED
     # members into the model's own arrays below, which is a different thing from passing the
     # declaration through.
-    "packs", "provides", "externalAi", "backOffice", "agentAccess",
+    "packs", "provides", "externalAi", "agentAccess",
 }
+# (D-1 phase 4: the root `backOffice` key is gone -- the back office is the `admin` block of an experiences[] entry.)
 
 # REG-186: the two top-level arrays whose entries are a $ref PLUS identity keys, rather than the
 # bare `{"$ref": "..."}` this resolver's generic fragment composition uses everywhere else. Before
@@ -744,25 +745,48 @@ def resolve_split_model(path: Path, collect_sources: set[Path] | None = None,
                 fail(label, f"duplicate {kind_key[:-1]} qualifier: {qualifier}")
             seen_qualifiers.add(qualifier)
 
+            pack_admin_pages = None
             for member_key in MODEL_ARRAY_KEYS:
                 if member_key in QUALIFIED_COMPOSITION_KEYS or member_key not in content:
                     continue
                 members = resolve_array(member_key, content[member_key], child_path, 1, [root_path])
+                if member_key == "experiences":
+                    # D-1 phase 4: a pack's back-office pages are the `admin` block of one of its experiences[] entries
+                    # (npdev-backoffice-pages-lift mirrors ModelSourceResolver.packAdminBlock/liftPackBackOfficePages):
+                    # the entry is stripped here, never composed as an experience, and its pages are lifted below.
+                    admin_entries = [m for m in members if isinstance(m, dict) and "admin" in m]
+                    if len(admin_entries) > 1:
+                        fail(str(child_path), "more than one experiences[] entry carries an `admin` block "
+                                              f"({len(admin_entries)}); keep one")
+                    if admin_entries:
+                        admin_block = admin_entries[0]["admin"]
+                        extra = sorted(set(admin_block) - {"pages"}) if isinstance(admin_block, dict) else []
+                        if extra:
+                            fail(str(child_path), f"a pack's `admin` block may only declare `pages` (found {extra}); "
+                                                  "configure locale, strings, defaultRoute and navigation in the app's own admin experience")
+                        pack_admin_pages = admin_block.get("pages") if isinstance(admin_block, dict) else None
+                    members = [m for m in members if not (isinstance(m, dict) and "admin" in m)]
                 qualified = []
                 for member in members:
+                    # D-1 phases 1-3: a screen carrying an `admin` or `panel` block stands for an old autoPanel / panel,
+                    # whose name was always pack-qualified -- ModelSourceResolver.mergeQualifiedNonConceptArrays does the same.
+                    is_qualified_screen = (member_key == "screens" and isinstance(member, dict)
+                                           and ("admin" in member or "panel" in member))
                     if (isinstance(member, dict) and isinstance(member.get("name"), str)
-                            and member_key not in UNQUALIFIED_NAME_KEYS):
+                            and (member_key not in UNQUALIFIED_NAME_KEYS or is_qualified_screen)):
                         member = dict(member)
                         member["name"] = qualifier + QUALIFIER_SEPARATOR + member["name"]
                     qualified.append(member)
                 resolved.setdefault(member_key, []).extend(qualified)
 
-            # FORM P5-T9c: a pack/context contributes back-office pages as a pack-level `backOffice.pages`
-            # (npdev-backoffice-pages-lift mirrors ModelSourceResolver.liftPackBackOfficePages/foldBackOfficePages):
-            # qualified `qualifier::Page` here, then appended after the model's own pages in the root `backOffice.pages`.
-            pack_back_office = content.get("backOffice")
-            if isinstance(pack_back_office, dict) and isinstance(pack_back_office.get("pages"), list):
-                for page in resolve_array("guidePages", pack_back_office["pages"], child_path, 1, [root_path]):
+            if "backOffice" in content:
+                fail(str(child_path), "'backOffice' was removed from packs (D-1 phase 4): declare an experiences[] entry "
+                                      "{\"name\": \"admin\", \"admin\": {\"pages\": [...]}}")
+            # FORM P5-T9c / D-1 phase 4: a pack/context contributes back-office pages as the `pages` of its experiences[]
+            # `admin` entry (npdev-backoffice-pages-lift mirrors ModelSourceResolver.liftPackBackOfficePages/foldBackOfficePages):
+            # qualified `qualifier::Page` here, then appended after the model's own pages in the root admin experience.
+            if isinstance(pack_admin_pages, list):
+                for page in resolve_array("guidePages", pack_admin_pages, child_path, 1, [root_path]):
                     if isinstance(page, dict) and isinstance(page.get("name"), str):
                         page = dict(page)
                         page["name"] = qualifier + QUALIFIER_SEPARATOR + page["name"]
@@ -791,10 +815,18 @@ def resolve_split_model(path: Path, collect_sources: set[Path] | None = None,
     if "fragments" in raw:
         fail(str(root_path), "root 'fragments' was removed: put {\"$ref\": \"file.json\"} entries in the arrays "
                              "themselves (capabilities, flows, ...); an included file's same-named array is spliced in")
+    if "panels" in raw:
+        fail(str(root_path), "root 'panels' was removed (D-1 phase 3): a hand-written panel is a screens[] entry "
+                             "{\"name\", \"kind\": \"custom\", \"panel\": {route, title, dataSources, ...}}; "
+                             "`python NPDevCli/dsl_v2_migration.py` or the panels_to_screens codemod moves it")
+    if "backOffice" in raw:
+        fail(str(root_path), "root 'backOffice' was removed (D-1 phase 4): declare it as an experiences[] entry "
+                             "{\"name\": \"admin\", \"admin\": {locale, strings, defaultRoute, navigation, pages}}; "
+                             "`python NPDevCli/dsl_v2_migration.py` moves it")
     for moved_key in ("appShell", "guidePages"):
         if moved_key in raw:
-            fail(str(root_path), f"root '{moved_key}' was removed (FORM P5-T9c): declare it in the root backOffice "
-                                 "(defaultRoute, navigation, pages); `python NPDevCli/appshell_guidepages_to_backoffice_codemod.py` moves it")
+            fail(str(root_path), f"root '{moved_key}' was removed (FORM P5-T9c): declare it in the `admin` block of an "
+                                 "experiences[] entry (defaultRoute, navigation, pages); `python NPDevCli/dsl_v2_migration.py` moves it")
     unsupported = set(raw.keys()) - (ROOT_SCALAR_KEYS | MODEL_ARRAY_KEYS | {"metadata"})
     if unsupported:
         fail(str(root_path), "unsupported model top-level key: " + sorted(unsupported)[0])
@@ -812,9 +844,12 @@ def resolve_split_model(path: Path, collect_sources: set[Path] | None = None,
             resolved[key] = compose_qualified(key, raw[key], resolved)
     pack_pages = resolved.pop(PACK_PAGES_KEY, [])
     if pack_pages:
-        back_office = dict(resolved.get("backOffice") or {})
-        back_office["pages"] = list(back_office.get("pages") or []) + pack_pages
-        resolved["backOffice"] = back_office
+        experiences = resolved.setdefault("experiences", [])
+        admin_entry = next((e for e in experiences if isinstance(e, dict) and "admin" in e), None)
+        if admin_entry is None:
+            admin_entry = {"name": "admin", "admin": {}}
+            experiences.append(admin_entry)
+        admin_entry["admin"] = {**admin_entry["admin"], "pages": list(admin_entry["admin"].get("pages") or []) + pack_pages}
     if "metadata" in raw and not isinstance(raw["metadata"], dict):
         fail(str(root_path), "metadata must be an object")
     if "metadata" in raw:
@@ -1774,7 +1809,7 @@ def run_migrate_assign_uids(args: argparse.Namespace) -> int:
     if not has_concepts and not any(
             isinstance(doc.get(key), list)
             for key in ("capabilities", "events", "flows",
-                        "panels", "queries")
+                        "screens", "queries")
     ):
         print(f"npdev migrate assign-uids: {model_path} has no concepts[] array -- nothing to stamp")
         return 0
@@ -1823,7 +1858,16 @@ def run_migrate_assign_uids(args: argparse.Namespace) -> int:
     # P2.1 (Path A Phase 2): the seven element types uid was extended to alongside concept/field.
     already_present += _stamp_named_items_uid(doc.get("capabilities"), "capability", stamped, args.write)
     already_present += _stamp_named_items_uid(doc.get("events"), "event", stamped, args.write)
-    already_present += _stamp_named_items_uid(doc.get("panels"), "panel", stamped, args.write)
+    # D-1 phase 3: a panel is a screens[] entry's `panel` block -- the name is the screen's, the uid lives in the block.
+    for screen in (doc.get("screens") if isinstance(doc.get("screens"), list) else []):
+        if not isinstance(screen, dict) or not isinstance(screen.get("panel"), dict):
+            continue
+        already_present += _stamp_named_items_uid(
+            [{"name": screen.get("name", "<unnamed>"), "uid": screen["panel"].get("uid")}], "panel", stamped, False)
+        if not screen["panel"].get("uid"):
+            new_uid = stamped[-1].rsplit("-> ", 1)[1]
+            if args.write:
+                screen["panel"]["uid"] = new_uid
 
     verb = "STAMPED" if args.write else "WOULD STAMP"
     for line in stamped:
@@ -12301,7 +12345,8 @@ def _add_scan_member_references(kind: str, member: dict, resolved_model: dict) -
     if kind == "concept":
         return _add_scan_concept_references(member, known)
     if kind == "panel":
-        return _add_scan_panel_references(member, known)
+        # the member is a custom screen: the panel body sits in its `panel` block, the name on the screen
+        return _add_scan_panel_references({**(member.get("panel") or {}), "name": member.get("name")}, known)
     if kind == "flow":
         return _add_scan_flow_references(member, known)
     raise CliError(f"unsupported member kind: {kind}")
@@ -12334,7 +12379,9 @@ def _add_load_exemplar_member(root: Path, kind: str, from_spec: str, new_name: s
             continue
         exemplar_model = read_json(candidate_model)
         candidates = [m for m in (exemplar_model.get(array_key) or [])
-                      if isinstance(m, dict) and isinstance(m.get("name"), str)]
+                      if isinstance(m, dict) and isinstance(m.get("name"), str)
+                      # a panel is a screens[] entry with a `panel` block (D-1 phase 3); other screens are not panels
+                      and (kind != "panel" or isinstance(m.get("panel"), dict))]
         if member_name:
             chosen = next((m for m in candidates if m["name"] == member_name), None)
             if chosen is None:
@@ -12360,8 +12407,8 @@ def _add_load_exemplar_member(root: Path, kind: str, from_spec: str, new_name: s
         # cosmetic-only churn with no correctness payoff, unlike the top-level display label.
         if kind == "concept" and isinstance(member.get("ui"), dict) and isinstance(member["ui"].get("label"), str):
             member["ui"]["label"] = _add_humanize_label(new_name)
-        if kind == "panel" and isinstance(member.get("title"), str):
-            member["title"] = _add_humanize_label(new_name)
+        if kind == "panel" and isinstance(member["panel"].get("title"), str):
+            member["panel"]["title"] = _add_humanize_label(new_name)
         return member, source_name, candidate_model
     raise CliError(
         f"--from sample not found: {sample!r} "
@@ -12392,11 +12439,14 @@ def _add_default_stub(kind: str, name: str, concept: str | None) -> dict:
     if kind == "panel":
         return {
             "name": name,
-            "route": _add_kebab_route(name),
-            "title": _add_humanize_label(name),
-            "dataSources": [
-                {"name": _add_lower_first(concept), "concept": concept},
-            ],
+            "kind": "custom",
+            "panel": {
+                "route": _add_kebab_route(name),
+                "title": _add_humanize_label(name),
+                "dataSources": [
+                    {"name": _add_lower_first(concept), "concept": concept},
+                ],
+            },
         }
     if kind == "flow":
         return {
@@ -12950,6 +13000,10 @@ def inspect_app(args: argparse.Namespace) -> None:
         return [item.get("name") for item in (model.get(key) or [])
                 if isinstance(item, dict) and item.get("name")]
 
+    # D-1 phase 3: a hand-written panel is a screens[] entry with a `panel` block (the report keeps its "panels" key).
+    panel_names = [item.get("name") for item in (model.get("screens") or [])
+                   if isinstance(item, dict) and item.get("name") and isinstance(item.get("panel"), dict)]
+
     concepts = []
     bond_count = 0
     for concept in model.get("concepts") or []:
@@ -13003,7 +13057,7 @@ def inspect_app(args: argparse.Namespace) -> None:
                 "bonds": bond_count,
                 "flows": len(flows),
                 "events": len(model.get("events") or []),
-                "panels": len(model.get("panels") or []),
+                "panels": len(panel_names),
                 "procedures": len(model.get("procedures") or []),
                 "capabilities": len(model.get("capabilities") or []),
                 "queries": len(model.get("queries") or []),
@@ -13011,7 +13065,7 @@ def inspect_app(args: argparse.Namespace) -> None:
             "concepts": concepts,
             "flows": flows,
             "events": names("events"),
-            "panels": names("panels"),
+            "panels": panel_names,
             "procedures": names("procedures"),
             "capabilities": names("capabilities"),
             "queries": names("queries"),
@@ -17200,7 +17254,7 @@ def build_parser() -> argparse.ArgumentParser:
     migrate_label_locales.add_argument(
         "--locale", required=True,
         help="the locale tag the file's EXISTING plain-string label text is written in, e.g. "
-             "en or pt-BR -- not read from doc.backOffice.locale (informational only, per its own "
+             "en or pt-BR -- not read from the admin experience locale (informational only, per its own "
              "schema description); every widened site is tagged with this value verbatim.",
     )
     migrate_label_locales.add_argument(

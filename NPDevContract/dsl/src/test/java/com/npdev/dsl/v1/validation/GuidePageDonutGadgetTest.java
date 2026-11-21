@@ -25,7 +25,7 @@ class GuidePageDonutGadgetTest {
                   { "name": "unitsShipped", "type": "integer" } ] }
               ],
               "queries": [ %s ],
-              "backOffice": { "pages": [ { "name": "Dashboard", "gadgets": [ %s ] } ] }
+              "experiences": [ { "name": "admin", "admin": { "pages": [ { "name": "Dashboard", "gadgets": [ %s ] } ] } } ]
             }
             """.formatted(queryJson, gadgetJson);
         return new SemanticValidator().validate(new JsonModelParser().parse(MAPPER.readTree(json)));

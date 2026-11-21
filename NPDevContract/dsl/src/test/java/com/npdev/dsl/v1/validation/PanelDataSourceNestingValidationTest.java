@@ -32,12 +32,11 @@ class PanelDataSourceNestingValidationTest {
                     { "name": "Child", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true },
                       { "name": "parentId", "type": "reference", "reference": { "target": "Parent", "via": "id" } } ] }
                   ],
-                  "panels": [
+                  "screens": [
                     {
-                      "name": "TestPanel",
+                      "name": "TestPanel", "kind": "custom", "panel": {
                       "route": "/test-panel",
-                      "dataSources": %s
-                    }
+                      "dataSources": %s}}
                   ]
                 }
                 """.formatted(panelDataSourcesJson));

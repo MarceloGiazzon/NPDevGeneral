@@ -361,23 +361,27 @@ function New-OfficialModel {
                 permissionRequirements = @([string]$panel.requiredRole)
             }
         })
+        # D-1 phase 3: a hand-written panel is a kind "custom" screen with a `panel` block (no root panels[] key any more).
         $panels += [ordered]@{
             name = [string]$panel.panelId
-            route = [string]$panel.route
-            title = [string]$panel.panelId
-            dataSources = @($dataSource)
-            layout = [ordered]@{ type = $layoutType }
-            visibility = "role:" + [string]$panel.requiredRole
-            actions = $panelActions
-            metadata = [ordered]@{
-                beta0Surface = "custom-ui-panel"
-                customPanelContract = "minimal-declarative-v1"
-                sourceType = [string]$panel.type
-                tenantScoped = [bool]$panel.tenantScoped
-                safeCustomPanelMetadata = $safePanelMetadata
+            kind = "custom"
+            panel = [ordered]@{
+                route = [string]$panel.route
+                title = [string]$panel.panelId
+                dataSources = @($dataSource)
+                layout = [ordered]@{ type = $layoutType }
+                visibility = "role:" + [string]$panel.requiredRole
+                actions = $panelActions
+                metadata = [ordered]@{
+                    beta0Surface = "custom-ui-panel"
+                    customPanelContract = "minimal-declarative-v1"
+                    sourceType = [string]$panel.type
+                    tenantScoped = [bool]$panel.tenantScoped
+                    safeCustomPanelMetadata = $safePanelMetadata
+                }
             }
         }
-        Add-UntrustedExtensionEntrypoint -Metadata $panels[-1].metadata -Implementation $panel.implementation
+        Add-UntrustedExtensionEntrypoint -Metadata $panels[-1].panel.metadata -Implementation $panel.implementation
     }
 
     return [ordered]@{
@@ -395,7 +399,7 @@ function New-OfficialModel {
         )
         events = $events
         flows = $flows
-        panels = $panels
+        screens = $panels
         metadata = [ordered]@{
             normalizedFrom = "ai-model.v1"
             scenarioId = $ScenarioId

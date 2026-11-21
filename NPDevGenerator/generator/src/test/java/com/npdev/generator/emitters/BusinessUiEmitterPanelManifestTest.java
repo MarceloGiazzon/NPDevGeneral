@@ -61,17 +61,16 @@ public class BusinessUiEmitterPanelManifestTest {
                     }
                   ],
                   "flows": [{"name": "CountProjects", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
-                  "panels": [
+                  "screens": [
                     {
-                      "name": "ProjectsOverviewPanel",
+                      "name": "ProjectsOverviewPanel", "kind": "custom", "panel": {
                       "route": "projects-overview",
                       "title": "Projects Overview",
                       "dataSources": [ { "name": "projects", "concept": "Project" } ],
                       "layout": { "type": "table", "fields": ["projects"] },
                       "actions": [
                         { "name": "recount", "label": "Recount Projects", "binding": "procedure", "procedure": "CountProjects" }
-                      ]
-                    }
+                      ]}}
                   ]
                 }
                 """);
@@ -103,9 +102,9 @@ public class BusinessUiEmitterPanelManifestTest {
                     }
                   ],
                   "flows": [{"name": "CountProjects", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
-                  "panels": [
+                  "screens": [
                     {
-                      "name": "AdminOnlyPanel",
+                      "name": "AdminOnlyPanel", "kind": "custom", "panel": {
                       "route": "admin-only",
                       "title": "Admin Only",
                       "visibility": "isSuperUser",
@@ -116,8 +115,7 @@ public class BusinessUiEmitterPanelManifestTest {
                           "name": "recount", "label": "Recount", "binding": "procedure", "procedure": "CountProjects",
                           "visibleWhen": "isSuperUser", "enabledWhen": "role == 'ADMIN'"
                         }
-                      ]
-                    }
+                      ]}}
                   ]
                 }
                 """);

@@ -536,76 +536,88 @@
       ]
     }
   ],
-  "autoPanels": [
+  "screens": [
     {
       "name": "HelpdeskAgents",
+      "kind": "list",
       "concept": "HelpdeskAgent",
-      "route": "/helpdesk-agents",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ],
-      "selection": {
-        "columns": [
-          "fullName",
-          "email",
-          "active"
-        ]
+      "admin": {
+        "route": "/helpdesk-agents",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "fullName",
+            "email",
+            "active"
+          ]
+        }
       }
     },
     {
       "name": "TicketCategories",
+      "kind": "list",
       "concept": "TicketCategory",
-      "route": "/ticket-categories",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ],
-      "selection": {
-        "columns": [
-          "code",
-          "name",
-          "active"
-        ]
+      "admin": {
+        "route": "/ticket-categories",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "code",
+            "name",
+            "active"
+          ]
+        }
       }
     },
     {
       "name": "Tickets",
+      "kind": "list",
       "concept": "Ticket",
-      "route": "/tickets",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ],
-      "selection": {
-        "columns": [
-          "ticketNumber",
-          "subject",
-          "priority",
-          "assignedAgentId",
-          "status"
-        ]
+      "admin": {
+        "route": "/tickets",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "ticketNumber",
+            "subject",
+            "priority",
+            "assignedAgentId",
+            "status"
+          ]
+        }
       }
     },
     {
       "name": "TicketComments",
+      "kind": "list",
       "concept": "TicketComment",
-      "route": "/ticket-comments",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ],
-      "selection": {
-        "columns": [
-          "ticketId",
-          "authorName",
-          "internal",
-          "postedAt"
-        ]
+      "admin": {
+        "route": "/ticket-comments",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "ticketId",
+            "authorName",
+            "internal",
+            "postedAt"
+          ]
+        }
       }
     }
   ]

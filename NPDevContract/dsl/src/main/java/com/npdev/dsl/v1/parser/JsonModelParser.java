@@ -136,6 +136,47 @@ public final class JsonModelParser {
                     "legacy-model-root-key"
             ));
         }
+        // D-1 (phase 2): the top-level autoPanels[] key was folded into screens[] (an `admin` block). It is refused HERE,
+        // before the schema (which no longer lists the key) can answer with a bare "property not defined".
+        if (root.has("autoPanels")) {
+            throw new DeprecationException(new ValidationDiagnostic(
+                    ValidationLayer.STRUCTURAL,
+                    ValidationSeverity.ERROR,
+                    "LEGACY_AUTOPANELS_ROOT_KEY",
+                    "'autoPanels' was removed (D-1): declare each entry as a screens[] entry with an `admin` block.",
+                    "NPDevContract",
+                    "$.autoPanels",
+                    null,
+                    null,
+                    "screens[].admin",
+                    null,
+                    "Replace each autoPanels[] entry with {\"name\": <its name, or the concept/aggregate name when it had none>, "
+                            + "\"kind\": \"list\" (a concept's pages) or \"workbench\" (an aggregate's workbench), "
+                            + "\"concept\": <its concept, or its aggregate root>, \"admin\": {<every other key of the entry: route, "
+                            + "surfaces, selection, detail, transaction, prompt, metadata>}} in screens[]; name, concept and aggregate "
+                            + "stay on the screen and are not repeated in admin.",
+                    "legacy-autopanels-root-key"
+            ));
+        }
+        // D-1 (phase 3): the top-level panels[] key was folded into screens[] (a kind "custom" screen with a `panel` block).
+        if (root.has("panels")) {
+            throw new DeprecationException(new ValidationDiagnostic(
+                    ValidationLayer.STRUCTURAL,
+                    ValidationSeverity.ERROR,
+                    "LEGACY_PANELS_ROOT_KEY",
+                    "'panels' was removed (D-1): declare each entry as a screens[] entry of kind \"custom\" with a `panel` block.",
+                    "NPDevContract",
+                    "$.panels",
+                    null,
+                    null,
+                    "screens[].panel",
+                    null,
+                    "Replace each panels[] entry with {\"name\": <its name>, \"kind\": \"custom\", \"panel\": {<every other key of the "
+                            + "entry: route, title, dataSources, layout, fieldBindings, visibility, enabledWhen, actions, explainability, "
+                            + "metadata, guidePage>}} in screens[]; the name stays on the screen and is not repeated in panel.",
+                    "legacy-panels-root-key"
+            ));
+        }
         if (root.has("contexts")) {
             throw new DeprecationException(new ValidationDiagnostic(
                     ValidationLayer.STRUCTURAL,
@@ -200,6 +241,25 @@ public final class JsonModelParser {
                     "legacy-fragments-root-key"
             ));
         }
+        // D-1 (phase 4): the root backOffice key became the `admin` block of an experiences[] entry.
+        if (root.has("backOffice")) {
+            throw new DeprecationException(new ValidationDiagnostic(
+                    ValidationLayer.STRUCTURAL,
+                    ValidationSeverity.ERROR,
+                    "LEGACY_BACKOFFICE_ROOT_KEY",
+                    "'backOffice' was removed (D-1): the back office is the admin experience -- declare it as an experiences[] entry with an `admin` block.",
+                    "NPDevContract",
+                    "$.backOffice",
+                    null,
+                    null,
+                    "experiences[].admin",
+                    null,
+                    "Replace the root \"backOffice\": {<keys>} with an entry in experiences[]: {\"name\": \"admin\", \"admin\": {<the same keys: "
+                            + "locale, strings, defaultRoute, navigation, pages>}}. A pack declares its pages the same way "
+                            + "(an experiences[] entry with an `admin` block holding `pages`).",
+                    "legacy-backoffice-root-key"
+            ));
+        }
         for (String movedKey : List.of("appShell", "guidePages")) {
             if (root.has(movedKey)) {
                 boolean shell = "appShell".equals(movedKey);
@@ -207,19 +267,17 @@ public final class JsonModelParser {
                         ValidationLayer.STRUCTURAL,
                         ValidationSeverity.ERROR,
                         shell ? "LEGACY_APPSHELL_ROOT_KEY" : "LEGACY_GUIDEPAGES_ROOT_KEY",
-                        "Root '" + movedKey + "' was removed (FORM P5-T9c): the back-office configuration is the optional root "
-                                + "backOffice {defaultRoute, navigation, pages}.",
+                        "Root '" + movedKey + "' was removed (FORM P5-T9c): the back-office configuration is the `admin` block of an "
+                                + "experiences[] entry {defaultRoute, navigation, pages}.",
                         "NPDevContract",
                         "$." + movedKey,
                         null,
                         null,
-                        "backOffice",
+                        "experiences[].admin",
                         null,
                         shell
-                                ? "Move root appShell {defaultRoute, navigation} to the root \"backOffice\": {\"defaultRoute\": ..., \"navigation\": [...]} (it also takes \"pages\"). "
-                                        + "`python NPDevCli/appshell_guidepages_to_backoffice_codemod.py <model.json>` does the move."
-                                : "Move root guidePages[] to the root \"backOffice\": {\"pages\": [...]} (same entries); a pack declares them the same way, as its own \"backOffice\": {\"pages\": [...]}. "
-                                        + "`python NPDevCli/appshell_guidepages_to_backoffice_codemod.py <model.json>` does the move.",
+                                ? "Move root appShell {defaultRoute, navigation} to an experiences[] entry {\"name\": \"admin\", \"admin\": {\"defaultRoute\": ..., \"navigation\": [...]}} (it also takes \"pages\")."
+                                : "Move root guidePages[] to an experiences[] entry {\"name\": \"admin\", \"admin\": {\"pages\": [...]}} (same entries); a pack declares them the same way.",
                         shell ? "legacy-appshell-root-key" : "legacy-guidepages-root-key"
                 ));
             }
@@ -248,16 +306,15 @@ public final class JsonModelParser {
                     ValidationLayer.STRUCTURAL,
                     ValidationSeverity.ERROR,
                     "LEGACY_SETTINGS_ROOT_KEY",
-                    "Root 'settings' was removed (FORM P5-T9g): the app's locale and string catalogue are backOffice.locale and "
-                            + "backOffice.strings; settings.ui (pageRows, dateFormat) was read by nothing and is gone.",
+                    "Root 'settings' was removed (FORM P5-T9g): the app's locale and string catalogue are the admin experience's locale and "
+                            + "strings (experiences[].admin); settings.ui (pageRows, dateFormat) was read by nothing and is gone.",
                     "NPDevContract",
                     "$.settings",
                     null,
                     null,
-                    "backOffice",
+                    "experiences[].admin",
                     null,
-                    "Move root settings.locale and settings.strings to the root \"backOffice\": {\"locale\": ..., \"strings\": {...}} and delete settings.ui. "
-                            + "`python NPDevCli/appshell_guidepages_to_backoffice_codemod.py <model.json>` does the move.",
+                    "Move root settings.locale and settings.strings to an experiences[] entry {\"name\": \"admin\", \"admin\": {\"locale\": ..., \"strings\": {...}}} and delete settings.ui.",
                     "legacy-settings-root-key"
             ));
         }
@@ -840,12 +897,21 @@ public final class JsonModelParser {
         }
 
         queries.addAll(parseQueries(root.get("queries"), originByQualifiedMemberName.getOrDefault("queries", Map.of())));
-        panels.addAll(parsePanels(root.get("panels"), originByQualifiedMemberName.getOrDefault("panels", Map.of())));
+        // D-1 (phase 3): a hand-written panel is a kind "custom" screen with a `panel` block; a pack's panel screen is
+        // pack-qualified like the panel it replaces, so its origin is recorded under the screens kind.
+        panels.addAll(parsePanels(panelScreensAsPanels(parseOpaqueObjects(root.get("screens"), "screens")),
+                originByQualifiedMemberName.getOrDefault("screens", Map.of())));
         // FORM P5-T9c: the pages live under the root backOffice.pages (see parseBackOffice below).
         aggregates.addAll(parseCompositions(root.get("concepts")));
-        autoPanels.addAll(parseAutoPanels(root.get("autoPanels")));
+        // D-1: a concept's generated back-office pages (kind "list") and an aggregate's workbench (kind "workbench") are
+        // declared on a screens[] entry under `admin`; parsed through the same code the old autoPanels[] key used, so the
+        // compiler, expander and generator see the identical AutoPanelAst.
+        autoPanels.addAll(parseAutoPanels(adminScreensAsAutoPanels(parseOpaqueObjects(root.get("screens"), "screens"))));
         ExternalAiAst externalAi = parseExternalAi(root.get("externalAi"));
-        SettingsAst settings = parseSettings(root.get("backOffice"));
+        // D-1 phase 4: the back office is the `admin` block of an experiences[] entry (read through the same code the old
+        // root backOffice key used); that entry is not a role experience and never reaches the experience list below.
+        JsonNode backOfficeBlock = adminExperienceBlock(root.get("experiences"));
+        SettingsAst settings = parseSettings(backOfficeBlock);
         roles.addAll(parseRoles(root.get("roles"), originByQualifiedMemberName.getOrDefault("roles", Map.of())));
         propertyScopes.addAll(parsePropertyScopes(root.get("propertyScopes")));
         properties.addAll(parseProperties(root.get("properties")));
@@ -854,10 +920,11 @@ public final class JsonModelParser {
         List<com.npdev.dsl.v1.ast.SequenceAst> sequences = parseSequences(root.get("sequences"));
         List<com.npdev.dsl.v1.ast.SeedAst> seeds = parseSeeds(root.get("seeds"));
         com.npdev.dsl.v1.ast.AgentAccessAst agentAccess = parseAgentAccess(root.get("agentAccess"));
-        List<JsonNode> experiences = parseOpaqueObjects(root.get("experiences"), "experiences");
+        List<JsonNode> experiences = new ArrayList<>(parseOpaqueObjects(root.get("experiences"), "experiences"));
+        experiences.removeIf(entry -> entry != null && entry.has("admin"));
         // FORM P5-T9c: the old top-level appShell + guidePages are the root backOffice {defaultRoute, navigation, pages}.
         // Read it into the SAME AppShellAst + guidePages list the compiler, canonical JSON and emitters consume.
-        AppShellAst appShell = parseBackOffice(root.get("backOffice"), guidePages);
+        AppShellAst appShell = parseBackOffice(backOfficeBlock, guidePages);
         List<JsonNode> screens = parseOpaqueObjects(root.get("screens"), "screens");
         // FORM P5-T9b: ModelAst derives its documents from the document screens on every call; parse them once
         // here so a malformed band/column/logo is a parse error now, never a surprise in a later getDocuments().
@@ -1880,6 +1947,88 @@ public final class JsonModelParser {
             ));
         }
         return out;
+    }
+
+    /**
+     * D-1 phase 1: the {@code screens[]} entries that carry an {@code admin} block, as the autoPanel objects
+     * {@link #parseAutoPanels} reads. The screen supplies {@code name} and {@code concept}; {@code admin} holds the rest
+     * ({@code route}, {@code surfaces}, {@code selection}, {@code detail}, {@code transaction}, {@code prompt},
+     * {@code metadata}). {@code ExperienceValidation} refuses an {@code admin} that repeats {@code name}/{@code concept}
+     * or sits on a screen that is not kind "list" with a concept, so this only reshapes.
+     */
+    static JsonNode adminScreensAsAutoPanels(List<JsonNode> screens) {
+        var array = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.arrayNode();
+        for (JsonNode screen : screens) {
+            JsonNode admin = screen == null ? null : screen.get("admin");
+            if (admin == null || !admin.isObject()) {
+                continue;
+            }
+            var merged = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+            if (screen.hasNonNull("name")) {
+                merged.set("name", screen.get("name"));
+            }
+            if (screen.hasNonNull("concept")) {
+                // D-1 phase 2: a workbench screen's concept IS the aggregate root, which is what an aggregate-bound
+                // autoPanel names in `aggregate` (an aggregate is its root concept's composition).
+                merged.set("workbench".equals(readText(screen, "kind")) ? "aggregate" : "concept", screen.get("concept"));
+            }
+            admin.fields().forEachRemaining(entry -> {
+                if (!merged.has(entry.getKey())) {
+                    merged.set(entry.getKey(), entry.getValue());
+                }
+            });
+            array.add(merged);
+        }
+        return array;
+    }
+
+    /**
+     * D-1 phase 4: the {@code admin} block of the {@code experiences[]} entry that configures the back office (the old
+     * root {@code backOffice} object: {@code locale}, {@code strings}, {@code defaultRoute}, {@code navigation},
+     * {@code pages}); null when no experience carries one. {@code ExperienceValidation} allows at most one.
+     */
+    static JsonNode adminExperienceBlock(JsonNode experiences) {
+        if (experiences == null || !experiences.isArray()) {
+            return null;
+        }
+        for (JsonNode experience : experiences) {
+            JsonNode admin = experience == null ? null : experience.get("admin");
+            if (admin != null && admin.isObject()) {
+                return admin;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * D-1 phase 3: the {@code screens[]} entries that carry a {@code panel} block, as the panel objects {@link #parsePanels}
+     * reads. The screen supplies {@code name}; {@code panel} holds the rest ({@code route}, {@code title},
+     * {@code dataSources}, {@code layout}, {@code fieldBindings}, {@code visibility}, {@code enabledWhen}, {@code actions},
+     * {@code explainability}, {@code metadata}, {@code guidePage}, {@code uid}). {@code ExperienceValidation} refuses a
+     * {@code panel} that repeats {@code name} or sits on a screen that is not kind "custom", so this only reshapes.
+     */
+    static JsonNode panelScreensAsPanels(List<JsonNode> screens) {
+        var array = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.arrayNode();
+        for (JsonNode screen : screens) {
+            JsonNode panel = screen == null ? null : screen.get("panel");
+            if (panel == null || !panel.isObject()) {
+                continue;
+            }
+            var merged = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+            if (screen.hasNonNull("name")) {
+                merged.set("name", screen.get("name"));
+            }
+            panel.fields().forEachRemaining(entry -> {
+                if (!merged.has(entry.getKey())) {
+                    merged.set(entry.getKey(), entry.getValue());
+                }
+            });
+            if (!merged.has("title") && screen.hasNonNull("title")) {
+                merged.set("title", screen.get("title"));
+            }
+            array.add(merged);
+        }
+        return array;
     }
 
     private static List<AutoPanelAst> parseAutoPanels(JsonNode node) throws IOException {

@@ -266,9 +266,7 @@ class AutoPanelUiStateValidationTest {
                   { "name": "movimentoId", "type": "uuid" },
                   { "name": "quantidade", "type": "integer" } ] }%s
               ],
-              "autoPanels": [
-                { "aggregate": "Movimento", "transaction": { %s } }
-              ]
+              "screens": [ { "name": "Movimento", "kind": "workbench", "concept": "Movimento", "admin": { "transaction": { %s } } } ]
             }
             """.formatted(bandCollection, bandConcept, transactionBody);
     }

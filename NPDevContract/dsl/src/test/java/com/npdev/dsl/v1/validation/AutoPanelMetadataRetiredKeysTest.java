@@ -30,8 +30,7 @@ class AutoPanelMetadataRetiredKeysTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true } ],
                   "composition": { "collections": [] } }
               ],
-              "autoPanels": [ { "aggregate": "Movimento",
-                "transaction": { "metadata": %s } } ]
+              "screens": [ { "name": "Movimento", "kind": "workbench", "concept": "Movimento", "admin": { "transaction": { "metadata": %s } } } ]
             }
             """.formatted(metadataJson);
         ModelAst ast = new JsonModelParser().parse(MAPPER.readTree(modelJson));

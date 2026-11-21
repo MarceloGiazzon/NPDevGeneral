@@ -33,13 +33,13 @@ class AutoPanelSurfaceOverrideTest {
               { "name": "id", "type": "uuid", "id": true, "required": true },
               { "name": "nome", "type": "string" } ] }
           ],
-          "panels": [
-            { "name": "PedidoPickerPanel", "route": "/pedido-picker", "title": "Picker",
-              "dataSources": [ { "name": "rows", "concept": "Pedido" } ] },
-            { "name": "ItemPanel", "route": "/item-panel", "title": "Items",
-              "dataSources": [ { "name": "rows", "concept": "Item" } ] }
-          ],
-          "autoPanels": [ %s ]
+          "screens": [
+            { "name": "PedidoPickerPanel", "kind": "custom", "panel": { "route": "/pedido-picker", "title": "Picker",
+              "dataSources": [ { "name": "rows", "concept": "Pedido" } ]}},
+            { "name": "ItemPanel", "kind": "custom", "panel": { "route": "/item-panel", "title": "Items",
+              "dataSources": [ { "name": "rows", "concept": "Item" } ]}},
+            %s
+          ]
         }
         """;
 
@@ -54,7 +54,7 @@ class AutoPanelSurfaceOverrideTest {
     @Test
     void aggregateSelectionOverrideSkipsTheSynthesizedSelectionAndKeepsTheWorkbench() throws Exception {
         String autoPanel = """
-            { "aggregate": "Pedido", "selection": { "panel": "PedidoPickerPanel" } }""";
+            { "name": "Pedido", "kind": "workbench", "concept": "Pedido", "admin": { "selection": { "panel": "PedidoPickerPanel" } } }""";
         assertEquals(List.of(), new SemanticValidator().validate(parse(autoPanel)));
 
         CompiledModel model = new ModelCompiler().compile(parse(autoPanel));
@@ -70,7 +70,7 @@ class AutoPanelSurfaceOverrideTest {
     @Test
     void aggregateTransactionOverrideKeepsTheSelectionPointingAtTheDeclaredPanel() throws Exception {
         String autoPanel = """
-            { "aggregate": "Pedido", "transaction": { "panel": "PedidoPickerPanel" } }""";
+            { "name": "Pedido", "kind": "workbench", "concept": "Pedido", "admin": { "transaction": { "panel": "PedidoPickerPanel" } } }""";
         CompiledModel model = new ModelCompiler().compile(parse(autoPanel));
         List<String> names = panelNames(model);
         assertFalse(names.contains("PedidoWorkbench"), names.toString());
@@ -82,8 +82,8 @@ class AutoPanelSurfaceOverrideTest {
     @Test
     void conceptBoundOverrideSkipsOnlyThatSurface() throws Exception {
         String autoPanel = """
-            { "concept": "Pedido", "name": "Pedidos", "route": "/pedidos",
-              "selection": { "panel": "PedidoPickerPanel" } }""";
+            { "name": "Pedidos", "kind": "list", "concept": "Pedido", "admin": { "route": "/pedidos",
+              "selection": { "panel": "PedidoPickerPanel" } } }""";
         assertEquals(List.of(), new SemanticValidator().validate(parse(autoPanel)));
         List<String> names = panelNames(new ModelCompiler().compile(parse(autoPanel)));
         assertFalse(names.contains("PedidosSelection"), names.toString());
@@ -93,8 +93,8 @@ class AutoPanelSurfaceOverrideTest {
     @Test
     void overriddenPromptSurfaceIsWhatOtherFormsPointAt() throws Exception {
         String json = TEMPLATE.formatted("""
-            { "concept": "Item", "name": "Itens", "prompt": { "panel": "ItemPanel" } },
-            { "concept": "Pedido", "name": "Pedidos" }""")
+            { "name": "Itens", "kind": "list", "concept": "Item", "admin": { "prompt": { "panel": "ItemPanel" } } },
+            { "name": "Pedidos", "kind": "list", "concept": "Pedido", "admin": { } }""")
                 .replace("{ \"name\": \"cliente\", \"type\": \"string\" }",
                         "{ \"name\": \"cliente\", \"type\": \"reference\", \"reference\": { \"target\": \"Item\" } }");
         CompiledModel model = new ModelCompiler().compile(new JsonModelParser().parse(MAPPER.readTree(json)));
@@ -107,30 +107,30 @@ class AutoPanelSurfaceOverrideTest {
     @Test
     void unknownOrMisboundPanelIsARefusalWithASuggestedFix() throws Exception {
         List<String> missing = new SemanticValidator().validate(parse("""
-            { "aggregate": "Pedido", "selection": { "panel": "Ghost" } }"""));
+            { "name": "Pedido", "kind": "workbench", "concept": "Pedido", "admin": { "selection": { "panel": "Ghost" } } }"""));
         assertTrue(missing.stream().anyMatch(e -> e.contains("selection.panel: panel not found: Ghost")
                 && e.contains("suggestedFix") && e.contains("PedidoPickerPanel")), missing.toString());
 
         List<String> misbound = new SemanticValidator().validate(parse("""
-            { "aggregate": "Pedido", "selection": { "panel": "ItemPanel" } }"""));
+            { "name": "Pedido", "kind": "workbench", "concept": "Pedido", "admin": { "selection": { "panel": "ItemPanel" } } }"""));
         assertTrue(misbound.stream().anyMatch(e -> e.contains("is bound to concept Item but this surface is bound to Pedido")
                 && e.contains("PedidoPickerPanel")), misbound.toString());
 
         List<String> noDetail = new SemanticValidator().validate(parse("""
-            { "aggregate": "Pedido", "detail": { "panel": "PedidoPickerPanel" } }"""));
+            { "name": "Pedido", "kind": "workbench", "concept": "Pedido", "admin": { "detail": { "panel": "PedidoPickerPanel" } } }"""));
         assertTrue(noDetail.stream().anyMatch(e -> e.contains("no detail surface")), noDetail.toString());
     }
 
     @Test
     void panelOverrideRoundTripsThroughCanonicalJsonAndIsOmittedWhenUndeclared() throws Exception {
         CompiledModel declared = new ModelCompiler().compile(parse("""
-            { "aggregate": "Pedido", "selection": { "panel": "PedidoPickerPanel" } }"""));
+            { "name": "Pedido", "kind": "workbench", "concept": "Pedido", "admin": { "selection": { "panel": "PedidoPickerPanel" } } }"""));
         String json = CompiledModelCanonicalJson.toJson(declared);
         assertEquals("PedidoPickerPanel",
                 CompiledModelCanonicalJsonReader.fromJson(json).getAutoPanels().get(0).selection().panel());
 
         CompiledModel plain = new ModelCompiler().compile(parse("""
-            { "aggregate": "Pedido", "selection": { "layout": "grid" } }"""));
+            { "name": "Pedido", "kind": "workbench", "concept": "Pedido", "admin": { "selection": { "layout": "grid" } } }"""));
         assertFalse(CompiledModelCanonicalJson.toJson(plain).contains("\"panel\":"),
                 "an undeclared panel must not be written, so existing outputs stay byte-identical");
     }

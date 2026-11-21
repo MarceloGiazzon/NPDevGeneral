@@ -37,8 +37,7 @@ class WorkbenchActionReviewTest {
                   { "name": "finish", "type": "string" } ], "composition": {} }
               ],
               "flows": [{"name": "Identify", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}, {"name": "Fold", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
-              "autoPanels": [ { "aggregate": "Cap",
-                "transaction": { "actions": [ %s ] } } ]
+              "screens": [ { "name": "Cap", "kind": "workbench", "concept": "Cap", "admin": { "transaction": { "actions": [ %s ] } } } ]
             }
             """;
 

@@ -48,8 +48,8 @@ five paths, and the difference is how much control you want in exchange for how 
 | # | Path | You write | You get |
 |---|---|---|---|
 | 1 | Automatic Business UI | nothing — just concepts | a table + form per concept, with CSV/XLSX export and CSV import |
-| 2 | `autoPanels[]` | one entry per concept or aggregate | Selection / Detail / Transaction / Prompt screens |
-| 3 | `panels[]` | the full screen DSL | exactly the screen you declared, including `dashboard` and `console` layouts (tiles, charts, tables) and `slots` for your own component above, below or instead of the body |
+| 2 | a `screens[]` entry with an `admin` block (aggregates: `autoPanels[]`) | one entry per concept | Selection / Detail / Transaction / Prompt screens |
+| 3 | a `screens[]` entry of `kind: "custom"` with a `panel` block | the full screen DSL | exactly the screen you declared, including `dashboard` and `console` layouts (tiles, charts, tables) and `slots` for your own component above, below or instead of the body |
 | 4 | a hand-made page, `web/*.html` beside the model | any HTML/JS you write | your page inside the app's shell (navigation, sign-in, roles), or public with no sign-in, calling the app through `NPDevShell.api` — see `docs/reference/HAND_MADE_PAGES.md` |
 | 5 | untrusted-extension panel | your own HTML/JS asset | your asset, hash-pinned into the app |
 
@@ -62,15 +62,18 @@ bringing an existing page that must be hash-pinned.
 ```json
 {
   "name": "TaskAdmin",
+  "kind": "list",
   "concept": "Task",
-  "route": "/tasks",
-  "surfaces": ["selection", "detail"],
-  "selection": { "columns": ["title", "priority", "status"], "filters": ["status"] },
-  "detail":    { "fields":  ["title", "priority", "status"] }
+  "admin": {
+    "route": "/tasks",
+    "surfaces": ["selection", "detail"],
+    "selection": { "columns": ["title", "priority", "status"], "filters": ["status"] },
+    "detail":    { "fields":  ["title", "priority", "status"] }
+  }
 }
 ```
 
-That is an `autoPanels[]` entry: a filterable list and an editable detail form, from six lines.
+That is a `screens[]` entry whose `admin` block declares the generated back-office pages: a filterable list and an editable detail form. (An aggregate's workbench is still an `autoPanels[]` entry.)
 
 **Real apps:** path 1 is every sample; path 2 is `dsl-conformance-max`'s
 `WidgetOrderTypedActionsWorkbench`; path 3 is `invoice-bonds-demo`'s `InvoiceConsolePanel`, and

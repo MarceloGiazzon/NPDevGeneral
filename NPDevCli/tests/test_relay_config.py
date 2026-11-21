@@ -139,8 +139,8 @@ class AllowlistMatchesTheSchemasTests(unittest.TestCase):
     def test_every_knob_it_says_lives_in_model_json_really_does(self):
         defs = MODEL_SCHEMA["$defs"]
         claims = {
-            "backOffice.locale": defs["backOffice"]["properties"].get("locale"),
-            "backOffice.strings": defs["backOffice"]["properties"].get("strings"),
+            "admin.locale": defs["backOffice"]["properties"].get("locale"),
+            "admin.strings": defs["backOffice"]["properties"].get("strings"),
             "presentationMetadata.currency": defs["presentationMetadata"]["properties"].get("currency"),
             "guidePage.theme": defs["guidePage"]["properties"].get("theme"),
             "properties[]": MODEL_SCHEMA["properties"].get("properties"),
@@ -148,7 +148,7 @@ class AllowlistMatchesTheSchemasTests(unittest.TestCase):
         for claim, found in claims.items():
             self.assertIsNotNone(found, f"model.schema.json no longer has {claim}: fix the allowlist's `located` list")
         text = json.dumps(ALLOWLIST["located"])
-        for claim in ("backOffice.locale", "backOffice.strings", "presentationMetadata.currency",
+        for claim in ("admin.locale", "admin.strings", "presentationMetadata.currency",
                       "guidePage.theme", "properties[]"):
             self.assertIn(claim, text)
 

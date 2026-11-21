@@ -729,9 +729,12 @@ class UntrustedExtensionEntrypointMigrationTest(unittest.TestCase):
     in the same commit, per the stability policy."""
 
     def _doc(self, panels=None, procedures=None) -> dict:
+        # D-1 phase 3: a panel is a custom screen carrying a `panel` block (the name is the screen's)
+        screens = [{"name": p["name"], "kind": "custom", "panel": {k: v for k, v in p.items() if k != "name"}}
+                   for p in (panels or [])]
         return {
             "namespace": "test", "dslVersion": "3.0.0", "version": "1.0", "concepts": [], "flows": [],
-            "panels": panels or [], "procedures": procedures or [],
+            "screens": screens, "procedures": procedures or [],
         }
 
     def test_renamed_on_panel(self):
@@ -740,7 +743,7 @@ class UntrustedExtensionEntrypointMigrationTest(unittest.TestCase):
         ])
         result = migrate_document(doc)
         self.assertTrue(result.changed)
-        metadata = doc["panels"][0]["metadata"]
+        metadata = doc["screens"][0]["panel"]["metadata"]
         self.assertNotIn("trustedSourceEntrypoint", metadata)
         self.assertEqual("panel/admin.html", metadata["untrustedExtensionEntrypoint"])
 
@@ -824,16 +827,43 @@ class UntrustedExtensionManifestMigrationTest(unittest.TestCase):
         self.assertFalse(looks_like_untrusted_extension_manifest(doc))
 
 
+class RootPanelsToScreensMigrationTest(unittest.TestCase):
+    """D-1 phase 3: the root `panels[]` key is gone; the migration moves each panel into a custom screen."""
+
+    def test_root_panels_become_custom_screens_and_the_rest_of_the_migration_still_reaches_them(self):
+        doc = {"namespace": "test", "dslVersion": "3.0.0", "version": "1.0",
+               "screens": [{"name": "Home", "kind": "list", "concept": "C"}],
+               "panels": [{"name": "P", "route": "/p", "layout": {"type": "dashboard"},
+                           "metadata": {"trustedSourceEntrypoint": "panel/p.html"}}]}
+        result = migrate_document(doc)
+        self.assertTrue(result.changed)
+        self.assertNotIn("panels", doc)
+        self.assertEqual(["Home", "P"], [s["name"] for s in doc["screens"]])
+        panel = doc["screens"][1]
+        self.assertEqual("custom", panel["kind"])
+        self.assertNotIn("name", panel["panel"])
+        self.assertEqual("/p", panel["panel"]["route"])
+        self.assertEqual("table", panel["panel"]["layout"]["type"])
+        self.assertEqual("panel/p.html", panel["panel"]["metadata"]["untrustedExtensionEntrypoint"])
+        self.assertFalse(migrate_document(doc).changed)
+
+    def test_a_panel_without_a_name_stays_and_is_reported(self):
+        doc = {"namespace": "test", "dslVersion": "3.0.0", "version": "1.0", "panels": [{"$ref": "panels/p.json"}]}
+        result = migrate_document(doc)
+        self.assertEqual([{"$ref": "panels/p.json"}], doc["panels"])
+        self.assertTrue(result.ambiguities)
+
+
 class PanelLayoutTypeMigrationTest(unittest.TestCase):
     def _model(self, layout: dict) -> dict:
         return {"namespace": "test", "dslVersion": "3.0.0", "version": "1.0",
-                "panels": [{"name": "P", "route": "/p", "layout": layout}]}
+                "screens": [{"name": "P", "kind": "custom", "panel": {"route": "/p", "layout": layout}}]}
 
     def test_retired_types_become_table_including_children(self):
         doc = self._model({"type": "dashboard", "children": [{"type": "form"}, {"type": "grid"}]})
         result = migrate_document(doc)
         self.assertTrue(result.changed)
-        layout = doc["panels"][0]["layout"]
+        layout = doc["screens"][0]["panel"]["layout"]
         self.assertEqual("table", layout["type"])
         self.assertEqual(["table", "grid"], [c["type"] for c in layout["children"]])
         self.assertEqual(2, len(result.changes))

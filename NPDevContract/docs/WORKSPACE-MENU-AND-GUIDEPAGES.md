@@ -9,11 +9,11 @@ related but separate mechanisms: **GuidePage** (declared frame/theme definitions
 ## GuidePage
 
 A GuidePage is a first-class, contract-declared object controlling which chrome regions render
-and how they're themed. Declare zero or more under `pages` of the optional root `backOffice` object (the old top-level
-`guidePages` array was removed in FORM P5-T9c; a pack declares its own pack-level `backOffice.pages`):
+and how they're themed. Declare zero or more under `pages` of the `admin` block of an `experiences[]` entry (the old top-level
+`guidePages` array was removed in FORM P5-T9c and the root `backOffice` object in D-1 phase 4; a pack declares only `pages` in its own admin entry):
 
 ```json
-"backOffice": { "pages": [
+"experiences": [ { "name": "admin", "admin": { "pages": [
   {
     "name": "Default",
     "default": true,
@@ -26,7 +26,7 @@ and how they're themed. Declare zero or more under `pages` of the optional root 
     "gadgets": [ { "name": "recent", "type": "recent-items", "title": "Recentes" } ]
   },
   { "name": "Visitor", "regions": { "top": false, "left": { "enabled": false }, "right": { "enabled": false } } }
-] }
+] } } ]
 ```
 
 **Built-ins.** Three GuidePages always exist, even if the app declares none: `Default` (top bar, left nav and a collapsed-by-default right rail, 280 px), `Minimal` (top bar only), `None` (no chrome at all — the page/section owns the whole

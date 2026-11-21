@@ -676,7 +676,7 @@ def migrate_label_locales(doc: dict, locale: str) -> MigrationResult:
     """Widens every label site `migrate_document`'s DSL-2.0 pass does not touch -- a completely
     separate, independently-callable pass (not part of `migrate_document`, and not run by it)
     because it needs one extra piece of information `migrate_document` never requires: which
-    locale the app's EXISTING plain-string text is actually written in. `doc.backOffice.locale` is
+    locale the app's EXISTING plain-string text is actually written in. The `admin` experience's `locale` is
     deliberately NOT read for this -- its own schema description says it is "informational...
     does not itself select translations", so trusting it here would silently mislabel text for any
     app that set it loosely. The caller (an author, or a future CLI flag) supplies `locale`
@@ -690,7 +690,7 @@ def migrate_label_locales(doc: dict, locale: str) -> MigrationResult:
     `JsonModelParser`'s corresponding parse sites recognize: top-level `properties[]`,
     `domainTypes[].ui`, `concepts[].ui` / `concepts[].fields[].ui` (label + shortLabel),
     `concepts[].fields[].enumValues[]` (label + displayLabel), `concepts[].lifecycle.states[]` /
-    `.transitions[]` (actionLabel), `panels[].actions[]`, and every `autoPanels[].<surface>`
+    `.transitions[]` (actionLabel), `screens[].panel.actions[]`, and every `autoPanels[].<surface>`
     (selection/detail/transaction/prompt) actions/bandPickers/derivedFields/uiState. Does NOT
     reach a nested `actionMetadata` block's own `label` (e.g. a lifecycle transition's `action`
     object, or an orchestration action's `action`) -- narrower than the full 13-site inventory on
@@ -746,10 +746,7 @@ def migrate_label_locales(doc: dict, locale: str) -> MigrationResult:
                     _widen_label_site(
                         transition, "actionLabel", locale, f"{cwhere}.lifecycle.transitions[{j}]", result)
 
-    for i, panel in enumerate(doc.get("panels", None) or []):
-        if not isinstance(panel, dict):
-            continue
-        pwhere = f"panels[{i}] ({panel.get('name', '?')})"
+    for pwhere, panel in _panel_bodies(doc):
         for j, action in enumerate(panel.get("actions", None) or []):
             if isinstance(action, dict):
                 _widen_label_site(action, "label", locale, f"{pwhere}.actions[{j}]", result)
@@ -814,6 +811,90 @@ def _migrate_terminal_states_with_exits(obj, where: str, result: MigrationResult
             _migrate_terminal_states_with_exits(value, f"{where}.{key}" if where else key, result)
 
 
+def _panel_bodies(doc: dict):
+    """D-1 phase 3: a hand-written panel is a `screens[]` entry {name, kind: "custom", panel: {...}}; yields
+    (where, panel body) for each one, so every panel migration reads the new shape."""
+    for i, screen in enumerate(doc.get("screens", None) or []):
+        if isinstance(screen, dict) and isinstance(screen.get("panel"), dict):
+            yield f"screens[{i}] ({screen.get('name', '?')}).panel", screen["panel"]
+
+
+def _migrate_root_panels_to_screens(doc: dict, result: MigrationResult) -> None:
+    """D-1 phase 3: the root `panels[]` key no longer exists (JsonModelParser refuses it with LEGACY_PANELS_ROOT_KEY).
+    Each named panel becomes a custom screen carrying the panel (minus its name) in a `panel` block; a `$ref` entry
+    cannot be moved mechanically and is left in `panels` and reported."""
+    panels = doc.get("panels")
+    if not isinstance(panels, list):
+        return
+    moved, kept = [], []
+    for entry in panels:
+        if isinstance(entry, dict) and isinstance(entry.get("name"), str):
+            body = {k: v for k, v in entry.items() if k != "name"}
+            moved.append({"name": entry["name"], "kind": "custom", "panel": body})
+        else:
+            kept.append(entry)
+    if moved:
+        screens = doc.get("screens")
+        doc["screens"] = (list(screens) if isinstance(screens, list) else []) + moved
+        result.changed = True
+        result.changes.append(f"panels[] -> screens[]: {len(moved)} panel(s) became kind 'custom' screens with a `panel` block")
+    if kept:
+        doc["panels"] = kept
+        result.ambiguities.append("panels[] still holds entries without a name (a $ref?): move each into screens[] by hand "
+                                  "as {name, kind: 'custom', panel: {...}}")
+    else:
+        del doc["panels"]
+        if not moved:
+            result.changed = True
+
+
+def _migrate_root_backoffice_to_admin_experience(doc: dict, result: MigrationResult) -> None:
+    """D-1 phase 4: the root `backOffice` key (and a pack's `backOffice`) no longer exists (JsonModelParser refuses it with
+    LEGACY_BACKOFFICE_ROOT_KEY). The back office is the `admin` block of ONE experiences[] entry
+    {"name": "admin", "admin": {locale, strings, defaultRoute, navigation, pages}}. The pre-P5-T9c keys fold in as well:
+    `appShell` {defaultRoute, navigation}, `guidePages` (the pages) and `settings` {locale, strings}. A pack carries only
+    `pages`. Nothing is guessed: when the model already has an admin experience the old keys stay and are reported."""
+    is_pack = isinstance(doc.get("pack"), str)
+    block: dict = {}
+    legacy = doc.get("backOffice")
+    if isinstance(legacy, dict):
+        block.update(legacy)
+    if isinstance(doc.get("appShell"), dict):
+        block.update({k: v for k, v in doc["appShell"].items() if k in ("defaultRoute", "navigation")})
+    if isinstance(doc.get("guidePages"), list) and doc["guidePages"]:
+        block["pages"] = list(block.get("pages") or []) + doc["guidePages"]
+    settings = doc.get("settings")
+    if isinstance(settings, dict) and not is_pack:
+        for key in ("locale", "strings"):
+            if settings.get(key):
+                block[key] = settings[key]
+    present = [k for k in ("backOffice", "appShell", "guidePages") if k in doc] + (
+        ["settings"] if isinstance(settings, dict) and not is_pack and ("locale" in settings or "strings" in settings) else [])
+    if not present:
+        return
+    experiences = doc.get("experiences")
+    experiences = list(experiences) if isinstance(experiences, list) else []
+    if any(isinstance(e, dict) and "admin" in e for e in experiences):
+        result.ambiguities.append("the document declares an experiences[] admin entry and also " + ", ".join(present)
+                                  + ": merge them by hand into the admin block")
+        return
+    if is_pack:
+        block = {"pages": block["pages"]} if block.get("pages") else {}
+    for key in ("backOffice", "appShell", "guidePages"):
+        doc.pop(key, None)
+    if isinstance(settings, dict) and not is_pack:
+        for key in ("locale", "strings"):
+            settings.pop(key, None)
+        if not settings:
+            del doc["settings"]
+    if block:
+        experiences.append({"name": "admin", "admin": block})
+        doc["experiences"] = experiences
+    result.changed = True
+    result.changes.append("backOffice -> experiences[] admin entry: " + ", ".join(present) + " became "
+                          + '{"name": "admin", "admin": {...}}' if block else "empty back-office keys removed")
+
+
 def migrate_document(doc: dict) -> MigrationResult:
     """Migrates `doc` IN PLACE to DSL 2.0 canonical spellings. Returns what happened."""
     result = MigrationResult()
@@ -821,6 +902,8 @@ def migrate_document(doc: dict) -> MigrationResult:
         result.is_compiled = True
         return result
 
+    _migrate_root_backoffice_to_admin_experience(doc, result)
+    _migrate_root_panels_to_screens(doc, result)
     _migrate_terminal_states_with_exits(doc.get("concepts", None) or [], "concepts", result)
 
     for i, flow in enumerate(doc.get("flows", None) or []):
@@ -852,12 +935,15 @@ def migrate_document(doc: dict) -> MigrationResult:
         _migrate_retired_named_uid(doc.get(kind, None) or [], kind, result)
     _migrate_misplaced_picker(doc.get("concepts", None) or [], result)
 
-    _migrate_untrusted_extension_entrypoint(doc.get("panels", None) or [], "panels", result)
+    for pwhere, panel in _panel_bodies(doc):
+        metadata = panel.get("metadata")
+        if isinstance(metadata, dict):
+            _rewrite_field_aliases(metadata, [("trustedSourceEntrypoint", "untrustedExtensionEntrypoint")],
+                                   f"{pwhere}.metadata", result)
     _migrate_untrusted_extension_entrypoint(doc.get("procedures", None) or [], "procedures", result)
 
-    for i, panel in enumerate(doc.get("panels", None) or []):
-        if isinstance(panel, dict):
-            _migrate_panel_layout(panel.get("layout"), f"panels[{i}] ({panel.get('name', '?')}).layout", result)
+    for pwhere, panel in _panel_bodies(doc):
+        _migrate_panel_layout(panel.get("layout"), f"{pwhere}.layout", result)
 
     return result
 

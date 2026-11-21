@@ -112,9 +112,9 @@ class CheckTests(unittest.TestCase):
     def test_a_business_target_that_is_neither_a_concept_nor_a_panel_is_a_warning(self):
         self.assertEqual(codes(check([{"label": "Clients", "target": "Client"}])), ["menu-target-unknown"])
         self.assertEqual(codes(check([{"label": "Customers", "target": "Customer"}])), [])
-        panel = {**seed(), "panels": [{"name": "Dashboard"}]}
+        panel = {**seed(), "screens": [{"name": "Dashboard", "kind": "custom", "panel": {}}]}
         self.assertEqual(codes(check([{"label": "Home", "target": "Dashboard"}], model=panel)), [])
-        for hidden in ({"packs": [{"from": "x"}]}, {"concepts": [{"$ref": "concepts/a.json"}]}, {"autoPanels": [{"concept": "Customer"}]}):
+        for hidden in ({"packs": [{"from": "x"}]}, {"concepts": [{"$ref": "concepts/a.json"}]}, {"screens": [{"name": "Customer", "kind": "list", "concept": "Customer", "admin": {}}]}):
             self.assertEqual(codes(check([{"label": "Clients", "target": "Client"}], model={**seed(), **hidden})), [], hidden)
 
     def test_a_role_the_model_does_not_declare_is_a_warning_only_when_the_model_declares_roles(self):

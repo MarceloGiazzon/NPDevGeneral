@@ -486,8 +486,8 @@ class PackSealednessAnalyzerTest {
                 { "name": "Contact", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }
               ],
-              "panels": [
-                { "name": "AuditFeed", "dataSource": { "concept": "external::AuditEvent" }, "layout": { "type": "list" } }
+              "screens": [
+                { "name": "AuditFeed", "kind": "custom", "panel": { "dataSource": { "concept": "external::AuditEvent" }, "layout": { "type": "list" }}}
               ]
             }
             """);

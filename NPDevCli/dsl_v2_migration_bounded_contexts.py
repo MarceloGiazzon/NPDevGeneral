@@ -52,9 +52,11 @@ from pathlib import Path
 # movable content).
 MOVABLE_KEYS = (
     "concepts", "domainTypes", "capabilities", "events", "flows",
-    "queries", "procedures", "panels",
+    "queries", "procedures",
     "fragments",
 )
+# D-1 phase 3: a hand-written panel is a `screens[]` entry with a `panel` block; ONLY those screens move into the
+# context (the other screens -- experience destinations -- are app-level and keep their plain names at the root).
 
 DEFAULT_CONTEXT_DSL_VERSION = "3.0.0"
 DEFAULT_CONTEXT_PACK_VERSION = "1.0.0"
@@ -268,6 +270,18 @@ def plan_migration(doc: dict, base_dir: Path) -> MigrationPlan:
             context_doc[key] = value
             moved_any_key = True
             result.changes.append(f"moved top-level '{key}' into context '{context_name}'")
+
+    root_screens = root_doc.get("screens")
+    panel_screens = [s for s in root_screens if isinstance(s, dict) and isinstance(s.get("panel"), dict)]         if isinstance(root_screens, list) else []
+    if panel_screens:
+        remaining = [s for s in root_screens if s not in panel_screens]
+        if remaining:
+            root_doc["screens"] = remaining
+        else:
+            root_doc.pop("screens")
+        context_doc["screens"] = panel_screens
+        moved_any_key = True
+        result.changes.append(f"moved {len(panel_screens)} panel screen(s) of top-level 'screens' into context '{context_name}'")
 
     if not moved_any_key:
         result.skipped = True

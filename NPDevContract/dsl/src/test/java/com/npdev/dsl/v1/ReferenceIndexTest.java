@@ -76,17 +76,16 @@ class ReferenceIndexTest {
                       { "name": "customerEmail", "type": "string", "ui": { "label": "Email" } }
                     ] }
                   ],
-                  "panels": [
+                  "screens": [
                     {
-                      "name": "OrdersPanel",
+                      "name": "OrdersPanel", "kind": "custom", "panel": {
                       "route": "/orders",
                       "dataSources": [ { "name": "orders", "concept": "WidgetOrder" } ],
                       "layout": { "type": "table", "fields": ["customerEmail", "totallyMadeUpField"] },
                       "fieldBindings": [
                         { "field": "customerEmail", "source": "orders", "editable": true },
                         { "field": "anotherGhostField", "source": "orders", "editable": true }
-                      ]
-                    }
+                      ]}}
                   ]
                 }
                 """));
@@ -112,9 +111,9 @@ class ReferenceIndexTest {
                       { "name": "status", "type": "string", "ui": { "label": "Status" } }
                     ] }
                   ],
-                  "panels": [
+                  "screens": [
                     {
-                      "name": "OrdersPanel",
+                      "name": "OrdersPanel", "kind": "custom", "panel": {
                       "route": "/orders",
                       "dataSources": [ { "name": "orders", "concept": "WidgetOrder" } ],
                       "layout": { "type": "table", "fields": ["status"] },
@@ -122,8 +121,7 @@ class ReferenceIndexTest {
                         { "name": "Approve", "label": "Approve", "binding": "conceptMutation",
                           "concept": "WidgetOrder", "operation": "update",
                           "inputFields": ["status", "ghostInputField"] }
-                      ]
-                    }
+                      ]}}
                   ]
                 }
                 """));
@@ -226,16 +224,15 @@ class ReferenceIndexTest {
                     ] }
                   ],
                   "queries": [ { "name": "AllOrders", "concept": "WidgetOrder" } ],
-                  "panels": [
+                  "screens": [
                     {
-                      "name": "OrdersPanel",
+                      "name": "OrdersPanel", "kind": "custom", "panel": {
                       "route": "/orders",
                       "dataSources": [
                         { "name": "real", "concept": "WidgetOrder", "query": "AllOrders" },
                         { "name": "ghost", "concept": "WidgetOrder", "query": "NoSuchQuery" }
                       ],
-                      "layout": { "type": "table", "fields": ["status"] }
-                    }
+                      "layout": { "type": "table", "fields": ["status"] }}}
                   ]
                 }
                 """));
@@ -257,14 +254,13 @@ class ReferenceIndexTest {
                       { "name": "status", "type": "string", "ui": { "label": "Status" } }
                     ] }
                   ],
-                  "panels": [
+                  "screens": [
                     {
-                      "name": "OrdersPanel",
+                      "name": "OrdersPanel", "kind": "custom", "panel": {
                       "route": "/orders",
                       "dataSources": [ { "name": "orders", "concept": "WidgetOrder" } ],
                       "layout": { "type": "table", "fields": ["status"] },
-                      "fieldBindings": [ { "field": "status", "source": "typoedSource", "editable": true } ]
-                    }
+                      "fieldBindings": [ { "field": "status", "source": "typoedSource", "editable": true } ]}}
                   ]
                 }
                 """));
@@ -287,17 +283,16 @@ class ReferenceIndexTest {
                       { "name": "status", "type": "string", "ui": { "label": "Status" } }
                     ] }
                   ],
-                  "panels": [
+                  "screens": [
                     {
-                      "name": "OrdersPanel",
+                      "name": "OrdersPanel", "kind": "custom", "panel": {
                       "route": "/orders",
                       "dataSources": [ { "name": "orders", "concept": "WidgetOrder" } ],
                       "layout": { "type": "table", "fields": ["status"] },
                       "fieldBindings": [
                         { "field": "status", "source": "orders", "editable": true,
                           "visibleWhen": "ghostPredicateField == 'A'" }
-                      ]
-                    }
+                      ]}}
                   ]
                 }
                 """));
@@ -320,17 +315,16 @@ class ReferenceIndexTest {
                       { "name": "status", "type": "string", "ui": { "label": "Status" } }
                     ] }
                   ],
-                  "panels": [
+                  "screens": [
                     {
-                      "name": "OrdersPanel",
+                      "name": "OrdersPanel", "kind": "custom", "panel": {
                       "route": "/orders",
                       "dataSources": [ { "name": "orders", "concept": "WidgetOrder" } ],
                       "layout": { "type": "table", "fields": ["status"] },
                       "fieldBindings": [
                         { "field": "status", "source": "orders", "editable": true,
                           "visibleWhen": "$ui.mode == 'edit'" }
-                      ]
-                    }
+                      ]}}
                   ]
                 }
                 """));
@@ -415,14 +409,13 @@ class ReferenceIndexTest {
                     ] }
                   ],
                   "queries": [ { "name": "ByBirthday", "concept": "Patient", "orderBy": ["birthDay"] } ],
-                  "panels": [
+                  "screens": [
                     {
-                      "name": "PatientsPanel",
+                      "name": "PatientsPanel", "kind": "custom", "panel": {
                       "route": "/patients",
                       "dataSources": [ { "name": "patients", "concept": "Patient" } ],
                       "layout": { "type": "table", "fields": ["birthDay"] },
-                      "fieldBindings": [ { "field": "birthDay", "source": "patients", "editable": true } ]
-                    }
+                      "fieldBindings": [ { "field": "birthDay", "source": "patients", "editable": true } ]}}
                   ]
                 }
                 """));
@@ -461,14 +454,13 @@ class ReferenceIndexTest {
                     ] }
                   ],
                   "queries": [ { "name": "PendingExpenses", "concept": "Expense" } ],
-                  "panels": [
+                  "screens": [
                     {
-                      "name": "ExpensePanel",
+                      "name": "ExpensePanel", "kind": "custom", "panel": {
                       "route": "/expenses",
                       "dataSources": [ { "name": "pending", "query": "PendingExpenses" } ],
                       "layout": { "type": "table", "fields": ["employeeEmail"] },
-                      "fieldBindings": [ { "field": "employeeEmail", "source": "pending.employeeEmail" } ]
-                    }
+                      "fieldBindings": [ { "field": "employeeEmail", "source": "pending.employeeEmail" } ]}}
                   ]
                 }
                 """));
@@ -492,13 +484,12 @@ class ReferenceIndexTest {
                     ] }
                   ],
                   "queries": [ { "name": "OpenTasks", "concept": "Task" } ],
-                  "panels": [
+                  "screens": [
                     {
-                      "name": "TasksPanel",
+                      "name": "TasksPanel", "kind": "custom", "panel": {
                       "route": "/tasks",
                       "dataSources": [ { "name": "open", "query": "OpenTasks" } ],
-                      "layout": { "type": "table", "fields": ["title", "ghostColumn"] }
-                    }
+                      "layout": { "type": "table", "fields": ["title", "ghostColumn"] }}}
                   ]
                 }
                 """));
@@ -525,9 +516,9 @@ class ReferenceIndexTest {
                     ] }
                   ],
                   "flows": [{"name": "CountProjects", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
-                  "panels": [
+                  "screens": [
                     {
-                      "name": "ProjectsPanel",
+                      "name": "ProjectsPanel", "kind": "custom", "panel": {
                       "route": "/projects",
                       "visibility": "isSuperUser",
                       "dataSources": [ { "name": "projects", "concept": "Project" } ],
@@ -535,8 +526,7 @@ class ReferenceIndexTest {
                       "actions": [
                         { "name": "recount", "label": "Recount", "binding": "procedure",
                           "procedure": "CountProjects", "enabledWhen": "role == 'ADMIN'" }
-                      ]
-                    }
+                      ]}}
                   ]
                 }
                 """));

@@ -119,9 +119,44 @@ final class ExperienceValidation {
             validateScreen(screen, screenNames, screensByLower, entitiesByLower, queriesByLower, flowsByLower, errors);
         }
 
+        java.util.Map<String, String> adminScreens = new java.util.HashMap<>();
+        for (JsonNode screen : screens) {
+            if ((screen.has("admin") || screen.has("panel")) && hasText(text(screen, "name"))) {
+                adminScreens.put(normalize(text(screen, "name")), screen.has("admin")
+                        ? "an 'admin' block (a generated back-office page)" : "a 'panel' block (a hand-written panel)");
+            }
+        }
         Set<String> experienceNames = new HashSet<>();
         for (JsonNode experience : experiences) {
             validateExperience(experience, experienceNames, roleNames, screenNames, errors);
+            refuseAdminTargets(experience, adminScreens, errors);
+        }
+    }
+
+    /**
+     * D-1: a screen with an {@code admin} block is the generated back office of a concept, and a screen with a {@code panel}
+     * block is a hand-written panel served at its own route; neither is a screen a role's experience can land on or
+     * navigate to (the experience client never serves it).
+     */
+    private static void refuseAdminTargets(JsonNode experience, java.util.Map<String, String> adminScreens, List<String> errors) {
+        if (adminScreens.isEmpty()) {
+            return;
+        }
+        String here = "Experience " + (hasText(text(experience, "name")) ? text(experience, "name") : "<unnamed>");
+        List<String> targets = new java.util.ArrayList<>();
+        targets.add(text(experience, "home"));
+        JsonNode navigation = experience.get("navigation");
+        if (navigation != null && navigation.isArray()) {
+            for (JsonNode entry : navigation) {
+                targets.add(text(entry, "screen"));
+            }
+        }
+        for (String target : targets) {
+            if (hasText(target) && adminScreens.containsKey(normalize(target))) {
+                errors.add(here + ": screen '" + target + "' carries " + adminScreens.get(normalize(target)) + " and cannot be "
+                        + "an experience's home or navigation target -- suggestedFix: add a separate screen without 'admin' "
+                        + "for the role to use, or remove it from the experience");
+            }
         }
     }
 
@@ -194,6 +229,70 @@ final class ExperienceValidation {
 
     // ------------------------------------------------------------------ screens
 
+    /**
+     * D-1 phase 1: {@code admin} turns a {@code list} screen into the generated back-office pages of its concept (what an
+     * autoPanel used to declare). The screen names the concept; {@code admin} holds the pages' own settings, so it never
+     * repeats {@code name}/{@code concept}/{@code aggregate}. Its inner shape is the autoPanel schema and
+     * {@code PanelValidation.validateAutoPanels} checks it.
+     */
+    private static void validateAdminBlock(String here, JsonNode screen, String kind, String conceptName, List<String> errors) {
+        JsonNode admin = screen.get("admin");
+        if (admin == null) {
+            return;
+        }
+        if (!admin.isObject()) {
+            errors.add(here + ": 'admin' must be an object -- suggestedFix: write the generated pages' settings as an object "
+                    + "(route, surfaces, selection, detail, transaction, prompt), or remove 'admin'");
+            return;
+        }
+        if (kind != null && !"list".equals(kind) && !"workbench".equals(kind)) {
+            errors.add(here + ": 'admin' is only allowed on kind \"list\" or \"workbench\" (this screen is " + kind
+                    + ") -- suggestedFix: remove 'admin', or change the screen's kind to \"list\" (a concept's pages) "
+                    + "or \"workbench\" (an aggregate's workbench)");
+        }
+        if (!hasText(conceptName)) {
+            errors.add(here + ": 'admin' needs the screen's 'concept' -- suggestedFix: set \"concept\" to the concept whose "
+                    + "back-office pages these are");
+        }
+        for (String own : List.of("name", "concept", "aggregate")) {
+            if (admin.has(own)) {
+                errors.add(here + ": 'admin." + own + "' is not allowed -- suggestedFix: remove it; the screen's own '" + own
+                        + "' is used");
+            }
+        }
+    }
+
+    /**
+     * D-1 phase 3: {@code panel} turns a {@code custom} screen into a hand-written panel (what a root {@code panels[]} entry
+     * declared). The screen supplies the name, so {@code panel} never repeats it; the panel's own body is the panel schema and
+     * {@code PanelValidation} checks it. A panel is served at its own route, so it is not a client component either.
+     */
+    private static void validatePanelBlock(String here, JsonNode screen, String kind, List<String> errors) {
+        JsonNode panel = screen.get("panel");
+        if (panel == null) {
+            return;
+        }
+        if (!panel.isObject()) {
+            errors.add(here + ": 'panel' must be an object -- suggestedFix: write the panel's settings as an object "
+                    + "(route, title, dataSources, layout, fieldBindings, actions), or remove 'panel'");
+            return;
+        }
+        if (kind != null && !"custom".equals(kind)) {
+            errors.add(here + ": 'panel' is only allowed on kind \"custom\" (this screen is " + kind
+                    + ") -- suggestedFix: remove 'panel', or change the screen's kind to \"custom\"");
+        }
+        if (panel.has("name")) {
+            errors.add(here + ": 'panel.name' is not allowed -- suggestedFix: remove it; the screen's own 'name' is used");
+        }
+        if (screen.has("admin")) {
+            errors.add(here + ": a screen cannot carry both 'panel' and 'admin' -- suggestedFix: split them into two screens");
+        }
+        if (hasText(text(screen, "component"))) {
+            errors.add(here + ": a screen with a 'panel' cannot also have a 'component' -- suggestedFix: remove 'component' "
+                    + "(a panel is served at its own route), or remove 'panel'");
+        }
+    }
+
     private static void validateScreen(
             JsonNode screen,
             Set<String> screenNames,
@@ -232,6 +331,8 @@ final class ExperienceValidation {
         if (kind != null && KINDS_NEEDING_DATA.contains(kind) && !hasText(conceptName) && !hasText(queryName)) {
             errors.add(here + ": a " + kind + " screen needs a 'concept' or a 'query' -- suggestedFix: set \"concept\" to the concept whose rows this screen shows, or \"query\" to a queries[] name");
         }
+        validateAdminBlock(here, screen, kind, conceptName, errors);
+        validatePanelBlock(here, screen, kind, errors);
         // Fields are checked against the screen's concept; a plain query shows its concept's fields, a grouped or
         // computed one shows other columns, so it is not field-checked.
         ConceptAst fieldSource = fieldSourceOf(concept, query, entitiesByLower);
@@ -344,8 +445,8 @@ final class ExperienceValidation {
         }
 
         boolean hasComponent = hasText(text(screen, "component"));
-        if ("custom".equals(kind) && !hasComponent) {
-            errors.add(here + ": a custom screen needs a 'component' -- suggestedFix: set \"component\" to the name registered with window.npdev.regions.register");
+        if ("custom".equals(kind) && !hasComponent && !screen.has("panel")) {
+            errors.add(here + ": a custom screen needs a 'component' or a 'panel' -- suggestedFix: set \"component\" to the name registered with window.npdev.regions.register, or declare the panel it is");
         } else if (hasComponent && kind != null && !"custom".equals(kind)) {
             errors.add(here + ": 'component' is only allowed on kind \"custom\" (this screen is " + kind
                     + ") -- suggestedFix: remove 'component', or change the screen's kind to \"custom\"");

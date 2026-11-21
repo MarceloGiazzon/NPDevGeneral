@@ -110,7 +110,7 @@ public class BusinessUiEmitterLocaleManifestTest {
     private static final String PORTUGUESE_APP = """
             {
               "namespace": "locale.pt", "dslVersion": "3.0.0", "version": "1.0",
-              "backOffice": { "locale": "pt-BR" },
+              "experiences": [ { "name": "admin", "admin": { "locale": "pt-BR" } } ],
               "concepts": [
                 { "name": "Note", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
               ]
@@ -143,12 +143,12 @@ public class BusinessUiEmitterLocaleManifestTest {
     private static final String PORTUGUESE_PANEL_APP = """
             {
               "namespace": "locale.ptpanel", "dslVersion": "3.0.0", "version": "1.0",
-              "backOffice": { "locale": "pt-BR" },
+              "experiences": [ { "name": "admin", "admin": { "locale": "pt-BR" } } ],
               "concepts": [
                 { "name": "Note", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true },
                                               { "name": "title", "type": "string" } ] }
               ],
-              "autoPanels": [ { "concept": "Note" } ]
+              "screens": [{ "name": "Note", "kind": "list", "concept": "Note", "admin": { } }]
             }
             """;
 

@@ -645,96 +645,111 @@
       ]
     }
   ],
-  "autoPanels": [
+  "screens": [
     {
       "name": "Customers",
+      "kind": "list",
       "concept": "Customer",
-      "route": "/customers",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ],
-      "selection": {
-        "columns": [
-          "code",
-          "organizationId",
-          "creditLimit",
-          "active"
-        ]
+      "admin": {
+        "route": "/customers",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "code",
+            "organizationId",
+            "creditLimit",
+            "active"
+          ]
+        }
       }
     },
     {
       "name": "PriceList",
+      "kind": "list",
       "concept": "SalesItem",
-      "route": "/price-list",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ],
-      "selection": {
-        "columns": [
-          "productId",
-          "unitPrice",
-          "active"
-        ]
+      "admin": {
+        "route": "/price-list",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "productId",
+            "unitPrice",
+            "active"
+          ]
+        }
       }
     },
     {
       "name": "SalesOrders",
+      "kind": "list",
       "concept": "SalesOrder",
-      "route": "/sales-orders",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ],
-      "selection": {
-        "columns": [
-          "orderNumber",
-          "customerId",
-          "orderDate",
-          "status"
-        ]
+      "admin": {
+        "route": "/sales-orders",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "orderNumber",
+            "customerId",
+            "orderDate",
+            "status"
+          ]
+        }
       }
     },
     {
       "name": "SalesOrderLines",
+      "kind": "list",
       "concept": "SalesOrderLine",
-      "route": "/sales-order-lines",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ],
-      "selection": {
-        "columns": [
-          "orderId",
-          "productId",
-          "quantity",
-          "unitPrice",
-          "lineTotal"
-        ]
+      "admin": {
+        "route": "/sales-order-lines",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "orderId",
+            "productId",
+            "quantity",
+            "unitPrice",
+            "lineTotal"
+          ]
+        }
       }
     },
     {
       "name": "Invoices",
+      "kind": "list",
       "concept": "Invoice",
-      "route": "/invoices",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ],
-      "selection": {
-        "columns": [
-          "invoiceNumber",
-          "customerId",
-          "amount",
-          "dueDate",
-          "status"
-        ]
+      "admin": {
+        "route": "/invoices",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "invoiceNumber",
+            "customerId",
+            "amount",
+            "dueDate",
+            "status"
+          ]
+        }
       }
     }
   ]

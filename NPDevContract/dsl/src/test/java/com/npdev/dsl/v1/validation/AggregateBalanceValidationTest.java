@@ -65,18 +65,12 @@ class AggregateBalanceValidationTest {
               "queries": [
                 { "name": "AvailableQuantityQuery", "concept": "StockLocation", "where": "disponivel >= 0" }
               ],
-              "autoPanels": [
-                {
-                  "name": "StockTransferWorkbench",
-                  "aggregate": "StockTransfer",
-                  "route": "/stock-transfers",
+              "screens": [ { "name": "StockTransferWorkbench", "kind": "workbench", "concept": "StockTransfer", "admin": { "route": "/stock-transfers",
                   "transaction": {
                     "actions": [
                       { "label": "Action"%s%s }
                     ]
-                  }
-                }
-              ]
+                  } } } ]
             }
             """.formatted(
                 lookupQuery, balanceName, balanceCollection, leftValue, rightValue,

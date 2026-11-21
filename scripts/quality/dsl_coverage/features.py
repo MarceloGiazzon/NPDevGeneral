@@ -43,7 +43,10 @@ from .detectors_ui import (  # noqa: F401 - every name the table below reference
 FEATURE_DETECTORS = {
     "externalAi": lambda m: "externalAi" in m,
     # Path A P6.3 / FORM P5-T9c: declared navigation structure + default route for the generated app's shell
-    # chrome, now the optional root backOffice.{defaultRoute,navigation} (it was the top-level appShell).
+    # chrome, now `admin.{defaultRoute,navigation}` of the admin experience (it was the top-level appShell).
+    # D-1 phase 4: the back office is an experiences[] entry with an `admin` block; the corpus view lifts it back to
+    # `backOffice` so the three features below keep their meaning.
+    "experience.admin": lambda m: isinstance(m.get("backOffice"), dict),
     "backOffice.shell": lambda m: isinstance(m.get("backOffice"), dict)
     and ("defaultRoute" in m["backOffice"] or "navigation" in m["backOffice"]),
     "domainTypes": lambda m: _nonempty(m, "domainTypes"),
@@ -68,7 +71,7 @@ FEATURE_DETECTORS = {
     "autoPanels": lambda m: _nonempty(m, "autoPanels"),
     # P5-T9b: the old top-level documents[] key is now a screens[] entry of kind "document".
     "screen.document": lambda m: any(isinstance(s, dict) and s.get("kind") == "document" for s in (m.get("screens", None) or [])),
-    # FORM P5-T9c: the old top-level guidePages[] is the root backOffice.pages (a pack: its own backOffice.pages).
+    # FORM P5-T9c: the old top-level guidePages[] is `admin.pages` of the admin experience (a pack: its own admin entry).
     "backOffice.pages": lambda m: isinstance(m.get("backOffice"), dict) and bool(m["backOffice"].get("pages")),
     # R6.2 / FORM P3-T10: an inbound webhook door is declared on the capability it serves
     # (capabilities[].inbound), generating POST /api/hooks/{path}.
@@ -103,7 +106,8 @@ FEATURE_DETECTORS = {
     "query.where.v2": _has_query_where_v2,
     # Pigmentampas friction #24: $user.* on a where's right-hand side, bound from the caller.
     "query.where.user": _has_query_where_user,
-    "panels": lambda m: _nonempty(m, "panels"),
+    # D-1 phase 3: the old root panels[] key is a screens[].panel block (kind custom); the corpus view lifts it back.
+    "screen.panel": lambda m: any(isinstance(s, dict) and isinstance(s.get("panel"), dict) for s in (m.get("screens", None) or [])),
     "packs": lambda m: _nonempty(m, "packs"),
     # PACK-8 (PACK-ROADMAP card PK-5): a remote pack import via packs[].from -- an OCI/git+...
     # coordinate (PackCoordinate/OciCoordinate/GitCoordinate). The plain "packs" detector above is
@@ -297,7 +301,7 @@ FEATURE_DETECTORS = {
     # gate which surfaces render. Presentation-only; never part of a commit payload.
     "workbench.uiState": _has_workbench_ui_state,
     # Move 6 Move A (docs/MOVE6_TYPED_SURFACE_PLAN.md §2): the typed top-level settings block.
-    "settings": _has_settings,  # FORM P5-T9g: read from backOffice.locale/strings
+    "settings": _has_settings,  # FORM P5-T9g: read from admin.locale/strings
     # Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.2): the typed, closed-enum
     # transaction.hooks positions -- each tracked separately so a regression to just one still
     # fails the build, same discipline as aggregate.onCommit/onValidate above.

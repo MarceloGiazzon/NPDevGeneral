@@ -98,14 +98,12 @@ class AutoPanelLabelLocaleTest {
                       { "name": "papel", "type": "string" } ] }
                   ],
                   "flows": [{"name": "AprovarMovimento", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
-                  "autoPanels": [
-                    { "aggregate": "Movimento", "transaction": {
+                  "screens": [ { "name": "Movimento", "kind": "workbench", "concept": "Movimento", "admin": { "transaction": {
                         "actions": [ { "procedure": "AprovarMovimento", "label": %s } ],
                         "bandPickers": { "posicoes": { "panel": "PosicaoSelection", "label": %s } },
                         "derivedFields": { "total": { "expression": "1+1", "label": %s } },
                         "uiState": { "registro": { "values": ["A", "B"], "label": %s } }
-                      } }
-                  ]
+                      } } } ]
                 }
                 """.formatted(actionLabel, bandPickerLabel, derivedFieldLabel, uiStateLabel);
 

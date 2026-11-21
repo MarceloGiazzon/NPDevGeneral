@@ -233,7 +233,7 @@ foreach ($scenarioId in $positiveScenarioIds) {
     $panelCountMatched = $true
     $procedureCountMatched = $true
     if ([string]$aiModel.app.kind -eq "expanded-beta-application") {
-        $panelCountMatched = (@($officialModel.panels).Count -eq @($aiModel.panels).Count)
+        $panelCountMatched = (@($officialModel.screens | Where-Object { $null -ne $_.panel }).Count -eq @($aiModel.panels).Count)
         $procedureCountMatched = (@($officialModel.procedures).Count -eq @($aiModel.procedures).Count)
         if (-not $panelCountMatched -or -not $procedureCountMatched) {
             throw "$scenarioId expanded panel/procedure mapping counts did not match."

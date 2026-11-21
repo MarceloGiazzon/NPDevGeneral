@@ -39,13 +39,28 @@
   "queries": [
     { "name": "ActiveProducts", "concept": "Product", "where": "active == true", "orderBy": ["name"] }
   ],
-  "autoPanels": [
+  "screens": [
     {
       "name": "Products",
+      "kind": "list",
       "concept": "Product",
-      "route": "/products",
-      "surfaces": ["selection", "detail", "transaction"],
-      "selection": { "columns": ["sku", "name", "kind", "unit", "active"] }
+      "admin": {
+        "route": "/products",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "sku",
+            "name",
+            "kind",
+            "unit",
+            "active"
+          ]
+        }
+      }
     }
   ]
 }

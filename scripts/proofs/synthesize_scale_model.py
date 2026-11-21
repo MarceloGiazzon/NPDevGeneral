@@ -100,25 +100,28 @@ def build_model(concept_count: int) -> dict:
                 ],
             }
         ],
-        "panels": [
+        "screens": [
             {
                 "name": "ScaleProofPanel",
-                "route": "/scale-proof/synthetic",
-                "title": "Scale proof",
-                "dataSources": [
-                    {"name": "allRows", "query": f"All{anchor}"}
-                ],
-                "layout": {
-                    "type": "table",
-                    "fields": ["label", "sequence"],
-                },
-                "fieldBindings": [
-                    {"field": "label", "source": "allRows.label"},
-                    {"field": "sequence", "source": "allRows.sequence"},
-                ],
-                "explainability": {
-                    "governedDataAccess": "ConceptGateway",
-                    "ruleProfile": "always",
+                "kind": "custom",
+                "panel": {
+                    "route": "/scale-proof/synthetic",
+                    "title": "Scale proof",
+                    "dataSources": [
+                        {"name": "allRows", "query": f"All{anchor}"}
+                    ],
+                    "layout": {
+                        "type": "table",
+                        "fields": ["label", "sequence"],
+                    },
+                    "fieldBindings": [
+                        {"field": "label", "source": "allRows.label"},
+                        {"field": "sequence", "source": "allRows.sequence"},
+                    ],
+                    "explainability": {
+                        "governedDataAccess": "ConceptGateway",
+                        "ruleProfile": "always",
+                    },
                 },
             }
         ],

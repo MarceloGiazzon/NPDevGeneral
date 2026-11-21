@@ -49,17 +49,14 @@ class AutoPanelExpanderTest {
           "screens": [
             { "name": "NotePicker", "kind": "picker", "concept": "Note", "multiSelect": true,
               "filters": ["text"], "columns": ["id", "text"], "orderBy": ["text"],
-              "where": "text != ''" }
-          ],
-          "autoPanels": [
-            { "name": "NoteWorkbench", "concept": "Note", "aggregate": "NoteAggregate",
+              "where": "text != ''" },
+            { "name": "NoteWorkbench", "kind": "workbench", "concept": "NoteAggregate", "admin": {
               "route": "/notes",
               "transaction": {
                 "bandPickers": {
                   "notes": { %s }
                 }
-              }
-            }
+              } } }
           ]
         }
         """;
@@ -106,7 +103,7 @@ class AutoPanelExpanderTest {
                   { "name": "nome", "type": "string" },
                   { "name": "email", "type": "string" } ] }
               ],
-              "autoPanels": [ { "concept": "Cliente" } ]
+              "screens": [ { "name": "Cliente", "kind": "list", "concept": "Cliente", "admin": { } } ]
             }
             """;
         CompiledModel model = compile(json);
@@ -157,8 +154,20 @@ class AutoPanelExpanderTest {
                   { "name": "nome", "type": "string" } ] }
               ],
               "flows": [{"name": "ListarClientesAtivos", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
-              "autoPanels": [ { "concept": "Cliente",
-                "selection": { "dataSource": { "procedure": "ListarClientesAtivos" } } } ]
+              "screens": [
+                {
+                  "name": "Cliente",
+                  "kind": "list",
+                  "concept": "Cliente",
+                  "admin": {
+                    "selection": {
+                      "dataSource": {
+                        "procedure": "ListarClientesAtivos"
+                      }
+                    }
+                  }
+                }
+              ]
             }
             """;
         CompiledModel model = compile(json);
@@ -179,7 +188,7 @@ class AutoPanelExpanderTest {
                 { "name": "Cliente", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true } ] }
               ],
-              "autoPanels": [ { "concept": "Cliente" } ]
+              "screens": [{ "name": "Cliente", "kind": "list", "concept": "Cliente", "admin": { } }]
             }
             """;
         CompiledModel model = compile(json);
@@ -200,7 +209,7 @@ class AutoPanelExpanderTest {
                   { "name": "nome", "type": "string" },
                   { "name": "email", "type": "string" } ] }
               ],
-              "autoPanels": [ { "concept": "Cliente" } ]
+              "screens": [{ "name": "Cliente", "kind": "list", "concept": "Cliente", "admin": { } }]
             }
             """;
         CompiledModel model = compile(json);
@@ -229,9 +238,24 @@ class AutoPanelExpanderTest {
                   { "name": "nome", "type": "string" },
                   { "name": "email", "type": "string" } ] }
               ],
-              "autoPanels": [
-                { "concept": "Cliente", "surfaces": ["prompt"],
-                  "prompt": { "labelField": "nome", "columns": ["nome", "email"] } }
+              "screens": [
+                {
+                  "name": "Cliente",
+                  "kind": "list",
+                  "concept": "Cliente",
+                  "admin": {
+                    "surfaces": [
+                      "prompt"
+                    ],
+                    "prompt": {
+                      "labelField": "nome",
+                      "columns": [
+                        "nome",
+                        "email"
+                      ]
+                    }
+                  }
+                }
               ]
             }
             """;
@@ -259,7 +283,7 @@ class AutoPanelExpanderTest {
                   { "name": "providerId", "type": "reference", "reference": { "target": "Provider", "displayField": "fullName" } },
                   { "name": "notes", "type": "string" } ] }
               ],
-              "autoPanels": [ { "concept": "Provider" }, { "concept": "Appointment" } ]
+              "screens": [{ "name": "Provider", "kind": "list", "concept": "Provider", "admin": { } }, { "name": "Appointment", "kind": "list", "concept": "Appointment", "admin": { } }]
             }
             """;
         CompiledModel model = compile(json);
@@ -290,9 +314,22 @@ class AutoPanelExpanderTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "providerId", "type": "reference", "reference": { "target": "Provider" } } ] }
               ],
-              "autoPanels": [
-                { "concept": "Provider", "surfaces": ["selection"] },
-                { "concept": "Appointment" }
+              "screens": [
+                {
+                  "name": "Provider",
+                  "kind": "list",
+                  "concept": "Provider",
+                  "admin": {
+                    "surfaces": [
+                      "selection"
+                    ]
+                  }
+                },
+                {
+                  "name": "Appointment",
+                  "kind": "list",
+                  "concept": "Appointment", "admin": { }
+                }
               ]
             }
             """;
@@ -314,12 +351,42 @@ class AutoPanelExpanderTest {
                   { "name": "pos", "type": "integer" },
                   { "name": "cxAvulsas", "type": "integer" } ] }
               ],
-              "autoPanels": [
-                { "concept": "Item", "surfaces": ["selection", "transaction"],
-                  "selection": { "columns": ["pos", "cxAvulsas"],
-                                 "computed": [{ "col": "total", "expr": "pos*42 + cxAvulsas" }] },
-                  "transaction": { "fields": ["pos", "cxAvulsas"],
-                                   "computed": [{ "col": "total", "expr": "pos*42 + cxAvulsas" }] } }
+              "screens": [
+                {
+                  "name": "Item",
+                  "kind": "list",
+                  "concept": "Item",
+                  "admin": {
+                    "surfaces": [
+                      "selection",
+                      "transaction"
+                    ],
+                    "selection": {
+                      "columns": [
+                        "pos",
+                        "cxAvulsas"
+                      ],
+                      "computed": [
+                        {
+                          "col": "total",
+                          "expr": "pos*42 + cxAvulsas"
+                        }
+                      ]
+                    },
+                    "transaction": {
+                      "fields": [
+                        "pos",
+                        "cxAvulsas"
+                      ],
+                      "computed": [
+                        {
+                          "col": "total",
+                          "expr": "pos*42 + cxAvulsas"
+                        }
+                      ]
+                    }
+                  }
+                }
               ]
             }
             """;
@@ -351,10 +418,23 @@ class AutoPanelExpanderTest {
                   { "name": "nome", "type": "string" },
                   { "name": "email", "type": "string" } ] }
               ],
-              "autoPanels": [
-                { "name": "Clientes", "concept": "Cliente", "route": "/clientes",
-                  "surfaces": ["selection"],
-                  "selection": { "columns": ["nome"] } }
+              "screens": [
+                {
+                  "name": "Clientes",
+                  "kind": "list",
+                  "concept": "Cliente",
+                  "admin": {
+                    "route": "/clientes",
+                    "surfaces": [
+                      "selection"
+                    ],
+                    "selection": {
+                      "columns": [
+                        "nome"
+                      ]
+                    }
+                  }
+                }
               ]
             }
             """;

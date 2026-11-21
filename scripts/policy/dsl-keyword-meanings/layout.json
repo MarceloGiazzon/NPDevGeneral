@@ -55,8 +55,8 @@
     {
       "id": "screen",
       "title": "Screen",
-      "intro": "One screen of the app. The `screen` kind is the current, closed set of archetypes (list, detail, form, status, inbox, board, map, dashboard, workbench, document, picker, custom). The older hand-composed `panel` and `autoPanel` kinds (data sources, layouts, field bindings, the aggregate workbench and its typed surfaces) are still accepted and documented here, together with the printable-document bands used by `document` screens.",
-      "defs": ["screen", "column", "screenAction", "mapSpec", "widget", "documentColumn", "documentBand", "documentLogo", "panel", "panelDataSource", "panelLayout", "panelWidget", "panelSlot", "panelFieldBinding", "panelAction", "autoPanel", "autoPanelSurface", "autoPanelDataSource", "workbenchAction", "workbenchActionApplyTo", "workbenchBandPicker", "regionMount", "cellGrid", "transactionHooks", "transactionDerivedField", "transactionUiState"]
+      "intro": "One screen of the app. The `screen` kind is the current, closed set of archetypes (list, detail, form, status, inbox, board, map, dashboard, workbench, document, picker, custom). A hand-written panel is the `panel` block of a `custom` screen (data sources, layouts, field bindings) and a concept's generated pages are the `admin` block of a `list` or `workbench` screen (the aggregate workbench and its typed surfaces); both are documented here, together with the printable-document bands used by `document` screens.",
+      "defs": ["screen", "column", "screenAction", "mapSpec", "widget", "documentColumn", "documentBand", "documentLogo", "screenPanel", "panelDataSource", "panelLayout", "panelWidget", "panelSlot", "panelFieldBinding", "panelAction", "autoPanel", "autoPanelSurface", "autoPanelDataSource", "workbenchAction", "workbenchActionApplyTo", "workbenchBandPicker", "regionMount", "cellGrid", "transactionHooks", "transactionDerivedField", "transactionUiState"]
     },
     {
       "id": "pack",

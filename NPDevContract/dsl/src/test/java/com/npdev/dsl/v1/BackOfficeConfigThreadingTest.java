@@ -85,12 +85,12 @@ class BackOfficeConfigThreadingTest {
     @Test
     void shellAndPagesCompileToTheSameIrAsTheOldKeys() throws Exception {
         String json = model("""
-                  "backOffice": {
+                  "experiences": [ { "name": "admin", "admin": {
                     "defaultRoute": "Widget",
                     "navigation": [ { "label": "Widgets", "target": "Widget", "group": "Ops" }, { "label": "Reference" } ],
                     "pages": [ { "name": "Overview", "default": true,
                                  "gadgets": [ { "name": "k", "type": "kpi", "query": "WidgetCount", "y": "total" } ] } ]
-                  }""");
+                  } } ]""");
         ModelAst ast = new JsonModelParser().parse(MAPPER.readTree(json));
         assertEquals(List.of(), new SemanticValidator().validate(ast));
         assertEquals("Widget", ast.getAppShell().getDefaultRoute());
@@ -108,14 +108,14 @@ class BackOfficeConfigThreadingTest {
 
     @Test
     void pagesOnlyCreateNoShell() throws Exception {
-        ModelAst ast = new JsonModelParser().parse(MAPPER.readTree(model("\"backOffice\": { \"pages\": [ { \"name\": \"First\" } ] }")));
+        ModelAst ast = new JsonModelParser().parse(MAPPER.readTree(model("\"experiences\": [ { \"name\": \"admin\", \"admin\": { \"pages\": [ { \"name\": \"First\" } ] } } ]")));
         assertNull(ast.getAppShell());
         assertEquals(1, ast.getGuidePages().size());
     }
 
     @Test
     void anEmptyBackOfficeBehavesLikeNone() throws Exception {
-        ModelAst ast = new JsonModelParser().parse(MAPPER.readTree(model("\"backOffice\": {}")));
+        ModelAst ast = new JsonModelParser().parse(MAPPER.readTree(model("\"experiences\": [ { \"name\": \"admin\", \"admin\": {} } ]")));
         assertNull(ast.getAppShell());
         assertTrue(ast.getGuidePages().isEmpty());
     }
@@ -125,8 +125,8 @@ class BackOfficeConfigThreadingTest {
         String withExperience = """
                 "roles": [ { "name": "Operator", "grants": ["EXECUTE_FLOW"], "concepts": { "Widget": ["read"] } } ],
                 "screens": [ { "name": "home", "kind": "list", "concept": "Widget" } ],
-                "experiences": [ { "name": "ops", "for": ["Operator"], "home": "home", "backOffice": true } ],
-                "backOffice": { "defaultRoute": "Widget" }""";
+                "experiences": [ { "name": "ops", "for": ["Operator"], "home": "home", "backOffice": true },
+                                 { "name": "admin", "admin": { "defaultRoute": "Widget" } } ]""";
         ModelAst ast = new JsonModelParser().parse(MAPPER.readTree(model(withExperience)));
         assertEquals(List.of(), new SemanticValidator().validate(ast));
         assertEquals(true, ast.getExperiences().get(0).get("backOffice").asBoolean());
@@ -137,7 +137,7 @@ class BackOfficeConfigThreadingTest {
     @Test
     void backOfficeLocaleAndStringsCompileToTheAppsCatalogueAndRoundTrip() throws Exception {
         ModelAst ast = new JsonModelParser().parse(MAPPER.readTree(model(
-                "\"backOffice\": { \"locale\": \"pt-BR\", \"strings\": { \"action.save\": \"Gravar\" } }")));
+                "\"experiences\": [ { \"name\": \"admin\", \"admin\": { \"locale\": \"pt-BR\", \"strings\": { \"action.save\": \"Gravar\" } } } ]")));
         assertEquals(List.of(), new SemanticValidator().validate(ast));
         assertNull(ast.getAppShell(), "locale/strings alone create no shell");
         assertEquals("pt-BR", ast.getSettings().getLocale());
@@ -154,7 +154,7 @@ class BackOfficeConfigThreadingTest {
 
     @Test
     void aModelDeclaringNeitherLocaleNorStringsKeepsThePlatformCatalogue() throws Exception {
-        ModelAst ast = new JsonModelParser().parse(MAPPER.readTree(model("\"backOffice\": { \"defaultRoute\": \"Widget\" }")));
+        ModelAst ast = new JsonModelParser().parse(MAPPER.readTree(model("\"experiences\": [ { \"name\": \"admin\", \"admin\": { \"defaultRoute\": \"Widget\" } } ]")));
         assertNull(ast.getSettings());
         assertNull(new ModelCompiler().compile(ast).getSettings().getLocale());
     }
@@ -166,7 +166,7 @@ class BackOfficeConfigThreadingTest {
             String json = model(key);
             DeprecationException refused = assertThrows(DeprecationException.class,
                     () -> new JsonModelParser().parse(MAPPER.readTree(json)), key);
-            assertTrue(refused.getMessage().contains("backOffice"), refused.getMessage());
+            assertTrue(refused.getMessage().contains("admin"), refused.getMessage());
             Path file = write("removed-" + Math.abs(key.hashCode()) + ".json", json);
             assertThrows(DeprecationException.class, () -> new JsonModelParser().parse(file), "parse(Path) " + key);
         }
@@ -175,7 +175,7 @@ class BackOfficeConfigThreadingTest {
     @Test
     void aPagesRefIsIncludedLikeAnyOtherArrayEntry() throws Exception {
         write("pages/extra.json", "{ \"name\": \"Included\", \"gadgets\": [] }");
-        Path model = write("model.json", model("\"backOffice\": { \"pages\": [ { \"name\": \"Own\" }, { \"$ref\": \"pages/extra.json\" } ] }"));
+        Path model = write("model.json", model("\"experiences\": [ { \"name\": \"admin\", \"admin\": { \"pages\": [ { \"name\": \"Own\" }, { \"$ref\": \"pages/extra.json\" } ] } } ]"));
         ModelAst ast = new JsonModelParser().parse(model);
         assertEquals(List.of("Own", "Included"), ast.getGuidePages().stream().map(p -> p.name()).toList());
     }
@@ -192,23 +192,34 @@ class BackOfficeConfigThreadingTest {
                   "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
               ],
               "queries": [ { "name": "TicketCount", "concept": "Ticket", "aggregates": [ { "name": "total", "fn": "count" } ] } ],
-              "backOffice": { "pages": [
+              "experiences": [ { "name": "admin", "admin": { "pages": [
                 { "name": "TicketOverview", "gadgets": [ { "name": "k", "type": "kpi", "query": "TicketCount", "y": "total" } ] }
-              ] }
+              ] } } ]
             }
             """;
+
+    /** D-1 phase 4: the composed back office is the {@code admin} block of an experiences[] entry. */
+    private static JsonNode adminOf(JsonNode root) {
+        for (JsonNode experience : root.path("experiences")) {
+            if (experience.has("admin")) {
+                return experience.get("admin");
+            }
+        }
+        throw new AssertionError("no experiences[] entry carries an admin block: " + root.path("experiences"));
+    }
 
     @Test
     void aPacksPagesKeepTheirQualifiedNameAndQueryBindingAndFollowTheModelsOwnPages() throws Exception {
         write("packs/support/pack.json", PACK);
         Path model = write("model.json", model("""
                   "packs": [ { "$ref": "packs/support/pack.json" } ],
-                  "backOffice": { "defaultRoute": "Widget", "pages": [ { "name": "Own" } ] }"""));
+                  "experiences": [ { "name": "admin", "admin": { "defaultRoute": "Widget", "pages": [ { "name": "Own" } ] } } ]"""));
         ResolvedModelSource resolved = new ModelSourceResolver().resolve(model);
         JsonNode root = resolved.resolvedRoot();
         assertFalse(root.has("guidePages"), "the composed model.json is authoring-shaped: no top-level guidePages");
-        assertEquals("Widget", root.get("backOffice").get("defaultRoute").asText());
-        JsonNode pages = root.get("backOffice").get("pages");
+        assertFalse(root.has("backOffice"), "the composed model.json is authoring-shaped: the back office is an experiences[] admin entry");
+        assertEquals("Widget", adminOf(root).get("defaultRoute").asText());
+        JsonNode pages = adminOf(root).get("pages");
         assertEquals("Own", pages.get(0).get("name").asText());
         assertEquals("support::TicketOverview", pages.get(1).get("name").asText());
         assertEquals("support::TicketCount", pages.get(1).get("gadgets").get(0).get("query").asText());
@@ -236,7 +247,7 @@ class BackOfficeConfigThreadingTest {
                 }
                 """);
         ResolvedModelSource resolved = new ModelSourceResolver().resolve(model);
-        assertEquals("support::TicketOverview", resolved.resolvedRoot().get("backOffice").get("pages").get(0).get("name").asText());
+        assertEquals("support::TicketOverview", adminOf(resolved.resolvedRoot()).get("pages").get(0).get("name").asText());
         assertTrue(resolved.warnings().isEmpty(), resolved.warnings().toString());
         ModelAst ast = new JsonModelParser().parse(resolved);
         assertEquals(List.of("support::TicketOverview"), ast.getGuidePages().stream().map(p -> p.name()).toList());
@@ -245,8 +256,8 @@ class BackOfficeConfigThreadingTest {
 
     @Test
     void aPackDeclaringTheRemovedGuidePagesKeyIsRefused() throws Exception {
-        write("packs/support/pack.json", PACK.replace("\"backOffice\": { \"pages\": [", "\"guidePages\": [ \n")
-                .replace("] }\n}", "]\n}"));
+        write("packs/support/pack.json", PACK.replace("\"experiences\": [ { \"name\": \"admin\", \"admin\": { \"pages\": [", "\"guidePages\": [ \n")
+                .replace("] } } ]\n}", "]\n}"));
         Path model = write("model.json", "{ \"namespace\": \"x.y\", \"dslVersion\": \"3.0.0\", \"version\": \"1.0\", "
                 + "\"packs\": [ { \"$ref\": \"packs/support/pack.json\" } ] }");
         assertThrows(IOException.class, () -> new ModelSourceResolver().resolve(model));

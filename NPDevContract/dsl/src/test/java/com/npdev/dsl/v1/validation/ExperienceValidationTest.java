@@ -323,6 +323,62 @@ class ExperienceValidationTest {
                 .put("name", "extra").put("kind", "custom").put("component", "fancy")));
     }
 
+    // ------------------------------------------------------------------ admin block (D-1 phase 1: the old autoPanels[])
+
+    private static ObjectNode adminScreen(ObjectNode root) {
+        ObjectNode screen = ((ArrayNode) root.get("screens")).addObject();
+        screen.put("name", "Rides").put("kind", "list").put("concept", "Ride");
+        ObjectNode admin = screen.putObject("admin");
+        admin.put("route", "/rides");
+        admin.putArray("surfaces").add("selection").add("detail");
+        admin.putObject("selection").putArray("columns").add("status").add("fareCents");
+        return screen;
+    }
+
+    @Test
+    void aListScreenWithAnAdminBlockValidatesAndNeedsNoColumnsOfItsOwn() throws Exception {
+        assertEquals(List.of(), errorsFor(root -> adminScreen(root)));
+    }
+
+    @Test
+    void adminIsAllowedOnlyOnAListScreenThatNamesAConcept() throws Exception {
+        assertHas(errorsFor(root -> adminScreen(root).put("kind", "detail")),
+                "'admin' is only allowed on kind \"list\" or \"workbench\"", "suggestedFix");
+        assertHas(errorsFor(root -> adminScreen(root).remove("concept")),
+                "'admin' needs the screen's 'concept'", "suggestedFix");
+    }
+
+    @Test
+    void adminDoesNotRepeatTheScreensNameConceptOrAggregate() throws Exception {
+        for (String own : List.of("name", "concept", "aggregate")) {
+            assertHas(errorsFor(root -> ((ObjectNode) adminScreen(root).get("admin")).put(own, "Ride")),
+                    "'admin." + own + "' is not allowed", "suggestedFix");
+        }
+    }
+
+    @Test
+    void anExperienceCannotLandOnOrNavigateToAnAdminScreen() throws Exception {
+        assertHas(errorsFor(root -> {
+            adminScreen(root);
+            ((ObjectNode) ((ArrayNode) root.get("experiences")).get(0)).put("home", "Rides");
+        }), "carries an 'admin' block", "suggestedFix");
+        assertHas(errorsFor(root -> {
+            adminScreen(root);
+            ((ArrayNode) ((ObjectNode) ((ArrayNode) root.get("experiences")).get(0)).get("navigation"))
+                    .addObject().put("screen", "Rides");
+        }), "carries an 'admin' block", "suggestedFix");
+    }
+
+    @Test
+    void anAdminThatIsNotAnObjectIsRefused() throws Exception {
+        // the schema refuses a non-object admin first; the validator must too for a model built without it
+        ObjectNode notObject = (ObjectNode) MAPPER.readTree(
+                "{\"name\": \"P\", \"kind\": \"list\", \"concept\": \"Ride\", \"admin\": \"yes\"}");
+        List<String> errors = new ArrayList<>();
+        ExperienceValidation.validate(directModel(List.of(), List.of(notObject)), Map.of(), errors);
+        assertHas(errors, "'admin' must be an object", "suggestedFix");
+    }
+
     // ------------------------------------------------------------------ picker screens (P5-T9a: the old selectors[])
 
     private static ObjectNode picker(ObjectNode root) {

@@ -4,7 +4,7 @@
 
 The complete list of keywords an NPDev model (`model.json`) or pack (`pack.json`) may use: what each one means, where it may appear, whether it is required, and which values it accepts. Every keyword of the DSL is here; a key that is not here is rejected by the schema (`additionalProperties: false`).
 
-Schema version `1.0.0`, DSL version `3.0.0`. **759 keywords** are documented: 719 declared by the model schema (100 object kinds) and 40 by the pack schema, counted exactly as `scripts/quality/check-dsl-keyword-budget.py` counts them. The model root keys are listed separately in section 0.
+Schema version `1.0.0`, DSL version `3.0.0`. **758 keywords** are documented: 721 declared by the model schema (100 object kinds) and 37 by the pack schema, counted exactly as `scripts/quality/check-dsl-keyword-budget.py` counts them. The model root keys are listed separately in section 0.
 
 ## How to read this reference
 
@@ -25,7 +25,7 @@ Schema version `1.0.0`, DSL version `3.0.0`. **759 keywords** are documented: 71
 - [6. Capability](#6-capability): [`capability`](#capability), [`capabilityOperation`](#capabilityoperation), [`capabilityContractSchemaRef`](#capabilitycontractschemaref), [`capabilityPolicy`](#capabilitypolicy), [`failureClassification`](#failureclassification), [`capabilityOperationError`](#capabilityoperationerror), [`capabilityAuth`](#capabilityauth), [`httpConnector`](#httpconnector), [`httpConnectorAuth`](#httpconnectorauth), [`httpConnectorOperation`](#httpconnectoroperation), [`inboundDoor`](#inbounddoor)
 - [7. Role](#7-role): [`role`](#role), [`agentAccess`](#agentaccess), [`agentAccessChannel`](#agentaccesschannel), [`agentAccessExposure`](#agentaccessexposure)
 - [8. Experience](#8-experience): [`experience`](#experience), [`backOffice`](#backoffice), [`appShellNavItem`](#appshellnavitem), [`guidePage`](#guidepage), [`guidePageRegions`](#guidepageregions), [`guidePageRegion`](#guidepageregion), [`guidePageTheme`](#guidepagetheme), [`guidePageGadget`](#guidepagegadget)
-- [9. Screen](#9-screen): [`screen`](#screen), [`column`](#column), [`screenAction`](#screenaction), [`mapSpec`](#mapspec), [`widget`](#widget), [`documentColumn`](#documentcolumn), [`documentBand`](#documentband), [`documentLogo`](#documentlogo), [`panel`](#panel), [`panelDataSource`](#paneldatasource), [`panelLayout`](#panellayout), [`panelWidget`](#panelwidget), [`panelSlot`](#panelslot), [`panelFieldBinding`](#panelfieldbinding), [`panelAction`](#panelaction), [`autoPanel`](#autopanel), [`autoPanelSurface`](#autopanelsurface), [`autoPanelDataSource`](#autopaneldatasource), [`workbenchAction`](#workbenchaction), [`workbenchActionApplyTo`](#workbenchactionapplyto), [`workbenchBandPicker`](#workbenchbandpicker), [`regionMount`](#regionmount), [`cellGrid`](#cellgrid), [`transactionHooks`](#transactionhooks), [`transactionDerivedField`](#transactionderivedfield), [`transactionUiState`](#transactionuistate)
+- [9. Screen](#9-screen): [`screen`](#screen), [`column`](#column), [`screenAction`](#screenaction), [`mapSpec`](#mapspec), [`widget`](#widget), [`documentColumn`](#documentcolumn), [`documentBand`](#documentband), [`documentLogo`](#documentlogo), [`screenPanel`](#screenpanel), [`panelDataSource`](#paneldatasource), [`panelLayout`](#panellayout), [`panelWidget`](#panelwidget), [`panelSlot`](#panelslot), [`panelFieldBinding`](#panelfieldbinding), [`panelAction`](#panelaction), [`autoPanel`](#autopanel), [`autoPanelSurface`](#autopanelsurface), [`autoPanelDataSource`](#autopaneldatasource), [`workbenchAction`](#workbenchaction), [`workbenchActionApplyTo`](#workbenchactionapplyto), [`workbenchBandPicker`](#workbenchbandpicker), [`regionMount`](#regionmount), [`cellGrid`](#cellgrid), [`transactionHooks`](#transactionhooks), [`transactionDerivedField`](#transactionderivedfield), [`transactionUiState`](#transactionuistate)
 - [10. Pack](#10-pack): [`packRef`](#packref), [`localModelRef`](#localmodelref)
 - [11. Module](#11-module): [`context`](#context), [`conversion`](#conversion), [`conversionSplitTarget`](#conversionsplittarget), [`conversionLookupMatch`](#conversionlookupmatch), [`conversionCaseWhen`](#conversioncasewhen)
 - [12. Property](#12-property): [`property`](#property), [`propertyScope`](#propertyscope), [`externalAi`](#externalai)
@@ -50,8 +50,6 @@ A model file is one JSON object. `namespace` and `concepts` are required in ever
 | `flows` | array of [`flow`](#flow) or [`localModelRef`](#localmodelref) (a `$ref` to a local JSON file) | optional | What the app does: durable step lists started by a trigger. |
 | `queries` | array of [`query`](#query) or [`localModelRef`](#localmodelref) (a `$ref` to a local JSON file) | optional | Named, parameterised reads over concepts. |
 | `conversions` | array of [`conversion`](#conversion) or [`localModelRef`](#localmodelref) (a `$ref` to a local JSON file) | optional | Declarative data conversions applied at boot when the schema changes. |
-| `panels` | array of [`panel`](#panel) or [`localModelRef`](#localmodelref) (a `$ref` to a local JSON file) | optional | Hand-composed screens (the older way; screens are the current one). |
-| `autoPanels` | array of [`autoPanel`](#autopanel) or [`localModelRef`](#localmodelref) (a `$ref` to a local JSON file) | optional | Panels generated from a concept or aggregate (the older way; screens are the current one). |
 | `metadata` | object | optional | Free-form notes about the model. Never carries behavior. |
 | `packs` | array of [`packRef`](#packref) | optional | The packs this model consumes, each a local file or a remote coordinate. |
 | `provides` | object | optional | What this app satisfies for a pack's own `requires` (roles/capabilities/network) -- a pack's requirement unbound here refuses composition, naming the pack, its path, and the unbound key.<br>Keys written inside it:<br>`roles` (array of `string`; optional): Roles this app provides for packs' `requires.roles`.<br>`capabilities` (array of `string`; optional): Capabilities this app provides for packs' `requires.capabilities`.<br>`network` (array of `string`; optional): Hosts this app allows packs to reach.<br>`roleBindings` (map of name to `string`; optional): Maps each logical role name used by a pack (`role('name')`) to this app's concrete role. |
@@ -66,7 +64,6 @@ A model file is one JSON object. `namespace` and `concepts` are required in ever
 | `experiences` | array of [`experience`](#experience) | optional | Experiences per role -- who lands where, on which device. Order matters: a signed-in user lands in the first experience whose `for` contains one of their roles. See screens[]. |
 | `screens` | array of [`screen`](#screen) | optional | The screens experiences navigate to, each one archetype from a closed set (list, detail, form, status, inbox, board, map, dashboard, workbench, document, picker, custom). Screen names are unique across the model. |
 | `seeds` | array of [`seed`](#seed) | optional | model/pack-declared seed rows, reusing the existing app-level seed record shape (NPDevContract/schemas/seed.schema.json's $defs/record). Applied once, automatically, at first boot through the same governed ConceptGateway.save path every other write uses (see com.finalexec.seed.ModelSeedRunner in NPDevRuntimeHost); regenerating/restarting the app does not duplicate rows. A pack/context-declared seed's concept must name a concept the SAME pack/context owns -- rewritten to its pack-qualified form at composition time, and a seed naming a concept the pack does not own is a compile error (see ModelSourceResolver's seeds handling and SeedValidation). |
-| `backOffice` | [`backOffice`](#backoffice) | optional | Optional configuration of the generated back office. |
 | `agentAccess` | [`agentAccess`](#agentaccess) | optional | What AI agents are offered and on which channels. |
 
 ### Pack file keys
@@ -90,9 +87,6 @@ A pack file (`pack.json`) is a named, versioned bundle of the same kinds of memb
 | `flows` | array of [`flow`](#flow) or [`localModelRef`](#localmodelref) | optional | Flows the pack contributes. |
 | `queries` | array of [`query`](#query) or [`localModelRef`](#localmodelref) | optional | Queries the pack contributes. |
 | `conversions` | array of [`conversion`](#conversion) or [`localModelRef`](#localmodelref) | optional | Data conversions the pack contributes. |
-| `panels` | array of [`panel`](#panel) or [`localModelRef`](#localmodelref) | optional | Panels the pack contributes. |
-| `autoPanels` | array of [`autoPanel`](#autopanel) or [`localModelRef`](#localmodelref) | optional | Auto panels the pack contributes. |
-| `backOffice` | object | optional | The back-office guide pages this pack contributes (it was the pack-level guidePages). Composition qualifies each page like any other member (packId::PageName) and appends it, after the model's own pages, to the composed model's root backOffice.pages.<br>Keys written inside it:<br>`pages` (array of [`guidePage`](#guidepage) or [`localModelRef`](#localmodelref); optional): Guide pages the pack adds to the composed model's back office. |
 | `roles` | array of [`role`](#role) or [`localModelRef`](#localmodelref) | optional | Roles the pack contributes. |
 | `sequences` | array of [`sequence`](#sequence) or [`localModelRef`](#localmodelref) | optional | A pack may declare document-numbering counters alongside its other members. `name` is never namespace-qualified by pack composition (see model.schema.json's sequence $def). |
 | `fieldConventions` | array of [`fieldConvention`](#fieldconvention) | optional | Field naming conventions this pack contributes: {match, defaults} rules typing a concept field that declares no `type`, in the importing model and in every pack. Lower priority than the model's own rules. |
@@ -1537,12 +1531,13 @@ What one group of roles sees when it signs in. A user lands in the first experie
 |---|---|---|---|
 | `name` | `string` (pattern `^[a-z][a-z0-9-]*$`) | required | URL segment: the experience is served at /x/&lt;name&gt;/. |
 | `title` | `string` | optional | Display title of the experience. |
-| `for` | array of `string` (min items 1) | required | Role names (roles[].name). A signed-in user lands in the FIRST experience whose 'for' contains one of their roles. ADMIN with no experience lands in the generated back office. |
+| `for` | array of `string` (min items 1) | optional | Role names (roles[].name). A signed-in user lands in the FIRST experience whose 'for' contains one of their roles. ADMIN with no experience lands in the generated back office. |
 | `device` | one of `web`, `mobile`, `both` (default `"both"`) | optional | Mobile = phone-first layout, bottom tab bar (max 5 navigation entries), installable (PWA manifest). |
-| `home` | `string` | required | Screen name shown first. |
+| `home` | `string` | optional | Screen name shown first. |
 | `navigation` | array of object | optional | The navigation entries (a bottom tab bar on mobile, at most 5 there).<br>Keys written inside it:<br>`screen` (`string`; required): Name of the screen the entry opens.<br>`label` (`string`; optional): Caption of the navigation entry.<br>`icon` (`string`; optional): One word from the built-in icon set.<br>`badge` (`string`; optional): Expression giving a number, e.g. count('RideOffer', status == 'OFFERED'). |
 | `theme` | `string` | optional | Theme id from config/themes; default = the app theme. |
 | `backOffice` | `boolean` (default `false`) | optional | True = this experience ALSO shows a link to the generated back office (operators). The back office itself (menu, dashboards) is configured by the optional ROOT backOffice object. |
+| `admin` | [`backOffice`](#backoffice) | optional | Makes this entry the back office instead of a role experience: the language, string overrides, default route, grouped navigation and dashboard pages of the generated back office. At most one per model; a pack declares only `pages` in it. |
 
 Example:
 
@@ -1565,9 +1560,9 @@ Example:
 
 ### `backOffice`
 
-The optional configuration of the generated back office: language, string overrides, default route, grouped navigation and dashboard pages. Omit it entirely for the default behavior (navigation derived from the concepts).
+The body of the admin experience (an experiences[] entry with an `admin` block): language, string overrides, default route, grouped navigation and dashboard pages. Omit the entry entirely for the default behavior (navigation derived from the concepts).
 
-**Used in:** `backOffice` (model root)
+**Used in:** `experience.admin`
 
 | Keyword | Type | Required | Meaning |
 |---|---|---|---|
@@ -1661,7 +1656,7 @@ One widget on a guide page.
 
 ## 9. Screen
 
-One screen of the app. The `screen` kind is the current, closed set of archetypes (list, detail, form, status, inbox, board, map, dashboard, workbench, document, picker, custom). The older hand-composed `panel` and `autoPanel` kinds (data sources, layouts, field bindings, the aggregate workbench and its typed surfaces) are still accepted and documented here, together with the printable-document bands used by `document` screens.
+One screen of the app. The `screen` kind is the current, closed set of archetypes (list, detail, form, status, inbox, board, map, dashboard, workbench, document, picker, custom). A hand-written panel is the `panel` block of a `custom` screen (data sources, layouts, field bindings) and a concept's generated pages are the `admin` block of a `list` or `workbench` screen (the aggregate workbench and its typed surfaces); both are documented here, together with the printable-document bands used by `document` screens.
 
 ### `screen`
 
@@ -1671,8 +1666,10 @@ One screen of the app, of one archetype chosen by `kind`: `list` (rows of a conc
 
 | Keyword | Type | Required | Meaning |
 |---|---|---|---|
-| `name` | `string` (pattern `^[A-Za-z][a-zA-Z0-9-]*$`) | required | The screen's name: its URL segment and what experiences and `picker.selectorRef` refer to it by. Starts with a letter; a picker keeps the PascalCase name its selectorRef already uses. |
+| `name` | `string` (min length 1) | required | The screen's name: its URL segment and what experiences and `picker.selectorRef` refer to it by. Starts with a letter; a picker keeps the PascalCase name its selectorRef already uses. A screen that carries an `admin` block (a generated back-office page) or a `panel` block (a hand-written panel), neither served as a URL segment, may use any non-empty name, as the autoPanel or panel it replaces could ("Trace Viewer"). |
 | `title` | `string` | optional | Heading shown on the screen and in navigation. |
+| `admin` | [`autoPanel`](#autopanel) | optional | Kind "list" or "workbench" only (D-1): the generated back-office pages of this screen's concept (what an autoPanel declared): route, surfaces, selection, detail, transaction, prompt, metadata. On kind "workbench" the screen's concept is the aggregate root (its composition tree is the workbench) and the settings of the workbench (regions, bandPickers, derivedFields, uiState, hooks, computed, visibleWhen, actions) live under admin.transaction. The screen supplies name and concept, so admin must not repeat name, concept or aggregate. A pack's admin screen is pack-qualified (pack::Name) like the autoPanel it replaces. |
+| `panel` | [`screenPanel`](#screenpanel) | optional | Kind "custom" only (D-1): a hand-written panel -- the old panels[] entry -- declared on a screen instead of a root key: route, title, dataSources, layout, fieldBindings, visibility, enabledWhen, actions, explainability, metadata, guidePage. The screen supplies the panel's name, so panel must not repeat name. Not a screen an experience can navigate to (the panel is served at its own route), and not combined with `component`. |
 | `kind` | one of `list`, `detail`, `form`, `status`, `inbox`, `board`, `map`, `dashboard`, `workbench`, `document`, `picker`, `custom` | required | The archetype of the screen (see the summary above). It decides which of the other keywords apply. |
 | `concept` | `string` | optional | The concept whose rows the screen shows or edits. |
 | `query` | `string` | optional | Name of a `queries` entry whose rows the screen shows; bind its parameters with `params`. |
@@ -1848,15 +1845,14 @@ A document's logo, bound to a property of the document's root concept. Never a U
 |---|---|---|---|
 | `field` | `string` (min length 1) | required | The property of the document's root concept that holds the logo image. |
 
-### `panel`
+### `screenPanel`
 
-A hand-composed screen made of data sources, a layout, field bindings and actions. The older way to build a screen; new models use `screens`. A panel is served at its `route`.
+The body of a hand-written panel, declared in the `panel` key of a `custom` screen: data sources, a layout, field bindings and actions. The screen supplies the name; the panel is served at its `route` and is not an experience navigation target.
 
-**Used in:** `panels` (model root and pack file)
+**Used in:** `screen.panel`
 
 | Keyword | Type | Required | Meaning |
 |---|---|---|---|
-| `name` | `string` (min length 1) | required | The panel's name, unique within the model. |
 | `uid` | `string` (pattern `^[a-z0-9]{8,32}$`) | optional | A stable identity for this panel, generated once and never reused (npdev migrate assign-uids stamps one). When a live element's persisted uid matches a model panel's uid but the name differs, the rename is resolved by identity -- declared by construction, no renamedFrom needed. Optional: a model with no uids behaves exactly as before. |
 | `route` | `string` (min length 1) | required | The URL segment the panel is served at. |
 | `title` | `string` (min length 1) | optional | Heading of the panel. |
@@ -1874,7 +1870,6 @@ Example:
 
 ```json
 {
-  "name": "OrdersPanel",
   "route": "orders",
   "title": "Orders",
   "dataSources": [
@@ -1893,7 +1888,7 @@ Example:
 
 A source of rows for a panel: a concept, a query or a procedure, optionally nested under a parent data source.
 
-**Used in:** `panel.dataSources`
+**Used in:** `screenPanel.dataSources`
 
 | Keyword | Type | Required | Meaning |
 |---|---|---|---|
@@ -1914,7 +1909,7 @@ A source of rows for a panel: a concept, a query or a procedure, optionally nest
 
 How a panel is laid out: a table or grid of its data sources, or a console or dashboard of declarative widgets; children nest layouts.
 
-**Used in:** `panel.layout`, `panelLayout.children`
+**Used in:** `screenPanel.layout`, `panelLayout.children`
 
 | Keyword | Type | Required | Meaning |
 |---|---|---|---|
@@ -1959,7 +1954,7 @@ A hand-authored region inside a generated panel: an app-owned component mounted 
 
 Binds a field of a data source to the panel's form or table, with visibility and editability rules and presentation hints. Also used by document bands.
 
-**Used in:** `panel.fieldBindings`, `documentBand.fields`
+**Used in:** `screenPanel.fieldBindings`, `documentBand.fields`
 
 | Keyword | Type | Required | Meaning |
 |---|---|---|---|
@@ -1975,7 +1970,7 @@ Binds a field of a data source to the panel's form or table, with visibility and
 
 A button of a panel. It runs a query, a concept mutation, a procedure or a flow.
 
-**Used in:** `panel.actions`
+**Used in:** `screenPanel.actions`
 
 | Keyword | Type | Required | Meaning |
 |---|---|---|---|
@@ -2002,7 +1997,7 @@ A button of a panel. It runs a query, a concept mutation, a procedure or a flow.
 
 A panel generated from a concept or an aggregate: up to four surfaces (selection, detail, transaction, prompt) are synthesized and each can be tuned or replaced. The older way; new models use `screens`.
 
-**Used in:** `autoPanels` (model root and pack file)
+**Used in:** `screen.admin`
 
 | Keyword | Type | Required | Meaning |
 |---|---|---|---|
@@ -2199,7 +2194,7 @@ Example:
 
 A pointer to a local JSON file that holds one item (for example one concept). It may be written wherever a model array accepts an object kind. The path is relative, ends in `.json` and may not climb out of the model's folder.
 
-**Used in:** `backOffice.pages`, `concepts` (model root and pack file), `domainTypes` (model root and pack file), `capabilities` (model root and pack file), `events` (model root and pack file), `flows` (model root and pack file), `queries` (model root and pack file), `conversions` (model root and pack file), `panels` (model root and pack file), `autoPanels` (model root and pack file), `roles` (pack file), `sequences` (pack file), `functions` (pack file), `experiences` (pack file), `screens` (pack file), `seeds` (pack file), `propertyScopes` (pack file), `properties` (pack file), `fragments` (pack file)
+**Used in:** `backOffice.pages`, `concepts` (model root and pack file), `domainTypes` (model root and pack file), `capabilities` (model root and pack file), `events` (model root and pack file), `flows` (model root and pack file), `queries` (model root and pack file), `conversions` (model root and pack file), `roles` (pack file), `sequences` (pack file), `functions` (pack file), `experiences` (pack file), `screens` (pack file), `seeds` (pack file), `propertyScopes` (pack file), `properties` (pack file), `fragments` (pack file)
 
 | Keyword | Type | Required | Meaning |
 |---|---|---|---|
@@ -2378,7 +2373,7 @@ The app's opt-in to delegating work to an outside AI. Absent means denied: no co
 
 ## Coverage
 
-- Keywords documented: 759 (719 model + 40 pack), the same set the keyword budget freezes.
-- Meaning taken from the schema's own `description`: 255.
-- Meaning written in `scripts/policy/dsl-keyword-meanings/`: 504.
+- Keywords documented: 758 (721 model + 37 pack), the same set the keyword budget freezes.
+- Meaning taken from the schema's own `description`: 256.
+- Meaning written in `scripts/policy/dsl-keyword-meanings/`: 502.
 - `scripts/quality/check-dsl-keyword-reference.py` fails when a keyword has no meaning, when the meanings data names a keyword the schema no longer has, or when this page is stale against the schema.

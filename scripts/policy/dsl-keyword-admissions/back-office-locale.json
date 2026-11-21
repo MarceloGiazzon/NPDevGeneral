@@ -1,7 +1,7 @@
 {
- "$comment": "FORM P5-T9g admission, written 2026-11-18 (owner decision): the top-level settings {locale, strings, ui} became backOffice.locale and backOffice.strings, inside the optional root backOffice (T9c), so an app with no roles or experiences can still translate its shell. settings.ui (pageRows, dateFormat) was read by nothing and is deleted. Net budget change is -1 slot (settings.locale, settings.strings, settings.ui out; backOffice.locale, backOffice.strings in).",
+ "$comment": "FORM P5-T9g admission, written 2026-11-18 (owner decision): the top-level settings {locale, strings, ui} became backOffice.locale and backOffice.strings, inside the optional root backOffice (T9c), so an app with no roles or experiences can still translate its shell. settings.ui (pageRows, dateFormat) was read by nothing and is deleted. Net budget change is -1 slot (settings.locale, settings.strings, settings.ui out; backOffice.locale, backOffice.strings in). D-1 phase 4 (2026-11-21): the block now lives in experiences[].admin (locale, strings); the slot ids are unchanged.",
  "schemaVersion": "npdev-keyword-admission.v1",
- "keyword": "backOffice.locale / backOffice.strings",
+ "keyword": "experiences[].admin.locale / .strings",
  "slots": [
   "backOffice.locale",
   "backOffice.strings"

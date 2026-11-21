@@ -27,9 +27,11 @@
       "steps": []
     }
   ],
-  "panels": [
+  "screens": [
     {
-      "name": "readiness-panel"
+      "name": "readiness-panel",
+      "kind": "custom",
+      "panel": {}
     }
   ]
 }

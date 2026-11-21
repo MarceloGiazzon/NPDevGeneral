@@ -128,54 +128,57 @@
       ]
     }
   ],
-  "panels": [
+  "screens": [
     {
       "name": "ExpenseApprovalPanel",
-      "route": "/expenses/approval",
-      "title": "Expense approval",
-      "dataSources": [
-        {
-          "name": "pendingExpenses",
-          "query": "PendingExpenseRequests"
-        }
-      ],
-      "layout": {
-        "type": "table",
-        "fields": [
-          "employeeEmail",
-          "amount",
-          "needsManagerApproval",
-          "status"
-        ]
-      },
-      "fieldBindings": [
-        {
-          "field": "employeeEmail",
-          "source": "pendingExpenses.employeeEmail"
-        },
-        {
-          "field": "amount",
-          "source": "pendingExpenses.amount"
-        },
-        {
-          "field": "status",
-          "source": "pendingExpenses.status"
-        }
-      ],
-      "actions": [
-        {
-          "name": "SubmitExpense",
-          "binding": "procedure",
-          "procedure": "SubmitExpenseProcedure",
-          "label": "Submit expense",
-          "explainability": {
-            "semanticPath": "PanelRuntime -> ProcedureExecutor -> ConceptGateway"
+      "kind": "custom",
+      "panel": {
+        "route": "/expenses/approval",
+        "title": "Expense approval",
+        "dataSources": [
+          {
+            "name": "pendingExpenses",
+            "query": "PendingExpenseRequests"
           }
+        ],
+        "layout": {
+          "type": "table",
+          "fields": [
+            "employeeEmail",
+            "amount",
+            "needsManagerApproval",
+            "status"
+          ]
+        },
+        "fieldBindings": [
+          {
+            "field": "employeeEmail",
+            "source": "pendingExpenses.employeeEmail"
+          },
+          {
+            "field": "amount",
+            "source": "pendingExpenses.amount"
+          },
+          {
+            "field": "status",
+            "source": "pendingExpenses.status"
+          }
+        ],
+        "actions": [
+          {
+            "name": "SubmitExpense",
+            "binding": "procedure",
+            "procedure": "SubmitExpenseProcedure",
+            "label": "Submit expense",
+            "explainability": {
+              "semanticPath": "PanelRuntime -> ProcedureExecutor -> ConceptGateway"
+            }
+          }
+        ],
+        "explainability": {
+          "governedDataAccess": "ConceptGateway",
+          "ruleProfile": "interactive"
         }
-      ],
-      "explainability": {
-        "governedDataAccess": "ConceptGateway",
-        "ruleProfile": "interactive"
       }
     }
   ],

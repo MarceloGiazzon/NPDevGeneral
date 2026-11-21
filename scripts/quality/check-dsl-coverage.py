@@ -102,13 +102,17 @@ def calibrate() -> int:
         # that uses every one of them keeps the detectors honest and the module's floor earned.
         f6_surface = tmp_path / "f6_surface.json"
         f6_surface.write_text(json.dumps({
-            "panels": [
-                {"name": "P", "layout": {"type": "console", "slots": [{"name": "s"}],
-                                         "widgets": [{"kind": "stat", "chart": "bar", "aggregate": "count",
-                                                      "filter": {"field": "x"}}]}},
-                {"name": "D", "layout": {"type": "dashboard", "widgets": [{"kind": "chart"}]},
-                 "dataSources": [{"name": "d", "onRowLoad": "proc"}]},
-                {"name": "N", "layout": None, "dataSources": [None, {"name": "e"}]},
+            "screens": [
+                {"name": "P", "kind": "custom",
+                 "panel": {"layout": {"type": "console", "slots": [{"name": "s"}],
+                                      "widgets": [{"kind": "stat", "chart": "bar", "aggregate": "count",
+                                                   "filter": {"field": "x"}}]}}},
+                {"name": "D", "kind": "custom",
+                 "panel": {"layout": {"type": "dashboard", "widgets": [{"kind": "chart"}]},
+                           "dataSources": [{"name": "d", "onRowLoad": "proc"}]}},
+                {"name": "N", "kind": "custom", "panel": {"layout": None, "dataSources": [None, {"name": "e"}]}},
+                {"name": "list-only", "kind": "list"},
+                None,
             ],
             "aggregates": [{"name": "A", "collections": [{"name": "c1", "collections": [
                 {"name": "c2", "collections": [{"name": "c3"}]}]}]}],

@@ -214,14 +214,14 @@ sections:
       | You write | You get |
       |---|---|
       | nothing | a generated UI for every concept from day one: list, search, create, edit, CSV/XLSX export, CSV import with review |
-      | a `panel` | a real screen with a route, several data sources, layout, and actions |
+      | a `custom` screen's `panel` | a real screen with a route, several data sources, layout, and actions |
       | a panel with `layout: dashboard` or `console` | tiles, charts (bar/line/donut), tables, an action bar and a run history, declared as `widgets[]` |
       | `visibility` / `enabledWhen` | conditional display driven by rules, not JavaScript |
       | an `action` | a button that runs a flow — including ones that stream a generated file back |
       | an `aggregate` | a **master-detail-detail workbench**, saved in one transaction, with commit hooks |
       | a `screens[]` entry of kind `document` | printable output: one-record documents, and list reports with grouping and totals as PDF and CSV |
       | a `guidePage` | in-app guidance attached to the screen it explains |
-      | `backOffice`, `backOffice.strings`, a theme | your own navigation and start page, your own wording in any language, and your own colours (`themes/<id>.json`) |
+      | an `admin` experience (`admin.navigation`, `admin.strings`), a theme | your own navigation and start page, your own wording in any language, and your own colours (`themes/<id>.json`) |
       | a `web/*.html` page beside the model | **a screen you design yourself**, inside the app's shell or **public, with no sign-in**, talking to the same API (see the escape hatches below) |
 - level: 3
   title: Access

@@ -115,8 +115,9 @@ class LifecycleTests(unittest.TestCase):
 
 class DataSourceTests(unittest.TestCase):
     def test_kind_entity_becomes_concept(self):
-        fixed, _ = dp.fix_model(_model(panels=[{"name": "p", "dataSources": [{"kind": "entity", "name": "Customer"}]}]))
-        self.assertEqual(fixed["panels"][0]["dataSources"], [{"name": "Customer", "concept": "Customer"}])
+        fixed, _ = dp.fix_model(_model(screens=[{"name": "p", "kind": "custom", "panel": {
+            "dataSources": [{"kind": "entity", "name": "Customer"}]}}]))
+        self.assertEqual(fixed["screens"][0]["panel"]["dataSources"], [{"name": "Customer", "concept": "Customer"}])
 
 
 class CliTests(unittest.TestCase):

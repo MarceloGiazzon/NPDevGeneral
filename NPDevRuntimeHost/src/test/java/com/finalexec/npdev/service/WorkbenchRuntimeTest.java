@@ -69,7 +69,7 @@ class WorkbenchRuntimeTest {
               { "name": "id", "type": "uuid", "id": true, "required": true },
               { "name": "itemSeq", "type": "uuid" }, { "name": "local", "type": "string" } ] }
           ],
-          "autoPanels": [ { "aggregate": "Expedicao" } ]
+          "screens": [{ "name": "Expedicao", "kind": "workbench", "concept": "Expedicao", "admin": { } }]
         }
         """;
 

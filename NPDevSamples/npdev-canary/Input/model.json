@@ -100,53 +100,56 @@
       ]
     }
   ],
-  "panels": [
+  "screens": [
     {
       "name": "CanaryPanel",
-      "route": "/canary/tasks",
-      "title": "Canary tasks",
-      "dataSources": [
-        {
-          "name": "openHighPriorityTasks",
-          "query": "OpenHighPriorityCanaryTasks"
-        }
-      ],
-      "layout": {
-        "type": "table",
-        "fields": [
-          "title",
-          "priority",
-          "status"
-        ]
-      },
-      "fieldBindings": [
-        {
-          "field": "title",
-          "source": "openHighPriorityTasks.title"
-        },
-        {
-          "field": "priority",
-          "source": "openHighPriorityTasks.priority"
-        },
-        {
-          "field": "status",
-          "source": "openHighPriorityTasks.status"
-        }
-      ],
-      "actions": [
-        {
-          "name": "SaveCanaryTask",
-          "binding": "procedure",
-          "procedure": "SaveCanaryTaskProcedure",
-          "label": "Save canary task",
-          "explainability": {
-            "semanticPath": "PanelRuntime -> ProcedureExecutor -> ConceptGateway"
+      "kind": "custom",
+      "panel": {
+        "route": "/canary/tasks",
+        "title": "Canary tasks",
+        "dataSources": [
+          {
+            "name": "openHighPriorityTasks",
+            "query": "OpenHighPriorityCanaryTasks"
           }
+        ],
+        "layout": {
+          "type": "table",
+          "fields": [
+            "title",
+            "priority",
+            "status"
+          ]
+        },
+        "fieldBindings": [
+          {
+            "field": "title",
+            "source": "openHighPriorityTasks.title"
+          },
+          {
+            "field": "priority",
+            "source": "openHighPriorityTasks.priority"
+          },
+          {
+            "field": "status",
+            "source": "openHighPriorityTasks.status"
+          }
+        ],
+        "actions": [
+          {
+            "name": "SaveCanaryTask",
+            "binding": "procedure",
+            "procedure": "SaveCanaryTaskProcedure",
+            "label": "Save canary task",
+            "explainability": {
+              "semanticPath": "PanelRuntime -> ProcedureExecutor -> ConceptGateway"
+            }
+          }
+        ],
+        "explainability": {
+          "governedDataAccess": "ConceptGateway",
+          "ruleProfile": "always"
         }
-      ],
-      "explainability": {
-        "governedDataAccess": "ConceptGateway",
-        "ruleProfile": "always"
       }
     }
   ],

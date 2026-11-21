@@ -44,11 +44,26 @@ class AllowedActionsCrossReferenceValidationTest {
                   { "name": "expedicaoId", "type": "uuid" } ] }
               ],
               "flows": [{"name": "GerarDemanda", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}, {"name": "Recalcular", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
-              "autoPanels": [ { "aggregate": "Expedicao",
-                "transaction": { "actions": [
-                  { "label": "Gerar Demanda", "procedure": "GerarDemanda" },
-                  { "procedure": "Recalcular" }
-                ] } } ]
+              "screens": [
+                {
+                  "name": "Expedicao",
+                  "kind": "workbench",
+                  "concept": "Expedicao",
+                  "admin": {
+                    "transaction": {
+                      "actions": [
+                        {
+                          "label": "Gerar Demanda",
+                          "procedure": "GerarDemanda"
+                        },
+                        {
+                          "procedure": "Recalcular"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
             }
             """.formatted(allowedActionsJson);
     }

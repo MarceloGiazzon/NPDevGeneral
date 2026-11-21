@@ -96,8 +96,10 @@ class AddMemberUnitTest(unittest.TestCase):
                     code = npdev_cli.run_add_member(_add_args(name, model_path, concept="Widget"), kind)
                 self.assertEqual(0, code)
             model = json.loads(model_path.read_text(encoding="utf-8"))
-            self.assertEqual(["WidgetPanel"], [p["name"] for p in model["panels"]])
-            self.assertEqual("Widget", model["panels"][0]["dataSources"][0]["concept"])
+            self.assertNotIn("panels", model)
+            self.assertEqual(["WidgetPanel"], [p["name"] for p in model["screens"]])
+            self.assertEqual("custom", model["screens"][0]["kind"])
+            self.assertEqual("Widget", model["screens"][0]["panel"]["dataSources"][0]["concept"])
             self.assertEqual("Widget", model["flows"][0]["input"]["concept"])
 
     def test_refuses_without_concept_and_without_from(self):

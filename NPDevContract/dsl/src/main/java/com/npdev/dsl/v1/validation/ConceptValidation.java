@@ -1187,6 +1187,49 @@ final class ConceptValidation {
         return expression != null && !expression.isBlank();
     }
 
+    /** D-3 (owner 2026-11-21): a chain of {@code specializes} may be at most this many links long. */
+    static final int MAX_SPECIALIZATION_DEPTH = 2;
+
+    /**
+     * D-3: warns (never refuses) when a concept's {@code specializes} chain is longer than
+     * {@link #MAX_SPECIALIZATION_DEPTH}. Specialization answers "is this a new kind of thing" and takes one
+     * parent only; "this adds fields and rules to the same thing" is a facet ({@code augments}), and several
+     * facets combine on one concept. Runs over the RAW model because {@code ModelResolver} flattens the
+     * chain and clears {@code specializes} on the effective concepts. The warning names the whole chain.
+     */
+    static void validateSpecializationDepth(ModelAst rawModel, List<String> semanticWarnings) {
+        Map<String, ConceptAst> byKey = new HashMap<>();
+        for (ConceptAst concept : rawModel.getConcepts()) {
+            byKey.put(normalize(concept.getName()), concept);
+        }
+        for (ConceptAst concept : rawModel.getConcepts()) {
+            List<String> chain = new ArrayList<>();
+            chain.add(concept.getName());
+            Set<String> seen = new HashSet<>();
+            seen.add(normalize(concept.getName()));
+            ConceptAst current = concept;
+            while (true) {
+                String baseRef = current.getSpecializesName();
+                if (baseRef == null || baseRef.isBlank()) {
+                    break;
+                }
+                ConceptAst base = byKey.get(normalize(baseRef));
+                if (base == null || !seen.add(normalize(base.getName()))) {
+                    break; // unknown base or cycle: ModelResolver already refuses those
+                }
+                chain.add(base.getName());
+                current = base;
+            }
+            int links = chain.size() - 1;
+            if (links > MAX_SPECIALIZATION_DEPTH) {
+                semanticWarnings.add("Concept " + concept.getName() + " specializes " + links
+                        + " levels deep (" + String.join(" -> ", chain) + "); keep specialization to at most "
+                        + MAX_SPECIALIZATION_DEPTH + " levels and express the rest as facets (a pack's `augments`),"
+                        + " which add fields and rules to the same concept and combine");
+            }
+        }
+    }
+
     record EffectiveEntity(List<FieldAst> fields, List<InvariantAst> invariants) {
         EffectiveEntity {
             fields = fields == null ? List.of() : Collections.unmodifiableList(new ArrayList<>(fields));

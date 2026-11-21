@@ -3,12 +3,12 @@
   "packs" : {
     "inventory" : {
       "resolvedVersion" : "2.0.0",
-      "digest" : "sha256:507f7cd9db9b0d19fc1dc817803dfad359ee97dfe704fa01ff0cbc3e2ef38b8f",
+      "digest" : "sha256:30843a0298aa543fb70c524cf7d0b72a4478b4a728eb0259506fe61b3d28e662",
       "sourcePath" : "packs/inventory/pack.json"
     },
     "products" : {
       "resolvedVersion" : "1.0.0",
-      "digest" : "sha256:4178bd7b95ad9cc23576faf9a51bb65e44259621e92f29727048a3ebf04db2e3",
+      "digest" : "sha256:56ba8d49d89bc7a12b3451b8c195beb9a38854c9195040316db5b377eab25317",
       "sourcePath" : "packs/products/pack.json"
     }
   }

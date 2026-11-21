@@ -54,7 +54,7 @@ def _sample_model() -> dict:
         # way it rejected WmsOffice's old root `aggregates` key (removed in FORM P5-T9e: an aggregate is
         # now a concept's `composition`, so the key is no longer a real top-level key).
         "conversions": [],
-        "autoPanels": [], "roles": [], "propertyScopes": [], "properties": [],
+        "screens": [], "roles": [], "propertyScopes": [], "properties": [],
         "modules": [],
         "provides": {}, "externalAi": {},
         # A pack reference with the `as` alias -- must not trip the generic $ref-shape validator.

@@ -58,10 +58,7 @@ class TransactionHooksValidationTest {
                     { "name": "movimentoId", "type": "uuid" } ] }
               ],
               "flows": [{"name": "ValidateMovimento", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}, {"name": "SyncOcupacao", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}, {"name": "DirectValidate", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}, {"name": "DirectCommit", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
-              "autoPanels": [
-                { "aggregate": "Movimento",
-                  "transaction": { "hooks": %s } }
-              ]
+              "screens": [ { "name": "Movimento", "kind": "workbench", "concept": "Movimento", "admin": { "transaction": { "hooks": %s } } } ]
             }
             """.formatted(aggregateExtra, hooksJson);
     }

@@ -312,193 +312,6 @@
       }
     }
   ],
-  "panels": [
-    {
-      "name": "TicketBoard",
-      "route": "/f6/ticket-board",
-      "title": "Ticket board (layoutSlot)",
-      "layout": {
-        "type": "table",
-        "fields": [
-          "title",
-          "status",
-          "priority"
-        ],
-        "slots": [
-          {
-            "placement": "above",
-            "component": "ticket-kpis",
-            "label": "Ticket KPIs"
-          },
-          {
-            "placement": "below",
-            "component": "ticket-timeline",
-            "label": "Ticket timeline"
-          }
-        ]
-      },
-      "dataSources": [
-        {
-          "name": "tickets",
-          "concept": "Ticket"
-        }
-      ],
-      "fieldBindings": [
-        {
-          "field": "title",
-          "source": "tickets.title"
-        },
-        {
-          "field": "status",
-          "source": "tickets.status"
-        },
-        {
-          "field": "priority",
-          "source": "tickets.priority"
-        }
-      ],
-      "explainability": {
-        "governedDataAccess": "ConceptGateway",
-        "ruleProfile": "always"
-      }
-    },
-    {
-      "name": "TicketConsole",
-      "route": "/f6/ticket-console",
-      "title": "Ticket console (operator console)",
-      "layout": {
-        "type": "console",
-        "widgets": [
-          {
-            "kind": "tile",
-            "title": "Tickets",
-            "dataSource": "tickets"
-          },
-          {
-            "kind": "tile",
-            "title": "Open",
-            "dataSource": "tickets",
-            "filter": {
-              "field": "status",
-              "equals": "OPEN"
-            }
-          },
-          {
-            "kind": "tile",
-            "title": "In progress",
-            "dataSource": "tickets",
-            "filter": {
-              "field": "status",
-              "equals": "IN_PROGRESS"
-            }
-          },
-          {
-            "kind": "tile",
-            "title": "Total priority",
-            "dataSource": "tickets",
-            "aggregate": "sum",
-            "field": "priority"
-          },
-          {
-            "kind": "actions",
-            "title": "Operations"
-          },
-          {
-            "kind": "history",
-            "title": "Recent runs"
-          },
-          {
-            "kind": "table",
-            "title": "All tickets",
-            "dataSource": "tickets"
-          }
-        ]
-      },
-      "dataSources": [
-        {
-          "name": "tickets",
-          "concept": "Ticket"
-        }
-      ],
-      "actions": [
-        {
-          "name": "open",
-          "label": "Open ticket",
-          "binding": "flow",
-          "flow": "OpenTicket",
-          "inputFields": [
-            "title",
-            "status",
-            "priority"
-          ]
-        }
-      ],
-      "explainability": {
-        "governedDataAccess": "ConceptGateway",
-        "ruleProfile": "always"
-      }
-    },
-    {
-      "name": "TicketDashboard",
-      "route": "/f6/ticket-dashboard",
-      "title": "Ticket dashboard (dashboard)",
-      "layout": {
-        "type": "dashboard",
-        "widgets": [
-          {
-            "kind": "tile",
-            "title": "Tickets",
-            "dataSource": "tickets",
-            "span": 2
-          },
-          {
-            "kind": "tile",
-            "title": "Average priority",
-            "dataSource": "tickets",
-            "aggregate": "avg",
-            "field": "priority",
-            "span": 2
-          },
-          {
-            "kind": "chart",
-            "title": "Tickets by status",
-            "dataSource": "tickets",
-            "chart": "bar",
-            "groupBy": "status"
-          },
-          {
-            "kind": "chart",
-            "title": "Priority by status",
-            "dataSource": "tickets",
-            "chart": "donut",
-            "groupBy": "status",
-            "aggregate": "sum",
-            "field": "priority"
-          },
-          {
-            "kind": "chart",
-            "title": "Highest priority by status",
-            "dataSource": "tickets",
-            "chart": "line",
-            "groupBy": "status",
-            "aggregate": "max",
-            "field": "priority",
-            "span": 4
-          }
-        ]
-      },
-      "dataSources": [
-        {
-          "name": "tickets",
-          "concept": "Ticket"
-        }
-      ],
-      "explainability": {
-        "governedDataAccess": "ConceptGateway",
-        "ruleProfile": "always"
-      }
-    }
-  ],
   "flows": [
     {
       "name": "OpenTicket",
@@ -530,35 +343,233 @@
       ]
     }
   ],
-  "autoPanels": [
+  "screens": [
     {
-      "aggregate": "Project",
-      "transaction": {
-        "computed": [
+      "name": "Project",
+      "kind": "workbench",
+      "concept": "Project",
+      "admin": {
+        "transaction": {
+          "computed": [
+            {
+              "col": "cost",
+              "expr": "hours * $root.rate",
+              "collection": "phases.tasks.subtasks"
+            },
+            {
+              "col": "doubled",
+              "expr": "hours * 2",
+              "collection": "phases.tasks.subtasks"
+            }
+          ],
+          "derivedFields": {
+            "totalHours": {
+              "label": "Total hours",
+              "expression": "sum(phases.tasks.subtasks.hours)"
+            },
+            "totalCost": {
+              "label": "Total cost",
+              "expression": "sum(phases.tasks.subtasks.hours) * rate"
+            },
+            "hasWork": {
+              "label": "Has work",
+              "expression": "count(phases.tasks.subtasks) > 0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "TicketBoard",
+      "kind": "custom",
+      "panel": {
+        "route": "/f6/ticket-board",
+        "title": "Ticket board (layoutSlot)",
+        "layout": {
+          "type": "table",
+          "fields": [
+            "title",
+            "status",
+            "priority"
+          ],
+          "slots": [
+            {
+              "placement": "above",
+              "component": "ticket-kpis",
+              "label": "Ticket KPIs"
+            },
+            {
+              "placement": "below",
+              "component": "ticket-timeline",
+              "label": "Ticket timeline"
+            }
+          ]
+        },
+        "dataSources": [
           {
-            "col": "cost",
-            "expr": "hours * $root.rate",
-            "collection": "phases.tasks.subtasks"
-          },
-          {
-            "col": "doubled",
-            "expr": "hours * 2",
-            "collection": "phases.tasks.subtasks"
+            "name": "tickets",
+            "concept": "Ticket"
           }
         ],
-        "derivedFields": {
-          "totalHours": {
-            "label": "Total hours",
-            "expression": "sum(phases.tasks.subtasks.hours)"
+        "fieldBindings": [
+          {
+            "field": "title",
+            "source": "tickets.title"
           },
-          "totalCost": {
-            "label": "Total cost",
-            "expression": "sum(phases.tasks.subtasks.hours) * rate"
+          {
+            "field": "status",
+            "source": "tickets.status"
           },
-          "hasWork": {
-            "label": "Has work",
-            "expression": "count(phases.tasks.subtasks) > 0"
+          {
+            "field": "priority",
+            "source": "tickets.priority"
           }
+        ],
+        "explainability": {
+          "governedDataAccess": "ConceptGateway",
+          "ruleProfile": "always"
+        }
+      }
+    },
+    {
+      "name": "TicketConsole",
+      "kind": "custom",
+      "panel": {
+        "route": "/f6/ticket-console",
+        "title": "Ticket console (operator console)",
+        "layout": {
+          "type": "console",
+          "widgets": [
+            {
+              "kind": "tile",
+              "title": "Tickets",
+              "dataSource": "tickets"
+            },
+            {
+              "kind": "tile",
+              "title": "Open",
+              "dataSource": "tickets",
+              "filter": {
+                "field": "status",
+                "equals": "OPEN"
+              }
+            },
+            {
+              "kind": "tile",
+              "title": "In progress",
+              "dataSource": "tickets",
+              "filter": {
+                "field": "status",
+                "equals": "IN_PROGRESS"
+              }
+            },
+            {
+              "kind": "tile",
+              "title": "Total priority",
+              "dataSource": "tickets",
+              "aggregate": "sum",
+              "field": "priority"
+            },
+            {
+              "kind": "actions",
+              "title": "Operations"
+            },
+            {
+              "kind": "history",
+              "title": "Recent runs"
+            },
+            {
+              "kind": "table",
+              "title": "All tickets",
+              "dataSource": "tickets"
+            }
+          ]
+        },
+        "dataSources": [
+          {
+            "name": "tickets",
+            "concept": "Ticket"
+          }
+        ],
+        "actions": [
+          {
+            "name": "open",
+            "label": "Open ticket",
+            "binding": "flow",
+            "flow": "OpenTicket",
+            "inputFields": [
+              "title",
+              "status",
+              "priority"
+            ]
+          }
+        ],
+        "explainability": {
+          "governedDataAccess": "ConceptGateway",
+          "ruleProfile": "always"
+        }
+      }
+    },
+    {
+      "name": "TicketDashboard",
+      "kind": "custom",
+      "panel": {
+        "route": "/f6/ticket-dashboard",
+        "title": "Ticket dashboard (dashboard)",
+        "layout": {
+          "type": "dashboard",
+          "widgets": [
+            {
+              "kind": "tile",
+              "title": "Tickets",
+              "dataSource": "tickets",
+              "span": 2
+            },
+            {
+              "kind": "tile",
+              "title": "Average priority",
+              "dataSource": "tickets",
+              "aggregate": "avg",
+              "field": "priority",
+              "span": 2
+            },
+            {
+              "kind": "chart",
+              "title": "Tickets by status",
+              "dataSource": "tickets",
+              "chart": "bar",
+              "groupBy": "status"
+            },
+            {
+              "kind": "chart",
+              "title": "Priority by status",
+              "dataSource": "tickets",
+              "chart": "donut",
+              "groupBy": "status",
+              "aggregate": "sum",
+              "field": "priority"
+            },
+            {
+              "kind": "chart",
+              "title": "Highest priority by status",
+              "dataSource": "tickets",
+              "chart": "line",
+              "groupBy": "status",
+              "aggregate": "max",
+              "field": "priority",
+              "span": 4
+            }
+          ]
+        },
+        "dataSources": [
+          {
+            "name": "tickets",
+            "concept": "Ticket"
+          }
+        ],
+        "explainability": {
+          "governedDataAccess": "ConceptGateway",
+          "ruleProfile": "always"
         }
       }
     }

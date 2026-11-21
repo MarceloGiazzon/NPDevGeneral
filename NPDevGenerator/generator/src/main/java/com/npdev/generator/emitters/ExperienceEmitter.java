@@ -17,7 +17,9 @@ import com.npdev.generator.templates.TemplateEngine;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -88,7 +90,7 @@ public final class ExperienceEmitter extends AbstractEmitter {
     }
 
     public void emit(CompiledModel model) {
-        if (model == null || (model.getExperiences().isEmpty() && model.getScreens().isEmpty())) {
+        if (model == null || (model.getExperiences().isEmpty() && clientScreens(model).isEmpty())) {
             writer.deleteRelativeIfExists(OUTPUT);
             return;
         }
@@ -108,7 +110,7 @@ public final class ExperienceEmitter extends AbstractEmitter {
             writeIcons(experience, colors[0]);
         }
         ArrayNode screens = root.putArray("screens");
-        for (JsonNode screen : model.getScreens()) {
+        for (JsonNode screen : clientScreens(model)) {
             screens.add(resolveScreen(model, screen));
         }
         try {
@@ -260,9 +262,23 @@ public final class ExperienceEmitter extends AbstractEmitter {
     private record Tiles(String url, String attribution) {
     }
 
+    /**
+     * The screens the {@code /x/} client serves. A screen carrying an {@code admin} block (D-1) stands for a concept's
+     * generated back-office pages, which the Business UI renders; the experience client never shows it.
+     */
+    private static List<JsonNode> clientScreens(CompiledModel model) {
+        List<JsonNode> out = new ArrayList<>();
+        for (JsonNode screen : model.getScreens()) {
+            if (!screen.has("admin")) {
+                out.add(screen);
+            }
+        }
+        return out;
+    }
+
     /** True when any screen shows a map (a {@code map} spec, kind {@code map}, or a {@code map} dashboard widget). */
     private static boolean usesMaps(CompiledModel model) {
-        for (JsonNode screen : model.getScreens()) {
+        for (JsonNode screen : clientScreens(model)) {
             if (screen.has("map") || "map".equals(text(screen, "kind"))) {
                 return true;
             }

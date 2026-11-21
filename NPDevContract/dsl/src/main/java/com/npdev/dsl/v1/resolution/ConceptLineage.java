@@ -50,7 +50,7 @@ public record ConceptLineage(
 
     /**
      * One entry per concept in {@code rawSource} that declares a non-blank {@code specializes}
-     * (or its {@code extends} alias -- {@link ConceptAst#getSpecializesName()} already folds both).
+     * ({@link ConceptAst#getSpecializesName()}).
      * Concepts with no parent are simply absent from the map, not present with an empty lineage.
      */
     public static Map<String, ConceptLineage> computeAll(ModelAst rawSource, ModelAst resolvedModel) {

@@ -38,9 +38,10 @@ class RelayStageError(AiConfigError):
 
 # --------------------------------------------------------------------------- helpers
 
-def build_knowledge(intent: str | None = None) -> tuple[str, dict]:
+def build_knowledge(intent: str | None = None, ask: str | None = None) -> tuple[str, dict]:
     """The compact authoring bundle the bench measures -- exactly what `npdev ai context` prints. A conversation that
-    writes a PACK (`intent` "pack") gets the contract's "Writing a pack" section after it; no other intent does."""
+    writes a PACK (`intent` "pack") gets the contract's "Writing a pack" section after it; no other intent does.
+    `ask` (what the person wants) lets the pack catalog show only the packs that fit it (D-8)."""
     scripts_ai = str(Path(__file__).resolve().parents[1] / "scripts" / "ai")
     if scripts_ai not in sys.path:
         sys.path.insert(0, scripts_ai)
@@ -57,18 +58,88 @@ def build_knowledge(intent: str | None = None) -> tuple[str, dict]:
                         sections=list(manifest.get("sections") or []) + [
                             {"title": build_core_context.PACK_SECTION_TITLE, "source": "docs/content/authoring-for-ai.json",
                              "bytes": len(section.encode("utf-8"))}])
-    return with_pack_catalog(bundle, manifest)
+    return with_pack_catalog(bundle, manifest, ask)
 
 
-def pack_catalog_text(catalog: dict | None) -> str:
+# D-8 (owner 2026-11-21): the catalog directive (bench P7-T5 candidate A, plus the role-binding reminder) and the
+# Manager-side choice of cards. A browser AI cannot search a catalog, so the Manager picks the few packs that fit the
+# request and the AI is told to start from them; the bench showed 40-70% fewer output tokens when it did, and the
+# one thing it forgot was binding the roles.
+CATALOG_DIRECTIVE = (
+    "First match every part of the request to the packs below; for each match put that pack in `packs[]` (copy the "
+    "`from` exactly) and do NOT re-declare its concepts - reference them as `<pack>::<Concept>`. Model inline only what "
+    "no pack covers. A model that reuses packs is the complete model.")
+CATALOG_FULL_LIST_MAX = 12   # a catalog this small is shown whole; a bigger one is narrowed by the request
+CATALOG_PICK_MAX = 8
+_STOPWORDS = frozenset(
+    "the and for with that this from have has are was were will can all any app apps into onto per their them they our "
+    "your you out use used using need needs want make makes made create new one two its not but each every more most "
+    "who what when where which how also than then too very just only own".split())
+
+
+def _words(text: str) -> set[str]:
+    """Lower-case word stems of a text: camelCase and punctuation split, plural/-ing endings dropped, short words and
+    stop words ignored. Both the request and a pack's text go through it, so a plural never hides a match."""
+    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(text or ""))
+    found = set()
+    for raw in re.findall(r"[A-Za-z]{3,}", spaced):
+        word = raw.lower()
+        if word in _STOPWORDS:
+            continue
+        for tail in ("ing", "es", "s"):
+            if word.endswith(tail) and len(word) - len(tail) >= 3:
+                word = word[: -len(tail)]
+                break
+        found.add(word)
+    return found
+
+
+def select_catalog_entries(entries: list[dict], ask: str, limit: int = CATALOG_PICK_MAX) -> list[dict]:
+    """The packs of `entries` that fit `ask`, best first, at most `limit`, plus the packs a chosen one needs (a pack's
+    own dependencies must be imported with it). Deterministic: a word of the request found in a pack's id weighs 3, in
+    a concept name 2, in its description or a role name 1; ties break on the id. [] when nothing matches."""
+    wanted = _words(ask)
+    if not wanted:
+        return []
+    scored = []
+    for entry in entries:
+        score = 0
+        score += 3 * len(wanted & _words(entry.get("pack")))
+        score += 2 * len(wanted & _words(" ".join(str(c) for c in entry.get("concepts") or [])))
+        score += len(wanted & _words(entry.get("description")))
+        score += len(wanted & _words(" ".join(str(r) for r in entry.get("roles") or [])))
+        if score:
+            scored.append((-score, str(entry["pack"]), entry))
+    scored.sort(key=lambda item: item[:2])
+    chosen = [entry for _score, _name, entry in scored[:limit]]
+    by_id = {str(e["pack"]): e for e in entries}
+    for entry in list(chosen):
+        for needed in entry.get("needs") or []:
+            dependency = by_id.get(str(needed))
+            if dependency is not None and dependency not in chosen:
+                chosen.append(dependency)
+    return chosen
+
+
+def pack_catalog_text(catalog: dict | None, ask: str | None = None) -> str:
     """The "Pack catalog" section of the briefing, made from the NPR catalog's own entries (never typed by hand):
-    one line per pack -- id, version, one sentence -- and the coordinate pattern once. "" when there is no catalog."""
+    one line per pack -- id, version, one sentence -- and the coordinate pattern once. "" when there is no catalog.
+    With `ask` and a catalog bigger than CATALOG_FULL_LIST_MAX, only the packs that fit the request are listed (D-8),
+    with the roles to bind spelled out; when nothing fits, or the catalog is small, the whole list is shown as before."""
     entries = [e for e in (catalog or {}).get("packs") or [] if isinstance(e, dict) and e.get("pack") and e.get("from")]
     if not entries:
         return ""
+    all_entries = entries
+    picked = []
+    if ask and len(entries) > CATALOG_FULL_LIST_MAX:
+        picked = select_catalog_entries(entries, ask)
+        if picked:
+            entries = picked
     repo = str((catalog or {}).get("repository") or "").rstrip("/")
     repo = repo[:-4] if repo.endswith(".git") else repo
     lines = ["## Pack catalog", "",
+             (("Packs chosen for this request (" + str(len(all_entries)) + " exist; these are the ones that fit it). ")
+              if picked else "") + CATALOG_DIRECTIVE, "",
              "Packs you MAY import (`packs[]`, see the contract above). Copy the `from` coordinate exactly; a pack not "
              "listed here does not exist. A pack marked `[also import: ...]` only works when every pack named there is "
              "in your `packs[]` too. The checker enforces three more rules on imported packs: (1) name a pack's concept "
@@ -96,10 +167,15 @@ def pack_catalog_text(catalog: dict | None) -> str:
     if any(pattern_ok):
         lines += ["", f"Coordinate: `{{\"from\": \"git+{repo}.git//packs/<id>@<id>-<version>\"}}`"
                       + ("" if all(pattern_ok) else " (except where a line gives its own `from`)")]
+    if picked:
+        to_bind = [f"{e['pack']}: {', '.join(str(r) for r in e['roles'])}" for e in picked if e.get("roles")]
+        if to_bind:
+            lines += ["", "Roles you must bind in `provides.roleBindings` (pack: its roles, each to one of YOUR roles): "
+                          + "; ".join(to_bind)]
     return "\n".join(lines) + "\n"
 
 
-def with_pack_catalog(bundle: str, manifest: dict) -> tuple[str, dict]:
+def with_pack_catalog(bundle: str, manifest: dict, ask: str | None = None) -> tuple[str, dict]:
     """The bundle plus the generated catalog section. Offline with nothing cached, or any failure: unchanged (the
     contract then tells the AI to model the concepts itself)."""
     try:
@@ -107,7 +183,7 @@ def with_pack_catalog(bundle: str, manifest: dict) -> tuple[str, dict]:
         catalog, _meta = cli._load_pack_catalog(cli._pack_catalog_url(None), refresh=True)
     except Exception:  # noqa: BLE001 -- CliError, no network, a broken cache: the briefing just has no list
         return bundle, manifest
-    section = pack_catalog_text(catalog)
+    section = pack_catalog_text(catalog, ask)
     if not section:
         return bundle, manifest
     text = bundle.rstrip("\n") + "\n\n" + section
@@ -263,7 +339,7 @@ def start(*, intent: str, ask: str, app_dir=None, new_app_name=None, target: str
         model_text = pack_base_text  # shown to the AI the way a change shows the current model
     # The text of a failed build or boot goes into a prompt that leaves the computer: scrubbed HERE, whoever the caller is.
     errors, redactions = scrub.scrub_errors(errors, app_dir) if errors else (errors, {})
-    bundle, manifest = build_knowledge(intent)
+    bundle, manifest = build_knowledge(intent, ask)
     profile = _profile(target)
     budget = rt.answer_budget(profile, 0, size) if profile else None
     try:
@@ -1112,7 +1188,7 @@ def _error_text(result: dict) -> str:
 
 
 def _fresh_chat(session: dict, number: int, errors: str, budget: int | None = None) -> str:
-    bundle, _ = build_knowledge(session.get("intent"))
+    bundle, _ = build_knowledge(session.get("intent"), session.get("ask"))
     if session.get("intent") == "pack":
         base = rs.session_dir(session["code"]) / "base-pack.json"
     else:

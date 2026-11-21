@@ -44,7 +44,6 @@
         "propertyScopes",
         "properties",
         "conversions",
-        "autoPanels",
         "sequences",
         "experiences",
         "screens"
@@ -480,11 +479,11 @@
     },
     {
       "id": "back-office-pack-lift",
-      "citedBy": "FORM P5-T9c (the appShell/guidePages counterpart of picker-screen-selector-expansion)",
-      "description": "The top-level `appShell` and `guidePages` keys are gone: the back-office menu and pages are the optional ROOT `backOffice` {defaultRoute, navigation, pages} (independent of experiences and roles), and a pack/fragment contributes pages as a pack-level `backOffice.pages`. The IR (AppShellAst + guidePages -> CompiledAppShell / CompiledGuidePage) is unchanged: JsonModelParser.parseBackOffice reads the root object into it, and ModelSourceResolver lifts every authored page into the transient composition kind `guidePages` (so pack qualification `pack::Page`, gadget `query` and panel.guidePage rewriting keep working) and folds the composed list (own pages first) back into the root backOffice.pages at the end of resolveRoot. Dropping `backOffice` from the resolver, either pack.schema.json copy or the parser means a pack's pages silently vanish or a schema refuses them.",
+      "citedBy": "FORM P5-T9c / D-1 phase 4 (the appShell/guidePages counterpart of picker-screen-selector-expansion)",
+      "description": "The back office is the `admin` block of ONE experiences[] entry {name, admin: {locale, strings, defaultRoute, navigation, pages}} (D-1 phase 4: the root `backOffice` key and a pack's `backOffice` key are gone; the old top-level `appShell` and `guidePages` went in FORM P5-T9c). A pack/fragment declares only `pages` in its own experiences[] `admin` entry. The IR (AppShellAst + guidePages -> CompiledAppShell / CompiledGuidePage) is unchanged: JsonModelParser.adminExperienceBlock reads the entry into it, and ModelSourceResolver strips the entry (withoutAdminExperience / packAdminBlock), lifts every authored page into the transient composition kind `guidePages` (so pack qualification `pack::Page`, gadget `query` and panel.guidePage rewriting keep working), folds the composed list (own pages first) back and writes it as ONE experiences[] admin entry at the end of resolveRoot (unfoldBackOffice). NPDevCli/npdev_cli.py resolve_split_model is the build-free Python twin of the pack side. Dropping `experiences` (the array whose `admin` entry carries it; a pack schema reaches the `admin` block only through `$defs/experience`) from the resolver, the Python twin, either pack.schema.json copy or the parser means a pack's pages silently vanish or a schema refuses them.",
       "kind": "field-in-all-files",
       "trackedFields": [
-        "backOffice"
+        "experiences"
       ],
       "caseSensitive": true,
       "files": [
@@ -493,7 +492,22 @@
         "NPDevContract/schemas/pack.schema.json",
         "NPDevContract/dsl/src/main/resources/schema/pack.schema.json",
         "NPDevContract/schemas/model.schema.json",
-        "NPDevContract/dsl/src/main/resources/schema/model.schema.json"
+        "NPDevContract/dsl/src/main/resources/schema/model.schema.json",
+        "NPDevCli/npdev_cli.py"
+      ]
+    },
+    {
+      "id": "admin-experience-pack-lift-python-twin",
+      "citedBy": "D-1 phase 4",
+      "description": "The pack-side lift of a back office exists in two languages: Java's ModelSourceResolver.packAdminBlock is authoritative (the generator only reads the Java-resolved model); NPDevCli/npdev_cli.py resolve_split_model carries the narrow build-free copy that strips a pack's experiences[] `admin` entry and lifts its pages. Both carry the `packAdminBlock` name (a comment in Python); dropping it from either is the 'two walks of the same graph that drift' shape.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "packAdminBlock"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java",
+        "NPDevCli/npdev_cli.py"
       ]
     },
     {

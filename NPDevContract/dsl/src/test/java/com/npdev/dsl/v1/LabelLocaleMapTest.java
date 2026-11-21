@@ -459,10 +459,10 @@ class LabelLocaleMapTest {
                       }
                     }
                   ],
-                  "panels": [
-                    { "name": "WidgetPanel", "route": "/widgets", "actions": [
+                  "screens": [
+                    { "name": "WidgetPanel", "kind": "custom", "panel": { "route": "/widgets", "actions": [
                       { "name": "approve", "binding": "conceptMutation", "concept": "Widget",
-                        "operation": "update", "label": %s } ] }
+                        "operation": "update", "label": %s } ]}}
                   ]
                 }
                 """.formatted(propertyLabel, domainTypeLabel, conceptUiLabel, fieldUiLabel, enumOptionLabel,

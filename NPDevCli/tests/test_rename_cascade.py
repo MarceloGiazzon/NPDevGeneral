@@ -38,11 +38,12 @@ MODEL = {
     "queries": [{"name": "ByBirthday", "concept": "Patient",
                  "where": "birthDay != '1900-01-01'", "orderBy": ["birthDay desc"],
                  "groupBy": ["birthDay"]}],
-    "panels": [{"name": "PatientsPanel",
-                "dataSources": [{"name": "patients", "concept": "Patient"}],
-                "layout": {"type": "table", "fields": ["birthDay"]},
-                "fieldBindings": [{"field": "birthDay", "source": "patients.birthDay",
-                                   "visibleWhen": "birthDay != id"}]}],
+    # D-1 phase 3: the authoring model holds a panel as a custom screen; the reference index still names it `panels[...]`.
+    "screens": [{"name": "PatientsPanel", "kind": "custom", "panel": {
+        "dataSources": [{"name": "patients", "concept": "Patient"}],
+        "layout": {"type": "table", "fields": ["birthDay"]},
+        "fieldBindings": [{"field": "birthDay", "source": "patients.birthDay",
+                           "visibleWhen": "birthDay != id"}]}}],
 }
 
 
@@ -140,8 +141,8 @@ class PlanCascadeTest(unittest.TestCase):
 
 class TrustedSourceTest(unittest.TestCase):
     def test_a_hash_pinned_panel_refuses(self) -> None:
-        model = {"panels": [{"name": "PinnedPanel",
-                             "metadata": {"untrustedExtensionEntrypoint": "assets/pinned.html"}}]}
+        model = {"screens": [{"name": "PinnedPanel", "kind": "custom", "panel": {
+            "metadata": {"untrustedExtensionEntrypoint": "assets/pinned.html"}}}]}
         edges = [_edge("panels[PinnedPanel].layout.fields[0]", "panel.layout.fields",
                        "Patient.birthDay", from_name="PinnedPanel")]
 
@@ -175,7 +176,7 @@ class ApplyCascadeTest(unittest.TestCase):
         edits = cascade.apply_cascade(self.model, edges, "birthDay", "birthDate")
 
         self.assertEqual(7, len(edits), edits)
-        panel = self.model["panels"][0]
+        panel = self.model["screens"][0]["panel"]
         query = self.model["queries"][0]
         self.assertEqual(["birthDate"], panel["layout"]["fields"])
         self.assertEqual("birthDate", panel["fieldBindings"][0]["field"])
@@ -217,7 +218,7 @@ class ApplyCascadeTest(unittest.TestCase):
         edits = cascade.apply_cascade(self.model, edges, "birthDay", "birthDate")
 
         self.assertEqual(1, len(edits))
-        self.assertEqual("patients.birthDate", self.model["panels"][0]["fieldBindings"][0]["source"])
+        self.assertEqual("patients.birthDate", self.model["screens"][0]["panel"]["fieldBindings"][0]["source"])
 
     def test_a_path_that_is_not_in_this_file_refuses(self) -> None:
         edges = [_edge("panels[SomePackPanel].layout.fields[0]",
@@ -309,14 +310,15 @@ class QueryPredicateClauseTest(unittest.TestCase):
 
 class FreeTextExpressionTest(unittest.TestCase):
     def test_an_expression_mentioning_the_field_twice_is_rewritten_once_not_refused(self) -> None:
-        model = {"panels": [{"name": "P", "fieldBindings": [{"visibleWhen": "status == 'A' || status == 'B'"}]}]}
+        model = {"screens": [{"name": "P", "kind": "custom", "panel": {
+            "fieldBindings": [{"visibleWhen": "status == 'A' || status == 'B'"}]}}]}
         edges = [_edge(f"panels[P].fieldBindings[0].visibleWhen#{i}", "panel.fieldBindings.predicate",
                        "Patient.status") for i in (0, 2)]
 
         edits = cascade.apply_cascade(model, edges, "status", "state")
 
         self.assertEqual(1, len(edits), edits)
-        self.assertEqual("state == 'A' || state == 'B'", model["panels"][0]["fieldBindings"][0]["visibleWhen"])
+        self.assertEqual("state == 'A' || state == 'B'", model["screens"][0]["panel"]["fieldBindings"][0]["visibleWhen"])
 
 
 class RemainingReferencesTest(unittest.TestCase):

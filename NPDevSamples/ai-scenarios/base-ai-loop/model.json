@@ -19,9 +19,11 @@
       "steps": []
     }
   ],
-  "panels": [
+  "screens": [
     {
-      "name": "LearnerProgress"
+      "name": "LearnerProgress",
+      "kind": "custom",
+      "panel": {}
     }
   ]
 }

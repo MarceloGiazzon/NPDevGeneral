@@ -155,7 +155,8 @@ class ResolveSplitModelContextsTest(unittest.TestCase):
             "version": "1.0.0",
             "concepts": [_concept("Job")],
             "queries": [{"name": "OpenJobs", "concept": "Job"}],
-            "panels": [{"name": "JobsPanel"}],
+            "screens": [{"name": "JobsPanel", "kind": "custom", "panel": {}},
+                        {"name": "JobsBoard", "kind": "list", "concept": "Job"}],
         })
         model = self._model(packs=[{"$ref": "packs/ops/pack.json"}])
 
@@ -163,7 +164,8 @@ class ResolveSplitModelContextsTest(unittest.TestCase):
 
         self.assertIn("ops::Job", [c["name"] for c in resolved["concepts"]])
         self.assertIn("ops::OpenJobs", [q["name"] for q in resolved["queries"]])
-        self.assertIn("ops::JobsPanel", [p["name"] for p in resolved["panels"]])
+        # a screen with a `panel` (or `admin`) block is pack-qualified like the panel it replaced; a plain screen is not
+        self.assertEqual(["ops::JobsPanel", "JobsBoard"], [p["name"] for p in resolved["screens"]])
 
     def test_remote_from_pack_is_reported_uncomposed_never_silently_skipped(self) -> None:
         """A `from` coordinate resolves only out of the lockfile-backed cache at generate time.

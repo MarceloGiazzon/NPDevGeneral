@@ -55,12 +55,12 @@ class BuildMatrixShapeTest(unittest.TestCase):
         self.addCleanup(self._universe_patcher.stop)
 
     def _corpus(self) -> tuple[Path, Path]:
-        # One appgen app using panels+queries, one sample app using only autoPanels.
+        # One appgen app using a custom-screen panel + queries, one sample app using only autoPanels.
         _write_model(self.appgen, "warehouse/model.json", {
             "dslVersion": "3.0.0", "version": "1.0", "namespace": "wh",
             "concepts": [{"name": "Item", "fields": [{"name": "id", "type": "uuid", "id": True,
                                                        "required": True}]}],
-            "panels": [{"name": "ItemList", "route": "/items"}],
+            "screens": [{"name": "ItemList", "kind": "custom", "panel": {"route": "/items"}}],
             "queries": [{"name": "All", "concept": "Item"}],
         })
         _write_model(self.samples, "store/model.json", {
@@ -79,19 +79,19 @@ class BuildMatrixShapeTest(unittest.TestCase):
         self.assertIn("NPDevSamples/store", labels)
 
         warehouse = next(a for a in matrix["apps"] if a["label"] == "AppGen/apps/warehouse")
-        self.assertIn("panels", warehouse["used"])
+        self.assertIn("screen.panel", warehouse["used"])
         self.assertIn("queries", warehouse["used"])
         self.assertNotIn("autoPanels", warehouse["used"])
 
         store = next(a for a in matrix["apps"] if a["label"] == "NPDevSamples/store")
         self.assertIn("autoPanels", store["used"])
-        self.assertNotIn("panels", store["used"])
+        self.assertNotIn("screen.panel", store["used"])
 
     def test_feature_entries_carry_corpus_use_counts_and_keywords(self):
         matrix = emit.build_matrix(*self._corpus())
-        panels = next(f for f in matrix["features"] if f["name"] == "panels")
+        panels = next(f for f in matrix["features"] if f["name"] == "screen.panel")
         self.assertEqual(1, panels["corpusUsers"])
-        self.assertIn("panels", panels["keywords"])
+        self.assertIn("panel", panels["keywords"])
         auto = next(f for f in matrix["features"] if f["name"] == "autoPanels")
         self.assertEqual(1, auto["corpusUsers"])
 

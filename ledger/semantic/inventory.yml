@@ -22,14 +22,6 @@ keys:
     mechanism: "AgentAccessAst -> CompiledAgentAccess (AGENT-1): what AI agents may see and do, per exposure and role. Served by the generated app as an MCP endpoint (AgentMcpController, caller's own bearer token) and chat channels -- a Telegram bot (TelegramChannel) and a WhatsApp Cloud API webhook (WhatsAppChannel + AgentWhatsAppWebhookController) over one AgentConversationService -- all calling the app's own REST API on loopback as the linked user; AgentAccessValidation + AgentAccessChannelCheck guard the model and its auth prerequisites."
     status: shipped
 
-  - key: autoPanels
-    mechanism: "AutoPanelAst -- panel scaffolding derived from a concept without a hand-authored panel."
-    status: shipped
-
-  - key: backOffice
-    mechanism: "backOffice $def (FORM P5) -- the operator/admin surface declared in the model: which concepts get generated back-office screens and for which roles."
-    status: shipped
-
   - key: capabilities
     mechanism: "CapabilityAst + CapabilityDispatcher (NPDevKernel/kernel)."
     status: shipped
@@ -91,10 +83,6 @@ keys:
     mechanism: "packRef; pack manifest (43 keys incl. version/requires/provides/roleBindings/signature/migrations/extends/satelliteOf). All 20 PACK-* ledger items DONE."
     status: partial
     notes: "Mechanism is fully built; the genuine remaining gap is the public/private member boundary (Phase 4, P4.1) -- referencing a private pack member does not yet refuse composition."
-
-  - key: panels
-    mechanism: "PanelAst + business-ui-app.mustache emitter; UI Contract (docs/UI_CONTRACT.md, docs/SCREEN_TAXONOMY.md)."
-    status: shipped
 
   - key: properties
     mechanism: "PropertyAst (Move 13 / REG-108: threaded through MODEL_ARRAY_KEYS, pack.schema.json, ModelResolver, canonical JSON r/w)."

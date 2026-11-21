@@ -325,7 +325,7 @@
       "as": "identity"
     },
     {
-      "from": "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/tracing@tracing-1.0.3",
+      "from": "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/tracing@tracing-1.0.4",
       "as": "tracing"
     },
     {
@@ -1982,133 +1982,6 @@
       }
     }
   ],
-  "autoPanels": [
-    {
-      "name": "Mosaics",
-      "aggregate": "Mosaic",
-      "route": "/mosaics",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ],
-      "selection": {
-        "columns": [
-          "code",
-          "title",
-          "ownerUsername",
-          "rows",
-          "cols",
-          "status"
-        ],
-        "layout": "grid"
-      },
-      "transaction": {
-        "regions": {
-          "cells": {
-            "render": "cellGrid",
-            "cellGrid": {
-              "rowField": "row",
-              "colField": "col",
-              "valueField": "capId",
-              "rowsField": "rows",
-              "colsField": "cols",
-              "defaultRows": 20,
-              "defaultCols": 33,
-              "layout": "hexOffset",
-              "palette": {
-                "query": "ApprovedCaps",
-                "labelField": "label",
-                "imageField": "image",
-                "colorField": "dominantColor"
-              }
-            }
-          }
-        },
-        "actions": [
-          {
-            "procedure": "PaintMosaicWithAi",
-            "label": "Paint with AI",
-            "inputFields": [
-              "aiPrompt"
-            ],
-            "visibleWhen": "$root.status == 'DRAFT'"
-          },
-          {
-            "procedure": "PaintMosaicFromPhoto",
-            "label": "Paint from photo",
-            "visibleWhen": "$root.status == 'DRAFT'"
-          }
-        ]
-      }
-    },
-    {
-      "name": "Collection",
-      "concept": "CollectionItem",
-      "route": "/collection",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ]
-    },
-    {
-      "name": "Caps",
-      "aggregate": "Cap",
-      "route": "/caps",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ],
-      "selection": {
-        "columns": [
-          "image",
-          "label",
-          "breweryId",
-          "dominantColor",
-          "finish",
-          "rarity",
-          "status"
-        ],
-        "layout": "grid"
-      },
-      "transaction": {
-        "actions": [
-          {
-            "procedure": "IdentifyCapWithAi",
-            "label": "Identify with AI",
-            "visibleWhen": "$root.status == 'SUBMITTED'",
-            "review": true
-          },
-          {
-            "procedure": "ExtractCapColors",
-            "label": "Read colours from image"
-          }
-        ]
-      }
-    },
-    {
-      "name": "Breweries",
-      "concept": "Brewery",
-      "route": "/breweries",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ]
-    },
-    {
-      "name": "Members",
-      "concept": "Member",
-      "route": "/members",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ]
-    }
-  ],
   "screens": [
     {
       "name": "MosaicAssemblySheet",
@@ -2177,103 +2050,248 @@
           ]
         }
       ]
-    }
-  ],
-  "backOffice": {
-    "defaultRoute": "Mosaic",
-    "navigation": [
-      {
-        "label": "Mosaics",
-        "target": "Mosaic",
-        "group": "Studio"
-      },
-      {
-        "label": "My collection",
-        "target": "CollectionItem",
-        "group": "Studio"
-      },
-      {
-        "label": "Cap catalogue",
-        "target": "Cap",
-        "group": "Catalogue"
-      },
-      {
-        "label": "Breweries",
-        "target": "Brewery",
-        "group": "Catalogue"
-      },
-      {
-        "label": "Members",
-        "target": "Member",
-        "group": "Community"
-      },
-      {
-        "label": "Trades",
-        "target": "Trade",
-        "group": "Community"
-      },
-      {
-        "label": "Likes",
-        "target": "Like",
-        "group": "Community"
-      },
-      {
-        "label": "Challenges",
-        "target": "Challenge",
-        "group": "Community"
-      }
-    ],
-    "pages": [
-      {
-        "name": "Dashboard",
-        "default": true,
-        "theme": {
-          "mode": "light",
-          "accent": "#b5651d",
-          "logoText": "Pigmentampas",
-          "density": "comfortable"
-        },
-        "gadgets": [
-          {
-            "name": "kpiCaps",
-            "type": "kpi",
-            "title": "Caps catalogued",
-            "query": "TotalCaps",
-            "y": "total"
-          },
-          {
-            "name": "kpiMosaics",
-            "type": "kpi",
-            "title": "Mosaics published",
-            "query": "TotalPublishedMosaics",
-            "y": "total"
-          },
-          {
-            "name": "kpiMembers",
-            "type": "kpi",
-            "title": "Members",
-            "query": "TotalMembers",
-            "y": "total"
-          },
-          {
-            "name": "topBreweries",
-            "type": "bar",
-            "title": "Top breweries in mosaics",
-            "query": "TopBreweriesInMosaics",
-            "x": "capId.breweryId.name",
-            "y": "caps"
-          },
-          {
-            "name": "capsNeeded",
-            "type": "table",
-            "title": "Beers to drink",
-            "query": "BeersToDrink"
-          }
+    },
+    {
+      "name": "Collection",
+      "kind": "list",
+      "concept": "CollectionItem",
+      "admin": {
+        "route": "/collection",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
         ]
       }
-    ],
-    "locale": "en-US"
-  },
+    },
+    {
+      "name": "Breweries",
+      "kind": "list",
+      "concept": "Brewery",
+      "admin": {
+        "route": "/breweries",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ]
+      }
+    },
+    {
+      "name": "Members",
+      "kind": "list",
+      "concept": "Member",
+      "admin": {
+        "route": "/members",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ]
+      }
+    },
+    {
+      "name": "Mosaics",
+      "kind": "workbench",
+      "concept": "Mosaic",
+      "admin": {
+        "route": "/mosaics",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "code",
+            "title",
+            "ownerUsername",
+            "rows",
+            "cols",
+            "status"
+          ],
+          "layout": "grid"
+        },
+        "transaction": {
+          "regions": {
+            "cells": {
+              "render": "cellGrid",
+              "cellGrid": {
+                "rowField": "row",
+                "colField": "col",
+                "valueField": "capId",
+                "rowsField": "rows",
+                "colsField": "cols",
+                "defaultRows": 20,
+                "defaultCols": 33,
+                "layout": "hexOffset",
+                "palette": {
+                  "query": "ApprovedCaps",
+                  "labelField": "label",
+                  "imageField": "image",
+                  "colorField": "dominantColor"
+                }
+              }
+            }
+          },
+          "actions": [
+            {
+              "procedure": "PaintMosaicWithAi",
+              "label": "Paint with AI",
+              "inputFields": [
+                "aiPrompt"
+              ],
+              "visibleWhen": "$root.status == 'DRAFT'"
+            },
+            {
+              "procedure": "PaintMosaicFromPhoto",
+              "label": "Paint from photo",
+              "visibleWhen": "$root.status == 'DRAFT'"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Caps",
+      "kind": "workbench",
+      "concept": "Cap",
+      "admin": {
+        "route": "/caps",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "image",
+            "label",
+            "breweryId",
+            "dominantColor",
+            "finish",
+            "rarity",
+            "status"
+          ],
+          "layout": "grid"
+        },
+        "transaction": {
+          "actions": [
+            {
+              "procedure": "IdentifyCapWithAi",
+              "label": "Identify with AI",
+              "visibleWhen": "$root.status == 'SUBMITTED'",
+              "review": true
+            },
+            {
+              "procedure": "ExtractCapColors",
+              "label": "Read colours from image"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "experiences": [
+    {
+      "name": "admin",
+      "admin": {
+        "defaultRoute": "Mosaic",
+        "navigation": [
+          {
+            "label": "Mosaics",
+            "target": "Mosaic",
+            "group": "Studio"
+          },
+          {
+            "label": "My collection",
+            "target": "CollectionItem",
+            "group": "Studio"
+          },
+          {
+            "label": "Cap catalogue",
+            "target": "Cap",
+            "group": "Catalogue"
+          },
+          {
+            "label": "Breweries",
+            "target": "Brewery",
+            "group": "Catalogue"
+          },
+          {
+            "label": "Members",
+            "target": "Member",
+            "group": "Community"
+          },
+          {
+            "label": "Trades",
+            "target": "Trade",
+            "group": "Community"
+          },
+          {
+            "label": "Likes",
+            "target": "Like",
+            "group": "Community"
+          },
+          {
+            "label": "Challenges",
+            "target": "Challenge",
+            "group": "Community"
+          }
+        ],
+        "pages": [
+          {
+            "name": "Dashboard",
+            "default": true,
+            "theme": {
+              "mode": "light",
+              "accent": "#b5651d",
+              "logoText": "Pigmentampas",
+              "density": "comfortable"
+            },
+            "gadgets": [
+              {
+                "name": "kpiCaps",
+                "type": "kpi",
+                "title": "Caps catalogued",
+                "query": "TotalCaps",
+                "y": "total"
+              },
+              {
+                "name": "kpiMosaics",
+                "type": "kpi",
+                "title": "Mosaics published",
+                "query": "TotalPublishedMosaics",
+                "y": "total"
+              },
+              {
+                "name": "kpiMembers",
+                "type": "kpi",
+                "title": "Members",
+                "query": "TotalMembers",
+                "y": "total"
+              },
+              {
+                "name": "topBreweries",
+                "type": "bar",
+                "title": "Top breweries in mosaics",
+                "query": "TopBreweriesInMosaics",
+                "x": "capId.breweryId.name",
+                "y": "caps"
+              },
+              {
+                "name": "capsNeeded",
+                "type": "table",
+                "title": "Beers to drink",
+                "query": "BeersToDrink"
+              }
+            ]
+          }
+        ],
+        "locale": "en-US"
+      }
+    }
+  ],
   "seeds": [
     {
       "concept": "Brewery",

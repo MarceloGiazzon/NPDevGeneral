@@ -39,14 +39,14 @@ class AppShellModelThreadingTest {
                     { "name": "Widget", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] },
                     { "name": "Gadget", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
                   ],
-                  "backOffice": {
+                  "experiences": [ { "name": "admin", "admin": {
                     "defaultRoute": "Widget",
                     "navigation": [
                       { "label": "Widgets", "target": "Widget", "group": "Operations" },
                       { "label": "Gadgets", "target": "Gadget", "group": "Operations" },
                       { "label": "Reference Data" }
                     ]
-                  }
+                  } } ]
                 }
                 """);
 
@@ -117,13 +117,13 @@ class AppShellModelThreadingTest {
                   "concepts": [
                     { "name": "Widget", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
                   ],
-                  "backOffice": {
+                  "experiences": [ { "name": "admin", "admin": {
                     "defaultRoute": "Widget",
                     "navigation": [
                       { "label": "Widgets", "target": "Widget", "group": "Operations" },
                       { "label": "Gizmos", "target": "NoSuchConcept", "group": "Operations" }
                     ]
-                  }
+                  } } ]
                 }
                 """);
 
@@ -151,12 +151,12 @@ class AppShellModelThreadingTest {
                   "concepts": [
                     { "name": "Widget", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
                   ],
-                  "backOffice": {
+                  "experiences": [ { "name": "admin", "admin": {
                     "defaultRoute": "NoSuchConcept",
                     "navigation": [
                       { "label": "Widgets", "target": "Widget", "group": "Operations" }
                     ]
-                  }
+                  } } ]
                 }
                 """);
 

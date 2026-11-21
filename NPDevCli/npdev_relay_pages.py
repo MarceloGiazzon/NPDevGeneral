@@ -382,12 +382,12 @@ def merged_menu_text(app_dir, answer_text: str) -> str:
 
 
 def _model_targets(model) -> set | None:
-    """The names a BUSINESS node may open (concepts and panels), or None when the model cannot say (a name may come from a
-    fragment, a pack or an auto panel)."""
-    if not isinstance(model, dict) or any(model.get(k) for k in ("packs", "modules", "autoPanels")) or any(isinstance(v, list) and any(isinstance(e, dict) and "$ref" in e for e in v) for v in model.values()):
+    """The names a BUSINESS node may open (the concepts), or None when the model cannot say (a screen -- a hand-written panel
+    is one -- or a name from a fragment or a pack may be the target)."""
+    if not isinstance(model, dict) or any(model.get(k) for k in ("packs", "modules", "screens")) or any(isinstance(v, list) and any(isinstance(e, dict) and "$ref" in e for e in v) for v in model.values()):
         return None
     names: set = set()
-    for key in ("concepts", "panels"):
+    for key in ("concepts",):
         items = model.get(key) or []
         if not isinstance(items, list) or any(not (isinstance(i, dict) and isinstance(i.get("name"), str)) for i in items):
             return None

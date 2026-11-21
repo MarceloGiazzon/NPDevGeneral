@@ -174,63 +174,66 @@
       ]
     }
   ],
-  "panels": [
+  "screens": [
     {
       "name": "ProbePanel",
-      "route": "/probe/records",
-      "title": "Probe records",
-      "dataSources": [
-        {
-          "name": "activeProbeRecords",
-          "query": "ActiveProbeRecords"
-        }
-      ],
-      "layout": {
-        "type": "table",
-        "fields": [
-          "code",
-          "label",
-          "quantity",
-          "total",
-          "active"
-        ]
-      },
-      "fieldBindings": [
-        {
-          "field": "code",
-          "source": "activeProbeRecords.code"
-        },
-        {
-          "field": "label",
-          "source": "activeProbeRecords.label"
-        },
-        {
-          "field": "quantity",
-          "source": "activeProbeRecords.quantity"
-        },
-        {
-          "field": "total",
-          "source": "activeProbeRecords.total"
-        },
-        {
-          "field": "active",
-          "source": "activeProbeRecords.active"
-        }
-      ],
-      "actions": [
-        {
-          "name": "SaveProbeRecord",
-          "binding": "procedure",
-          "procedure": "SaveProbeRecordProcedure",
-          "label": "Save probe record",
-          "explainability": {
-            "semanticPath": "PanelRuntime -> ProcedureExecutor -> ConceptGateway"
+      "kind": "custom",
+      "panel": {
+        "route": "/probe/records",
+        "title": "Probe records",
+        "dataSources": [
+          {
+            "name": "activeProbeRecords",
+            "query": "ActiveProbeRecords"
           }
+        ],
+        "layout": {
+          "type": "table",
+          "fields": [
+            "code",
+            "label",
+            "quantity",
+            "total",
+            "active"
+          ]
+        },
+        "fieldBindings": [
+          {
+            "field": "code",
+            "source": "activeProbeRecords.code"
+          },
+          {
+            "field": "label",
+            "source": "activeProbeRecords.label"
+          },
+          {
+            "field": "quantity",
+            "source": "activeProbeRecords.quantity"
+          },
+          {
+            "field": "total",
+            "source": "activeProbeRecords.total"
+          },
+          {
+            "field": "active",
+            "source": "activeProbeRecords.active"
+          }
+        ],
+        "actions": [
+          {
+            "name": "SaveProbeRecord",
+            "binding": "procedure",
+            "procedure": "SaveProbeRecordProcedure",
+            "label": "Save probe record",
+            "explainability": {
+              "semanticPath": "PanelRuntime -> ProcedureExecutor -> ConceptGateway"
+            }
+          }
+        ],
+        "explainability": {
+          "governedDataAccess": "ConceptGateway",
+          "ruleProfile": "always"
         }
-      ],
-      "explainability": {
-        "governedDataAccess": "ConceptGateway",
-        "ruleProfile": "always"
       }
     }
   ],

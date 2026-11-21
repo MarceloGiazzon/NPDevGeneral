@@ -444,39 +444,45 @@
       ]
     }
   ],
-  "autoPanels": [
+  "screens": [
     {
       "name": "ApprovalRequests",
+      "kind": "list",
       "concept": "ApprovalRequest",
-      "route": "/approvals",
-      "surfaces": [
-        "selection",
-        "detail"
-      ],
-      "selection": {
-        "columns": [
-          "title",
-          "status",
-          "decidedBy"
-        ]
+      "admin": {
+        "route": "/approvals",
+        "surfaces": [
+          "selection",
+          "detail"
+        ],
+        "selection": {
+          "columns": [
+            "title",
+            "status",
+            "decidedBy"
+          ]
+        }
       }
     },
     {
       "name": "ApprovalDecisions",
+      "kind": "list",
       "concept": "ApprovalDecision",
-      "route": "/approvals/decisions",
-      "surfaces": [
-        "selection",
-        "detail"
-      ],
-      "selection": {
-        "columns": [
-          "requestId",
-          "status",
-          "completedBy",
-          "decidedAt",
-          "comment"
-        ]
+      "admin": {
+        "route": "/approvals/decisions",
+        "surfaces": [
+          "selection",
+          "detail"
+        ],
+        "selection": {
+          "columns": [
+            "requestId",
+            "status",
+            "completedBy",
+            "decidedAt",
+            "comment"
+          ]
+        }
       }
     }
   ]

@@ -3,17 +3,17 @@
   "packs" : {
     "contacts" : {
       "resolvedVersion" : "1.1.0",
-      "digest" : "sha256:f99b4b3e480d38ffc0617119fee351750b9e33f25f71b61dc32e64be24e80e08",
+      "digest" : "sha256:07741b285b62b0f077e27ec32fca72d48010ef100b4444f6bd0e57b655a7df97",
       "sourcePath" : "packs/contacts/pack.json"
     },
     "products" : {
       "resolvedVersion" : "1.0.0",
-      "digest" : "sha256:4178bd7b95ad9cc23576faf9a51bb65e44259621e92f29727048a3ebf04db2e3",
+      "digest" : "sha256:56ba8d49d89bc7a12b3451b8c195beb9a38854c9195040316db5b377eab25317",
       "sourcePath" : "packs/products/pack.json"
     },
     "sales" : {
       "resolvedVersion" : "2.0.0",
-      "digest" : "sha256:7eed369a506dd7964c027b511097b0cc6bc684d1903206f555d0426408a0637b",
+      "digest" : "sha256:78018fa2b4b080923d5d48a60c6cfa15739332bce1c396b222028695c9260965",
       "sourcePath" : "packs/sales/pack.json"
     }
   }

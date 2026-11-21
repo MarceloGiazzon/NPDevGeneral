@@ -356,7 +356,7 @@ def emit_app_tree_page(app_folder: Path, static_dir: Path, app_id: str = "") -> 
 
 _MODEL_KEY_TO_BUCKET = {
     "concepts": "Concepts", "domainTypes": "Concepts",
-    "autoPanels": "Panels", "panels": "Panels",
+    "screens": "Panels",
     "flows": "Procedures", "procedures": "Procedures",  "conversions": "Procedures",
     "packs": "Features", "modules": "Features", "provides": "Features",
     "roles": "Features", "propertyScopes": "Features", "properties": "Features",

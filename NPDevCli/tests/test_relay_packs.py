@@ -230,6 +230,69 @@ class CatalogBriefingTests(unittest.TestCase):
         self.assertEqual(engine.pack_catalog_text(None), "")
         self.assertEqual(engine.pack_catalog_text({"packs": []}), "")
 
+    # --- D-8: the directive, and the Manager choosing the packs that fit the request --------------------------
+
+    @staticmethod
+    def _big_catalog() -> dict:
+        repo = "https://github.com/MarceloGiazzon/NPR.git"
+
+        def pack(name, desc, concepts=(), roles=(), needs=()):
+            entry = {"pack": name, "version": "1.0.0", "description": desc,
+                     "from": f"git+{repo}//packs/{name}@{name}-1.0.0"}
+            if concepts:
+                entry["concepts"] = list(concepts)
+            if roles:
+                entry["roles"] = list(roles)
+            if needs:
+                entry["needs"] = list(needs)
+            return entry
+
+        filler = [pack(f"filler{i}", "Unrelated housekeeping tools") for i in range(10)]
+        return {"repository": repo, "packs": filler + [
+            pack("appointments", "Book and manage appointments", ["Appointment"], ["scheduler"], ["contacts"]),
+            pack("contacts", "Organizations, people, addresses", ["Person"]),
+            pack("invoicing", "Issue invoices and track payments", ["Invoice"], ["accountant"])]}
+
+    def test_the_directive_is_in_every_catalog_section(self):
+        for text in (engine.pack_catalog_text(CATALOG), engine.pack_catalog_text(CATALOG, "any ask at all")):
+            self.assertIn("First match every part of the request", text)
+            self.assertIn("do NOT re-declare its concepts", text)
+
+    def test_a_small_catalog_is_listed_whole_even_with_an_ask(self):
+        text = engine.pack_catalog_text(CATALOG, "contacts for my clinic")
+        self.assertNotIn("Packs chosen for this request", text)
+        self.assertIn("- sales 2.0.0", text)
+
+    def test_a_big_catalog_shows_only_the_packs_that_fit_the_request_and_their_dependencies(self):
+        text = engine.pack_catalog_text(self._big_catalog(), "A clinic that books appointments and sends invoices")
+        self.assertIn("Packs chosen for this request (13 exist", text)
+        for name in ("appointments", "invoicing", "contacts"):   # contacts: appointments needs it
+            self.assertIn(f"- {name} 1.0.0", text)
+        self.assertNotIn("filler", text)
+        self.assertIn("Roles you must bind in `provides.roleBindings`", text)
+        self.assertIn("appointments: scheduler", text)
+        self.assertIn("invoicing: accountant", text)
+
+    def test_a_request_that_matches_no_pack_falls_back_to_the_whole_list(self):
+        text = engine.pack_catalog_text(self._big_catalog(), "Quero uma clinica com agenda de consultas")
+        self.assertNotIn("Packs chosen for this request", text)
+        self.assertIn("- filler3 1.0.0", text)
+
+    def test_no_ask_means_the_whole_list(self):
+        text = engine.pack_catalog_text(self._big_catalog())
+        self.assertNotIn("Packs chosen for this request", text)
+        self.assertIn("- filler9 1.0.0", text)
+
+    def test_the_choice_is_deterministic_best_first_and_capped(self):
+        catalog = self._big_catalog()
+        crowded = [dict(e, description="Appointments and invoices") for e in catalog["packs"][:10]] + catalog["packs"][10:]
+        first = [e["pack"] for e in engine.select_catalog_entries(crowded, "appointments invoices")]
+        again = [e["pack"] for e in engine.select_catalog_entries(crowded, "appointments invoices")]
+        self.assertEqual(first, again)
+        self.assertEqual(first[:2], ["appointments", "invoicing"])   # id words outweigh description words
+        self.assertLessEqual(len([n for n in first if n.startswith("filler")]), engine.CATALOG_PICK_MAX - 2)
+        self.assertEqual(engine.select_catalog_entries(crowded, "the and for"), [])   # stop words alone pick nothing
+
     def test_offline_with_nothing_cached_leaves_the_bundle_alone(self):
         with mock.patch.object(npdev_cli, "_load_pack_catalog", side_effect=npdev_cli.CliError("no cache")):
             self.assertEqual(engine.with_pack_catalog("bundle\n", {"bytes": 7}), ("bundle\n", {"bytes": 7}))

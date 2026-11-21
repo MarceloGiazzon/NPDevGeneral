@@ -38,10 +38,10 @@ class PanelLayoutSlotsTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "title", "type": "string" } ] }
               ],
-              "panels": [
-                { "name": "TicketBoard", "route": "/ticket-board", "title": "Tickets",
+              "screens": [
+                { "name": "TicketBoard", "kind": "custom", "panel": { "route": "/ticket-board", "title": "Tickets",
                   "dataSources": [ { "name": "tickets", "concept": "Ticket" } ],
-                  "layout": { "type": "table"%s } }
+                  "layout": { "type": "table"%s }}}
               ]
             }
             """.formatted(slotsJson.isEmpty() ? "" : ", \"slots\": " + slotsJson);

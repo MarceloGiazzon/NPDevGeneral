@@ -266,7 +266,7 @@ def _run_stateless_prompt(args) -> int:
     if args.intent == "change" and not ask:
         raise AiConfigError("say what should change (--ask-file is empty)")
     code = normalize_code(args.code) if args.code else ingest_mod.new_session_code()
-    bundle, manifest = engine.build_knowledge()
+    bundle, manifest = engine.build_knowledge(ask=ask)
     text = prompts_mod.compose_round1(
         prompts_mod.load_prompts(), code=code, intent=args.intent, ask=ask, language=args.language or DEFAULT_LANGUAGE,
         knowledge=bundle, model=model, errors=errors, interview=bool(args.interview))

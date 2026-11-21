@@ -40,7 +40,8 @@ CONTENT_FILES = [
     "docs/content/authoring-for-ai.json",
 ]
 
-SAMPLE_OBJECT_KEYS = ["concepts", "flows", "panels", "procedures", "events"]
+# D-1 phase 3: a hand-written panel is a screens[] entry (kind custom + panel), so "screens" is the key that names them.
+SAMPLE_OBJECT_KEYS = ["concepts", "flows", "screens", "panels", "procedures", "events"]
 
 
 _FENCE = re.compile(r"^[ \t]*```[ \t]*(json|jsonc)[ \t]*\r?\n(.*?)^[ \t]*```[ \t]*$",
@@ -51,7 +52,7 @@ _JSON_COMMENTS = re.compile(r'"(?:\\.|[^"\\])*"|//[^\n]*|/\*.*?\*/', re.DOTALL)
 _STEP_MARKER_KEYS = {"name", "scope", "invariants", "cap", "op", "out", "capability", "operation",
                      "args", "input", "output", "awaitEvent", "condition", "then", "else", "from",
                      "value", "awaitRef", "match"}
-_MODEL_KEYS = ("concepts", "flows", "panels")
+_MODEL_KEYS = ("concepts", "flows", "screens", "panels")
 
 _migration_module: Any = None
 

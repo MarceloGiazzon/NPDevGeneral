@@ -1,0 +1,54 @@
+{
+ "$comment": "D-1 phase 3 admission, 2026-11-21 (owner decision: merge panels/autoPanels/backOffice into screens/experiences). One keyword (screens[].panel) whose body is $defs/screenPanel, the old panel body minus `name` (the screen supplies it): 1 + 12 slots. Replaces the removed root key `panels`; the orphaned $defs/panel was dropped from the schema in the same step.",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "screens[].panel",
+ "slots": [
+  "screen.panel",
+  "screenPanel.actions",
+  "screenPanel.dataSources",
+  "screenPanel.enabledWhen",
+  "screenPanel.explainability",
+  "screenPanel.fieldBindings",
+  "screenPanel.guidePage",
+  "screenPanel.layout",
+  "screenPanel.metadata",
+  "screenPanel.route",
+  "screenPanel.title",
+  "screenPanel.uid",
+  "screenPanel.visibility"
+ ],
+ "rung": 0,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-21",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "a block of settings for one hand-written panel (route, title, data sources, layout, field bindings, visibility, actions); nothing is computed"
+  },
+  "notLower": {
+   "value": true,
+   "why": "a panel is a routed, permission-checked page the author composes from named data sources and layout regions; no expression, function or step can produce one, and kind custom + component only mounts app code"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "NPDevSamples/dsl-conformance-max",
+    "NPDevSamples/f6-showcase"
+   ],
+   "note": "every hand-written panel in the samples, the AppGen apps and the built-in packs is declared this way; it replaces the root panels[] key, one-for-one"
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/compiler/PanelScreenEquivalenceTest.java",
+   "note": "PanelScreenEquivalenceTest compiles the same app written with the old panels[] shape and with kind custom screens carrying a panel block and asserts the compiled panels are identical; JsonModelParser refuses a root panels key (LEGACY_PANELS_ROOT_KEY)"
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "`screens[].panel`"
+  }
+ },
+ "replaces": [
+  "pack:panels"
+ ],
+ "budgetDelta": 13
+}

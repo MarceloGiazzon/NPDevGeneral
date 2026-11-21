@@ -33,18 +33,96 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from appshell_guidepages_to_backoffice_codemod import (  # noqa: E402  (shared textual-JSON helpers)
-    SKIP_NAMES,
-    SKIP_PARTS,
-    _dump,
-    _line_start,
-    _member_indent,
-    _remove_member,
-    _scan_object,
-    _string_end,
-    _value_end,
-)
+
+SKIP_PARTS = {"Output", "node_modules", "build", ".gradle", "archive", ".git", "tmp", "ai-scenarios", "__pycache__"}
+SKIP_NAMES = {"ai-model.json"}
+
+
+# ------------------------------------------------------------------ textual JSON scanning
+
+def _string_end(text: str, i: int) -> int:
+    j = i + 1
+    while text[j] != '"':
+        j += 2 if text[j] == "\\" else 1
+    return j + 1
+
+
+def _value_end(text: str, i: int) -> int:
+    """Offset just past the JSON value starting at ``i``."""
+    if text[i] == '"':
+        return _string_end(text, i)
+    if text[i] in "{[":
+        depth = 0
+        while True:
+            ch = text[i]
+            if ch == '"':
+                i = _string_end(text, i)
+                continue
+            if ch in "{[":
+                depth += 1
+            elif ch in "}]":
+                depth -= 1
+                if depth == 0:
+                    return i + 1
+            i += 1
+    while i < len(text) and text[i] not in ",}] \t\r\n":
+        i += 1
+    return i
+
+
+def _scan_object(text: str, start: int) -> dict[str, tuple[int, int, int]]:
+    """Members of the object whose ``{`` is at ``start``: key -> (key's opening quote, value start, value end)."""
+    spans: dict[str, tuple[int, int, int]] = {}
+    i = start + 1
+    n = len(text)
+    while True:
+        while i < n and text[i] in " \t\r\n,":
+            i += 1
+        if i >= n or text[i] == "}":
+            return spans
+        key_start = i
+        i = _string_end(text, i)
+        key = json.loads(text[key_start:i])
+        while text[i] in " \t\r\n:":
+            i += 1
+        value_start = i
+        i = _value_end(text, i)
+        spans[key] = (key_start, value_start, i)
+
+
+def _line_start(text: str, offset: int) -> int:
+    return text.rfind("\n", 0, offset) + 1
+
+
+def _member_indent(text: str, key_start: int) -> str:
+    indent = text[_line_start(text, key_start):key_start]
+    return "  " if indent.strip() else indent
+
+
+def _dump(value, indent: str) -> str:
+    """json.dumps(value) with every line after the first prefixed by ``indent`` (the first follows a key)."""
+    return json.dumps(value, indent=2, ensure_ascii=False).replace("\n", "\n" + indent)
+
+
+def _remove_member(work: str, key_start: int, value_end: int) -> str:
+    """Delete one member (the whole line(s) it occupies) and fix the surrounding comma."""
+    start = _line_start(work, key_start)
+    end = value_end
+    while end < len(work) and work[end] in " \t":
+        end += 1
+    if end < len(work) and work[end] == ",":
+        end += 1
+        while end < len(work) and work[end] in " \t":
+            end += 1
+        if end < len(work) and work[end] == "\n":
+            end += 1
+        return work[:start] + work[end:]
+    if end < len(work) and work[end] == "\n":
+        end += 1
+    head = work[:start].rstrip()
+    if head.endswith(","):
+        head = head[:-1]
+    return head + "\n" + work[end:]
 
 
 @dataclass

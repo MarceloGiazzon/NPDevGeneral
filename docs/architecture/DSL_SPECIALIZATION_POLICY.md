@@ -86,6 +86,15 @@ element type — proven for concepts by
   duplicate-field rejection. `ExtendsRetiredTest` — the retired `extends` (concept alias, pack
   keyword → `augments`) is refused with the replacement named (D-2, 2026-11-21).
 
+## Depth limit (D-3, 2026-11-21)
+
+A concept's `specializes` chain should be at most **two links** long (`A <- B <- C`). A longer chain still compiles;
+`ConceptValidation.validateSpecializationDepth` emits a **warning** naming the whole chain (tests:
+`SpecializationDepthWarningTest`). Specialization answers "is this a new kind of thing" and takes one parent; "this
+adds fields and rules to the same thing" is a **facet** (a pack's `augments`), and several facets combine on one
+concept -- a clinic doing cardiology and radiology on the same `Appointment` needs two facets, which a single chain
+cannot express. Promote the warning to an error only if the corpus never trips it.
+
 ## Lineage (P3.3)
 
 `ConceptLineage` (`NPDevContract/dsl/.../resolution/ConceptLineage.java`) answers "what does this

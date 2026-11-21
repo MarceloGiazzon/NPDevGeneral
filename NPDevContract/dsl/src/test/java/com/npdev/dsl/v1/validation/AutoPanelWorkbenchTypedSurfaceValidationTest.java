@@ -46,8 +46,7 @@ class AutoPanelWorkbenchTypedSurfaceValidationTest {
                   { "name": "itemId", "type": "uuid" } ] }
               ],
               "flows": [{"name": "RealProcedure", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
-              "autoPanels": [ { "aggregate": "Movimento",
-                "transaction": %s } ]
+              "screens": [ { "name": "Movimento", "kind": "workbench", "concept": "Movimento", "admin": { "transaction": %s } } ]
             }
             """.formatted(transactionJson);
     }

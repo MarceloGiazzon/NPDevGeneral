@@ -47,13 +47,12 @@ class ReferenceIntegrityValidationTest {
                     ] }
                   ],
                   "queries": [ { "name": "AllOrders", "concept": "WidgetOrder" }%s ],
-                  "panels": [
+                  "screens": [
                     {
-                      "name": "OrdersPanel",
+                      "name": "OrdersPanel", "kind": "custom", "panel": {
                       "route": "/orders",
                       "dataSources": [ { "name": "orders", "concept": "WidgetOrder" } ],
-                      "layout": { "type": "table", "fields": ["customerEmail"] }%s
-                    }
+                      "layout": { "type": "table", "fields": ["customerEmail"] }%s}}
                   ]
                 }
                 """.formatted(queryExtras, panelExtras);
@@ -161,16 +160,15 @@ class ReferenceIntegrityValidationTest {
                       { "name": "customerEmail", "type": "string", "ui": { "label": "Email" } }
                     ] }
                   ],
-                  "panels": [
+                  "screens": [
                     {
-                      "name": "OrdersPanel",
+                      "name": "OrdersPanel", "kind": "custom", "panel": {
                       "route": "/orders",
                       "dataSources": [
                         { "name": "orders", "concept": "WidgetOrder",
                           "addFormFields": ["ghostFormField"] }
                       ],
-                      "layout": { "type": "table", "fields": ["customerEmail"] }
-                    }
+                      "layout": { "type": "table", "fields": ["customerEmail"] }}}
                   ]
                 }
                 """).getErrors();

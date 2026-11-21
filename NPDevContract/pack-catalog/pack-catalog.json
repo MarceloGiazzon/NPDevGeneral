@@ -1660,7 +1660,7 @@
       "area": "compliance",
       "sectors": [],
       "status": "existing",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "concepts": [
         "TraceEntry"
       ],

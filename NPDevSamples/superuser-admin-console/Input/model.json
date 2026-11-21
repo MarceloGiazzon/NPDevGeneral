@@ -213,37 +213,6 @@
       ]
     }
   ],
-  "panels": [
-    {
-      "name": "ProjectsOverviewPanel",
-      "route": "/projects-overview",
-      "title": "Projects Overview",
-      "visibility": "isSuperUser",
-      "dataSources": [
-        {
-          "name": "projects",
-          "concept": "Project"
-        }
-      ],
-      "layout": {
-        "type": "table",
-        "fields": [
-          "name",
-          "status",
-          "ownerEmail"
-        ]
-      },
-      "actions": [
-        {
-          "name": "recount",
-          "label": "Recount Projects",
-          "binding": "procedure",
-          "procedure": "CountProjects",
-          "enabledWhen": "role == 'ADMIN'"
-        }
-      ]
-    }
-  ],
   "screens": [
     {
       "name": "ProjectsPdf",
@@ -252,6 +221,38 @@
       "title": "Projects",
       "pageSize": "A4",
       "marginMm": 20
+    },
+    {
+      "name": "ProjectsOverviewPanel",
+      "kind": "custom",
+      "panel": {
+        "route": "/projects-overview",
+        "title": "Projects Overview",
+        "visibility": "isSuperUser",
+        "dataSources": [
+          {
+            "name": "projects",
+            "concept": "Project"
+          }
+        ],
+        "layout": {
+          "type": "table",
+          "fields": [
+            "name",
+            "status",
+            "ownerEmail"
+          ]
+        },
+        "actions": [
+          {
+            "name": "recount",
+            "label": "Recount Projects",
+            "binding": "procedure",
+            "procedure": "CountProjects",
+            "enabledWhen": "role == 'ADMIN'"
+          }
+        ]
+      }
     }
   ]
 }

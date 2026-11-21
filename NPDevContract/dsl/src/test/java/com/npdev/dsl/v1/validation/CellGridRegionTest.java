@@ -63,8 +63,7 @@ class CellGridRegionTest {
                 { "name": "Caps", "concept": "Cap" },
                 { "name": "Breweries", "concept": "Brewery" }
               ],
-              "autoPanels": [ { "name": "Boards", "aggregate": "Board",
-                "transaction": { "regions": %s } } ]
+              "screens": [ { "name": "Boards", "kind": "workbench", "concept": "Board", "admin": { "transaction": { "regions": %s } } } ]
             }
             """.formatted(regionsJson);
     }

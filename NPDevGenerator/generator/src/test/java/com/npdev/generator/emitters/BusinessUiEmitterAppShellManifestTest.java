@@ -55,14 +55,14 @@ public class BusinessUiEmitterAppShellManifestTest {
                     { "name": "WidgetOrder", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] },
                     { "name": "WidgetCatalogEntry", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
                   ],
-                  "backOffice": {
+                  "experiences": [ { "name": "admin", "admin": {
                     "defaultRoute": "WidgetOrder",
                     "navigation": [
                       { "label": "Widget Orders", "target": "WidgetOrder", "group": "Operations" },
                       { "label": "Widget Catalog", "target": "WidgetCatalogEntry", "group": "Operations" },
                       { "label": "Reference Data" }
                     ]
-                  }
+                  } } ]
                 }
                 """);
 
@@ -141,11 +141,33 @@ public class BusinessUiEmitterAppShellManifestTest {
                       { "name": "title", "type": "string" }
                     ] }
                   ],
-                  "autoPanels": [
-                    { "name": "Orders", "concept": "Order", "route": "/orders",
-                      "surfaces": ["selection", "detail", "transaction"] },
-                    { "name": "Boards", "aggregate": "Board", "route": "/boards",
-                      "surfaces": ["selection", "detail", "transaction"] }
+                  "screens": [
+                    {
+                      "name": "Orders",
+                      "kind": "list",
+                      "concept": "Order",
+                      "admin": {
+                        "route": "/orders",
+                        "surfaces": [
+                          "selection",
+                          "detail",
+                          "transaction"
+                        ]
+                      }
+                    },
+                    {
+                      "name": "Boards",
+                      "kind": "workbench",
+                      "concept": "Board",
+                      "admin": {
+                        "route": "/boards",
+                        "surfaces": [
+                          "selection",
+                          "detail",
+                          "transaction"
+                        ]
+                      }
+                    }
                   ]
                 }
                 """);

@@ -41,8 +41,24 @@ public class BusinessUiEmitterExprEngineTest {
                         { "name": "id", "type": "uuid", "id": true, "required": true },
                         { "name": "ordId", "type": "uuid" }, { "name": "qty", "type": "integer" } ] }
                   ],
-                  "autoPanels": [ { "aggregate": "Ord", "transaction": {
-                      "computed": [ { "col": "double", "expr": "qty * 2", "collection": "lines" } ] } } ]
+                  "screens": [
+                    {
+                      "name": "Ord",
+                      "kind": "workbench",
+                      "concept": "Ord",
+                      "admin": {
+                        "transaction": {
+                          "computed": [
+                            {
+                              "col": "double",
+                              "expr": "qty * 2",
+                              "collection": "lines"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
                 }
                 """);
         CompiledModel model = new ModelCompiler().compile(new JsonModelParser().parse(modelPath));

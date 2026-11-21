@@ -2988,7 +2988,12 @@
     {
       "name": "shelfTitle",
       "description": "FORM P4-T2 (rung 2): the display title every shelf gets by default. Inlined into ShelfLayout.displayTitle's defaultExpression at compile time, so the behaviour probe 12-value-functions-events-audit still sees the evaluated string 'Shelf <name>'.",
-      "params": [ { "name": "label", "type": "string" } ],
+      "params": [
+        {
+          "name": "label",
+          "type": "string"
+        }
+      ],
       "returns": "string",
       "body": "concat('Shelf ', label)"
     }
@@ -3269,491 +3274,6 @@
       "metadata": {
         "purpose": "Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): backs StockTransfer.items.positions.lookupFields[] (maxQuantity) -- run ONCE per aggregate load (AggregateRuntime.runLookupQueries), never per row and never with a runtime-bound parameter, since no query-execution path in the platform substitutes one into `where` today. Joined to position rows in memory by localId."
       }
-    }
-  ],
-  "autoPanels": [
-    {
-      "name": "ShelfLayoutWorkbench",
-      "aggregate": "ShelfLayout",
-      "route": "/shelf-layouts",
-      "metadata": {
-        "purpose": "P3b: corpus witness for transaction.regions render \"cellGrid\" -- the slots collection painted as a square board sized by the root's rows/cols, palette from ActiveCatalogEntries. Also the witness for selection.layout grid: the workbench list renders root rows as cards."
-      },
-      "selection": {
-        "layout": "grid"
-      },
-      "transaction": {
-        "regions": {
-          "slots": {
-            "render": "cellGrid",
-            "cellGrid": {
-              "rowField": "row",
-              "colField": "col",
-              "valueField": "entryId",
-              "rowsField": "rows",
-              "colsField": "cols",
-              "defaultRows": 4,
-              "defaultCols": 6,
-              "layout": "square",
-              "palette": {
-                "query": "ActiveCatalogEntries",
-                "labelField": "displayName"
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "name": "WidgetOrderWorkbench",
-      "aggregate": "WidgetOrder",
-      "route": "/widget-orders",
-      "metadata": {
-        "purpose": "Coverage for autoPanels[] outside WmsOffice, and for the typed transaction.actions[] surface: inputFields (inline mini-form merged into the draft), applyTo (appendRow field mapping, with an action-level visibleWhen) and afterAction (a procedure that folds {draft, result} into a patched draft, subsuming applyTo)."
-      },
-      "transaction": {
-        "hooks": {
-          "onLoad": "SeedWidgetOrderContextProcedure",
-          "onFieldChange": "RecalculateWidgetOrderTotalsProcedure",
-          "beforeAction": "ValidateWidgetOrderProcedure"
-        },
-        "derivedFields": {
-          "totalQuantity": {
-            "expression": "sum(lines[].quantity)",
-            "label": "Total quantity"
-          },
-          "auditedQuantity": {
-            "tier": "server",
-            "procedure": "SummarizeWidgetOrderProcedure",
-            "label": "Audited quantity"
-          }
-        },
-        "regions": {
-          "lines.notes": {
-            "render": "component",
-            "component": "widget-order-notes"
-          }
-        },
-        "actions": [
-          {
-            "label": "Apply status",
-            "procedure": "RenameOrderStatusProcedure",
-            "inputFields": [
-              "newStatus"
-            ]
-          },
-          {
-            "label": "Suggest line",
-            "procedure": "SuggestLineProcedure",
-            "applyTo": {
-              "collection": "lines",
-              "mode": "appendRow",
-              "map": {
-                "sku": "$resultado.id",
-                "quantity": "1"
-              }
-            },
-            "visibleWhen": "$root.status == 'DRAFT'"
-          },
-          {
-            "label": "Suggest and fold line",
-            "procedure": "SuggestLineProcedure",
-            "afterAction": "ApplySuggestedLineProcedure"
-          }
-        ],
-        "visibleWhen": {
-          "lines": "$root.status != 'CANCELLED'"
-        }
-      }
-    },
-    {
-      "name": "WidgetOrderTypedActionsWorkbench",
-      "aggregate": "WidgetOrder",
-      "route": "/widget-orders-typed",
-      "metadata": {
-        "purpose": "Move 7 W1 (docs/MOVE7_IMPLEMENTATION_SPEC.md): dsl-conformance-max witness for the TYPED transaction.actions/.visibleWhen/.bandPickers, alongside WidgetOrderWorkbench's existing coverage of the untyped, deprecated transaction.metadata equivalents just above -- both spellings still work this release, but a typo in this typed form now fails at schema time instead of silently doing nothing. lines.notes's visibleWhen (BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 4.3/B16 Step 1) is also the corpus witness for AND-composing a $ui.<name> predicate with a $root.<field> predicate in one expression."
-      },
-      "transaction": {
-        "actions": [
-          {
-            "procedure": "RenameOrderStatusProcedure",
-            "label": "Apply status (typed)",
-            "inputFields": [
-              "newStatus"
-            ],
-            "review": true
-          },
-          {
-            "procedure": "SuggestLineProcedure",
-            "label": "Suggest line (typed)",
-            "applyTo": {
-              "collection": "lines",
-              "mode": "appendRow",
-              "map": {
-                "sku": "$resultado.id",
-                "quantity": "1"
-              }
-            },
-            "visibleWhen": "$root.status == 'DRAFT'"
-          },
-          {
-            "procedure": "SuggestLineProcedure",
-            "label": "Suggest and fold line (typed)",
-            "afterAction": "ApplySuggestedLineProcedure"
-          }
-        ],
-        "uiState": {
-          "recordKind": {
-            "label": "Record kind",
-            "values": [
-              "INBOUND",
-              "OUTBOUND"
-            ],
-            "default": "INBOUND"
-          }
-        },
-        "visibleWhen": {
-          "lines": "$root.status != 'CANCELLED'",
-          "lines.notes": "$ui.recordKind == 'INBOUND' && $root.status != 'CANCELLED'"
-        },
-        "bandPickers": {
-          "notes": {
-            "panel": "WidgetOrderReviewPanel",
-            "label": "Pick a note",
-            "columns": [
-              "id"
-            ],
-            "filter": "$row.text != ''",
-            "multiSelect": true
-          }
-        }
-      }
-    },
-    {
-      "name": "WidgetOrderNoPanelPickerWorkbench",
-      "aggregate": "WidgetOrder",
-      "route": "/widget-orders-no-panel-picker",
-      "metadata": {
-        "purpose": "BOUNDARY_LIFT_PLAN_2026-09-02.md work package 1.1 (B19): dsl-conformance-max witness for a bandPickers entry with NO panel -- filter/multiSelect only, resolving a projection targeting the band's own collection concept (WidgetOrderLineNote) directly through the generic reference-lookup endpoint, instead of a hand-authored Selection panel. Its filter (Wave 4 4.3/B16 Step 1) is also the corpus witness for AND-composing a static clause with a $root.<field> reference, resolved client-side against the aggregate's root record (WidgetOrder) at request-build time."
-      },
-      "transaction": {
-        "bandPickers": {
-          "notes": {
-            "label": "Pick a reviewed note",
-            "columns": [
-              "id",
-              "text"
-            ],
-            "filter": "text == 'Reviewed' && widgetOrderLineId == $root.id"
-          }
-        }
-      }
-    },
-    {
-      "name": "WidgetCatalogEntryBrowser",
-      "concept": "WidgetCatalogEntry",
-      "route": "/widget-catalog-entries",
-      "metadata": {
-        "purpose": "Move 8 D3 (item G6, docs/MOVE8_CLOSE_TABLE_SPEC.md / Move 6 §B.7): coverage for a concept-bound AutoPanel's Selection surface having its generated row source REPLACED by a procedure (the produce disposition PanelRuntime already executes for hand-authored panels), instead of the bound concept's own table."
-      },
-      "selection": {
-        "dataSource": {
-          "procedure": "ListActiveWidgetCatalogEntriesProcedure"
-        }
-      }
-    },
-    {
-      "name": "WidgetCatalogEntryOverrideBrowser",
-      "concept": "WidgetCatalogEntry",
-      "route": "/widget-catalog-override",
-      "surfaces": [
-        "selection",
-        "detail"
-      ],
-      "metadata": {
-        "purpose": "AUD-6: witness for autoPanelSurface.panel (AutoPanel surface override) -- the Selection surface is REPLACED by the declared WidgetCatalogReviewPanel, so only the Detail surface of this AutoPanel is synthesized."
-      },
-      "selection": {
-        "panel": "WidgetCatalogReviewPanel"
-      }
-    },
-    {
-      "name": "StockTransferWorkbench",
-      "aggregate": "StockTransfer",
-      "route": "/stock-transfers",
-      "metadata": {
-        "purpose": "Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): the corpus witness for aggregate.balances[], aggregateCollection.lookupFields[] and workbenchAction.checkBalances -- combined with the already-covered depth-2 rendering (WidgetOrderWorkbench) and, new here, a concept lifecycle actually driving an Aggregate Workbench's editable/allowedActions state (checklist S2/S3: fields read-only and add-row/recalculate buttons hidden once StockTransfer reaches Committed)."
-      },
-      "transaction": {
-        "actions": [
-          {
-            "label": "Recalcular Saldos",
-            "checkBalances": [
-              "OrigemDestinoBalance"
-            ]
-          },
-          {
-            "label": "Stamp note",
-            "procedure": "StockTransferStampNoteProcedure"
-          },
-          {
-            "label": "Clear note",
-            "procedure": "StockTransferClearNoteProcedure"
-          }
-        ]
-      }
-    }
-  ],
-  "panels": [
-    {
-      "name": "WidgetCatalogGalleryPanel",
-      "route": "/widget-catalog-gallery",
-      "title": "Widget catalog gallery",
-      "layout": {
-        "type": "grid",
-        "fields": [
-          "sku",
-          "displayName",
-          "unitPrice"
-        ]
-      },
-      "dataSources": [
-        {
-          "name": "entries",
-          "concept": "WidgetCatalogEntry"
-        }
-      ],
-      "metadata": {
-        "purpose": "panelLayout.type grid (Pigmentampas G1d): a read-only panel whose rows render as cards, not a table."
-      }
-    },
-    {
-      "name": "WidgetOrderReviewPanel",
-      "route": "/widget-order-review",
-      "title": "Widget order review",
-      "layout": {
-        "type": "table",
-        "slots": [
-          {
-            "placement": "above",
-            "component": "order-kpi-strip",
-            "label": "Order KPIs"
-          },
-          {
-            "placement": "below",
-            "component": "order-timeline"
-          }
-        ]
-      },
-      "dataSources": [
-        {
-          "name": "orders",
-          "concept": "WidgetOrder",
-          "onRowLoad": "EnrichWidgetOrderRowsProcedure"
-        }
-      ],
-      "actions": [
-        {
-          "name": "place",
-          "label": "Place order",
-          "binding": "flow",
-          "flow": "PlaceWidgetOrder",
-          "metadata": {
-            "purpose": "Coverage for panelAction.inputFields (G3, docs/MOVE2_PANEL_ACTIONS_PLAN.md): a panel-scoped create action collects these fields from the user before invoking the flow."
-          },
-          "inputFields": [
-            "customerEmail",
-            "status",
-            "lineCount"
-          ]
-        },
-        {
-          "name": "listCatalog",
-          "label": "List catalog entries",
-          "binding": "conceptQuery",
-          "concept": "WidgetCatalogEntry",
-          "metadata": {
-            "purpose": "Coverage for panelAction.binding=conceptQuery (Move 5, docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md Wave 5): lists every record of a concept through the same governed ConceptGateway every other binding uses. Zero declarations AND zero test coverage anywhere before this."
-          }
-        },
-        {
-          "name": "confirm",
-          "label": "Confirm order",
-          "binding": "flow",
-          "flow": "ConfirmWidgetOrder",
-          "scope": "row",
-          "dataSource": "orders",
-          "visibleWhen": "status == 'pending'",
-          "metadata": {
-            "purpose": "Coverage for panelAction.scope=row (G2, docs/MOVE2_PANEL_ACTIONS_PLAN.md): rendered once per row of \"orders\", invoked with that row's id, visible only while status is pending."
-          }
-        },
-        {
-          "name": "exportCsv",
-          "label": "Export CSV",
-          "binding": "procedure",
-          "procedure": "GenerateOrderExportProcedure",
-          "resultAs": "download",
-          "filename": "widget-orders.csv",
-          "contentType": "text/csv",
-          "metadata": {
-            "purpose": "Coverage for panelAction.resultAs=download (Move 5, docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md Wave 4 / Gap 7): 'produce a file, stream it, persist nothing' -- PanelRuntime.executeAction returns the procedure's return value as a real file download instead of a JSON result."
-          }
-        }
-      ]
-    },
-    {
-      "name": "WidgetOrdersConsolePanel",
-      "route": "/widget-orders-console",
-      "title": "Widget orders console",
-      "layout": {
-        "type": "console",
-        "widgets": [
-          {
-            "kind": "tile",
-            "title": "Orders",
-            "dataSource": "orders"
-          },
-          {
-            "kind": "tile",
-            "title": "Draft orders",
-            "dataSource": "orders",
-            "filter": {
-              "field": "status",
-              "equals": "DRAFT"
-            }
-          },
-          {
-            "kind": "tile",
-            "title": "Total lines",
-            "dataSource": "orders",
-            "aggregate": "sum",
-            "field": "lineCount"
-          },
-          {
-            "kind": "actions",
-            "title": "Operations"
-          },
-          {
-            "kind": "history",
-            "title": "Recent runs"
-          },
-          {
-            "kind": "table",
-            "title": "Orders",
-            "dataSource": "orders"
-          }
-        ]
-      },
-      "dataSources": [
-        {
-          "name": "orders",
-          "concept": "WidgetOrder"
-        }
-      ],
-      "actions": [
-        {
-          "name": "place",
-          "label": "Place order",
-          "binding": "flow",
-          "flow": "PlaceWidgetOrder",
-          "inputFields": [
-            "customerEmail",
-            "status",
-            "lineCount"
-          ]
-        }
-      ]
-    },
-    {
-      "name": "WidgetOrdersDashboardPanel",
-      "route": "/widget-orders-dashboard",
-      "title": "Widget orders dashboard",
-      "layout": {
-        "type": "dashboard",
-        "widgets": [
-          {
-            "kind": "tile",
-            "title": "Orders",
-            "dataSource": "orders",
-            "span": 2
-          },
-          {
-            "kind": "tile",
-            "title": "Average lines",
-            "dataSource": "orders",
-            "aggregate": "avg",
-            "field": "lineCount",
-            "span": 2
-          },
-          {
-            "kind": "chart",
-            "title": "Orders by status",
-            "dataSource": "orders",
-            "chart": "bar",
-            "groupBy": "status"
-          },
-          {
-            "kind": "chart",
-            "title": "Lines by status",
-            "dataSource": "orders",
-            "chart": "donut",
-            "groupBy": "status",
-            "aggregate": "sum",
-            "field": "lineCount"
-          },
-          {
-            "kind": "chart",
-            "title": "Max lines by status",
-            "dataSource": "orders",
-            "chart": "line",
-            "groupBy": "status",
-            "aggregate": "max",
-            "field": "lineCount",
-            "span": 4
-          }
-        ]
-      },
-      "dataSources": [
-        {
-          "name": "orders",
-          "concept": "WidgetOrder"
-        }
-      ]
-    },
-    {
-      "name": "WidgetCatalogReviewPanel",
-      "route": "/widget-catalog-review",
-      "title": "Widget catalog review",
-      "dataSources": [
-        {
-          "name": "entries",
-          "concept": "WidgetCatalogEntry"
-        }
-      ],
-      "fieldBindings": [
-        {
-          "field": "sku",
-          "source": "entries.sku"
-        },
-        {
-          "field": "displayName",
-          "source": "entries.displayName"
-        }
-      ],
-      "actions": [
-        {
-          "name": "awaitApproval",
-          "label": "Await approval",
-          "binding": "flow",
-          "flow": "AwaitCatalogEntryApproval",
-          "scope": "row",
-          "dataSource": "entries",
-          "metadata": {
-            "purpose": "W1.7 (NPDEV_ROADMAP_2026-09-12.md Wave 1): a UI-reachable entry point for an awaitEvent flow, so the browser gate can prove the 202/WAITING + execution.statusRoute-polling behaviour docs/UI_CONTRACT.md's 'a UI that shows Saved! on a 202 is lying' describes end-to-end. Bound to WidgetCatalogEntry rather than WidgetOrder (whose own PlaceWidgetOrder-routed create hits an intentionally-unbound generatedAction coverage step, ScoreWidgetOrderRisk) so creating the row this action needs stays a plain, uncomplicated write."
-          }
-        }
-      ]
     }
   ],
   "flows": [
@@ -5850,74 +5370,94 @@
       "$ref": "fragments/auditLog.json"
     }
   ],
-  "backOffice": {
-    "defaultRoute": "WidgetOrder",
-    "navigation": [
-      {
-        "label": "Widget Orders",
-        "target": "WidgetOrder",
-        "group": "Operations"
-      },
-      {
-        "label": "Widget Catalog",
-        "target": "WidgetCatalogEntry",
-        "group": "Operations"
-      },
-      {
-        "label": "Widget Showcase",
-        "target": "WidgetShowcase",
-        "group": "Operations"
-      },
-      {
-        "label": "Reference Data"
-      }
-    ],
-    "pages": [
-      {
-        "name": "WidgetOrderGuide",
-        "default": true,
-        "regions": {
-          "right": {
-            "enabled": true
-          }
-        },
-        "gadgets": [
-          {
-            "name": "orderHelp",
-            "type": "page-fragment",
-            "title": "How orders work",
-            "url": "/npdev-help/widget-order.html"
-          },
-          {
-            "name": "unitsShareByWarehouse",
-            "type": "donut",
-            "title": "Shipped units by warehouse",
-            "query": "ShippedUnitsByWarehouseMonth",
-            "x": "warehouseId",
-            "y": "totalUnits"
-          }
-        ]
-      }
-    ],
-    "locale": "en-US",
-    "strings": {
-      "workbench.saved": "Order saved"
-    }
-  },
   "experiences": [
     {
       "name": "warehouse",
       "title": "Warehouse",
-      "for": ["WarehouseManager"],
+      "for": [
+        "WarehouseManager"
+      ],
       "device": "both",
       "theme": "dark",
       "backOffice": true,
       "home": "suppliers",
       "navigation": [
-        { "screen": "suppliers", "label": "Suppliers", "icon": "list", "badge": "count('WidgetSupplier')" },
-        { "screen": "place-order", "label": "New order", "icon": "plus", "badge": "count('WidgetOrder', status == 'NEW')" },
-        { "screen": "warehouse-hint", "label": "Tips", "icon": "bell", "badge": "count('WidgetSupplier', listedOn >= today())" }
+        {
+          "screen": "suppliers",
+          "label": "Suppliers",
+          "icon": "list",
+          "badge": "count('WidgetSupplier')"
+        },
+        {
+          "screen": "place-order",
+          "label": "New order",
+          "icon": "plus",
+          "badge": "count('WidgetOrder', status == 'NEW')"
+        },
+        {
+          "screen": "warehouse-hint",
+          "label": "Tips",
+          "icon": "bell",
+          "badge": "count('WidgetSupplier', listedOn >= today())"
+        }
       ]
+    },
+    {
+      "name": "admin",
+      "admin": {
+        "defaultRoute": "WidgetOrder",
+        "navigation": [
+          {
+            "label": "Widget Orders",
+            "target": "WidgetOrder",
+            "group": "Operations"
+          },
+          {
+            "label": "Widget Catalog",
+            "target": "WidgetCatalogEntry",
+            "group": "Operations"
+          },
+          {
+            "label": "Widget Showcase",
+            "target": "WidgetShowcase",
+            "group": "Operations"
+          },
+          {
+            "label": "Reference Data"
+          }
+        ],
+        "pages": [
+          {
+            "name": "WidgetOrderGuide",
+            "default": true,
+            "regions": {
+              "right": {
+                "enabled": true
+              }
+            },
+            "gadgets": [
+              {
+                "name": "orderHelp",
+                "type": "page-fragment",
+                "title": "How orders work",
+                "url": "/npdev-help/widget-order.html"
+              },
+              {
+                "name": "unitsShareByWarehouse",
+                "type": "donut",
+                "title": "Shipped units by warehouse",
+                "query": "ShippedUnitsByWarehouseMonth",
+                "x": "warehouseId",
+                "y": "totalUnits"
+              }
+            ]
+          }
+        ],
+        "locale": "en-US",
+        "strings": {
+          "workbench.saved": "Order saved"
+        }
+      }
     }
   ],
   "screens": [
@@ -5935,8 +5475,16 @@
       "where": "displayName != ''",
       "orderBy": "displayName",
       "live": true,
-      "columns": ["supplierCode", { "value": "displayName", "label": "Name" }],
-      "empty": { "text": "No suppliers yet." }
+      "columns": [
+        "supplierCode",
+        {
+          "value": "displayName",
+          "label": "Name"
+        }
+      ],
+      "empty": {
+        "text": "No suppliers yet."
+      }
     },
     {
       "name": "supplier-detail",
@@ -5944,9 +5492,19 @@
       "kind": "detail",
       "concept": "WidgetSupplier",
       "pick": "first",
-      "fields": ["supplierCode", { "value": "displayName", "label": "Name" }],
+      "fields": [
+        "supplierCode",
+        {
+          "value": "displayName",
+          "label": "Name"
+        }
+      ],
       "actions": [
-        { "label": "Run the UI-only check", "flow": "OneFlowUiOnly", "visibleWhen": "$row.displayName != ''" }
+        {
+          "label": "Run the UI-only check",
+          "flow": "OneFlowUiOnly",
+          "visibleWhen": "$row.displayName != ''"
+        }
       ]
     },
     {
@@ -5955,14 +5513,21 @@
       "kind": "form",
       "visibleWhen": "$user.roles.contains('WAREHOUSEMANAGER')",
       "concept": "WidgetOrder",
-      "fields": ["customerEmail", "requestedShipDate"],
+      "fields": [
+        "customerEmail",
+        "requestedShipDate"
+      ],
       "actions": [
         {
           "label": "Place order",
           "flow": "PlaceWidgetOrder",
           "style": "primary",
           "confirm": "Place this order?",
-          "input": { "customerEmail": "$form.customerEmail", "status": "'NEW'", "lineCount": "0" },
+          "input": {
+            "customerEmail": "$form.customerEmail",
+            "status": "'NEW'",
+            "lineCount": "0"
+          },
           "then": "suppliers"
         }
       ]
@@ -6144,6 +5709,523 @@
       "grandTotal": true,
       "metadata": {
         "purpose": "REP-1 coverage: a plain-concept report (no query) over WidgetOrder, whose access.read row rule must scope every row, subtotal and the grand total to the viewer."
+      }
+    },
+    {
+      "name": "WidgetCatalogEntryBrowser",
+      "kind": "list",
+      "concept": "WidgetCatalogEntry",
+      "admin": {
+        "route": "/widget-catalog-entries",
+        "metadata": {
+          "purpose": "Move 8 D3 (item G6, docs/MOVE8_CLOSE_TABLE_SPEC.md / Move 6 §B.7): coverage for a concept-bound AutoPanel's Selection surface having its generated row source REPLACED by a procedure (the produce disposition PanelRuntime already executes for hand-authored panels), instead of the bound concept's own table."
+        },
+        "selection": {
+          "dataSource": {
+            "procedure": "ListActiveWidgetCatalogEntriesProcedure"
+          }
+        }
+      }
+    },
+    {
+      "name": "WidgetCatalogEntryOverrideBrowser",
+      "kind": "list",
+      "concept": "WidgetCatalogEntry",
+      "admin": {
+        "route": "/widget-catalog-override",
+        "surfaces": [
+          "selection",
+          "detail"
+        ],
+        "metadata": {
+          "purpose": "AUD-6: witness for autoPanelSurface.panel (AutoPanel surface override) -- the Selection surface is REPLACED by the declared WidgetCatalogReviewPanel, so only the Detail surface of this AutoPanel is synthesized."
+        },
+        "selection": {
+          "panel": "WidgetCatalogReviewPanel"
+        }
+      }
+    },
+    {
+      "name": "ShelfLayoutWorkbench",
+      "kind": "workbench",
+      "concept": "ShelfLayout",
+      "admin": {
+        "route": "/shelf-layouts",
+        "metadata": {
+          "purpose": "P3b: corpus witness for transaction.regions render \"cellGrid\" -- the slots collection painted as a square board sized by the root's rows/cols, palette from ActiveCatalogEntries. Also the witness for selection.layout grid: the workbench list renders root rows as cards."
+        },
+        "selection": {
+          "layout": "grid"
+        },
+        "transaction": {
+          "regions": {
+            "slots": {
+              "render": "cellGrid",
+              "cellGrid": {
+                "rowField": "row",
+                "colField": "col",
+                "valueField": "entryId",
+                "rowsField": "rows",
+                "colsField": "cols",
+                "defaultRows": 4,
+                "defaultCols": 6,
+                "layout": "square",
+                "palette": {
+                  "query": "ActiveCatalogEntries",
+                  "labelField": "displayName"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "WidgetOrderWorkbench",
+      "kind": "workbench",
+      "concept": "WidgetOrder",
+      "admin": {
+        "route": "/widget-orders",
+        "metadata": {
+          "purpose": "Coverage for autoPanels[] outside WmsOffice, and for the typed transaction.actions[] surface: inputFields (inline mini-form merged into the draft), applyTo (appendRow field mapping, with an action-level visibleWhen) and afterAction (a procedure that folds {draft, result} into a patched draft, subsuming applyTo)."
+        },
+        "transaction": {
+          "hooks": {
+            "onLoad": "SeedWidgetOrderContextProcedure",
+            "onFieldChange": "RecalculateWidgetOrderTotalsProcedure",
+            "beforeAction": "ValidateWidgetOrderProcedure"
+          },
+          "derivedFields": {
+            "totalQuantity": {
+              "expression": "sum(lines[].quantity)",
+              "label": "Total quantity"
+            },
+            "auditedQuantity": {
+              "tier": "server",
+              "procedure": "SummarizeWidgetOrderProcedure",
+              "label": "Audited quantity"
+            }
+          },
+          "regions": {
+            "lines.notes": {
+              "render": "component",
+              "component": "widget-order-notes"
+            }
+          },
+          "actions": [
+            {
+              "label": "Apply status",
+              "procedure": "RenameOrderStatusProcedure",
+              "inputFields": [
+                "newStatus"
+              ]
+            },
+            {
+              "label": "Suggest line",
+              "procedure": "SuggestLineProcedure",
+              "applyTo": {
+                "collection": "lines",
+                "mode": "appendRow",
+                "map": {
+                  "sku": "$resultado.id",
+                  "quantity": "1"
+                }
+              },
+              "visibleWhen": "$root.status == 'DRAFT'"
+            },
+            {
+              "label": "Suggest and fold line",
+              "procedure": "SuggestLineProcedure",
+              "afterAction": "ApplySuggestedLineProcedure"
+            }
+          ],
+          "visibleWhen": {
+            "lines": "$root.status != 'CANCELLED'"
+          }
+        }
+      }
+    },
+    {
+      "name": "WidgetOrderTypedActionsWorkbench",
+      "kind": "workbench",
+      "concept": "WidgetOrder",
+      "admin": {
+        "route": "/widget-orders-typed",
+        "metadata": {
+          "purpose": "Move 7 W1 (docs/MOVE7_IMPLEMENTATION_SPEC.md): dsl-conformance-max witness for the TYPED transaction.actions/.visibleWhen/.bandPickers, alongside WidgetOrderWorkbench's existing coverage of the untyped, deprecated transaction.metadata equivalents just above -- both spellings still work this release, but a typo in this typed form now fails at schema time instead of silently doing nothing. lines.notes's visibleWhen (BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 4.3/B16 Step 1) is also the corpus witness for AND-composing a $ui.<name> predicate with a $root.<field> predicate in one expression."
+        },
+        "transaction": {
+          "actions": [
+            {
+              "procedure": "RenameOrderStatusProcedure",
+              "label": "Apply status (typed)",
+              "inputFields": [
+                "newStatus"
+              ],
+              "review": true
+            },
+            {
+              "procedure": "SuggestLineProcedure",
+              "label": "Suggest line (typed)",
+              "applyTo": {
+                "collection": "lines",
+                "mode": "appendRow",
+                "map": {
+                  "sku": "$resultado.id",
+                  "quantity": "1"
+                }
+              },
+              "visibleWhen": "$root.status == 'DRAFT'"
+            },
+            {
+              "procedure": "SuggestLineProcedure",
+              "label": "Suggest and fold line (typed)",
+              "afterAction": "ApplySuggestedLineProcedure"
+            }
+          ],
+          "uiState": {
+            "recordKind": {
+              "label": "Record kind",
+              "values": [
+                "INBOUND",
+                "OUTBOUND"
+              ],
+              "default": "INBOUND"
+            }
+          },
+          "visibleWhen": {
+            "lines": "$root.status != 'CANCELLED'",
+            "lines.notes": "$ui.recordKind == 'INBOUND' && $root.status != 'CANCELLED'"
+          },
+          "bandPickers": {
+            "notes": {
+              "panel": "WidgetOrderReviewPanel",
+              "label": "Pick a note",
+              "columns": [
+                "id"
+              ],
+              "filter": "$row.text != ''",
+              "multiSelect": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "WidgetOrderNoPanelPickerWorkbench",
+      "kind": "workbench",
+      "concept": "WidgetOrder",
+      "admin": {
+        "route": "/widget-orders-no-panel-picker",
+        "metadata": {
+          "purpose": "BOUNDARY_LIFT_PLAN_2026-09-02.md work package 1.1 (B19): dsl-conformance-max witness for a bandPickers entry with NO panel -- filter/multiSelect only, resolving a projection targeting the band's own collection concept (WidgetOrderLineNote) directly through the generic reference-lookup endpoint, instead of a hand-authored Selection panel. Its filter (Wave 4 4.3/B16 Step 1) is also the corpus witness for AND-composing a static clause with a $root.<field> reference, resolved client-side against the aggregate's root record (WidgetOrder) at request-build time."
+        },
+        "transaction": {
+          "bandPickers": {
+            "notes": {
+              "label": "Pick a reviewed note",
+              "columns": [
+                "id",
+                "text"
+              ],
+              "filter": "text == 'Reviewed' && widgetOrderLineId == $root.id"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "StockTransferWorkbench",
+      "kind": "workbench",
+      "concept": "StockTransfer",
+      "admin": {
+        "route": "/stock-transfers",
+        "metadata": {
+          "purpose": "Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): the corpus witness for aggregate.balances[], aggregateCollection.lookupFields[] and workbenchAction.checkBalances -- combined with the already-covered depth-2 rendering (WidgetOrderWorkbench) and, new here, a concept lifecycle actually driving an Aggregate Workbench's editable/allowedActions state (checklist S2/S3: fields read-only and add-row/recalculate buttons hidden once StockTransfer reaches Committed)."
+        },
+        "transaction": {
+          "actions": [
+            {
+              "label": "Recalcular Saldos",
+              "checkBalances": [
+                "OrigemDestinoBalance"
+              ]
+            },
+            {
+              "label": "Stamp note",
+              "procedure": "StockTransferStampNoteProcedure"
+            },
+            {
+              "label": "Clear note",
+              "procedure": "StockTransferClearNoteProcedure"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "WidgetCatalogGalleryPanel",
+      "kind": "custom",
+      "panel": {
+        "route": "/widget-catalog-gallery",
+        "title": "Widget catalog gallery",
+        "layout": {
+          "type": "grid",
+          "fields": [
+            "sku",
+            "displayName",
+            "unitPrice"
+          ]
+        },
+        "dataSources": [
+          {
+            "name": "entries",
+            "concept": "WidgetCatalogEntry"
+          }
+        ],
+        "metadata": {
+          "purpose": "panelLayout.type grid (Pigmentampas G1d): a read-only panel whose rows render as cards, not a table."
+        }
+      }
+    },
+    {
+      "name": "WidgetOrderReviewPanel",
+      "kind": "custom",
+      "panel": {
+        "route": "/widget-order-review",
+        "title": "Widget order review",
+        "layout": {
+          "type": "table",
+          "slots": [
+            {
+              "placement": "above",
+              "component": "order-kpi-strip",
+              "label": "Order KPIs"
+            },
+            {
+              "placement": "below",
+              "component": "order-timeline"
+            }
+          ]
+        },
+        "dataSources": [
+          {
+            "name": "orders",
+            "concept": "WidgetOrder",
+            "onRowLoad": "EnrichWidgetOrderRowsProcedure"
+          }
+        ],
+        "actions": [
+          {
+            "name": "place",
+            "label": "Place order",
+            "binding": "flow",
+            "flow": "PlaceWidgetOrder",
+            "metadata": {
+              "purpose": "Coverage for panelAction.inputFields (G3, docs/MOVE2_PANEL_ACTIONS_PLAN.md): a panel-scoped create action collects these fields from the user before invoking the flow."
+            },
+            "inputFields": [
+              "customerEmail",
+              "status",
+              "lineCount"
+            ]
+          },
+          {
+            "name": "listCatalog",
+            "label": "List catalog entries",
+            "binding": "conceptQuery",
+            "concept": "WidgetCatalogEntry",
+            "metadata": {
+              "purpose": "Coverage for panelAction.binding=conceptQuery (Move 5, docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md Wave 5): lists every record of a concept through the same governed ConceptGateway every other binding uses. Zero declarations AND zero test coverage anywhere before this."
+            }
+          },
+          {
+            "name": "confirm",
+            "label": "Confirm order",
+            "binding": "flow",
+            "flow": "ConfirmWidgetOrder",
+            "scope": "row",
+            "dataSource": "orders",
+            "visibleWhen": "status == 'pending'",
+            "metadata": {
+              "purpose": "Coverage for panelAction.scope=row (G2, docs/MOVE2_PANEL_ACTIONS_PLAN.md): rendered once per row of \"orders\", invoked with that row's id, visible only while status is pending."
+            }
+          },
+          {
+            "name": "exportCsv",
+            "label": "Export CSV",
+            "binding": "procedure",
+            "procedure": "GenerateOrderExportProcedure",
+            "resultAs": "download",
+            "filename": "widget-orders.csv",
+            "contentType": "text/csv",
+            "metadata": {
+              "purpose": "Coverage for panelAction.resultAs=download (Move 5, docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md Wave 4 / Gap 7): 'produce a file, stream it, persist nothing' -- PanelRuntime.executeAction returns the procedure's return value as a real file download instead of a JSON result."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "WidgetOrdersConsolePanel",
+      "kind": "custom",
+      "panel": {
+        "route": "/widget-orders-console",
+        "title": "Widget orders console",
+        "layout": {
+          "type": "console",
+          "widgets": [
+            {
+              "kind": "tile",
+              "title": "Orders",
+              "dataSource": "orders"
+            },
+            {
+              "kind": "tile",
+              "title": "Draft orders",
+              "dataSource": "orders",
+              "filter": {
+                "field": "status",
+                "equals": "DRAFT"
+              }
+            },
+            {
+              "kind": "tile",
+              "title": "Total lines",
+              "dataSource": "orders",
+              "aggregate": "sum",
+              "field": "lineCount"
+            },
+            {
+              "kind": "actions",
+              "title": "Operations"
+            },
+            {
+              "kind": "history",
+              "title": "Recent runs"
+            },
+            {
+              "kind": "table",
+              "title": "Orders",
+              "dataSource": "orders"
+            }
+          ]
+        },
+        "dataSources": [
+          {
+            "name": "orders",
+            "concept": "WidgetOrder"
+          }
+        ],
+        "actions": [
+          {
+            "name": "place",
+            "label": "Place order",
+            "binding": "flow",
+            "flow": "PlaceWidgetOrder",
+            "inputFields": [
+              "customerEmail",
+              "status",
+              "lineCount"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "WidgetOrdersDashboardPanel",
+      "kind": "custom",
+      "panel": {
+        "route": "/widget-orders-dashboard",
+        "title": "Widget orders dashboard",
+        "layout": {
+          "type": "dashboard",
+          "widgets": [
+            {
+              "kind": "tile",
+              "title": "Orders",
+              "dataSource": "orders",
+              "span": 2
+            },
+            {
+              "kind": "tile",
+              "title": "Average lines",
+              "dataSource": "orders",
+              "aggregate": "avg",
+              "field": "lineCount",
+              "span": 2
+            },
+            {
+              "kind": "chart",
+              "title": "Orders by status",
+              "dataSource": "orders",
+              "chart": "bar",
+              "groupBy": "status"
+            },
+            {
+              "kind": "chart",
+              "title": "Lines by status",
+              "dataSource": "orders",
+              "chart": "donut",
+              "groupBy": "status",
+              "aggregate": "sum",
+              "field": "lineCount"
+            },
+            {
+              "kind": "chart",
+              "title": "Max lines by status",
+              "dataSource": "orders",
+              "chart": "line",
+              "groupBy": "status",
+              "aggregate": "max",
+              "field": "lineCount",
+              "span": 4
+            }
+          ]
+        },
+        "dataSources": [
+          {
+            "name": "orders",
+            "concept": "WidgetOrder"
+          }
+        ]
+      }
+    },
+    {
+      "name": "WidgetCatalogReviewPanel",
+      "kind": "custom",
+      "panel": {
+        "route": "/widget-catalog-review",
+        "title": "Widget catalog review",
+        "dataSources": [
+          {
+            "name": "entries",
+            "concept": "WidgetCatalogEntry"
+          }
+        ],
+        "fieldBindings": [
+          {
+            "field": "sku",
+            "source": "entries.sku"
+          },
+          {
+            "field": "displayName",
+            "source": "entries.displayName"
+          }
+        ],
+        "actions": [
+          {
+            "name": "awaitApproval",
+            "label": "Await approval",
+            "binding": "flow",
+            "flow": "AwaitCatalogEntryApproval",
+            "scope": "row",
+            "dataSource": "entries",
+            "metadata": {
+              "purpose": "W1.7 (NPDEV_ROADMAP_2026-09-12.md Wave 1): a UI-reachable entry point for an awaitEvent flow, so the browser gate can prove the 202/WAITING + execution.statusRoute-polling behaviour docs/UI_CONTRACT.md's 'a UI that shows Saved! on a 202 is lying' describes end-to-end. Bound to WidgetCatalogEntry rather than WidgetOrder (whose own PlaceWidgetOrder-routed create hits an intentionally-unbound generatedAction coverage step, ScoreWidgetOrderRisk) so creating the row this action needs stays a plain, uncomplicated write."
+            }
+          }
+        ]
       }
     }
   ],

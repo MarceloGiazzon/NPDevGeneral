@@ -652,96 +652,111 @@
       ]
     }
   ],
-  "autoPanels": [
+  "screens": [
     {
       "name": "Suppliers",
+      "kind": "list",
       "concept": "Supplier",
-      "route": "/suppliers",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ],
-      "selection": {
-        "columns": [
-          "code",
-          "organizationId",
-          "paymentTermsDays",
-          "active"
-        ]
+      "admin": {
+        "route": "/suppliers",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "code",
+            "organizationId",
+            "paymentTermsDays",
+            "active"
+          ]
+        }
       }
     },
     {
       "name": "PurchaseItems",
+      "kind": "list",
       "concept": "PurchaseItem",
-      "route": "/purchase-items",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ],
-      "selection": {
-        "columns": [
-          "productId",
-          "standardCost",
-          "active"
-        ]
+      "admin": {
+        "route": "/purchase-items",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "productId",
+            "standardCost",
+            "active"
+          ]
+        }
       }
     },
     {
       "name": "PurchaseOrders",
+      "kind": "list",
       "concept": "PurchaseOrder",
-      "route": "/purchase-orders",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ],
-      "selection": {
-        "columns": [
-          "orderNumber",
-          "supplierId",
-          "orderDate",
-          "status"
-        ]
+      "admin": {
+        "route": "/purchase-orders",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "orderNumber",
+            "supplierId",
+            "orderDate",
+            "status"
+          ]
+        }
       }
     },
     {
       "name": "PurchaseOrderLines",
+      "kind": "list",
       "concept": "PurchaseOrderLine",
-      "route": "/purchase-order-lines",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ],
-      "selection": {
-        "columns": [
-          "orderId",
-          "productId",
-          "quantity",
-          "unitCost",
-          "lineTotal"
-        ]
+      "admin": {
+        "route": "/purchase-order-lines",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "orderId",
+            "productId",
+            "quantity",
+            "unitCost",
+            "lineTotal"
+          ]
+        }
       }
     },
     {
       "name": "SupplierBills",
+      "kind": "list",
       "concept": "SupplierBill",
-      "route": "/supplier-bills",
-      "surfaces": [
-        "selection",
-        "detail",
-        "transaction"
-      ],
-      "selection": {
-        "columns": [
-          "billNumber",
-          "supplierId",
-          "amount",
-          "dueDate",
-          "status"
-        ]
+      "admin": {
+        "route": "/supplier-bills",
+        "surfaces": [
+          "selection",
+          "detail",
+          "transaction"
+        ],
+        "selection": {
+          "columns": [
+            "billNumber",
+            "supplierId",
+            "amount",
+            "dueDate",
+            "status"
+          ]
+        }
       }
     }
   ]

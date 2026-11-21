@@ -157,40 +157,6 @@
         ]
       }
     },
-    "panels": {
-      "type": "array",
-      "items": {
-        "oneOf": [
-          { "$ref": "model.schema.json#/$defs/panel" },
-          { "$ref": "model.schema.json#/$defs/localModelRef" }
-        ]
-      }
-    },
-    "autoPanels": {
-      "type": "array",
-      "items": {
-        "oneOf": [
-          { "$ref": "model.schema.json#/$defs/autoPanel" },
-          { "$ref": "model.schema.json#/$defs/localModelRef" }
-        ]
-      }
-    },
-    "backOffice": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "pages": {
-          "type": "array",
-          "items": {
-            "oneOf": [
-              { "$ref": "model.schema.json#/$defs/guidePage" },
-              { "$ref": "model.schema.json#/$defs/localModelRef" }
-            ]
-          }
-        }
-      },
-      "description": "FORM P5-T9c: the back-office guide pages this pack contributes (it was the pack-level guidePages). Composition qualifies each page like any other member (packId::PageName) and appends it, after the model's own pages, to the composed model's root backOffice.pages."
-    },
     "roles": {
       "type": "array",
       "items": {

@@ -34,9 +34,25 @@ class ComputedExpressionValidationTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "pos", "type": "integer" } ] }
               ],
-              "autoPanels": [
-                { "concept": "Item", "surfaces": ["selection"],
-                  "selection": { "computed": [{ "col": "total", "expr": "pos * " }] } }
+              "screens": [
+                {
+                  "name": "Item",
+                  "kind": "list",
+                  "concept": "Item",
+                  "admin": {
+                    "surfaces": [
+                      "selection"
+                    ],
+                    "selection": {
+                      "computed": [
+                        {
+                          "col": "total",
+                          "expr": "pos * "
+                        }
+                      ]
+                    }
+                  }
+                }
               ]
             }
             """;
@@ -56,9 +72,25 @@ class ComputedExpressionValidationTest {
                   { "name": "pos", "type": "integer" },
                   { "name": "cxAvulsas", "type": "integer" } ] }
               ],
-              "autoPanels": [
-                { "concept": "Item", "surfaces": ["selection"],
-                  "selection": { "computed": [{ "col": "total", "expr": "pos*42 + cxAvulsas" }] } }
+              "screens": [
+                {
+                  "name": "Item",
+                  "kind": "list",
+                  "concept": "Item",
+                  "admin": {
+                    "surfaces": [
+                      "selection"
+                    ],
+                    "selection": {
+                      "computed": [
+                        {
+                          "col": "total",
+                          "expr": "pos*42 + cxAvulsas"
+                        }
+                      ]
+                    }
+                  }
+                }
               ]
             }
             """;
@@ -81,9 +113,25 @@ class ComputedExpressionValidationTest {
                   { "name": "pos", "type": "integer" },
                   { "name": "cxAvulsas", "type": "integer" } ] }
               ],
-              "autoPanels": [
-                { "concept": "Item", "surfaces": ["transaction"],
-                  "transaction": { "computed": [{ "col": "total", "expr": "pos*42 + cxAvulsas" }] } }
+              "screens": [
+                {
+                  "name": "Item",
+                  "kind": "list",
+                  "concept": "Item",
+                  "admin": {
+                    "surfaces": [
+                      "transaction"
+                    ],
+                    "transaction": {
+                      "computed": [
+                        {
+                          "col": "total",
+                          "expr": "pos*42 + cxAvulsas"
+                        }
+                      ]
+                    }
+                  }
+                }
               ]
             }
             """;
@@ -106,12 +154,28 @@ class ComputedExpressionValidationTest {
                   { "name": "cxAvulsas", "type": "integer" } ] }
               ],
               "flows": [{"name": "Recalcular", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
-              "autoPanels": [
-                { "concept": "Item", "surfaces": ["transaction"],
-                  "transaction": {
-                    "computed": [{ "col": "total", "expr": "pos*42 + cxAvulsas" }],
-                    "hooks": { "onFieldChange": "Recalcular" }
-                  } }
+              "screens": [
+                {
+                  "name": "Item",
+                  "kind": "list",
+                  "concept": "Item",
+                  "admin": {
+                    "surfaces": [
+                      "transaction"
+                    ],
+                    "transaction": {
+                      "computed": [
+                        {
+                          "col": "total",
+                          "expr": "pos*42 + cxAvulsas"
+                        }
+                      ],
+                      "hooks": {
+                        "onFieldChange": "Recalcular"
+                      }
+                    }
+                  }
+                }
               ]
             }
             """;

@@ -65,6 +65,18 @@ def _split_path(path: str) -> tuple[list[str], str | None]:
     return [step for step in path.split(".") if step], token_index
 
 
+def _authoring_steps(document: Any, steps: list[str]) -> list[str]:
+    """The reference index describes the COMPILED model, where a hand-written panel is `panels[Name]`. In the
+    AUTHORING model (D-1 phase 3) it is the `panel` block of the `screens[Name]` entry, so the first step is
+    translated -- the rest of the path (`fieldBindings[2].field`, ...) is the same inside the block."""
+    if (steps and isinstance(document, dict) and "panels" not in document
+            and isinstance(document.get("screens"), list)):
+        match = _STEP_RE.fullmatch(steps[0])
+        if match is not None and match.group(1) == "panels" and match.group(2) is not None:
+            return [f"screens[{match.group(2)}]", "panel", *steps[1:]]
+    return steps
+
+
 def _resolve(document: Any, steps: list[str]) -> tuple[Any, Any]:
     """Walk `steps` and return (container, key) for the FINAL step, so the caller can read and write
     the value in place. Raises CascadeRefusal naming the step that could not be followed -- most
@@ -73,8 +85,10 @@ def _resolve(document: Any, steps: list[str]) -> tuple[Any, Any]:
     container: Any = document
     key: Any = None
     walked: list[str] = []
+    steps = _authoring_steps(document, steps)
 
-    for step in steps:
+    for position, step in enumerate(steps):
+        is_last = position == len(steps) - 1
         match = _STEP_RE.fullmatch(step)
         if match is None:
             raise CascadeRefusal(f"cannot parse reference path segment {step!r}")
@@ -91,7 +105,7 @@ def _resolve(document: Any, steps: list[str]) -> tuple[Any, Any]:
                   "context or a pack, which this file cannot rewrite")
         if selector is None:
             key, container_next = name, container[name]
-            if step is steps[-1]:
+            if is_last:
                 return container, name
             container = container_next
             continue
@@ -110,7 +124,7 @@ def _resolve(document: Any, steps: list[str]) -> tuple[Any, Any]:
                 raise CascadeRefusal(
                     f"no member named {selector!r} in this model file at {'.'.join(walked)}"
                     " -- probably contributed by a pack or a context")
-        if step is steps[-1]:
+        if is_last:
             return collection, index
         container = collection[index]
 
@@ -296,13 +310,17 @@ def trusted_source_refusals(model: dict, edges: list[dict]) -> list[str]:
     entry would invalidate the hash and the app would refuse to load the asset at boot -- so name
     the entry and stop, rather than producing a model that generates and then fails to run."""
     pinned = set()
-    for key in ("panels", "procedures"):
-        for member in model.get(key) or []:
-            if not isinstance(member, dict):
-                continue
-            metadata = member.get("metadata") or {}
-            if isinstance(metadata, dict) and metadata.get("untrustedExtensionEntrypoint"):
-                pinned.add((key, member.get("name")))
+    members = [("procedures", member) for member in model.get("procedures") or []]
+    # D-1 phase 3: a hand-written panel is the `panel` block of a screens[] entry; the screen carries the name.
+    members += [("panels", {**screen["panel"], "name": screen.get("name")})
+                for screen in model.get("screens") or []
+                if isinstance(screen, dict) and isinstance(screen.get("panel"), dict)]
+    for key, member in members:
+        if not isinstance(member, dict):
+            continue
+        metadata = member.get("metadata") or {}
+        if isinstance(metadata, dict) and metadata.get("untrustedExtensionEntrypoint"):
+            pinned.add((key, member.get("name")))
     refusals = []
     for edge in edges:
         owner = (edge.get("fromKind", "") + "s", edge.get("fromName"))

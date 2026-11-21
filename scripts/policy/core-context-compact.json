@@ -14,8 +14,7 @@
     "$.queries[]",
     "$.capabilities[]",
     "$.roles[]",
-    "$.procedures[]",
-    "$.panels[]"
+    "$.procedures[]"
   ],
   "valueReferenceExcludeSubstrings": [
     "truthLevel",

@@ -27,12 +27,11 @@ class PanelDataSourceOnRowLoadValidationTest {
                     { "name": "Widget", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
                   ],
                   "flows": [{"name": "EnrichWidgetRowsProcedure", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
-                  "panels": [
+                  "screens": [
                     {
-                      "name": "TestPanel",
+                      "name": "TestPanel", "kind": "custom", "panel": {
                       "route": "/test-panel",
-                      "dataSources": [ %s ]
-                    }
+                      "dataSources": [ %s ]}}
                   ]
                 }
                 """.formatted(panelDataSourceJson));

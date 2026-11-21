@@ -325,7 +325,9 @@ def _fix_lifecycles(model: dict, note) -> None:
 
 
 def _fix_data_sources(model: dict, concepts: _Concepts, note) -> None:
-    for pi, panel in enumerate(model.get("panels") or []):
+    # D-1 phase 3: a hand-written panel is the `panel` block of a screens[] entry
+    for pi, screen in enumerate(model.get("screens") or []):
+        panel = screen.get("panel") if isinstance(screen, dict) else None
         for di, ds in enumerate((panel or {}).get("dataSources") or [] if isinstance(panel, dict) else []):
             if not isinstance(ds, dict) or "kind" not in ds or "concept" in ds:
                 continue
@@ -334,7 +336,7 @@ def _fix_data_sources(model: dict, concepts: _Concepts, note) -> None:
                 if name:
                     ds.pop("kind")
                     ds["concept"] = name
-                    note("datasource-kind-entity", f"$.panels[{pi}].dataSources[{di}].kind", "entity",
+                    note("datasource-kind-entity", f"$.screens[{pi}].panel.dataSources[{di}].kind", "entity",
                          f"concept: {name}")
 
 

@@ -160,40 +160,6 @@
         }
       }
     },
-    "panels": {
-      "type": "array",
-      "items": {
-        "if": {
-          "type": "object",
-          "required": [
-            "$ref"
-          ]
-        },
-        "then": {
-          "$ref": "#/$defs/localModelRef"
-        },
-        "else": {
-          "$ref": "#/$defs/panel"
-        }
-      }
-    },
-    "autoPanels": {
-      "type": "array",
-      "items": {
-        "if": {
-          "type": "object",
-          "required": [
-            "$ref"
-          ]
-        },
-        "then": {
-          "$ref": "#/$defs/localModelRef"
-        },
-        "else": {
-          "$ref": "#/$defs/autoPanel"
-        }
-      }
-    },
     "metadata": {
       "type": "object"
     },
@@ -295,9 +261,6 @@
         "$ref": "#/$defs/seed"
       },
       "description": "R8.8: model/pack-declared seed rows, reusing the existing app-level seed record shape (NPDevContract/schemas/seed.schema.json's $defs/record). Applied once, automatically, at first boot through the same governed ConceptGateway.save path every other write uses (see com.finalexec.seed.ModelSeedRunner in NPDevRuntimeHost); regenerating/restarting the app does not duplicate rows. A pack/context-declared seed's concept must name a concept the SAME pack/context owns -- rewritten to its pack-qualified form at composition time, and a seed naming a concept the pack does not own is a compile error (see ModelSourceResolver's seeds handling and SeedValidation)."
-    },
-    "backOffice": {
-      "$ref": "#/$defs/backOffice"
     },
     "agentAccess": {
       "$ref": "#/$defs/agentAccess"
@@ -466,10 +429,57 @@
     "experience": {
       "type": "object",
       "required": [
-        "name",
-        "for",
-        "home"
+        "name"
       ],
+      "if": {
+        "not": {
+          "required": [
+            "admin"
+          ]
+        }
+      },
+      "then": {
+        "required": [
+          "for",
+          "home"
+        ]
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "for"
+              ]
+            },
+            {
+              "required": [
+                "home"
+              ]
+            },
+            {
+              "required": [
+                "navigation"
+              ]
+            },
+            {
+              "required": [
+                "device"
+              ]
+            },
+            {
+              "required": [
+                "theme"
+              ]
+            },
+            {
+              "required": [
+                "backOffice"
+              ]
+            }
+          ]
+        }
+      },
       "additionalProperties": false,
       "properties": {
         "name": {
@@ -536,6 +546,10 @@
           "type": "boolean",
           "default": false,
           "description": "true = this experience ALSO shows a link to the generated back office (operators). The back office itself (menu, dashboards) is configured by the optional ROOT backOffice object."
+        },
+        "admin": {
+          "$ref": "#/$defs/backOffice",
+          "description": "D-1 phase 4: the back office is the admin experience. An experiences[] entry that carries `admin` configures the generated back office (what the root `backOffice` object held: locale, strings, defaultRoute, navigation, pages) and is not a role experience: it has no for/home/navigation/device/theme of its own. At most one per model; a pack's entry declares only `pages`."
         }
       },
       "description": "FORM P5-T1: what one group of roles sees when it signs in -- which device it targets, the screen it lands on and its navigation. A signed-in user lands in the FIRST experience (declaration order) whose `for` contains one of their roles; a role with no experience lands in the generated back office."
@@ -547,14 +561,45 @@
         "kind"
       ],
       "additionalProperties": false,
+      "if": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "admin"
+              ]
+            },
+            {
+              "required": [
+                "panel"
+              ]
+            }
+          ]
+        }
+      },
+      "then": {
+        "properties": {
+          "name": {
+            "pattern": "^([A-Za-z][a-zA-Z0-9-]*::)?[A-Za-z][a-zA-Z0-9-]*$"
+          }
+        }
+      },
       "properties": {
         "name": {
           "type": "string",
-          "pattern": "^[A-Za-z][a-zA-Z0-9-]*$",
-          "description": "The screen's name: its URL segment and what experiences and `picker.selectorRef` refer to it by. Starts with a letter; a picker keeps the PascalCase name its selectorRef already uses."
+          "minLength": 1,
+          "description": "The screen's name: its URL segment and what experiences and `picker.selectorRef` refer to it by. Starts with a letter; a picker keeps the PascalCase name its selectorRef already uses. A screen that carries an `admin` block (a generated back-office page) or a `panel` block (a hand-written panel), neither served as a URL segment, may use any non-empty name, as the autoPanel or panel it replaces could (\"Trace Viewer\")."
         },
         "title": {
           "type": "string"
+        },
+        "admin": {
+          "$ref": "#/$defs/autoPanel",
+          "description": "kind \"list\" or \"workbench\" only (D-1): the generated back-office pages of this screen's concept (what an autoPanel declared): route, surfaces, selection, detail, transaction, prompt, metadata. On kind \"workbench\" the screen's concept is the aggregate root (its composition tree is the workbench) and the settings of the workbench (regions, bandPickers, derivedFields, uiState, hooks, computed, visibleWhen, actions) live under admin.transaction. The screen supplies name and concept, so admin must not repeat name, concept or aggregate. A pack's admin screen is pack-qualified (pack::Name) like the autoPanel it replaces."
+        },
+        "panel": {
+          "$ref": "#/$defs/screenPanel",
+          "description": "kind \"custom\" only (D-1): a hand-written panel -- the old panels[] entry -- declared on a screen instead of a root key: route, title, dataSources, layout, fieldBindings, visibility, enabledWhen, actions, explainability, metadata, guidePage. The screen supplies the panel's name, so panel must not repeat name. Not a screen an experience can navigate to (the panel is served at its own route), and not combined with `component`."
         },
         "kind": {
           "enum": [
@@ -4997,17 +5042,12 @@
       },
       "additionalProperties": false
     },
-    "panel": {
+    "screenPanel": {
       "type": "object",
       "required": [
-        "name",
         "route"
       ],
       "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
         "uid": {
           "type": "string",
           "pattern": "^[a-z0-9]{8,32}$",

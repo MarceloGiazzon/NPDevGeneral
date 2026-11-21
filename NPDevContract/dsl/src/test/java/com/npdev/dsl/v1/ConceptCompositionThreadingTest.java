@@ -51,7 +51,7 @@ class ConceptCompositionThreadingTest {
                   "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true },
                               { "name": "orderId", "type": "uuid" } ] }
               ],
-              "autoPanels": [ { "name": "OrderWorkbench", "aggregate": "Order" } ]
+              "screens": [{ "name": "OrderWorkbench", "kind": "workbench", "concept": "Order", "admin": { } }]
             }
             """;
 
@@ -89,7 +89,7 @@ class ConceptCompositionThreadingTest {
 
     @Test
     void theRemovedTopLevelAggregatesKeyIsRefusedWithAPointerToComposition() {
-        String json = MODEL.replace("\"autoPanels\"", "\"aggregates\": [ { \"name\": \"OrderAggregate\", \"root\": \"Order\" } ], \"autoPanels\"");
+        String json = MODEL.replace("\"screens\"", "\"aggregates\": [ { \"name\": \"OrderAggregate\", \"root\": \"Order\" } ], \"screens\"");
         DeprecationException refused = assertThrows(DeprecationException.class,
                 () -> new JsonModelParser().parse(MAPPER.readTree(json)));
         assertTrue(refused.getMessage().contains("composition"), refused.getMessage());
@@ -122,7 +122,7 @@ class ConceptCompositionThreadingTest {
         Path model = write("model.json", """
                 { "namespace": "composition.pack", "dslVersion": "3.0.0", "version": "1.0",
                   "packs": [ { "$ref": "packs/shop/pack.json" } ],
-                  "autoPanels": [ { "name": "BasketWorkbench", "aggregate": "Basket" } ] }
+                  "screens": [{ "name": "BasketWorkbench", "kind": "workbench", "concept": "Basket", "admin": { } }] }
                 """);
         ResolvedModelSource resolved = new ModelSourceResolver().resolve(model);
         JsonNode root = resolved.resolvedRoot();
@@ -135,7 +135,7 @@ class ConceptCompositionThreadingTest {
         }
         assertTrue(basket != null, "the pack concept is qualified");
         assertEquals("shop::BasketItem", basket.get("composition").get("collections").get(0).get("concept").asText());
-        assertEquals("shop::Basket", root.get("autoPanels").get(0).get("aggregate").asText(),
+        assertEquals("shop::Basket", root.get("screens").get(0).get("concept").asText(),
                 "a bare aggregate reference resolves to the pack's qualified concept");
 
         ModelAst ast = new JsonModelParser().parse(resolved);

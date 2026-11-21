@@ -352,7 +352,7 @@ carry it say so in a `NOTICE` on every boot. Existing apps keep working unchange
 
 This is where your app "happens": `version` (your own app
 version string), `namespace` (a Java-style package name), and `concepts` (at least one) are
-required. (`dslVersion` is optional: omit it, or write `"3.0.0"`.) Everything else — `flows`, `events`, `queries`, `panels`,
+required. (`dslVersion` is optional: omit it, or write `"3.0.0"`.) Everything else — `flows`, `events`, `queries`, `screens`,
 `capabilities` — is optional and is exactly what
 the four levels below add, one at a time.
 

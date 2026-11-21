@@ -31,8 +31,8 @@ class ScreenReferencesToFlowsValidationTest {
                       "steps": [ { "name": "echo", "type": "set", "value": "$input.rows", "output": "rows" },
                                  { "name": "ret", "type": "return", "value": "$rows" } ] }
                   ],
-                  "panels": [
-                    { "name": "TestPanel", "route": "/test-panel", "dataSources": [ %s ] }
+                  "screens": [
+                    { "name": "TestPanel", "kind": "custom", "panel": { "route": "/test-panel", "dataSources": [ %s ]}}
                   ]
                 }
                 """.formatted(panelDataSourceJson));

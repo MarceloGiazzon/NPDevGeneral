@@ -44,8 +44,7 @@ class AutoPanelRegionsValidationTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "itemId", "type": "uuid" } ] }
               ],
-              "autoPanels": [ { "aggregate": "Movimento",
-                "transaction": { "regions": %s } } ]
+              "screens": [ { "name": "Movimento", "kind": "workbench", "concept": "Movimento", "admin": { "transaction": { "regions": %s } } } ]
             }
             """.formatted(regionsJson);
     }

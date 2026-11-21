@@ -21,8 +21,8 @@ meet first; the full fate of every top-level key lives in `scripts/policy/concep
 | Behaviour | **Function** | A pure, typed computation callable from any expression. *(New; not in the DSL yet.)* |
 | Integration | **Capability** | A door to the outside world: outbound operations or inbound webhooks. |
 | Identity | **Role** | A kind of user, and what it may do. |
-| Presentation | **Experience** | What one or more roles see: home, navigation, device. *(New; the optional root `backOffice` already configures the back-office menu.)* |
-| Presentation | **Screen** | One page of an experience, of a closed archetype. *(Today `panels[]`; a reusable picker is a `screens[]` entry of kind `picker`, a printable document one of kind `document`.)* |
+| Presentation | **Experience** | What one or more roles see: home, navigation, device. *(New; an `experiences[]` entry with an `admin` block already configures the back-office menu.)* |
+| Presentation | **Screen** | One page of an experience, of a closed archetype. *(Today `screens[]`; a hand-written page is a `kind: custom` screen with a `panel` block; a reusable picker is a `screens[]` entry of kind `picker`, a printable document one of kind `document`.)* |
 | Composition | **Pack** | A versioned library of the nouns above, installed from elsewhere. |
 | Composition | **Module** | A boundary inside one project. *(`modules[]`.)* |
 | Configuration | **Property** | A runtime setting resolved through scopes, changeable without regenerating. |
@@ -35,7 +35,7 @@ calculation, Function)? reach *outside* (Capability)? say *who may* (Role)? deci
 these — never a thirteenth block.
 
 Not every key you can still write today has its own section below: `procedures`,
-`autoPanels`, `panels` and a few more are being merged into Flow, Screen and Concept. The sections that follow
+a few more keys are being merged into Flow, Screen and Concept (`autoPanels` is already a `screens[]` entry's `admin` block, and `panels` a `kind: custom` screen's `panel` block). The sections that follow
 describe the DSL as it is now and say where a block is on its way out.
 
 ---
@@ -772,7 +772,7 @@ Flow         — an action: steps started by an api call, a screen, an event, a 
              └── Flow (event trigger) — reacts to the event (`trigger.event`)
 
 Role         — who may read/write which Concept and run which Flow
-Experience   — what a Role sees: home + navigation (the back-office menu: root backOffice)
+Experience   — what a Role sees: home + navigation (the back-office menu: the `admin` experience)
    └── Screen — one page (today: panel); its buttons call a Flow (or, today, a Procedure)
 Property     — a setting any of the above can read, changed without regenerating
 Pack / Module — how you split and reuse all of the above (a Module is today's context)

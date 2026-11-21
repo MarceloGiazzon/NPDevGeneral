@@ -112,6 +112,38 @@ class ExperienceEmitterTest {
         assertEquals("Headline", open.path("fieldMeta").path("title").path("label").asText());
     }
 
+    private static final String ADMIN_SCREEN =
+            "{ \"name\": \"Categories\", \"kind\": \"list\", \"concept\": \"TicketCategory\", \"admin\": { \"route\": \"/categories\" } }";
+
+    @Test
+    void anAdminScreenIsTheBackOfficeNotAScreenOfTheExperienceClient() throws Exception {
+        Path out = tempDir.resolve("out");
+        String model = MODEL.replace("\"screens\": [", "\"screens\": [ " + ADMIN_SCREEN + ",");
+        emitter(out, "experience-emitter-test/").emit(compile(model));
+
+        JsonNode resolved = MAPPER.readTree(Files.readString(out.resolve(OUT)));
+        assertEquals(3, resolved.path("screens").size(), "the admin screen is not served to /x/");
+        for (JsonNode s : resolved.path("screens")) {
+            assertFalse("Categories".equals(s.path("name").asText()), "admin screen leaked into experiences.json");
+        }
+    }
+
+    @Test
+    void anAppWithOnlyAdminScreensGetsNoExperienceClient() throws Exception {
+        Path out = tempDir.resolve("out");
+        String model = """
+                { "namespace": "only.admin", "dslVersion": "3.0.0", "version": "1.0",
+                  "concepts": [ { "name": "TicketCategory", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true },
+                    { "name": "name", "type": "string" } ] } ],
+                  "screens": [ %s ] }
+                """.formatted(ADMIN_SCREEN);
+        emitter(out, "experience-emitter-test/").emit(compile(model));
+
+        assertFalse(Files.exists(out.resolve(OUT)), "nothing for the experience client to serve");
+        assertFalse(Files.exists(out.resolve("src/main/resources/static/x/shell.js")));
+    }
+
     @Test
     void copiesEveryManifestFileUnderStaticX() throws Exception {
         Path out = tempDir.resolve("out");

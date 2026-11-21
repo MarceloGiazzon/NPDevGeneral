@@ -31,10 +31,10 @@ class AggregateWorkbenchExpansionTest {
                 { "name": "id", "type": "uuid", "id": true, "required": true },
                 { "name": "cliente", "type": "string" } ],
                   "composition": {} } ],
-              "autoPanels": [ { "aggregate": "Pedido"%s } ]
+              "screens": [ { "name": "Pedido", "kind": "workbench", "concept": "Pedido", "admin": { %s } } ]
             }
             """;
-        CompiledModel grid = compile(template.formatted(", \"selection\": { \"layout\": \"grid\" }"));
+        CompiledModel grid = compile(template.formatted("\"selection\": { \"layout\": \"grid\" }"));
         CompiledModel plain = compile(template.formatted(""));
         assertEquals("grid", selectionLayoutType(grid));
         assertEquals("table", selectionLayoutType(plain));
@@ -85,15 +85,43 @@ class AggregateWorkbenchExpansionTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "itemSeq", "type": "uuid" }, { "name": "local", "type": "string" } ] }
               ],
-              "autoPanels": [ { "aggregate": "Expedicao", "selection": { "filters": ["cliente"] },
-                "transaction": {
-                  "hooks": { "onFieldChange": "Recalcular" },
-                  "bandPickers": {
-                    "origens": { "panel": "MovtoOrigemSelection", "label": "Seleciona Ruas", "columns": ["local"] }
-                  },
-                  "actions": [
-                    { "label": "Gerar Demanda", "procedure": "GerarDemanda" },
-                    { "procedure": "Recalcular" } ] } } ]
+              "screens": [
+                {
+                  "name": "Expedicao",
+                  "kind": "workbench",
+                  "concept": "Expedicao",
+                  "admin": {
+                    "selection": {
+                      "filters": [
+                        "cliente"
+                      ]
+                    },
+                    "transaction": {
+                      "hooks": {
+                        "onFieldChange": "Recalcular"
+                      },
+                      "bandPickers": {
+                        "origens": {
+                          "panel": "MovtoOrigemSelection",
+                          "label": "Seleciona Ruas",
+                          "columns": [
+                            "local"
+                          ]
+                        }
+                      },
+                      "actions": [
+                        {
+                          "label": "Gerar Demanda",
+                          "procedure": "GerarDemanda"
+                        },
+                        {
+                          "procedure": "Recalcular"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
             }
             """;
         CompiledModel model = compile(json);
@@ -203,14 +231,44 @@ class AggregateWorkbenchExpansionTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "movimentoId", "type": "uuid" } ] }
               ],
-              "autoPanels": [ { "aggregate": "Movimento",
-                "transaction": { "actions": [
-                  { "label": "Sugerir", "procedure": "SugerirProcedure",
-                    "applyTo": { "collection": "itens", "mode": "appendRow",
-                      "map": { "produtoId": "$resultado.produtoId", "papel": "Destino" } } },
-                  { "label": "No applyTo", "procedure": "NoApplyToProcedure" },
-                  { "label": "Empty map", "procedure": "P3", "applyTo": { "collection": "itens", "mode": "appendRow", "map": {} } }
-                ] } } ]
+              "screens": [
+                {
+                  "name": "Movimento",
+                  "kind": "workbench",
+                  "concept": "Movimento",
+                  "admin": {
+                    "transaction": {
+                      "actions": [
+                        {
+                          "label": "Sugerir",
+                          "procedure": "SugerirProcedure",
+                          "applyTo": {
+                            "collection": "itens",
+                            "mode": "appendRow",
+                            "map": {
+                              "produtoId": "$resultado.produtoId",
+                              "papel": "Destino"
+                            }
+                          }
+                        },
+                        {
+                          "label": "No applyTo",
+                          "procedure": "NoApplyToProcedure"
+                        },
+                        {
+                          "label": "Empty map",
+                          "procedure": "P3",
+                          "applyTo": {
+                            "collection": "itens",
+                            "mode": "appendRow",
+                            "map": {}
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
             }
             """;
         CompiledModel model = compile(json);
@@ -260,12 +318,22 @@ class AggregateWorkbenchExpansionTest {
                   { "name": "movimentoId", "type": "uuid" } ] }
               ],
               "flows": [{"name": "SeedContext", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}, {"name": "RecalcularTotais", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}, {"name": "ValidarSugestao", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
-              "autoPanels": [ { "aggregate": "Movimento",
-                "transaction": { "hooks": {
-                  "onLoad": "SeedContext",
-                  "onFieldChange": "RecalcularTotais",
-                  "beforeAction": "ValidarSugestao"
-                } } } ]
+              "screens": [
+                {
+                  "name": "Movimento",
+                  "kind": "workbench",
+                  "concept": "Movimento",
+                  "admin": {
+                    "transaction": {
+                      "hooks": {
+                        "onLoad": "SeedContext",
+                        "onFieldChange": "RecalcularTotais",
+                        "beforeAction": "ValidarSugestao"
+                      }
+                    }
+                  }
+                }
+              ]
             }
             """;
         CompiledModel model = compile(json);
@@ -303,11 +371,27 @@ class AggregateWorkbenchExpansionTest {
                   { "name": "movimentoId", "type": "uuid" } ] }
               ],
               "flows": [{"name": "CalcularSaldoFiscal", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
-              "autoPanels": [ { "aggregate": "Movimento",
-                "transaction": { "derivedFields": {
-                  "origemTotal": { "expression": "sum(itens[].quantidade)" },
-                  "saldoFiscal": { "tier": "server", "procedure": "CalcularSaldoFiscal", "label": "Saldo Fiscal" }
-                } } } ]
+              "screens": [
+                {
+                  "name": "Movimento",
+                  "kind": "workbench",
+                  "concept": "Movimento",
+                  "admin": {
+                    "transaction": {
+                      "derivedFields": {
+                        "origemTotal": {
+                          "expression": "sum(itens[].quantidade)"
+                        },
+                        "saldoFiscal": {
+                          "tier": "server",
+                          "procedure": "CalcularSaldoFiscal",
+                          "label": "Saldo Fiscal"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
             }
             """;
         CompiledModel model = compile(json);
@@ -355,13 +439,39 @@ class AggregateWorkbenchExpansionTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "movimentoId", "type": "uuid" } ] }
               ],
-              "autoPanels": [ { "aggregate": "Movimento",
-                "transaction": { "actions": [
-                  { "label": "Aplicar Sugestao", "procedure": "SugerirDestino", "afterAction": "AplicarSugestao" },
-                  { "label": "Sugerir", "procedure": "Sugerir",
-                    "applyTo": { "collection": "itens", "mode": "appendRow", "map": { "a": "$b" } } },
-                  { "label": "Neither", "procedure": "Plain" }
-                ] } } ]
+              "screens": [
+                {
+                  "name": "Movimento",
+                  "kind": "workbench",
+                  "concept": "Movimento",
+                  "admin": {
+                    "transaction": {
+                      "actions": [
+                        {
+                          "label": "Aplicar Sugestao",
+                          "procedure": "SugerirDestino",
+                          "afterAction": "AplicarSugestao"
+                        },
+                        {
+                          "label": "Sugerir",
+                          "procedure": "Sugerir",
+                          "applyTo": {
+                            "collection": "itens",
+                            "mode": "appendRow",
+                            "map": {
+                              "a": "$b"
+                            }
+                          }
+                        },
+                        {
+                          "label": "Neither",
+                          "procedure": "Plain"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
             }
             """;
         CompiledModel model = compile(json);
@@ -414,17 +524,32 @@ class AggregateWorkbenchExpansionTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "itemSeq", "type": "uuid" } ] }
               ],
-              "autoPanels": [ { "aggregate": "Expedicao",
-                "transaction": {
-                  "visibleWhen": {
-                    "itens": "$root.tipo == 'RECEBIMENTO'",
-                    "origens": "$root.tipo != 'CANCELADA'"
-                  },
-                  "actions": [
-                    { "label": "Confirmar", "procedure": "ConfirmarProcedure", "visibleWhen": "$root.tipo == 'RECEBIMENTO'" },
-                    { "label": "Sempre", "procedure": "SempreProcedure" }
-                  ]
-                } } ]
+              "screens": [
+                {
+                  "name": "Expedicao",
+                  "kind": "workbench",
+                  "concept": "Expedicao",
+                  "admin": {
+                    "transaction": {
+                      "visibleWhen": {
+                        "itens": "$root.tipo == 'RECEBIMENTO'",
+                        "origens": "$root.tipo != 'CANCELADA'"
+                      },
+                      "actions": [
+                        {
+                          "label": "Confirmar",
+                          "procedure": "ConfirmarProcedure",
+                          "visibleWhen": "$root.tipo == 'RECEBIMENTO'"
+                        },
+                        {
+                          "label": "Sempre",
+                          "procedure": "SempreProcedure"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
             }
             """;
         CompiledModel model = compile(json);
@@ -483,10 +608,23 @@ class AggregateWorkbenchExpansionTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "itemId", "type": "uuid" } ] }
               ],
-              "autoPanels": [ { "aggregate": "Movimento",
-                "transaction": { "regions": {
-                  "itens.posicoes": { "render": "component", "component": "posicao-grid" }
-                } } } ]
+              "screens": [
+                {
+                  "name": "Movimento",
+                  "kind": "workbench",
+                  "concept": "Movimento",
+                  "admin": {
+                    "transaction": {
+                      "regions": {
+                        "itens.posicoes": {
+                          "render": "component",
+                          "component": "posicao-grid"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
             }
             """;
         CompiledModel model = compile(json);
@@ -542,21 +680,47 @@ class AggregateWorkbenchExpansionTest {
                   { "name": "itemSeq", "type": "uuid" }, { "name": "local", "type": "string" } ] }
               ],
               "flows": [{"name": "GerarDemanda", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}],
-              "autoPanels": [ { "aggregate": "Expedicao",
-                "transaction": {
-                  "actions": [
-                    { "procedure": "GerarDemanda", "label": "Gerar Demanda", "inputFields": ["tipo"],
-                      "visibleWhen": "$root.tipo == 'RECEBIMENTO'",
-                      "applyTo": { "collection": "itens", "mode": "appendRow", "map": { "expedicaoId": "$resultado.id" } } }
-                  ],
-                  "visibleWhen": {
-                    "itens": "$root.tipo == 'RECEBIMENTO'",
-                    "origens": "$root.tipo != 'CANCELADA'"
-                  },
-                  "bandPickers": {
-                    "origens": { "panel": "MovtoOrigemSelection", "label": "Seleciona Ruas", "columns": ["local"] }
+              "screens": [
+                {
+                  "name": "Expedicao",
+                  "kind": "workbench",
+                  "concept": "Expedicao",
+                  "admin": {
+                    "transaction": {
+                      "actions": [
+                        {
+                          "procedure": "GerarDemanda",
+                          "label": "Gerar Demanda",
+                          "inputFields": [
+                            "tipo"
+                          ],
+                          "visibleWhen": "$root.tipo == 'RECEBIMENTO'",
+                          "applyTo": {
+                            "collection": "itens",
+                            "mode": "appendRow",
+                            "map": {
+                              "expedicaoId": "$resultado.id"
+                            }
+                          }
+                        }
+                      ],
+                      "visibleWhen": {
+                        "itens": "$root.tipo == 'RECEBIMENTO'",
+                        "origens": "$root.tipo != 'CANCELADA'"
+                      },
+                      "bandPickers": {
+                        "origens": {
+                          "panel": "MovtoOrigemSelection",
+                          "label": "Seleciona Ruas",
+                          "columns": [
+                            "local"
+                          ]
+                        }
+                      }
+                    }
                   }
-                } } ]
+                }
+              ]
             }
             """;
         CompiledModel model = compile(json);
@@ -618,12 +782,22 @@ class AggregateWorkbenchExpansionTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "itemSeq", "type": "uuid" }, { "name": "local", "type": "string" } ] }
               ],
-              "autoPanels": [ { "aggregate": "Expedicao",
-                "transaction": {
-                  "bandPickers": {
-                    "origens": { "filter": "local == 'A' && id == $root.tipo" }
+              "screens": [
+                {
+                  "name": "Expedicao",
+                  "kind": "workbench",
+                  "concept": "Expedicao",
+                  "admin": {
+                    "transaction": {
+                      "bandPickers": {
+                        "origens": {
+                          "filter": "local == 'A' && id == $root.tipo"
+                        }
+                      }
+                    }
                   }
-                } } ]
+                }
+              ]
             }
             """;
         CompiledModel model = compile(json);
@@ -675,7 +849,7 @@ class AggregateWorkbenchExpansionTest {
                   { "name": "id", "type": "uuid", "id": true, "required": true },
                   { "name": "taskId", "type": "uuid" }, { "name": "hours", "type": "integer" } ] }
               ],
-              "autoPanels": [ { "aggregate": "Project" } ]
+              "screens": [{ "name": "Project", "kind": "workbench", "concept": "Project", "admin": { } }]
             }
             """;
         CompiledModel model = compile(json);

@@ -108,6 +108,7 @@ public final class SemanticValidator {
         }
         ModelAst effectiveModel = resolvedModel.modelAst();
         ExpressionValidation.validateDslVersion(effectiveModel, errors);
+        ConceptValidation.validateSpecializationDepth(modelAst, semanticWarnings);
         Map<String, ConceptAst> entitiesByLower = ConceptValidation.indexEntities(effectiveModel.getConcepts(), errors);
         ConceptValidation.validateTableNameCollisions(effectiveModel, errors);
         ConceptValidation.validateConceptRenamedFrom(effectiveModel, entitiesByLower, errors, semanticWarnings);

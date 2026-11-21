@@ -102,7 +102,7 @@ public class BusinessUiEmitterGuidePageManifestTest {
                   "concepts": [
                     { "name": "Order", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
                   ],
-                  "backOffice": { "pages": [
+                  "experiences": [ { "name": "admin", "admin": { "pages": [
                     {
                       "name": "Default",
                       "default": true,
@@ -110,7 +110,7 @@ public class BusinessUiEmitterGuidePageManifestTest {
                       "regions": { "top": true, "left": { "enabled": true }, "right": { "enabled": true, "width": 280 } },
                       "gadgets": [ { "name": "recent", "type": "recent-items", "title": "Recentes" } ]
                     }
-                  ] }
+                  ] } } ]
                 }
                 """);
 
@@ -130,14 +130,14 @@ public class BusinessUiEmitterGuidePageManifestTest {
                   "concepts": [
                     { "name": "Order", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] }
                   ],
-                  "backOffice": { "pages": [
+                  "experiences": [ { "name": "admin", "admin": { "pages": [
                     {
                       "name": "Default",
                       "default": true,
                       "regions": { "right": { "enabled": true } },
                       "gadgets": [ { "name": "help", "type": "page-fragment", "title": "Help", "url": "/npdev-help/x.html" } ]
                     }
-                  ] }
+                  ] } } ]
                 }
                 """);
 
@@ -167,7 +167,7 @@ public class BusinessUiEmitterGuidePageManifestTest {
                       "aggregates": [ { "name": "total", "fn": "sum", "field": "amount" } ] },
                     { "name": "AllOrders", "concept": "Order" }
                   ],
-                  "backOffice": { "pages": [
+                  "experiences": [ { "name": "admin", "admin": { "pages": [
                     {
                       "name": "Default",
                       "default": true,
@@ -177,7 +177,7 @@ public class BusinessUiEmitterGuidePageManifestTest {
                         { "name": "all", "type": "table", "query": "AllOrders" }
                       ]
                     }
-                  ] }
+                  ] } } ]
                 }
                 """);
 
@@ -213,12 +213,12 @@ public class BusinessUiEmitterGuidePageManifestTest {
                       "groupBy": [ "status" ],
                       "aggregates": [ { "name": "count", "fn": "count" } ] }
                   ],
-                  "backOffice": { "pages": [
+                  "experiences": [ { "name": "admin", "admin": { "pages": [
                     { "name": "Default", "default": true, "regions": { "right": { "enabled": true } },
                       "gadgets": [
                         { "name": "share", "type": "donut", "title": "Orders by status",
                           "query": "OrdersByStatus", "x": "status", "y": "count" } ] }
-                  ] }
+                  ] } } ]
                 }
                 """);
 
