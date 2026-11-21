@@ -3,8 +3,9 @@ title: >-
   The online validator (REG-335) validates only a model.json: an online AI or a browser agent that writes a PACK cannot iterate on a verdict the way it does for an app
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-11-20
+closed: 2026-11-21
 source: >-
   Owner's request 2026-11-20 ("make the outside AI have less difficulty designing systems or packs") after the real ratings round: every
   correction a pack needed (roles[], $user.isSystem blocking aggregates, English labels) came from the relay, one round at a time, and an
@@ -30,8 +31,9 @@ detail: |
   RESTARTED 2026-11-21 at the owner's word (only the service, same arguments and token file; ngrok, the static domain and the token untouched): through the PUBLIC
   address the published ratings 1.0.1 answers passed / kind pack, the same pack with roles[] answers failed with the relay's line, GET /api/schema/pack is 200 and the
   MCP tool list names the pack route. The service is now started by hand (no longer a child of Start-ValidatorTunnel.ps1): Ctrl+C on that script ends ngrok only.
-  NOT done: no online AI or browser agent has written a pack to `passed` yet (the last clause of done_when); a chat that already had the connector open may need a new
-  conversation to see the new tool description.
+  OWNER ROUND 2026-11-21 (record: OutsideRepo/reg335-public-loop/ACCEPTANCE_2026-11-20.txt): Gemini through the MCP connector, a new conversation, wrote a ratings pack
+  and reached `passed` in 2 rounds -- round 1 `failed` (roles[] naming its own concept, the static check, 0 ms in the access log), round 2 `passed` (real validator, 1125 ms).
+  It fixed the pack by itself from the refusal's way out. The final pack re-validated by hand against the live service: passed / kind pack. That closes done_when.
 guard:
   kind: test
   ref: NPDevMcp/tests/test_validation_service.py#PackValidationTest
@@ -39,7 +41,7 @@ guard:
     a good pack is validated through a probe application that imports it and answers passed with kind pack; roles[] naming its own concept, a non-English label and an
     unsafe pack id are refused with the relay's lines before the validator runs; a model answer has no kind; GET /api/schema/pack serves the schema.
   provenRed: false
-verification: UNIT_TESTED
+verification: VERIFIED_LIVE
 done_when: >-
   POSTing a ratings pack.json that declares roles[] or Portuguese labels to /api/validate answers with the same lines the relay gives, and a
   good pack answers passed; an MCP tool or the service page names the pack route; one online AI or browser agent writes a pack to passed.
