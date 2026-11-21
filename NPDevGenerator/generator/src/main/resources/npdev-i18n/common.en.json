@@ -9,5 +9,19 @@
   "common.review.applySelected": "Apply selected",
   "common.xlsx.notXlsx": "Not an .xlsx (zip) file",
   "common.xlsx.unsupportedCompression": "Unsupported zip compression method {method}",
-  "common.xlsx.noFirstSheet": "The workbook has no first worksheet (xl/worksheets/sheet1.xml)"
+  "common.xlsx.noFirstSheet": "The workbook has no first worksheet (xl/worksheets/sheet1.xml)",
+  "common.server.required": "Entity {entity}: required field '{field}' is missing",
+  "common.server.unique": "Entity {entity}: unique constraint violated for field '{field}'",
+  "common.server.uniqueFields": "Entity {entity}: unique constraint violated for fields ({fields})",
+  "common.server.maxLength": "Entity {entity}: field '{field}' exceeds maxLength {max} (got {got} characters)",
+  "common.server.minLength": "Entity {entity}: field '{field}' is shorter than minLength {min} (got {got} characters)",
+  "common.server.belowMin": "Entity {entity}: field '{field}' is below min {min} (got {got})",
+  "common.server.aboveMax": "Entity {entity}: field '{field}' is above max {max} (got {got})",
+  "common.server.dateFormat": "Entity {entity}: date field '{field}' must use ISO format YYYY-MM-DD",
+  "common.server.datetimeFormat": "Entity {entity}: datetime field '{field}' must use ISO datetime format",
+  "common.server.enumValue": "Entity {entity}: enum constraint violated for field '{field}' (allowed: {allowed})",
+  "common.server.notNumber": "Entity {entity}: field '{field}' must be a number",
+  "common.server.notWhole": "Entity {entity}: field '{field}' must be a whole number",
+  "common.server.notBoolean": "Entity {entity}: field '{field}' must be boolean",
+  "common.server.notUuid": "Entity {entity}: field '{field}' must be a UUID"
 }

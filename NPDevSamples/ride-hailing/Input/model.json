@@ -374,7 +374,6 @@
         },
         {
           "name": "driverName",
-          "type": "string",
           "access": {
             "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
           }
@@ -421,7 +420,6 @@
         },
         {
           "name": "zoneName",
-          "type": "string",
           "access": {
             "write": "$user.roles.contains('Dispatcher') || $user.isSystem"
           }

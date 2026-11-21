@@ -366,7 +366,9 @@
     "aggregateCollection.childField": "Field of the child concept that points back to the parent row.",
     "aggregateCollection.ownership": "`owned` (default): the aggregate creates and deletes the child rows. `referenced`: the rows exist independently and are only linked.",
     "aggregateCollection.orderBy": "Field the collection's rows are ordered by.",
-    "aggregateCollection.collections": "Nested child collections (a second level, such as lines and their positions)."
+    "aggregateCollection.collections": "Nested child collections (a second level, such as lines and their positions).",
+    "fieldConvention.match": "Which field names the rule types: an exact name (`name`) or a camelCase ending (`*Dt`). An ending matches when the field's LAST camelCase word is that text, so `*Name` matches `clientName` and `shippingAddressName` but not `name` (that is an exact rule) and not `hasToRename`. An exact rule beats an ending, a longer ending beats a shorter one.",
+    "fieldConvention.defaults": "What a matching field takes when it leaves the property out: always a `type`, optionally the size and constraint keys listed under it. A field that declares its own `type` is never touched."
   },
   "inline": {
     "seed.repeatOver.vars": "Index variables: a map from variable name to the inclusive integer range it takes.",
@@ -383,6 +385,16 @@
     "field.file.multiple": "True: the field holds a list of files.",
     "conceptAccess.public.where": "Filter narrowing which rows are public (the query `where` grammar; it cannot use `$user`). Absent means every row.",
     "conceptAccess.public.fields": "The allow-list of fields served publicly (the id is always included).",
-    "conceptAccess.public.scope": "`concept` (default): the concept is publicly readable on its own. `aggregate`: its aggregate is served as a whole."
+    "conceptAccess.public.scope": "`concept` (default): the concept is publicly readable on its own. `aggregate`: its aggregate is served as a whole.",
+    "fieldConvention.defaults.type": "The field type the rule gives: string, uuid, int, integer, long, decimal, boolean, date or datetime.",
+    "fieldConvention.defaults.maxLength": "Longest text the field accepts; an explicit `maxLength` on the field wins.",
+    "fieldConvention.defaults.minLength": "Shortest text the field accepts.",
+    "fieldConvention.defaults.precision": "Total digits of a decimal field (1 to 38).",
+    "fieldConvention.defaults.scale": "Digits after the decimal point of a decimal field.",
+    "fieldConvention.defaults.min": "Smallest value a number field accepts.",
+    "fieldConvention.defaults.max": "Largest value a number field accepts.",
+    "fieldConvention.defaults.required": "Whether the field must be present.",
+    "fieldConvention.defaults.unique": "Whether no two rows may share the value.",
+    "fieldConvention.defaults.sensitive": "Marks the field as sensitive (omitted from reads and logs unless granted)."
   }
 }

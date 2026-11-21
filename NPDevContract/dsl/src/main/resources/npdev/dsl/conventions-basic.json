@@ -1,0 +1,11 @@
+{
+  "pack": "conventions-basic",
+  "version": "1.0.0",
+  "description": "Built-in field naming conventions, always active and lowest priority. A concept field that declares no type takes it from the first rule matching its name: `name` or a camelCase `*Name` is string(50), `*Dt` is a date, `*Dtt` is a datetime. A model overrides one with its own rule of the same match.",
+  "fieldConventions": [
+    { "match": "name", "defaults": { "type": "string", "maxLength": 50 } },
+    { "match": "*Name", "defaults": { "type": "string", "maxLength": 50 } },
+    { "match": "*Dt", "defaults": { "type": "date" } },
+    { "match": "*Dtt", "defaults": { "type": "datetime" } }
+  ]
+}

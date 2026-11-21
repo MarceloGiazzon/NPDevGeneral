@@ -110,7 +110,8 @@ class KindsAndScanTests(unittest.TestCase):
     def test_the_prompt_sentence_exists_only_when_code_is_accepted(self):
         self.assertEqual(codepolicy.briefing("never"), "")
         self.assertIn("JavaScript", codepolicy.briefing("pages"))
-        self.assertIn("Do not send Java", codepolicy.briefing("all"))   # accepted by the relay, not writable yet (REG-355)
+        self.assertIn("Do not send other Java", codepolicy.briefing("all"))   # one class for a flow is writable (REG-355); capabilities and hooks are not
+        self.assertIn("extensions/<Name>.java", codepolicy.briefing("all"))
 
 
 class CodeAnswerTests(SplitAnswerCase):

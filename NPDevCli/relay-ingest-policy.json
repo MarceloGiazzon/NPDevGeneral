@@ -36,7 +36,7 @@
           "fragments/*.json", "contexts/*.json", "themes/*.json",
           "web/*.html", "web/*.css", "web/*.svg", "pages.json", "menu.json", "seeds/*.json"
         ],
-        "quarantine": ["capabilities/*", "conversion-hooks/*", "web/*.js", "web/*.mjs"]
+        "quarantine": ["capabilities/*", "conversion-hooks/*", "extensions/*.java", "web/*.js", "web/*.mjs"]
       },
       "pack": {
         "_comment": "Used ONLY by a conversation whose intent is 'pack' (a browser AI writes a reusable pack, not an app). Code stays out: a pack.json carries capabilities CONTRACTS only, never code. The relay stores pack.json as <packs workspace>/<packId>/pack.json -- the AI never chooses the folder. example-model.json is an OPTIONAL tiny consumer model that imports the pack by local $ref, used to prove the pack composes.",
@@ -58,7 +58,8 @@
       "seeds": "its elements are identified by id, not name",
       "autoPanels": "its elements do not need a name",
       "modules": "each context points at a file of its own",
-      "packs": "its elements have no name"
+      "packs": "its elements have no name",
+      "fieldConventions": "its elements are identified by their match text, not name"
     },
     "shrinkWarnRatio": 0.5,
     "shrinkMinChars": 400
@@ -140,7 +141,7 @@
   ],
   "codeScan": {
     "_comment": "REG-354: what a piece of code an AI wrote DOES, said in words before the owner accepts it (never a verdict: a scan cannot prove code safe). Only used when the machine's relay.codeFromBrowserAi setting accepts that kind of code; with the default (never) the code is quarantined and none of this runs. `kinds` is the code kind of each path glob; `scan` is per language.",
-    "kinds": {"web/*.js": "js-page", "web/*.mjs": "js-page", "capabilities/*": "java-capability", "conversion-hooks/*": "conversion-hook"},
+    "kinds": {"web/*.js": "js-page", "web/*.mjs": "js-page", "extensions/*.java": "java-extension", "capabilities/*": "java-capability", "conversion-hooks/*": "conversion-hook"},
     "scan": {
       "js": [
         {"id": "storage", "en": "reads or writes cookies or the browser's stored data", "pt": "lê ou grava cookies ou dados guardados no navegador", "regex": "document\\.cookie|localStorage|sessionStorage|indexedDB"},

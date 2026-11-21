@@ -4,7 +4,7 @@
 
 The complete list of keywords an NPDev model (`model.json`) or pack (`pack.json`) may use: what each one means, where it may appear, whether it is required, and which values it accepts. Every keyword of the DSL is here; a key that is not here is rejected by the schema (`additionalProperties: false`).
 
-Schema version `1.0.0`, DSL version `3.0.0`. **757 keywords** are documented: 718 declared by the model schema (99 object kinds) and 39 by the pack schema, counted exactly as `scripts/quality/check-dsl-keyword-budget.py` counts them. The model root keys are listed separately in section 0.
+Schema version `1.0.0`, DSL version `3.0.0`. **760 keywords** are documented: 720 declared by the model schema (100 object kinds) and 40 by the pack schema, counted exactly as `scripts/quality/check-dsl-keyword-budget.py` counts them. The model root keys are listed separately in section 0.
 
 ## How to read this reference
 
@@ -17,7 +17,7 @@ Schema version `1.0.0`, DSL version `3.0.0`. **757 keywords** are documented: 71
 ## Contents
 
 - [0. Model root and pack file](#0-model-root-and-pack-file)
-- [1. Concept](#1-concept): [`concept`](#concept), [`field`](#field), [`domainType`](#domaintype), [`enumOption`](#enumoption), [`referenceDefinition`](#referencedefinition), [`schemaObject`](#schemaobject), [`localizableLabel`](#localizablelabel), [`presentationMetadata`](#presentationmetadata), [`uiField`](#uifield), [`conceptAccess`](#conceptaccess), [`index`](#index), [`invariant`](#invariant), [`lifecycle`](#lifecycle), [`lifecycleState`](#lifecyclestate), [`lifecycleTransition`](#lifecycletransition), [`actionMetadata`](#actionmetadata), [`composition`](#composition), [`aggregateCollection`](#aggregatecollection), [`aggregateCollectionLookupField`](#aggregatecollectionlookupfield), [`aggregateInvariant`](#aggregateinvariant), [`aggregateBalance`](#aggregatebalance), [`sequence`](#sequence), [`seed`](#seed)
+- [1. Concept](#1-concept): [`concept`](#concept), [`field`](#field), [`fieldConvention`](#fieldconvention), [`domainType`](#domaintype), [`enumOption`](#enumoption), [`referenceDefinition`](#referencedefinition), [`schemaObject`](#schemaobject), [`localizableLabel`](#localizablelabel), [`presentationMetadata`](#presentationmetadata), [`uiField`](#uifield), [`conceptAccess`](#conceptaccess), [`index`](#index), [`invariant`](#invariant), [`lifecycle`](#lifecycle), [`lifecycleState`](#lifecyclestate), [`lifecycleTransition`](#lifecycletransition), [`actionMetadata`](#actionmetadata), [`composition`](#composition), [`aggregateCollection`](#aggregatecollection), [`aggregateCollectionLookupField`](#aggregatecollectionlookupfield), [`aggregateInvariant`](#aggregateinvariant), [`aggregateBalance`](#aggregatebalance), [`sequence`](#sequence), [`seed`](#seed)
 - [2. Query](#2-query): [`query`](#query), [`queryLookup`](#querylookup), [`queryComputedColumn`](#querycomputedcolumn), [`groupByField`](#groupbyfield), [`aggregateFunction`](#aggregatefunction), [`queryParameter`](#queryparameter)
 - [3. Flow](#3-flow): [`flow`](#flow), [`flowInput`](#flowinput), [`flowSchedule`](#flowschedule), [`flowHook`](#flowhook), [`flowStep`](#flowstep), [`awaitMatch`](#awaitmatch), [`humanTask`](#humantask), [`generatedActionDescriptor`](#generatedactiondescriptor)
 - [4. Event](#4-event): [`event`](#event), [`eventPayloadField`](#eventpayloadfield)
@@ -61,6 +61,7 @@ A model file is one JSON object. `namespace` and `concepts` are required in ever
 | `properties` | array of [`property`](#property) | optional | Declared runtime properties resolved through the scoped-property cascade (see propertyScopes). |
 | `modules` | array of [`context`](#context) | optional | bounded-context declarations. Each names a context and $ref's the fragment file (composed via the same pack/fragment $ref machinery as `fragments`/`packs`) whose concepts/queries/panels/flows belong to that context. Cross-context references use context::Concept (D1); a fragment may only reference a context its own `imports[]` (pack.schema.json) declares (D3) -- an undeclared or unresolvable reference is a compile error, never silent. |
 | `sequences` | array of [`sequence`](#sequence) | optional | model-declared document-numbering counters (e.g. INV-2026-0001). A field's defaultExpression can call nextNumber('name') to atomically allocate the next value, formatted per this sequence's format template. |
+| `fieldConventions` | array of [`fieldConvention`](#fieldconvention) | optional | Field naming conventions: {match, defaults} rules typing a concept field that declares no `type` (e.g. {"match": "*Dt", "defaults": {"type": "date"}}). Built-in rules (conventions-basic) are always active at the lowest priority. A pack may declare them too. |
 | `functions` | array of [`function`](#function) | optional | Named pure functions callable from any expression, e.g. surgeMultiplier(open, free). Each call is replaced by the function body at compile time, so functions cost no runtime. A pack's functions are called as pack::name. |
 | `experiences` | array of [`experience`](#experience) | optional | Experiences per role -- who lands where, on which device. Order matters: a signed-in user lands in the first experience whose `for` contains one of their roles. See screens[]. |
 | `screens` | array of [`screen`](#screen) | optional | The screens experiences navigate to, each one archetype from a closed set (list, detail, form, status, inbox, board, map, dashboard, workbench, document, picker, custom). Screen names are unique across the model. |
@@ -94,6 +95,7 @@ A pack file (`pack.json`) is a named, versioned bundle of the same kinds of memb
 | `backOffice` | object | optional | The back-office guide pages this pack contributes (it was the pack-level guidePages). Composition qualifies each page like any other member (packId::PageName) and appends it, after the model's own pages, to the composed model's root backOffice.pages.<br>Keys written inside it:<br>`pages` (array of [`guidePage`](#guidepage) or [`localModelRef`](#localmodelref); optional): Guide pages the pack adds to the composed model's back office. |
 | `roles` | array of [`role`](#role) or [`localModelRef`](#localmodelref) | optional | Roles the pack contributes. |
 | `sequences` | array of [`sequence`](#sequence) or [`localModelRef`](#localmodelref) | optional | A pack may declare document-numbering counters alongside its other members. `name` is never namespace-qualified by pack composition (see model.schema.json's sequence $def). |
+| `fieldConventions` | array of [`fieldConvention`](#fieldconvention) | optional | Field naming conventions this pack contributes: {match, defaults} rules typing a concept field that declares no `type`, in the importing model and in every pack. Lower priority than the model's own rules. |
 | `functions` | array of [`function`](#function) or [`localModelRef`](#localmodelref) | optional | Named pure functions a pack provides (rung 2 of the extension ladder). Consumers call them as &lt;pack&gt;::&lt;name&gt;; inside the pack the bare name works. |
 | `experiences` | array of [`experience`](#experience) or [`localModelRef`](#localmodelref) | optional | A pack may declare experiences/screens alongside its other members. Their `name` is never namespace-qualified by pack composition (see model.schema.json's experiences property); references out of them (roles, concept, query, flow) are. |
 | `screens` | array of [`screen`](#screen) or [`localModelRef`](#localmodelref) | optional | A pack may declare experiences/screens alongside its other members. Their `name` is never namespace-qualified by pack composition (see model.schema.json's experiences property); references out of them (roles, concept, query, flow) are. |
@@ -187,16 +189,16 @@ One column of a concept (and one entry of an object's properties). The `type` de
 
 **Conditional rules:**
 
-- When `type` is `enum`: requires at least one of `enumValues`, `values`.
-- When `type` is `object`: requires `properties`.
-- When `type` is `array`: requires `items`; each `items` entry has `type` one of `object`, `enum`.
-- When `type` is `reference`: requires at least one of `ref`, `reference`.
-- When `type` is `file`: `unique` must be `false`; `reference` is not allowed; `ref` is not allowed.
+- When `type` is `enum` and `type` is present: requires at least one of `enumValues`, `values`.
+- When `type` is `object` and `type` is present: requires `properties`.
+- When `type` is `array` and `type` is present: requires `items`; each `items` entry has `type` one of `object`, `enum`.
+- When `type` is `reference` and `type` is present: requires at least one of `ref`, `reference`.
+- When `type` is `file` and `type` is present: `unique` must be `false`; `reference` is not allowed; `ref` is not allowed.
 
 | Keyword | Type | Required | Meaning |
 |---|---|---|---|
 | `name` | `string` (min length 1) | required | The field's name: its column name and its JSON key in the REST API. Unique within the concept. |
-| `type` | one of `string`, `uuid`, `int`, `integer`, `long`, `decimal`, `boolean`, `date`, `datetime`, `enum`, `reference`, `object`, `array`, `file` | required | The stored type. `string`, `uuid`, `int` / `integer` (32-bit), `long` (64-bit), `decimal` (use with `precision` and `scale`), `boolean`, `date`, `datetime`, `enum` (needs `enumValues`), `reference` (to another concept's row), `object` (structured, described by `properties`), `array` (described by `items`), `file` (an uploaded file handle). |
+| `type` | one of `string`, `uuid`, `int`, `integer`, `long`, `decimal`, `boolean`, `date`, `datetime`, `enum`, `reference`, `object`, `array`, `file` | optional | The stored type. `string`, `uuid`, `int` / `integer` (32-bit), `long` (64-bit), `decimal` (use with `precision` and `scale`), `boolean`, `date`, `datetime`, `enum` (needs `enumValues`), `reference` (to another concept's row), `object` (structured, described by `properties`), `array` (described by `items`), `file` (an uploaded file handle). |
 | `id` | `boolean` (default `false`) | optional | When true this field is the concept's identifier (primary key). Conventionally a `uuid` field named `id`. |
 | `required` | `boolean` or array of `string` | optional | True: a value must be supplied on create and may not be cleared. On an `object` field this may instead be a list of the property names that are required inside the object. |
 | `unique` | `boolean` (default `false`) | optional | True: no two rows (within one tenant, and among non-deleted rows when the concept uses `softDelete`) may hold the same value. |
@@ -245,6 +247,17 @@ Example:
   "default": "OPEN"
 }
 ```
+
+### `fieldConvention`
+
+A field naming convention: a concept field that declares no `type` takes the defaults of the first rule matching its name. `match` is an exact field name ("name") or a camelCase ending ("*Name": the LAST camelCase word is Name -- clientName matches, hasToRename and name do not). An exact match beats an ending, a longer ending beats a shorter one, equals keep the earlier rule (model rules, then pack rules, then the built-in conventions-basic: name, *Name = string(50), *Dt = date, *Dtt = datetime; a model overrides a built-in rule by declaring the same `match`). A field that declares its own type is never touched; a field with no type that no rule matches is an error. The array is consumed at composition time and never reaches the compiled model.
+
+**Used in:** `fieldConventions` (model root and pack file)
+
+| Keyword | Type | Required | Meaning |
+|---|---|---|---|
+| `match` | `string` (pattern `^(\*[A-Z][A-Za-z0-9]*\|[a-z][A-Za-z0-9_]*)$`) | required | Which field names the rule types: an exact name (`name`) or a camelCase ending (`*Dt`). An ending matches when the field's LAST camelCase word is that text, so `*Name` matches `clientName` and `shippingAddressName` but not `name` (that is an exact rule) and not `hasToRename`. An exact rule beats an ending, a longer ending beats a shorter one. |
+| `defaults` | object | optional | What a matching field takes when it leaves the property out: always a `type`, optionally the size and constraint keys listed under it. A field that declares its own `type` is never touched.<br>Keys written inside it:<br>`type` (one of `string`, `uuid`, `int`, `integer`, `long`, `decimal`, `boolean`, `date`, `datetime`; required): The field type the rule gives: string, uuid, int, integer, long, decimal, boolean, date or datetime.<br>`maxLength` (`integer`; optional; min 0): Longest text the field accepts; an explicit `maxLength` on the field wins.<br>`minLength` (`integer`; optional; min 0): Shortest text the field accepts.<br>`precision` (`integer`; optional; min 1; max 38): Total digits of a decimal field (1 to 38).<br>`scale` (`integer`; optional; min 0): Digits after the decimal point of a decimal field.<br>`min` (`number`; optional): Smallest value a number field accepts.<br>`max` (`number`; optional): Largest value a number field accepts.<br>`required` (`boolean`; optional): Whether the field must be present.<br>`unique` (`boolean`; optional): Whether no two rows may share the value.<br>`sensitive` (`boolean`; optional): Marks the field as sensitive (omitted from reads and logs unless granted). |
 
 ### `domainType`
 
@@ -2366,7 +2379,7 @@ The app's opt-in to delegating work to an outside AI. Absent means denied: no co
 
 ## Coverage
 
-- Keywords documented: 757 (718 model + 39 pack), the same set the keyword budget freezes.
-- Meaning taken from the schema's own `description`: 254.
-- Meaning written in `scripts/policy/dsl-keyword-meanings/`: 503.
+- Keywords documented: 760 (720 model + 40 pack), the same set the keyword budget freezes.
+- Meaning taken from the schema's own `description`: 255.
+- Meaning written in `scripts/policy/dsl-keyword-meanings/`: 505.
 - `scripts/quality/check-dsl-keyword-reference.py` fails when a keyword has no meaning, when the meanings data names a keyword the schema no longer has, or when this page is stale against the schema.

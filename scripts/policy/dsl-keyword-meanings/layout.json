@@ -8,7 +8,7 @@
       "id": "concept",
       "title": "Concept",
       "intro": "A kind of record the app stores: its fields, lifecycle, invariants and who may read or write it. This section also holds everything that belongs to describing data: field types, reusable domain types, numbering sequences, first-boot seed rows, row and field level access, presentation hints and aggregates (a root concept that owns child collections read and saved as one unit).",
-      "defs": ["concept", "field", "domainType", "enumOption", "referenceDefinition", "schemaObject", "localizableLabel", "presentationMetadata", "uiField", "conceptAccess", "index", "invariant", "lifecycle", "lifecycleState", "lifecycleTransition", "actionMetadata", "composition", "aggregateCollection", "aggregateCollectionLookupField", "aggregateInvariant", "aggregateBalance", "sequence", "seed"]
+      "defs": ["concept", "field", "fieldConvention", "domainType", "enumOption", "referenceDefinition", "schemaObject", "localizableLabel", "presentationMetadata", "uiField", "conceptAccess", "index", "invariant", "lifecycle", "lifecycleState", "lifecycleTransition", "actionMetadata", "composition", "aggregateCollection", "aggregateCollectionLookupField", "aggregateInvariant", "aggregateBalance", "sequence", "seed"]
     },
     {
       "id": "query",

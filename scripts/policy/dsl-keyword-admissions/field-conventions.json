@@ -1,0 +1,43 @@
+{
+ "$comment": "Field naming conventions, written 2026-11-21 (owner request): a concept field with no `type` takes its type and size from the first fieldConventions[] rule matching its NAME (`*Dt` is a date, `*Name` is string(50)). The array is consumed while the model is composed (FieldConventionExpansion), like functions[], so the compiled model, the canonical JSON and the generator never see it. Three slots: the rule's match and defaults, and the pack's fieldConventions array. The built-in conventions-basic rules are a resource of the DSL jar, not a schema slot. Shrinks the model an AI must write: the Field row of the teaching bundle gains one clause, and every typed-by-name field loses `type` (and `maxLength`).",
+ "schemaVersion": "npdev-keyword-admission.v1",
+ "keyword": "fieldConventions[]",
+ "slots": [
+  "fieldConvention.match",
+  "fieldConvention.defaults",
+  "pack:fieldConventions"
+ ],
+ "rung": 0,
+ "adr": "docs/adr/ADR-0013-twelve-nouns.md",
+ "date": "2026-11-21",
+ "answers": {
+  "declarative": {
+   "value": true,
+   "why": "a rule says WHAT a name means (a match text and the properties a field of that name has); no ordering, no logic, no expression"
+  },
+  "notLower": {
+   "value": true,
+   "why": "an expression or a function runs on a value, but the type of a field decides its column and its generated screen before any value exists, and the choice is keyed on the field's NAME, which no expression, function or step can read as data; a domainType names a type but still has to be written on every field"
+  },
+  "twice": {
+   "value": true,
+   "apps": [
+    "NPDevSamples/dsl-conformance-max (its own *Code rule types regionCode and legacyCode; ShelfLayout.name takes the built-in rule)",
+    "NPDevSamples/ride-hailing (driverName and zoneName typed by the built-in *Name rule)"
+   ]
+  },
+  "enforced": {
+   "value": true,
+   "probe": "NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/FieldConventionsTest.java",
+   "note": "tests, not a booted probe: the keywords act at composition time, before any app exists. FieldConventionsTest fails if a typeless field stops taking its rule's type and size, if the last-camelCase-word match loosens (hasToRename, hostname), if the model's rule stops beating a pack's or the built-in one, or if a field no rule matches stops being an error"
+  },
+  "taught": {
+   "value": true,
+   "bundleLine": "Field | `concepts[].fields[]` | ... a field with no `type` takes it from its NAME: `name`/`*Name` is string(50), `*Dt` a date, `*Dtt` a datetime (`birthDt`, `clientName`); add your own `\"fieldConventions\":[{\"match\":\"*Amt\",\"defaults\":{\"type\":\"decimal\",\"precision\":12,\"scale\":2}}]`."
+  }
+ },
+ "replaces": [
+  "type and maxLength written on every field whose name already says what it holds"
+ ],
+ "budgetDelta": 3
+}

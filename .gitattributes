@@ -87,3 +87,6 @@ NPDevManager/fixtures/theme-catalogue/*.json -text
 
 # Vendored third-party files are served byte for byte and pinned by sha256 (check-experience-client.py): never convert line endings.
 NPDevGenerator/generator/src/main/resources/npdev-templates/experience/vendor/** -text
+
+# REG-355: a hash-pinned fixture (the manifest records the sha256 of the Java file byte for byte): never convert its line endings.
+NPDevGenerator/generator/src/test/resources/relay-java-extension/** -text

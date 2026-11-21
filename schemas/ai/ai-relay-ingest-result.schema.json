@@ -48,7 +48,7 @@
             "required": ["kind", "patterns", "mode"],
             "additionalProperties": false,
             "properties": {
-              "kind": { "enum": ["js-page", "page-script", "java-capability", "conversion-hook"] },
+              "kind": { "enum": ["js-page", "page-script", "java-extension", "java-capability", "conversion-hook"] },
               "mode": { "enum": ["pages", "all"] },
               "patterns": {
                 "type": "array",

@@ -1,0 +1,52 @@
+{
+  "namespace": "relay.java.extension",
+  "dslVersion": "3.0.0",
+  "version": "1.0",
+  "roles": [
+    {
+      "name": "admin",
+      "concepts": {
+        "Thing": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      }
+    }
+  ],
+  "concepts": [
+    {
+      "name": "Thing",
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "GreetFlow",
+      "description": "Placeholder steps; the hash-pinned Java class runs instead.",
+      "steps": [
+        {
+          "name": "placeholder",
+          "type": "return",
+          "value": "$input"
+        }
+      ],
+      "metadata": {
+        "untrustedExtensionEntrypoint": "extensions/Greeter.java"
+      }
+    }
+  ]
+}

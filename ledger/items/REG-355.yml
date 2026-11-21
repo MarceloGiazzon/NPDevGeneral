@@ -3,7 +3,7 @@ title: >-
   Java a browser AI writes (a capability, a conversion hook) is accepted by the relay when the machine's code setting is `all`, but cannot be added to an app from here: nothing writes it into the generator's hash-pinned extension manifest
 type: FEATURE
 severity: LOW
-status: OPEN
+status: PARTIAL
 opened: 2026-11-21
 source: >-
   Split out of REG-354 (owner, 2026-11-21: "default A, but on my environment C -- accept all"). The setting, the confirmation, the provenance record and removal exist and are
@@ -24,6 +24,20 @@ detail: |
   safeguard for Java, which is the right one to reuse instead of the relay inventing a second. So the work is: (1) the AI must be told the extension contract (class shape, NPDevProcedureContext,
   the model reference) and the briefing measured; (2) the relay writes the source AND a manifest entry with its sha256 AND checks that the model references it; (3) the generation-time policy
   and inspector refusals reach the person in words; (4) Undo and remove-code remove all three; (5) one real round on the Manager window.
+  DONE 2026-11-21 (code, parts 1 partly, 2, 4): the first Java kind is `java-extension` -- ONE class bound to a FLOW (the platform's own seam: flows[].metadata.untrustedExtensionEntrypoint + a
+  manifest entry of kind `flow`), not the invented capabilities/* path (java-capability and conversion-hook stay "cannot be added from here": different seams with no manifest of their
+  own). NPDevCli/npdev_relay_extensions.py: `extensions/<Name>.java` is accepted only with the machine setting at `all` and one confirmation; before anything is accepted the engine checks the class
+  contract (`public final class <Name>` with `Map<String,Object> execute(NPDevProcedureContext ctx)`, 30 000 characters), that exactly one flow names it, that the app has a role (admin if
+  there is one, else the first; never none), and that no flow names a class that exists nowhere; the manifest entry is MADE by the relay (the sha256 is computed here, never taken from the AI),
+  merged with the entries already there and written in the same all-or-nothing step as the class, the record and model.json, so Undo removes all of it (test: snapshot equals the one before);
+  `remove-code` removes the class and its entry (the last entry removes the manifest) and returns javaExtensions[<path>] = {manifest, stillNamedBy} because the model is the author's and is not
+  edited (a flow still naming a removed class fails generation closed). The briefing for mode `all` tells the AI the class contract. A new-app conversation refuses a class (it belongs to an
+  existing app). Cross-language guard: NPDevGenerator .../test/resources/relay-java-extension is the folder the relay writes, UntrustedExtensionRelayWrittenTest generates an app from it (the
+  trusted class and a registry entry bound to the flow and role ADMIN appear; a class edited after pinning is refused by the hash) and test_relay_extensions pins the fixture to manifest_text.
+  Tests: test_relay_extensions 12, the relay suite 567, UntrustedExtension* generator tests.
+  STILL OPEN: (1) the briefing text was not measured with a real browser AI (does it send the class, the flow and a role in one answer?); (3) a refusal by PluginJavaSourcePolicy or the bytecode inspector
+  happens at GENERATION and reaches the person only as the generator's own error, not yet as a sentence in the Manager (the relay's scan lists what the class does, in words, before the tick);
+  (5) nothing was seen on the real Manager window and no real chat AI was asked for a Java class.
 done_when: >-
   With the setting at `all`, a browser AI's answer that adds a Java procedure referenced by the model is confirmed by the owner, written with its manifest entry, generated, and refused in words when
   PluginJavaSourcePolicy or the bytecode inspector rejects it; Undo and remove-code take every part out; proven on the real Manager window.

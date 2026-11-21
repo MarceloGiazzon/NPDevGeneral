@@ -272,6 +272,16 @@ def _apply_files(session: dict, number: int, entry: dict, model_path: Path, cand
     if accepted_code:   # REG-354: where the code came from, beside the model, in the same all-or-nothing step (so Undo covers it)
         extra = dict(extra)
         extra[codepolicy.PROVENANCE_FILE] = codepolicy.provenance_text(root, accepted_code, session["code"], _now())
+        java = [i for i in accepted_code if i["kind"] == "java-extension"]
+        if java:   # REG-355: the manifest entry (with the sha256 computed here) is written in the same all-or-nothing step as the class
+            import npdev_relay_extensions as extensions_mod
+
+            try:
+                extra[extensions_mod.MANIFEST] = extensions_mod.manifest_text(
+                    root, java, json.loads(candidate_bytes.decode("utf-8")),
+                    {p: t for p, t in extra.items() if p.startswith("fragments/")})
+            except ValueError as exc:
+                return _refuse("extension-write-refused", detail=str(exc))
     try:
         ops = files.plan(root, [(rel, extra[rel].encode("utf-8")) for rel in sorted(extra)]
                          + ([config_op] if config_op else []) + [(model_path.name, candidate_bytes)])

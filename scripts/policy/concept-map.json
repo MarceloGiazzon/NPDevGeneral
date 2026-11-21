@@ -44,6 +44,7 @@
     {"key": "concepts", "fate": "KEEP", "noun": "Concept", "phase": "-"},
     {"key": "domainTypes", "fate": "KEEP_AS_PART", "noun": "Concept", "phase": "-", "note": "reusable field types; documented as part of Concept, not a noun"},
     {"key": "sequences", "fate": "KEEP_AS_PART", "noun": "Concept", "phase": "-", "note": "numbering counters used by defaultExpression nextNumber()"},
+    {"key": "fieldConventions", "fate": "KEEP_AS_PART", "noun": "Concept", "phase": "-", "note": "naming rules that type a field with no `type` (*Dt is a date); consumed at composition time, never compiled"},
     {"key": "seeds", "fate": "KEEP_AS_PART", "noun": "Concept", "phase": "-", "note": "initial rows"},
     {
       "key": "aggregates",

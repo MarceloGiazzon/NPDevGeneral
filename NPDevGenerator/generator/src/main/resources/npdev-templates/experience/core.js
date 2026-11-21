@@ -289,7 +289,7 @@ export function fieldErrors(payload, knownFields) {
   const out = [];
   const known = knownFields || [];
   // the server names a flow input "$.customerEmail": drop the leading "$." before taking the first path segment
-  const push = (field, message) => { const name = String(field || "").replace(/^\$\.?/, "").split(/[.[]/)[0].trim(); if (name) out.push({ field: name, message: String(message || NPDevI18n.t("experience.form.invalidValue", "Invalid value.")) }); };
+  const push = (field, message) => { const name = String(field || "").replace(/^\$\.?/, "").split(/[.[]/)[0].trim(); if (name) out.push({ field: name, message: NPDevI18n.server(String(message || NPDevI18n.t("experience.form.invalidValue", "Invalid value."))) }); };
   if (payload && typeof payload === "object") {
     (payload.inputValidationErrors || []).forEach((e) => e && push(e.field, e.message));
     (payload.violations || []).forEach((v) => v && String(v.path || "").split(",").forEach((p) => push(p, v.message)));

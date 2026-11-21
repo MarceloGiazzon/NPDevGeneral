@@ -34,7 +34,8 @@ import npdev_relay_authoring as authoring
 # npdev_relay_pages (T4.3b); seeds/*.json: checked first by npdev_relay_seeds
 SUPPORTED = ("fragments/*.json", "contexts/*.json", "themes/*.json", "web/*.html", "web/*.css", "web/*.svg", "pages.json",
              "menu.json", "seeds/*.json",
-             "web/*.js", "web/*.mjs")   # REG-354: reachable only when the machine's code setting accepted the file (else it is quarantined)
+             "web/*.js", "web/*.mjs",   # REG-354: reachable only when the machine's code setting accepted the file (else it is quarantined)
+             "extensions/*.java")       # REG-355: the same, and only with the manifest entry npdev_relay_extensions makes for it
 NOT_EXTRA = ("model.json", "npdev-submission.json", "npdev-elements.json",   # elements: EXPANDED into model.json (T4.2)
              "npdev-config-proposal.json")                                    # config proposal: SORTED, never written (T4.5)
 BACKUP_SCHEMA = "npdev-relay-backup.v1"

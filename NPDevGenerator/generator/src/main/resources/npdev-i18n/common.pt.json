@@ -9,5 +9,19 @@
   "common.review.applySelected": "Aplicar selecionados",
   "common.xlsx.notXlsx": "Não é um arquivo .xlsx (zip)",
   "common.xlsx.unsupportedCompression": "Método de compactação zip não suportado: {method}",
-  "common.xlsx.noFirstSheet": "A pasta de trabalho não tem uma primeira planilha (xl/worksheets/sheet1.xml)"
+  "common.xlsx.noFirstSheet": "A pasta de trabalho não tem uma primeira planilha (xl/worksheets/sheet1.xml)",
+  "common.server.required": "{entity}: o campo obrigatório '{field}' não foi informado",
+  "common.server.unique": "{entity}: já existe um registro com este valor em '{field}'",
+  "common.server.uniqueFields": "{entity}: já existe um registro com esta combinação de campos ({fields})",
+  "common.server.maxLength": "{entity}: o campo '{field}' excede o tamanho máximo de {max} (informado: {got} caracteres)",
+  "common.server.minLength": "{entity}: o campo '{field}' é menor que o tamanho mínimo de {min} (informado: {got} caracteres)",
+  "common.server.belowMin": "{entity}: o campo '{field}' está abaixo do mínimo {min} (informado: {got})",
+  "common.server.aboveMax": "{entity}: o campo '{field}' está acima do máximo {max} (informado: {got})",
+  "common.server.dateFormat": "{entity}: o campo de data '{field}' deve usar o formato ISO AAAA-MM-DD",
+  "common.server.datetimeFormat": "{entity}: o campo de data e hora '{field}' deve usar o formato ISO de data e hora",
+  "common.server.enumValue": "{entity}: o valor do campo '{field}' não é permitido (permitidos: {allowed})",
+  "common.server.notNumber": "{entity}: o campo '{field}' deve ser um número",
+  "common.server.notWhole": "{entity}: o campo '{field}' deve ser um número inteiro",
+  "common.server.notBoolean": "{entity}: o campo '{field}' deve ser verdadeiro ou falso",
+  "common.server.notUuid": "{entity}: o campo '{field}' deve ser um UUID"
 }

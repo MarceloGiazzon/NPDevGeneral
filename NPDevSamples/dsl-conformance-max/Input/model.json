@@ -3,6 +3,14 @@
   "namespace": "trial.dslconformancemax",
   "dslVersion": "3.0.0",
   "version": "1.0",
+  "fieldConventions": [
+    {
+      "match": "*Code",
+      "defaults": {
+        "type": "string"
+      }
+    }
+  ],
   "externalAi": {
     "egress": "apiEnabled",
     "vendors": [
@@ -1288,7 +1296,6 @@
         },
         {
           "name": "legacyCode",
-          "type": "string",
           "ui": {
             "label": "Legacy code"
           }
@@ -1317,7 +1324,6 @@
         },
         {
           "name": "regionCode",
-          "type": "string",
           "ui": {
             "label": "Region code (legacy)"
           }

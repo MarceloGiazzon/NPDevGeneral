@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "npdev-untrusted-extension-manifest.v1",
+  "policyVersion": "relay",
+  "expectedOutcome": "pass",
+  "entries": [
+    {
+      "entryId": "flow-greetflow",
+      "kind": "flow",
+      "relativePath": "extensions/Greeter.java",
+      "language": "java",
+      "sha256": "1aba0e9b2cfdb1d4285b17bb0b4c4cd3cd1924be0ced7168d3fc9695d4b62e92",
+      "runtimeBinding": "flow:GreetFlow",
+      "className": "Greeter",
+      "method": "execute",
+      "requiredRole": "admin",
+      "tenantScoped": true,
+      "inputs": [],
+      "outputs": [],
+      "dependencies": [],
+      "tests": [],
+      "truthStatus": "T2"
+    }
+  ]
+}

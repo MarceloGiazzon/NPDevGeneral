@@ -42,7 +42,49 @@
     return strings && strings[key] ? strings[key] : null;
   }
 
+  /*
+   * REG-353 (3): the server answers in English. The common field-validation sentences the runtime builds (required,
+   * unique, length, range, date, enum, type) are matched here and shown through the catalogue ids common.server.*;
+   * the English template of each id lives in npdev-i18n/common.en.json (check-ui-i18n compares en and pt), and the
+   * server's own text is the fallback, so a sentence this table does not know is shown exactly as the server sent it
+   * (a model author's invariant message is never touched). Each entry: [pattern, names of the captured groups, a call that names its catalogue id, which is what check-ui-i18n reads].
+   */
+  var E = "Entity (.+?): ";
+  var SERVER_RULES = [
+    [new RegExp("^" + E + "required field '(.+?)' is missing(?: \\(ref=.*\\))?$"), ["entity", "field"], function (v) { return NPDevI18n.t("common.server.required", "Entity {entity}: required field '{field}' is missing", v); }],
+    [new RegExp("^" + E + "unique constraint violated for field '(.+?)'(?: \\(ref=.*\\))?$"), ["entity", "field"], function (v) { return NPDevI18n.t("common.server.unique", "Entity {entity}: unique constraint violated for field '{field}'", v); }],
+    [new RegExp("^" + E + "unique constraint violated for fields \\((.+?)\\)(?: \\(ref=.*\\))?$"), ["entity", "fields"], function (v) { return NPDevI18n.t("common.server.uniqueFields", "Entity {entity}: unique constraint violated for fields ({fields})", v); }],
+    [new RegExp("^" + E + "field '(.+?)' exceeds maxLength (\\S+) \\(got (\\d+) characters\\)$"), ["entity", "field", "max", "got"], function (v) { return NPDevI18n.t("common.server.maxLength", "Entity {entity}: field '{field}' exceeds maxLength {max} (got {got} characters)", v); }],
+    [new RegExp("^" + E + "field '(.+?)' is shorter than minLength (\\S+) \\(got (\\d+) characters\\)$"), ["entity", "field", "min", "got"], function (v) { return NPDevI18n.t("common.server.minLength", "Entity {entity}: field '{field}' is shorter than minLength {min} (got {got} characters)", v); }],
+    [new RegExp("^" + E + "field '(.+?)' is below min (\\S+) \\(got (\\S+)\\)$"), ["entity", "field", "min", "got"], function (v) { return NPDevI18n.t("common.server.belowMin", "Entity {entity}: field '{field}' is below min {min} (got {got})", v); }],
+    [new RegExp("^" + E + "field '(.+?)' is above max (\\S+) \\(got (\\S+)\\)$"), ["entity", "field", "max", "got"], function (v) { return NPDevI18n.t("common.server.aboveMax", "Entity {entity}: field '{field}' is above max {max} (got {got})", v); }],
+    [new RegExp("^" + E + "date field '(.+?)' must use ISO format YYYY-MM-DD$"), ["entity", "field"], function (v) { return NPDevI18n.t("common.server.dateFormat", "Entity {entity}: date field '{field}' must use ISO format YYYY-MM-DD", v); }],
+    [new RegExp("^" + E + "datetime field '(.+?)' must use ISO datetime format$"), ["entity", "field"], function (v) { return NPDevI18n.t("common.server.datetimeFormat", "Entity {entity}: datetime field '{field}' must use ISO datetime format", v); }],
+    [new RegExp("^" + E + "enum constraint violated for field '(.+?)' \\(allowed: (.+)\\)$"), ["entity", "field", "allowed"], function (v) { return NPDevI18n.t("common.server.enumValue", "Entity {entity}: enum constraint violated for field '{field}' (allowed: {allowed})", v); }],
+    [new RegExp("^" + E + "field '(.+?)' must be a number$"), ["entity", "field"], function (v) { return NPDevI18n.t("common.server.notNumber", "Entity {entity}: field '{field}' must be a number", v); }],
+    [new RegExp("^" + E + "field '(.+?)' must be a whole number$"), ["entity", "field"], function (v) { return NPDevI18n.t("common.server.notWhole", "Entity {entity}: field '{field}' must be a whole number", v); }],
+    [new RegExp("^" + E + "field '(.+?)' must be boolean$"), ["entity", "field"], function (v) { return NPDevI18n.t("common.server.notBoolean", "Entity {entity}: field '{field}' must be boolean", v); }],
+    [new RegExp("^" + E + "field '(.+?)' must be a UUID$"), ["entity", "field"], function (v) { return NPDevI18n.t("common.server.notUuid", "Entity {entity}: field '{field}' must be a UUID", v); }]
+  ];
+
   window.NPDevI18n = {
+    /**
+     * A sentence the server sent, in the visitor's language when it is one of the common field-validation sentences
+     * (SERVER_RULES above); anything else, and every sentence in English, comes back unchanged.
+     */
+    server: function (text) {
+      var sent = text == null ? "" : String(text);
+      if (window.NPDevI18n.language() === "en") { return sent; }
+      for (var i = 0; i < SERVER_RULES.length; i++) {
+        var found = SERVER_RULES[i][0].exec(sent);
+        if (found) {
+          var vars = {};
+          SERVER_RULES[i][1].forEach(function (name, at) { vars[name] = found[at + 1]; });
+          return SERVER_RULES[i][2](vars);
+        }
+      }
+      return sent;
+    },
     /** The catalogue in force (for the browser routines that audit a page for untranslated text). */
     catalogue: function () { return catalogue; },
     /** Hand over the catalogue ({ strings, stringsByLocale }); the manifest object itself qualifies. */

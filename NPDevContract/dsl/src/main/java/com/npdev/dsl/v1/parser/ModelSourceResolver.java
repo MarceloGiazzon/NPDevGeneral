@@ -117,6 +117,11 @@ public final class ModelSourceResolver {
             // call in an expression string is replaced by the function's body, so `functions` never reaches
             // JsonModelParser, the compiler or the canonical writer (REG-108's four places do not apply).
             "functions",
+            // Field naming conventions: {match, defaults} rules typing a concept field that declares no `type`.
+            // Merged from the root, then packs in import order (nameless members, so no qualification), then CONSUMED
+            // by FieldConventionExpansion at the end of resolveRoot -- like `functions`, the array never reaches
+            // JsonModelParser, the compiler or the canonical writer, so REG-108's four places do not apply.
+            "fieldConventions",
             // FORM P5-T1: experiences[] (who lands where, on which device) and screens[] (the closed set of screen
             // archetypes they navigate to), threaded the same way. Like `sequences`, their own `name` is deliberately
             // NOT pack-qualified by mergeQualifiedNonConceptArrays: an experience name is a wire-visible identity (the
@@ -374,6 +379,11 @@ public final class ModelSourceResolver {
                 resolved.set(entry.getKey(), entry.getValue().deepCopy());
             }
         });
+        try {
+            FieldConventionExpansion.apply(resolved);
+        } catch (FieldConventionExpansion.Problem problem) {
+            throw error(sourceFile, problem.path(), problem.getMessage());
+        }
         try {
             FunctionInlining.apply(resolved);
         } catch (FunctionInlining.Problem problem) {

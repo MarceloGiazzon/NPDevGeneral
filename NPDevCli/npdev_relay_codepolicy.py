@@ -37,8 +37,11 @@ PROVENANCE_FILE = "browser-ai-code.json"
 PROVENANCE_SCHEMA = "npdev-browser-ai-code.v1"
 
 WEB_KINDS = ("js-page", "page-script")        # served to anyone who has the address
-KINDS = ("js-page", "page-script", "java-capability", "conversion-hook")
-NOT_WRITTEN_YET = ("java-capability", "conversion-hook")  # REG-355: needs the extension manifest wiring
+KINDS = ("js-page", "page-script", "java-extension", "java-capability", "conversion-hook")
+JAVA_KINDS = ("java-extension", "java-capability", "conversion-hook")
+# REG-355 wrote the first Java kind: a class bound to a flow (npdev_relay_extensions). A capability or a conversion hook is a
+# different platform seam with no hash-pinned manifest of its own yet, so the relay still sends those back.
+NOT_WRITTEN_YET = ("java-capability", "conversion-hook")
 
 _POLICY_PATH = Path(__file__).resolve().parent / "relay-ingest-policy.json"
 
@@ -134,7 +137,7 @@ def accepts(mode: str, kind: str | None) -> bool:
 
 def scan(text: str, kind: str) -> list[dict]:
     """What the code DOES, as [{id, en, pt}]: only the things that appear. Never a verdict."""
-    language = "java" if kind in ("java-capability", "conversion-hook") else "js"
+    language = "java" if kind in JAVA_KINDS else "js"
     found = []
     for rule in _scan_policy()["scan"][language]:
         if re.search(rule["regex"], text or "", re.I if language == "js" and rule["id"] == "sign-in-key" else 0):
@@ -156,14 +159,17 @@ def confirmations(path: str, kind: str) -> list[str]:
 def warning_lines(path: str, kind: str, found: list[dict], portuguese: bool) -> list[dict]:
     """The preview warnings for one accepted file: each is a REQUIRED tick (needsConfirmation) in the Manager."""
     what = ", ".join(item["pt" if portuguese else "en"] for item in found)
-    kind_en = {"js-page": "JavaScript page", "page-script": "page with a script", "java-capability": "Java capability",
-               "conversion-hook": "conversion hook"}[kind]
-    kind_pt = {"js-page": "página JavaScript", "page-script": "página com script", "java-capability": "capacidade em Java",
-               "conversion-hook": "gancho de conversão"}[kind]
+    kind_en = {"js-page": "JavaScript page", "page-script": "page with a script", "java-extension": "Java class for a flow",
+               "java-capability": "Java capability", "conversion-hook": "conversion hook"}[kind]
+    kind_pt = {"js-page": "página JavaScript", "page-script": "página com script", "java-extension": "classe Java de um fluxo",
+               "java-capability": "capacidade em Java", "conversion-hook": "gancho de conversão"}[kind]
     lines = []
     ask = confirmations(path, kind)
     if portuguese:
         doing = f" Ela {what}." if what else " O que ela faz não foi reconhecido pela verificação."
+        if kind == "java-extension":
+            doing += (" Ela roda no servidor do app, com acesso aos dados dele; ao gerar o app a plataforma ainda a confere com a sua"
+                      " própria política de código e pode recusá-la.")
         lines.append({"code": ask[0], "needsConfirmation": True, "params": {"family": "CODE", "path": path, "kind": kind},
                       "text": (f"A IA escreveu código: {path} ({kind_pt}).{doing} Nenhuma verificação prova que um código é seguro: "
                                f"só aceite se você confia nele. Marque para aceitar este arquivo.")})
@@ -174,6 +180,9 @@ def warning_lines(path: str, kind: str, found: list[dict], portuguese: bool) -> 
                                    f"Marque para confirmar que isso é aceitável.")})
     else:
         doing = f" It {what}." if what else " What it does was not recognised by the check."
+        if kind == "java-extension":
+            doing += (" It runs on the app's server with access to its data; when the app is generated the platform checks it again"
+                      " against its own code policy and may refuse it.")
         lines.append({"code": ask[0], "needsConfirmation": True, "params": {"family": "CODE", "path": path, "kind": kind},
                       "text": (f"The AI wrote code: {path} ({kind_en}).{doing} No check can prove code safe: accept it only if you "
                                f"trust it. Tick to accept this file.")})
@@ -194,8 +203,13 @@ def briefing(mode: str) -> str:
     if mode == "all":
         return ("This computer accepts code. If a request truly needs behaviour that data cannot express, you may send a JavaScript "
                 "page (web/<name>.js, or a web page with a script); keep it small and plain and explain in one sentence what it does. "
-                "The person must confirm each file before it is added. Do not send Java (capabilities/*) or conversion hooks yet: "
-                "they cannot be added to an app from here.")
+                "The person must confirm each file before it is added. Server-side logic that a flow's steps cannot express may be "
+                "sent as ONE Java class, extensions/<Name>.java, declared exactly as "
+                "`public final class <Name> { public Map<String, Object> execute(NPDevProcedureContext ctx) { ... } }` (the context "
+                "offers tenantId(), actorId() and saveMany(concept, records); use only java.util), with a flow in model.json that "
+                "names it: {\"untrustedExtensionEntrypoint\": \"extensions/<Name>.java\"} in the flow's metadata and one placeholder "
+                "step. The app must declare a role (the class is bound to it). Do not send other Java (capabilities/*) or "
+                "conversion hooks: they cannot be added to an app from here.")
     return ""
 
 
@@ -233,6 +247,7 @@ def remove_code(app_dir, paths: list[str] | None = None) -> dict:
     entries = read_provenance(root)
     wanted = {p.replace(chr(92), "/") for p in paths} if paths else None
     removed, missing, kept = [], [], []
+    java: dict = {}
     for entry in entries:
         rel = str(entry.get("path") or "")
         if wanted is not None and rel not in wanted:
@@ -249,6 +264,10 @@ def remove_code(app_dir, paths: list[str] | None = None) -> dict:
             removed.append(rel)
         else:
             missing.append(rel)
+        if entry.get("kind") == "java-extension":   # REG-355: a class leaves with its manifest entry, or generation fails closed
+            import npdev_relay_extensions as extensions_mod
+
+            java[rel] = extensions_mod.forget(root, rel)
     if wanted is not None:
         unknown = sorted(wanted - {str(e.get("path")) for e in entries})
         missing += unknown
@@ -257,4 +276,7 @@ def remove_code(app_dir, paths: list[str] | None = None) -> dict:
         record.write_text(json.dumps({"schema": PROVENANCE_SCHEMA, "files": kept}, indent=2) + chr(10), encoding="utf-8")
     elif record.is_file():
         record.unlink()
-    return {"removed": removed, "missing": missing, "kept": [str(e.get("path")) for e in kept]}
+    out = {"removed": removed, "missing": missing, "kept": [str(e.get("path")) for e in kept]}
+    if java:   # per class: manifest removed|absent|none, and the files whose flows still name it (the model is the author's)
+        out["javaExtensions"] = java
+    return out

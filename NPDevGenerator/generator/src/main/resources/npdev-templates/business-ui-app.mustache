@@ -596,7 +596,7 @@
     }
     const looksLikeCode = /^[A-Z0-9_.:-]+$/.test(serverText) || /^<(!doctype|html)/i.test(serverText);
     if (serverText && !looksLikeCode) {
-      return serverText;
+      return NPDevI18n.server(serverText);
     }
     console.warn("HTTP " + status + ": " + raw);
     return raw && !/^<(!doctype|html)/i.test(raw) ? raw : platformString("app.error.requestFailed", "Request failed (HTTP {status}).", { status: status });
@@ -3299,7 +3299,7 @@
       text(path).split(",").forEach(function (segment) {
         const name = segment.split(/[.[]/)[0].trim();
         if (name) {
-          out.push({ field: name, message: text(detail) });
+          out.push({ field: name, message: NPDevI18n.server(text(detail)) });
         }
       });
     }

@@ -45,8 +45,16 @@ detail: |
   pack has a pt-BR entry), BusinessUiEmitterLocaleManifestTest. PROVED on SalesTest1 in a Portuguese headless browser: title "Pedido de venda", columns Organizacao/Tipo/Cidade/Pais/
   Limite de credito/Numero da fatura/Cliente/Valor/Vencimento/Preco unitario. A third-party pack with no catalogue stays English; adding a label to a built-in pack fails the test until
   its pt-BR entry is added.
-  STILL OPEN: (3) the common server messages (validation, error bodies, batch row messages); (5, picker) the typed picker's default `Select` is baked at compile (AutoPanelExpander line ~736) and needs a
+  WAS STILL OPEN, done below: (3) the common server messages (validation, error bodies, batch row messages); (5, picker) the typed picker's default `Select` is baked at compile (AutoPanelExpander line ~736) and needs a
   labelKey like the action buttons got, plus the client reading it.
+  DONE 2026-11-21 (5, picker) AutoPanelExpander no longer bakes the generation-time "Select" into a typed picker: it writes `label` only when the model declares one, and the workbench page
+  already falls back to its own S('action.select') (NPDevI18n), so the button follows the visitor's language. (3) NPDevI18n.server(text) (npdev-i18n.js, shared by every page) translates the
+  fourteen common field-validation sentences the runtime builds (required, unique single and compound, maxLength, minLength, below min, above max, ISO date, ISO datetime, enum, number, whole number,
+  boolean, UUID) through the catalogue ids common.server.* (en + pt); a sentence it does not know -- every model author's invariant message, every flow message -- is shown as the server sent it, and
+  English is never touched. Wired at the three places that show server text: the business UI's errorMessage and fieldViolations, and the experience client's fieldErrors. Guards: check-ui-i18n
+  (each id is a literal NPDevI18n.t call whose English equals the catalogue), BusinessUiEmitter/Experience/PageI18n generator tests, AutoPanel dsl tests. Exercised in node against sample server
+  sentences. NOT done: error bodies other than field validation (admin controllers' "... is required."), batch-row messages beyond what fieldViolations already carries, and the server's
+  flow/kernel messages -- by the 2026-11-21 decision only the common ones are translated; and NOT yet seen in a browser (the i18n-pt browser routine was not run after these edits).
 done_when: >-
   The owner decides each of the five (translate, or declare English-only); the translated ones are covered by check-ui-i18n.py or the
   i18n-pt-verify-routine browser routine.

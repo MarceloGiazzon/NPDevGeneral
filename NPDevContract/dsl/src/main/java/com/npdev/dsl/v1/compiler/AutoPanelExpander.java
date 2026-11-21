@@ -732,8 +732,12 @@ final class AutoPanelExpander {
                     picker.put("endpointBase",
                             com.npdev.dsl.v1.compiled.SqlIdentifierSupport.conceptEndpointBase(bandConcept, contexts));
                 }
-                picker.put("label", hasText(typedPicker.label())
-                        ? typedPicker.label().trim() : settings.resolveString("action.select"));
+                // REG-353: only a label the model declares is baked. With none, the page falls back to its own
+                // S('action.select') (NPDevI18n), so the picker button follows the visitor's language like the
+                // action buttons do instead of freezing the generation-time English "Select".
+                if (hasText(typedPicker.label())) {
+                    picker.put("label", typedPicker.label().trim());
+                }
                 if (!typedPicker.columns().isEmpty()) {
                     picker.put("columns", new ArrayList<>(typedPicker.columns()));
                 }

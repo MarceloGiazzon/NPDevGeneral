@@ -72,7 +72,7 @@ class ValidationErrorFormatTest {
                     {
                       "name": "Patient",
                       "fields": [
-                        { "name": "mrn", "required": true }
+                        { "name": "mrn", "type": "notAType", "required": true }
                       ]
                     }
                   ]

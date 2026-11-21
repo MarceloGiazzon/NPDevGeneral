@@ -449,6 +449,9 @@ MODEL_ARRAY_KEYS = {
     # FORM P4-T2: `functions[]` (extension-ladder rung 2) joined ModelSourceResolver.MODEL_ARRAY_KEYS and
     # is inlined at resolve time; the build-free path only needs to accept the key.
     "functions",
+    # `fieldConventions[]` (typing a field by its name) joined ModelSourceResolver.MODEL_ARRAY_KEYS and is consumed
+    # at resolve time by FieldConventionExpansion; the build-free path only needs to accept the key.
+    "fieldConventions",
     # FORM P5-T1: `experiences[]` and `screens[]` joined ModelSourceResolver.MODEL_ARRAY_KEYS (their names are
     # NOT pack-qualified there -- see the comment on that set; compose_qualified below skips them too).
     "experiences",

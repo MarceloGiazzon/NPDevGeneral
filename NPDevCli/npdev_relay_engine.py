@@ -677,6 +677,8 @@ def _after_parsed(session: dict, number: int, result: dict) -> None:
         return
     if not _check_pages(session, result, fixed):   # T4.3b: ... and a web file named like a platform file
         return
+    if not _check_extensions(session, result, fixed):   # REG-355: a Java class needs a flow naming it and a role, or generation fails closed
+        return
     if not _check_seeds(session, result, fixed):   # a seed whose id is not its file name fails generation of the whole app too
         return
     try:
@@ -798,6 +800,32 @@ def _check_pages(session: dict, result: dict, model: dict) -> bool:
         return True
     base = authoring.resolve_model_path(session.get("appDir")) if session.get("intent") != "create" else None
     checked = pages_mod.check(sent, model, base.parent if base else None)
+    result["findings"].extend(checked["findings"])
+    if checked["errors"]:
+        result["outcome"] = "NEEDS_FIX"
+        result["errorLines"] = checked["errors"]
+        return False
+    return True
+
+
+def _check_extensions(session: dict, result: dict, model: dict) -> bool:
+    """REG-355: the answer's extensions/*.java are checked against the platform's extension contract BEFORE anything is accepted:
+    the class shape, exactly one flow naming it, a role to bind it to, and no flow naming a class that exists nowhere. False when
+    the answer needs a fix."""
+    import npdev_relay_authoring as authoring
+    import npdev_relay_extensions as extensions_mod
+    import npdev_relay_files as files_mod
+
+    extra, _ = files_mod.answer_files(result)
+    sent = {path: text for path, text in extra.items() if extensions_mod.is_extension_path(path)}
+    fragments = {path: text for path, text in extra.items() if path.startswith("fragments/")}
+    if sent and session.get("intent") == "create":
+        result["outcome"] = "NEEDS_FIX"
+        result["errorLines"] = [f"{path} - a Java class is added to an app that already exists, not to a new one: send the app without "
+                                "it (and without the flow that names it); the class can be asked for in the next change" for path in sorted(sent)]
+        return False
+    base = authoring.resolve_model_path(session.get("appDir")) if session.get("intent") != "create" else None
+    checked = extensions_mod.check(sent, model, fragments, base.parent if base else None)
     result["findings"].extend(checked["findings"])
     if checked["errors"]:
         result["outcome"] = "NEEDS_FIX"

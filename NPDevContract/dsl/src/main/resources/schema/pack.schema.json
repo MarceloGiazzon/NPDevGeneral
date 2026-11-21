@@ -210,6 +210,11 @@
       },
       "description": "R5.3: a pack may declare document-numbering counters alongside its other members. `name` is never namespace-qualified by pack composition (see model.schema.json's sequence $def)."
     },
+    "fieldConventions": {
+      "type": "array",
+      "items": {"$ref": "model.schema.json#/$defs/fieldConvention"},
+      "description": "Field naming conventions this pack contributes: {match, defaults} rules typing a concept field that declares no `type`, in the importing model and in every pack. Lower priority than the model's own rules."
+    },
     "functions": {
       "type": "array",
       "items": {"oneOf": [{"$ref": "model.schema.json#/$defs/function"}, {"$ref": "model.schema.json#/$defs/localModelRef"}]},
