@@ -29,6 +29,30 @@ PATH_RE = re.compile(r"^extensions/([A-Za-z_][A-Za-z0-9_]*)\.java$")
 MAX_CHARS = 30000
 CONTRACT = "public final class <Name> { public Map<String, Object> execute(NPDevProcedureContext ctx) { ... } }"
 
+# The generator runs every flow class through TrustedJavaSourcePolicy BEFORE it is emitted. Its import rules are mirrored here so the AI
+# is told at paste time, in words, instead of the person meeting "Forbidden Java source use ..." after Apply. The two sets are pinned to
+# the Java source by tests/test_relay_extensions.py (a change on either side fails it). Identifier and call rules (Thread, File, System.exit
+# ...) are NOT mirrored: the generator still refuses those, at generation.
+ALLOWED_IMPORTS = ("java.util.List", "java.util.Map", "java.util.Set", "java.util.Optional", "java.math.BigDecimal", "java.util.UUID",
+                   "java.time.Instant")
+FORBIDDEN_IMPORT_PREFIXES = ("java.io.", "java.nio.file.", "java.net.", "java.lang.reflect.", "java.lang.invoke.", "java.util.concurrent.",
+                             "javax.script.", "sun.", "jdk.", "org.", "com.")
+_IMPORT_RE = re.compile(r"^\s*import\s+(static\s+)?([A-Za-z0-9_.]+(?:\.\*)?)\s*;", re.M)
+_COMMENT_RE = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
+
+
+def import_problems(text: str) -> list[str]:
+    """What the generator's import rule would refuse in this class, as short phrases (empty when the imports are fine)."""
+    out = []
+    for static, name in _IMPORT_RE.findall(_COMMENT_RE.sub("", text)):
+        if static:
+            out.append(f"static import {name}")
+        elif name.endswith(".*"):
+            out.append(f"wildcard import {name}")
+        elif name not in ALLOWED_IMPORTS:
+            out.append(f"import {name}")
+    return out
+
 
 def is_extension_path(path: str) -> bool:
     return bool(PATH_RE.match(path or ""))
@@ -95,6 +119,11 @@ def check(sent: dict, model: dict, fragments: dict, base_dir) -> dict:
         if not re.search(r"Map\s*<\s*String\s*,\s*Object\s*>\s+execute\s*\(\s*NPDevProcedureContext\s+\w+\s*\)", text):
             errors.append(f"{path} - the class must have `public Map<String, Object> execute(NPDevProcedureContext ctx)`; the context "
                           "offers tenantId(), actorId() and saveMany(concept, records)")
+        bad = import_problems(text)
+        if bad:
+            errors.append(f"{path} - the platform allows a flow class to import only {', '.join(ALLOWED_IMPORTS)} (no static or wildcard "
+                          f"imports); refused here: {', '.join(bad)}. Use those types, or plain arrays and the String, Math and "
+                          "Integer types of java.lang, and send the class again")
         users = by_path.get(path, [])
         if len(users) != 1:
             errors.append(f"{path} - exactly one flow must name it in its metadata, "

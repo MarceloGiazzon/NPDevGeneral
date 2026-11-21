@@ -206,7 +206,7 @@ def briefing(mode: str) -> str:
                 "The person must confirm each file before it is added. Server-side logic that a flow's steps cannot express may be "
                 "sent as ONE Java class, extensions/<Name>.java, declared exactly as "
                 "`public final class <Name> { public Map<String, Object> execute(NPDevProcedureContext ctx) { ... } }` (the context "
-                "offers tenantId(), actorId() and saveMany(concept, records); use only java.util), with a flow in model.json that "
+                "offers tenantId(), actorId() and saveMany(concept, records); import only java.util.List, Map, Set, Optional, UUID, java.math.BigDecimal and java.time.Instant - no other import, no static or wildcard import, no threads, files, network, reflection or System calls), with a flow in model.json that "
                 "names it: {\"untrustedExtensionEntrypoint\": \"extensions/<Name>.java\"} in the flow's metadata and one placeholder "
                 "step. The app must declare a role (the class is bound to it). Do not send other Java (capabilities/*) or "
                 "conversion hooks: they cannot be added to an app from here.")

@@ -102,6 +102,40 @@ class ContractUnitTests(unittest.TestCase):
                          ("flow", "Greeter", "execute", "admin", "flow:GreetFlow"))
 
 
+class ImportRuleTests(unittest.TestCase):
+    """The generator's TrustedJavaSourcePolicy refuses a flow class at generation; its import rule is mirrored so the AI hears it first."""
+
+    POLICY = (Path(__file__).resolve().parents[2] / "NPDevGenerator" / "generator" / "src" / "main" / "java" / "com" / "npdev" / "generator"
+              / "emitters" / "TrustedJavaSourcePolicy.java")
+
+    def strings_of(self, name: str) -> tuple:
+        import re
+
+        body = re.search(name + r"\s*=\s*Set\.of\((.*?)\);", self.POLICY.read_text(encoding="utf-8"), re.S).group(1)
+        return tuple(re.findall(r'"([^"]+)"', body))
+
+    def test_the_mirrored_sets_are_exactly_the_generators(self):
+        self.assertEqual(sorted(ext.ALLOWED_IMPORTS), sorted(self.strings_of("ALLOWED_JAVA_IMPORTS")))
+        self.assertEqual(sorted(ext.FORBIDDEN_IMPORT_PREFIXES), sorted(self.strings_of("FORBIDDEN_JAVA_IMPORT_PREFIXES")))
+
+    def test_an_import_outside_the_list_is_said_to_the_ai_with_the_list(self):
+        code = GOOD.replace("import java.util.Map;", "import java.util.ArrayList;\nimport java.util.Map;")
+        said = " | ".join(ext.check({PATH: code}, model_with(), {}, None)["errors"])
+        self.assertIn("import java.util.ArrayList", said)
+        self.assertIn("java.util.Optional", said)      # the allowed list is in the sentence
+        self.assertEqual(ext.import_problems(GOOD), [])
+
+    def test_static_wildcard_and_commented_imports(self):
+        self.assertEqual(ext.import_problems("import static java.lang.Math.max;"), ["static import java.lang.Math.max"])
+        self.assertEqual(ext.import_problems("import java.util.*;"), ["wildcard import java.util.*"])
+        self.assertEqual(ext.import_problems("// import java.io.File;\n/* import java.net.URL; */\nimport java.util.List;"), [])
+
+    def test_the_prompt_names_the_allowed_imports(self):
+        brief = codepolicy.briefing("all")
+        for name in ("java.math.BigDecimal", "java.time.Instant", "no static or wildcard import"):
+            self.assertIn(name, brief)
+
+
 class GeneratorFixtureTests(unittest.TestCase):
     """The generator's UntrustedExtensionRelayWrittenTest generates an app from this folder; here it is pinned to the relay's own
     code, so the manifest the generator accepts is the one this module writes (and not a hand-kept copy)."""
