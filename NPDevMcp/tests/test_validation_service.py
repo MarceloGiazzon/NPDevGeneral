@@ -548,6 +548,9 @@ class PackValidationTest(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertIn("pack", json.loads(raw)["properties"])
         self.assertIn("PACK", vs.REMOTE_TOOL_INDEX["npdev_validate"]["description"])
+        result = vs._remote_get_schema({"schema_name": "pack"})
+        self.assertFalse(result.get("isError"))
+        self.assertIn('"pack"', result["content"][0]["text"])
 
 
 class RealValidatorTest(unittest.TestCase):

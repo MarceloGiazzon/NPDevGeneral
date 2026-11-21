@@ -817,12 +817,12 @@ REMOTE_TOOL_SPECS: "list[dict]" = [
     },
     {
         "name": "npdev_get_schema",
-        "description": ("The canonical model.json JSON Schema. It is about 50k tokens: prefer "
-                        "npdev_core_context."),
+        "description": ("The canonical model.json JSON Schema (schema_name \"model\", about 50k tokens: prefer "
+                        "npdev_core_context), or the pack.json schema (schema_name \"pack\") for a reusable pack."),
         "args": ("schema_name",),
         "inputSchema": {
             "type": "object",
-            "properties": {"schema_name": {"type": "string", "enum": ["model"]}},
+            "properties": {"schema_name": {"type": "string", "enum": ["model", "pack"]}},
         },
     },
 ]
@@ -877,8 +877,13 @@ def _remote_core_context(args: dict) -> dict:
 
 def _remote_get_schema(args: dict) -> dict:
     name = args.get("schema_name") or "model"
+    if name == "pack":
+        try:
+            return _mcp_server._text((_mcp_server.repo_root() / "NPDevContract" / "schemas" / "pack.schema.json").read_text(encoding="utf-8"))
+        except OSError:
+            return _mcp_server._text_error("The pack schema is not available on the host computer.")
     if name != "model":
-        return _mcp_server._text_error("Only the 'model' schema is available here.")
+        return _mcp_server._text_error("Only the 'model' and 'pack' schemas are available here.")
     return _mcp_server.tool_get_schema({"schema_name": "model"})
 
 
