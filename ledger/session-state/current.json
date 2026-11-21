@@ -1,21 +1,17 @@
 {
-  "closedAt": "2026-11-21T23:29:08.1709906Z",
+  "closedAt": "2026-11-21T23:54:32.5099571Z",
   "branch": "main",
-  "head": "ca2fd1fc",
-  "headSubject": "feat(dsl): D-1 complete - autoPanels, panels and backOffice fold into screens and experiences",
-  "summary": "D-1 done (4/4 phases): autoPanels->screens admin, panels->screens custom+panel, backOffice->experiences admin; old keys refused; budget 758; corpus/AppGen/CLI/docs migrated; DSL 1511 + generator 800 tests, runtimehost gate, probes 163/163, canary, ride-hailing, aiKnowledge green; generator gate green after lowering the REG-133 discriminator floor 9->7",
-  "nextStep": "Owner decides D-3 (2-level specialization + facets), D-5 (Manager modes), D-8 (catalog directive A); then build step name optional / the 'on' form. Not run: kernel gate (untouched), real chat AI round, i18n-pt browser routine, shell scenarios; republish built-in packs to the remote NPR repo (pack bodies changed without version bumps); WmsOfficePackTest needs the remote pack",
-  "plan": "",
-  "blocked": "",
-  "verified": "dsl 1511, generator 800, runtimehost gate, behavior probes 163/163, T1 fast gate, ride-hailing acceptance, aiKnowledge gate, DSL reference floor",
-  "dirtyCount": 2,
-  "dirtyFiles": [
-    " M scripts/policy/coverage-baseline.json",
-    " M scripts/quality/check-dsl-reference-output-floor.py"
-  ],
-  "unpushed": 1,
+  "head": "aa61030b",
+  "headSubject": "chore(session): handoff 2026-11-21 (D-1 complete); lower REG-133 discriminator floor 9->7, coverage baseline ratchet up",
+  "summary": "D-1 finished (4/4 phases) and pushed: autoPanels->screens[].admin, panels->screens[] custom+panel, backOffice->experiences[] admin; old root keys refused; keyword budget 758; corpus, 13 AppGen apps, CLI, checkers, policy and docs migrated; REG-133 discriminator floor lowered 9->7.",
+  "nextStep": "Owner decides D-3 (2-level specialization + facets), D-5 (Manager modes) and D-8 (catalog directive A); then build step name optional / the 'on' form. Also pending: republish the built-in packs to the remote NPR repo (bodies changed without version bumps except tracing); run the kernel gate (untouched, not run); WmsOfficePackTest needs the remote pack.",
+  "plan": "D:/WorkSpace/NPDev/NPDev_General__OutsideRepo/ANALISE_HONESTA_NPDEV_2026-11-21.md",
+  "blocked": "D-3, D-5, D-8 are owner decisions",
+  "verified": "dsl tests 1511; generator tests 800; runtimehost gate; aiKnowledge gate (after commit); generator gate (after lowering REG-133 floor; only that step had failed); behavior probes 163/163; T1 fast gate (canary + dsl-conformance-max); ride-hailing acceptance via run_selected. NOT run: kernel gate, real chat AI round, i18n-pt browser routine, shell scenarios; 6 of 13 migrated AppGen apps failed generate-only (5 on pre-existing database.externallyProvisioned, 1 on a remote pack)",
+  "dirtyCount": 0,
+  "dirtyFiles": [],
+  "unpushed": 0,
   "landedCommits": [
-    "ca2fd1fc feat(dsl): D-1 complete - autoPanels, panels and backOffice fold into screens and experiences",
-    "82c84c97 feat(dsl): extends is gone - concept says specializes, pack says augments (D-2); experience UI shows people-words and one icon set"
+    "aa61030b chore(session): handoff 2026-11-21 (D-1 complete); lower REG-133 discriminator floor 9->7, coverage baseline ratchet up"
   ]
 }
