@@ -24,6 +24,11 @@ detail: |
      `englishOnlyDeveloperTools` list in scripts/policy/ui-i18n-policy.json. Revisit if the operator console is meant for non-developers.
   5. Typed pickers default to action.select baked at compile (AutoPanelExpander) like New/Save/Delete did; only the action buttons carry labelKey
      today. Dates and numbers follow the browser locale, not NPDevI18n.language().
+  OWNER ROUND 2026-11-20 on a rebuilt SalesTest1 (model locale pt-BR, pack `sales`): every platform text was Portuguese (Novo, Atualizar, Limpar, Exportar CSV/Excel,
+  Importar CSV, Imprimir, Tabela/Quadro/Calendário, Filtrar, Buscar, contém, Qualquer, Anterior/Próxima, Chave de API, Conectado como, Sair). English left: only the
+  pack's labels (point 2) -- the page title and breadcrumb "Sales order", the column headers Order number / Customer / Order date / Status -- and, because the
+  platform sentences embed the concept label, "Nada de Sales order para mostrar" and "Criar sales order". The sidebar says "Pedidos de Venda" (the model's own
+  navigation label) while the page title says "Sales order": one concept, two names. No language dropdown was visible (point 1).
 done_when: >-
   The owner decides each of the five (translate, or declare English-only); the translated ones are covered by check-ui-i18n.py or the
   i18n-pt-verify-routine browser routine.

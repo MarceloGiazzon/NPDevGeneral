@@ -3,8 +3,9 @@ title: >-
   An online chat AI or a browser agent could not get the real validator's verdict on a model.json it wrote
 type: FEATURE
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-11-11
+closed: 2026-11-21
 source: >-
   Validation service plan (OutsideRepo/VALIDATION_SERVICE_PLAN_2026-11-11/PLAN.md): the owner wants an online AI to write a model.json,
   validate it against the real NPDev validator and fix it until it passes, without a local MCP client.
@@ -42,6 +43,13 @@ detail: |
   NOT done (needs the owner or a real online AI): a real ngrok run of the fixed-address tunnel, B8 on a Free Claude.ai account, the Phase 0
   spikes S4 (an https page calling 127.0.0.1) and S5 (an AI sandbox fetch), A5 (a real browser agent closes the loop), and the optional
   phases (N7 structural mode, B9 OAuth, C Manager card).
+  OWNER ROUND 2026-11-20 (public ngrok address, record: OutsideRepo/reg335-public-loop/ACCEPTANCE_2026-11-20.txt; evidence = the service access log): Gemini
+  through the MCP connector, 1 round, `warning` (0 errors; log: Google addresses, POST /mcp, the validating call 1266 ms); Grok through the page, 1 round,
+  `warning` (log: POST /api/validate with the page as Origin, 1094 ms). That meets done_when: a chat AI through a connector (also the 2026-11-12 Claude.ai
+  paid-plan run) and a browser agent through the page. Neither run needed a fix round (both models were valid first time), so the "fix until it
+  passes" half is evidenced only by the 2026-11-12 negative run. Claude Free could not take part: no browser control, and its fetch got ngrok's
+  "Visit Site" interstitial. FINDING: a free ngrok domain cannot serve a fetch-only AI (no browser); only connector or browser-agent paths work.
+  Still NOT done and now optional: spikes S4/S5, a real Free-plan connector run, and the optional phases (N7, B9, C).
 files:
   - NPDevMcp/validation_service.py
   - NPDevMcp/static/validate.html
