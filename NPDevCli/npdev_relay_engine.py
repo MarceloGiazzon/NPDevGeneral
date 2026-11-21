@@ -196,6 +196,11 @@ def f4_briefing(*, phase: str, intent: str, model_path, model_text: str, profile
         return out
     out = _f4_files_or_upsert(out, model_path=model_path, model_text=model_text, profile=profile, size=size)
     more = rp.compose_f4_more(rp.load_f4_prompts())
+    import npdev_relay_codepolicy as codepolicy
+
+    code_sentence = codepolicy.briefing(codepolicy.code_mode())  # REG-354: empty for the default (never): the prompt is unchanged
+    if code_sentence:
+        more = more + "\n\n" + code_sentence
     out["extra"] = out["extra"] + "\n\n" + more if out["extra"] else more
     return out
 
@@ -657,10 +662,16 @@ def _after_parsed(session: dict, number: int, result: dict) -> None:
 
     _, unsupported = files_mod.answer_files(result)
     if unsupported:  # allowed by the ingest policy, but nothing here can apply them yet: never accept part of an answer
+        import npdev_relay_codepolicy as codepolicy
+
+        code_paths = {f["path"] for f in result["files"] if (f.get("code") or {}).get("kind") in codepolicy.NOT_WRITTEN_YET}
         result["outcome"] = "NEEDS_FIX"
-        result["errorLines"] = [f"{path} - NPDev cannot apply this kind of file yet - send only model.json, "
-                                "npdev-submission.json and the files under fragments/, contexts/, themes/, web/ and seeds/ "
-                                "(and pages.json, menu.json)" for path in unsupported]
+        result["errorLines"] = [
+            (f"{path} - this computer accepts code from a browser AI, but Java capabilities and conversion hooks cannot be added to an "
+             "app from here yet - send the change without them (a JavaScript page under web/ is fine)") if path in code_paths else
+            (f"{path} - NPDev cannot apply this kind of file yet - send only model.json, "
+             "npdev-submission.json and the files under fragments/, contexts/, themes/, web/ and seeds/ "
+             "(and pages.json, menu.json)") for path in unsupported]
         return
     if not _check_themes(session, result, fixed):  # T4.3: the generator refuses a bad theme for the WHOLE app
         return
@@ -687,6 +698,22 @@ def _after_parsed(session: dict, number: int, result: dict) -> None:
             result["errorLines"].append(hint)
         return
     finish_ready(session, number, result, entry)
+
+
+def _add_code_warnings(session: dict, result: dict) -> None:
+    """REG-354: every piece of code the machine's setting accepted becomes REQUIRED ticks in the preview (what it does, in words,
+    and for a web file that it is public). Apply refuses without them; nothing here writes anything."""
+    if not isinstance(result.get("preview"), dict):
+        return
+    import npdev_relay_codepolicy as codepolicy
+    import npdev_relay_preview_pt as preview_pt
+
+    portuguese = preview_pt.is_portuguese(session.get("language"))
+    for item in result.get("files") or []:
+        code = item.get("code")
+        if item.get("status") == "allowed" and isinstance(code, dict) and code.get("kind") in codepolicy.KINDS:
+            result["preview"].setdefault("warnings", []).extend(
+                codepolicy.warning_lines(item["path"], code["kind"], code.get("patterns") or [], portuguese))
 
 
 _UNBOUND_ROLE_MARK = "does not declare in provides.roleBindings"
@@ -986,6 +1013,7 @@ def finish_ready(session: dict, number: int, result: dict, model_entry: dict) ->
         result["preview"] = preview_pt.localize_preview(outcome["preview"], session.get("language"))
     if outcome["errors"]:
         result["errorLines"] = list(outcome["errors"])
+    _add_code_warnings(session, result)
     if result.get("configProposals"):
         import npdev_relay_preview_pt as preview_pt
 

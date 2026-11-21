@@ -36,7 +36,7 @@ POLICY_PATH = Path(__file__).resolve().parent / "relay-ingest-policy.json"
 PAGES_FILE = "pages.json"
 MENU_FILE = "menu.json"
 HTML = (".html", ".htm")
-WEB_SUFFIXES = HTML + (".css", ".svg")
+WEB_SUFFIXES = HTML + (".css", ".svg", ".js", ".mjs")   # .js/.mjs: only ever present when the code setting accepted them (REG-354)
 
 
 def load_policy() -> dict:

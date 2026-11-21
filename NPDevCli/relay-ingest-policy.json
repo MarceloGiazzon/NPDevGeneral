@@ -138,6 +138,27 @@
     { "id": "download-wording", "strength": "strong", "regex": "\\b(download|baixe|baixar|descargar|descarga)\\b[^\\n]{0,80}\\.(json|zip)\\b" },
     { "id": "artifact-wording", "strength": "weak", "regex": "\\b(artifact|artefato|canvas)\\b" }
   ],
+  "codeScan": {
+    "_comment": "REG-354: what a piece of code an AI wrote DOES, said in words before the owner accepts it (never a verdict: a scan cannot prove code safe). Only used when the machine's relay.codeFromBrowserAi setting accepts that kind of code; with the default (never) the code is quarantined and none of this runs. `kinds` is the code kind of each path glob; `scan` is per language.",
+    "kinds": {"web/*.js": "js-page", "web/*.mjs": "js-page", "capabilities/*": "java-capability", "conversion-hooks/*": "conversion-hook"},
+    "scan": {
+      "js": [
+        {"id": "storage", "en": "reads or writes cookies or the browser's stored data", "pt": "lê ou grava cookies ou dados guardados no navegador", "regex": "document\\.cookie|localStorage|sessionStorage|indexedDB"},
+        {"id": "network", "en": "talks to a server (fetch, XMLHttpRequest, WebSocket)", "pt": "conversa com um servidor (fetch, XMLHttpRequest, WebSocket)", "regex": "\\b(fetch\\s*\\(|XMLHttpRequest|WebSocket|EventSource)|sendBeacon"},
+        {"id": "run-text", "en": "runs text as code (eval, new Function)", "pt": "executa texto como código (eval, new Function)", "regex": "\\beval\\s*\\(|new\\s+Function\\s*\\(|\\b(setTimeout|setInterval)\\s*\\(\\s*[\"']"},
+        {"id": "more-code", "en": "loads more code (import(), importScripts, a script tag)", "pt": "carrega mais código (import(), importScripts, uma tag script)", "regex": "\\bimport\\s*\\(|importScripts\\s*\\(|createElement\\s*\\(\\s*[\"']script"},
+        {"id": "navigate", "en": "opens windows or sends the page somewhere else", "pt": "abre janelas ou leva a página para outro lugar", "regex": "window\\.open\\s*\\(|\\blocation(\\.href)?\\s*="},
+        {"id": "sign-in-key", "en": "reads the sign-in key of the app", "pt": "lê a chave de acesso do app", "regex": "npdev\\.businessUi\\.apiKey|X-Api-Key|\\bAuthorization\\b"}
+      ],
+      "java": [
+        {"id": "programs", "en": "starts other programs", "pt": "inicia outros programas", "regex": "Runtime\\s*\\.\\s*getRuntime|ProcessBuilder"},
+        {"id": "files", "en": "reads or writes files", "pt": "lê ou grava arquivos", "regex": "java\\.io\\.File|java\\.nio\\.file|FileInputStream|FileOutputStream"},
+        {"id": "network", "en": "uses the network", "pt": "usa a rede", "regex": "java\\.net\\.|HttpClient|\\bSocket\\b|\\bnew\\s+URL\\s*\\("},
+        {"id": "reflection", "en": "loads classes by name or uses reflection", "pt": "carrega classes pelo nome ou usa reflexão", "regex": "Class\\s*\\.\\s*forName|getDeclaredMethod|java\\.lang\\.reflect|ClassLoader"},
+        {"id": "system", "en": "reads the environment or stops the program", "pt": "lê o ambiente ou encerra o programa", "regex": "System\\s*\\.\\s*(getenv|getProperty|exit)"}
+      ]
+    }
+  },
   "promptEcho": {
     "_comment": "Every prompt NPDev composes starts with 'NPDEV-PROMPT <code>-<round>' and ends with 'NPDEV-PROMPT-END <code>-<round>'. Text holding BOTH is the prompt itself (the clipboard still holds it right after COPY), never an answer.",
     "startRegex": "^[ \\t>*_`#~-]*NPDEV-PROMPT[ \\t]+([A-Z0-9]{4})-(\\d+)",

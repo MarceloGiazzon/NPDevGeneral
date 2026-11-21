@@ -41,7 +41,23 @@
           "repairs": { "type": "array", "items": { "enum": ["removed-comments", "removed-trailing-commas", "smart-quotes"] } },
           "bytes": { "type": "integer", "minimum": 0 },
           "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-          "content": { "type": "string", "description": "Absent for denied files: a denied file's bytes are never handed on." }
+          "content": { "type": "string", "description": "Absent for denied files: a denied file's bytes are never handed on." },
+          "code": {
+            "type": "object",
+            "description": "Only on a file that IS code and that this machine's relay.codeFromBrowserAi setting accepted (REG-354): it is allowed, but apply needs the owner's confirmation for it.",
+            "required": ["kind", "patterns", "mode"],
+            "additionalProperties": false,
+            "properties": {
+              "kind": { "enum": ["js-page", "page-script", "java-capability", "conversion-hook"] },
+              "mode": { "enum": ["pages", "all"] },
+              "patterns": {
+                "type": "array",
+                "description": "What the code does, in words (a description, never a verdict).",
+                "items": { "type": "object", "required": ["id", "en", "pt"], "additionalProperties": false,
+                           "properties": { "id": { "type": "string" }, "en": { "type": "string" }, "pt": { "type": "string" } } }
+              }
+            }
+          }
         }
       }
     },

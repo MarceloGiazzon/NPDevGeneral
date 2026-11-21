@@ -1,0 +1,29 @@
+id: REG-355
+title: >-
+  Java a browser AI writes (a capability, a conversion hook) is accepted by the relay when the machine's code setting is `all`, but cannot be added to an app from here: nothing writes it into the generator's hash-pinned extension manifest
+type: FEATURE
+severity: LOW
+status: OPEN
+opened: 2026-11-21
+source: >-
+  Split out of REG-354 (owner, 2026-11-21: "default A, but on my environment C -- accept all"). The setting, the confirmation, the provenance record and removal exist and are
+  proven for JavaScript pages; Java needs the generator side.
+surface: cli/relay, generator/extensions, kernel/security
+files:
+  - NPDevCli/npdev_relay_codepolicy.py
+  - NPDevCli/npdev_relay_engine.py
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/UntrustedExtensionEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/UntrustedExtensionManifest.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/PluginJavaSourcePolicy.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/security/UntrustedExtensionBytecodeInspector.java
+detail: |
+  Today, with relay.codeFromBrowserAi = all, an answer carrying capabilities/*.java or conversion-hooks/* passes ingest (status allowed, `code.kind` java-capability / conversion-hook, a scan in words)
+  and is then sent back NEEDS_FIX with one sentence ("cannot be added to an app from here yet ... a JavaScript page under web/ is fine"); nothing is half applied (test_relay_codepolicy).
+  Why it is not just "write the file": the generator reads Java only through <model folder>/trusted-source-manifest.json (hash-pinned sources) and the model's procedure/panel/widget/flow
+  references (UntrustedExtensionManifest.referencesFrom / validateHash), after PluginJavaSourcePolicy (source) and the kernel's UntrustedExtensionBytecodeInspector (bytecode) -- the platform's own
+  safeguard for Java, which is the right one to reuse instead of the relay inventing a second. So the work is: (1) the AI must be told the extension contract (class shape, NPDevProcedureContext,
+  the model reference) and the briefing measured; (2) the relay writes the source AND a manifest entry with its sha256 AND checks that the model references it; (3) the generation-time policy
+  and inspector refusals reach the person in words; (4) Undo and remove-code remove all three; (5) one real round on the Manager window.
+done_when: >-
+  With the setting at `all`, a browser AI's answer that adds a Java procedure referenced by the model is confirmed by the owner, written with its manifest entry, generated, and refused in words when
+  PluginJavaSourcePolicy or the bytecode inspector rejects it; Undo and remove-code take every part out; proven on the real Manager window.

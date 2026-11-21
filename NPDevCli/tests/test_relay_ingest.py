@@ -6,9 +6,11 @@ Regenerate the corpus after editing it: python NPDevCli/tests/fixtures/relay/bui
 from __future__ import annotations
 
 import json
+import os
 import random
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -26,6 +28,12 @@ def run_case(case: dict) -> dict:
 
 
 class CorpusTests(unittest.TestCase):
+    def setUp(self):
+        # REG-354: what the ingest does with code depends on THIS machine's relay.codeFromBrowserAi setting; a test of the default must not read it
+        patcher = mock.patch.dict(os.environ, {"NPDEV_RELAY_CODE_MODE": "never"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_every_case(self):
         for case in CASES:
             with self.subTest(case=case["name"]):
@@ -50,6 +58,12 @@ class CorpusTests(unittest.TestCase):
 
 
 class SchemaTests(unittest.TestCase):
+    def setUp(self):
+        # REG-354: what the ingest does with code depends on THIS machine's relay.codeFromBrowserAi setting; a test of the default must not read it
+        patcher = mock.patch.dict(os.environ, {"NPDEV_RELAY_CODE_MODE": "never"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_every_result_matches_the_result_schema(self):
         try:
             import jsonschema  # dev machines only; the Manager's private Python has no third-party packages

@@ -128,6 +128,15 @@ def add_arguments(ai_sub) -> None:
     targets = rsub.add_parser("targets", help="The chat AIs this NPDev knows: where to open each and how much text it takes.")
     json_flag(targets)
 
+    code_mode = rsub.add_parser("code-mode", help="Show, or with --set change, what code a browser AI may add on this computer (never | pages | all).")
+    code_mode.add_argument("--set", dest="set_mode", choices=("never", "pages", "all"), help="Change the setting for this computer.")
+    json_flag(code_mode)
+
+    remove_code = rsub.add_parser("remove-code", help="Take code a browser AI added out of an app (all of it, or the --path given).")
+    remove_code.add_argument("--app", required=True, help="The app's model folder.")
+    remove_code.add_argument("--path", action="append", help="One accepted file, as listed in browser-ai-code.json (repeatable).")
+    json_flag(remove_code)
+
     target = rsub.add_parser("target", help="Say which chat AI a conversation is going to; tells whether its prompt fits a paste.")
     target.add_argument("--code", required=True)
     target.add_argument("--target", required=True, help="One of the ids from `relay targets`.")
@@ -139,9 +148,10 @@ def run(args) -> int:
     try:
         handler = {"start": _run_start, "prompt": _run_prompt, "ingest": _run_ingest, "status": _run_status,
                    "list": _run_list, "abort": _run_abort, "apply": _run_apply, "undo": _run_undo,
-                   "targets": _run_targets, "target": _run_target, "stats": _run_stats}.get(action)
+                   "targets": _run_targets, "target": _run_target, "stats": _run_stats,
+                   "code-mode": _run_code_mode, "remove-code": _run_remove_code}.get(action)
         if handler is None:
-            raise AiConfigError("npdev ai relay needs a verb: start, prompt, ingest, apply, undo, status, list, abort, targets, target or stats (see --help)")
+            raise AiConfigError("npdev ai relay needs a verb: start, prompt, ingest, apply, undo, status, list, abort, targets, target, stats, code-mode or remove-code (see --help)")
         return handler(args)
     except sessions.SessionNotFound as exc:
         return _fail(args, str(exc))
@@ -344,6 +354,33 @@ def _run_status(args) -> int:
         return _print_json(payload)
     s = payload["session"]
     print(f"{s['code']}: {s['intent']} - {s['state']} - round {s['round']}")
+    return 0
+
+
+def _run_code_mode(args) -> int:
+    import npdev_relay_codepolicy as codepolicy
+
+    if args.set_mode:
+        try:
+            path = codepolicy.set_code_mode(args.set_mode)
+        except (OSError, ValueError) as exc:
+            return _fail(args, str(exc))
+    mode = codepolicy.code_mode()
+    payload = {"ok": True, "mode": mode, "from": codepolicy.where_set(), "settingsFile": str(codepolicy.settings_path()),
+               "modes": list(codepolicy.MODES), "default": codepolicy.DEFAULT}
+    if args.json:
+        return _print_json(payload)
+    print(f"code from a browser AI on this computer: {mode} (from {payload['from']}; default {codepolicy.DEFAULT})")
+    return 0
+
+
+def _run_remove_code(args) -> int:
+    import npdev_relay_codepolicy as codepolicy
+
+    payload = {"ok": True, **codepolicy.remove_code(args.app, args.path)}
+    if args.json:
+        return _print_json(payload)
+    print(f"removed {len(payload['removed'])} file(s)" + (f"; not found: {', '.join(payload['missing'])}" if payload["missing"] else ""))
     return 0
 
 

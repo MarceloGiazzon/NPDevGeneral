@@ -15,6 +15,7 @@ Run with: python -m unittest NPDevCli.tests.test_relay_pages -v
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -69,6 +70,13 @@ def write_app_pages(app: Path, entries: list, *page_names: str) -> None:
 
 class IngestScanTests(SplitAnswerCase):
     """What counts as CODE: ingest quarantines it, whatever the file is called."""
+
+    def setUp(self):
+        super().setUp()
+        # REG-354: the default (never) is what is under test here, not whatever this machine's code setting says
+        patcher = mock.patch.dict(os.environ, {"NPDEV_RELAY_CODE_MODE": "never"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def files_of(self, result: dict) -> dict:
         return {f["path"]: f for f in result["files"]}

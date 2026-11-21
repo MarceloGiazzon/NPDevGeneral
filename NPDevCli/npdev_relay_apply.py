@@ -40,6 +40,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import npdev_relay_authoring as authoring
+import npdev_relay_codepolicy as codepolicy
 import npdev_relay_engine as engine
 import npdev_relay_files as files
 import npdev_relay_pages as pages_mod
@@ -120,11 +121,16 @@ def apply_round(session: dict, number: int | None, confirmed, parent_dir=None) -
         except ValueError:
             manifest = None
     config_changes, config_skipped = _config_changes(session, result, extra, set(confirmed or ()))
+    accepted_code = _accepted_code(result)   # REG-354: code this machine's setting accepted; each file needs its own confirmation
+    unconfirmed = [code for item in accepted_code for code in codepolicy.confirmations(item["path"], item["kind"])
+                   if code not in set(confirmed or ())]
+    if unconfirmed:
+        return _refuse("confirmation-required", missing=sorted(unconfirmed))
     if session["intent"] == "create":
         return _with_config_report(_apply_create(session, number, entry, model_text, parent_dir, extra, config_changes),
                                    config_skipped)
     return _with_config_report(_apply_change(session, number, entry, model_text, manifest, set(confirmed or ()), extra,
-                                             config_changes), config_skipped)
+                                             config_changes, accepted_code), config_skipped)
 
 
 # --------------------------------------------------------------------------- config proposals the owner confirmed
@@ -191,8 +197,19 @@ def _with_config_report(payload: dict, skipped: list) -> dict:
 
 # --------------------------------------------------------------------------- change / fix
 
+def _accepted_code(result: dict) -> list:
+    """[{path, kind, content, patterns}] for every file of the stored answer that the machine's code setting accepted."""
+    out = []
+    for item in result.get("files") or []:
+        code = item.get("code")
+        if item.get("status") == "allowed" and isinstance(code, dict) and isinstance(item.get("content"), str):
+            out.append({"path": item["path"], "kind": code.get("kind"), "content": item["content"],
+                        "patterns": code.get("patterns") or []})
+    return out
+
+
 def _apply_change(session: dict, number: int, entry: dict, model_text: str, manifest, confirmed: set,
-                  extra: dict | None = None, config_changes: list | None = None) -> dict:
+                  extra: dict | None = None, config_changes: list | None = None, accepted_code: list | None = None) -> dict:
     work = rs.round_dir(session, number) / "apply-work"
     evaluation = authoring.evaluate_for_apply(session, model_text, manifest, work, extra_files=extra,
                                               config_offers=[(prop, value) for prop, value, _writer in config_changes or []])
@@ -223,7 +240,7 @@ def _apply_change(session: dict, number: int, entry: dict, model_text: str, mani
 
     if extra or config_changes:
         return _apply_files(session, number, entry, model_path, candidate_bytes, extra or {}, base_copy, backup_dir,
-                            config_changes)
+                            config_changes, accepted_code)
 
     backup_path = backup_dir / BACKUP_NAME
     authoring.atomic_write_bytes(backup_path, Path(base_copy).read_bytes())  # the model as the AI was shown it
@@ -239,7 +256,7 @@ def _apply_change(session: dict, number: int, entry: dict, model_text: str, mani
 
 
 def _apply_files(session: dict, number: int, entry: dict, model_path: Path, candidate_bytes: bytes, extra: dict,
-                 base_copy, backup_dir: Path, config_changes: list | None = None) -> dict:
+                 base_copy, backup_dir: Path, config_changes: list | None = None, accepted_code: list | None = None) -> dict:
     """Write the answer's fragments, themes, the confirmed config change and then model.json as one step. The previous
     bytes of every file (or ABSENT) are saved first; if any write fails the files already written are put back and
     nothing is recorded as applied."""
@@ -252,6 +269,9 @@ def _apply_files(session: dict, number: int, entry: dict, model_path: Path, cand
         extra = pages_mod.prepare(root, extra)   # pages.json is MERGED with the one on disk now, never replaced
     except ValueError as exc:
         return _refuse("pages-write-refused", detail=str(exc))
+    if accepted_code:   # REG-354: where the code came from, beside the model, in the same all-or-nothing step (so Undo covers it)
+        extra = dict(extra)
+        extra[codepolicy.PROVENANCE_FILE] = codepolicy.provenance_text(root, accepted_code, session["code"], _now())
     try:
         ops = files.plan(root, [(rel, extra[rel].encode("utf-8")) for rel in sorted(extra)]
                          + ([config_op] if config_op else []) + [(model_path.name, candidate_bytes)])

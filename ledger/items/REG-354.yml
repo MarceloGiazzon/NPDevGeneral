@@ -3,7 +3,7 @@ title: >-
   Code a browser AI writes (a JS page, a Java capability, a conversion hook) is refused outright: there is no safe way yet to accept it, show it, mark where it came from, or remove it in one click
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: PARTIAL
 opened: 2026-11-21
 source: >-
   Split out of REG-323 by the owner's decision of 2026-11-21 ("follow your suggestions"): the F4 answers that are DATA (fragments, element upserts, themes, hand-made
@@ -25,6 +25,26 @@ detail: |
   5. one-click removal of an accepted program (nothing deletes files from a chat today);
   6. a SECOND confirmation before a JS page becomes public (no sign-in needed to open it).
   Decide first whether a browser AI should ever add code at all, or only point at a reviewed pack that already has it; if "never", close this as WONTFIX and keep the quarantine as is.
+  OWNER DECISION 2026-11-21: "we have to have a parameter to determine that. Default A; on my environment C (accept all)." BUILT 2026-11-21: ONE per-machine setting,
+  `relay.codeFromBrowserAi` = never (default) | pages | all, read from the environment variable NPDEV_RELAY_CODE_MODE, else <NPDev home>/settings.json (LOCALAPPDATA/NPDev/settings.json on Windows);
+  anything unreadable or unknown is `never`, so a broken setting can only make the relay stricter. `npdev ai relay code-mode [--set never|pages|all]` shows or changes it; THIS MACHINE IS SET TO `all`.
+  The six safeguards, as built: (1) a scan that DESCRIBES what the code does (reads cookies/storage, talks to a server, runs text as code, loads more code, navigates, reads the sign-in key; for Java:
+  starts programs, files, network, reflection, system) from relay-ingest-policy.json `codeScan`, with the sentence that no scan proves code safe; (2) for Java the platform's own PluginJavaSourcePolicy and
+  bytecode inspector are the safeguard -- see REG-355, Java is not written yet; (3) every accepted file is a REQUIRED tick in the preview and apply refuses without it (`code:<kind>:<tag>`, tag = a
+  short hash of the path because the Manager's Rust side only passes letters, digits and _ - : . >); (4) provenance: `browser-ai-code.json` beside the model (path, kind, origin browser-ai, conversation, time,
+  sha256, what the scan found), written in the same all-or-nothing step so Undo removes it; (5) removal: `npdev ai relay remove-code --app <folder> [--path ...]` (never follows a recorded path out of
+  the app); (6) a web file is served to anyone with its address, so it needs a SECOND tick (`code-public:...`). Only phase f4 (change/fix) accepts code; a new app never does. The f4 prompt gets one
+  extra sentence ONLY when the setting is not `never` (so the default prompt is byte-identical). Tests: NPDevCli/tests/test_relay_codepolicy.py (18); test_relay_ingest and test_relay_pages now pin
+  `never` for the default behaviour, so the owner's `all` can never leak into them.
+  NOT done: Java capabilities and conversion hooks are accepted by the relay but NOT written (REG-355); a Manager control for the setting (it is a CLI/file setting for now) and a Manager button for
+  remove-code; the tick boxes were not driven on the REAL Manager window (the generic needsConfirmation rendering and the Rust code check were read, not run); no real chat AI was asked for a JS page.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_relay_codepolicy.py
+  asserts: >-
+    the setting defaults to never and anything unreadable is never; with never code is quarantined and nothing is written; with pages a JS page needs two confirmations, is recorded with its sha256 and goes away with Undo; Java is sent back with a reason; code is never accepted outside phase f4; remove-code never follows a path out of the app.
+  provenRed: false
+verification: UNIT_TESTED
 done_when: >-
   Either the owner decides code is never accepted from a browser AI (WONTFIX, the quarantine list stays), or the six steps are built and proven on the real window: a JS page with a `block`
   pattern and Java the inspector refuses cannot be accepted; an accepted program is marked origin: browser-ai and removable in one click; a JS page never goes public without the second confirmation.

@@ -535,6 +535,9 @@ def ingest_text(raw: str, *, session: str, expected_round: int, policy: dict, ph
         return done(BAD_JSON)
 
     # Path safety + code detection.
+    import npdev_relay_codepolicy as codepolicy  # REG-354: the machine's `relay.codeFromBrowserAi` setting (default: never)
+
+    code_mode = codepolicy.code_mode() if phase == "f4" else "never"
     rejected = 0
     for name, entry in files.items():
         path, status, reason = check_path(name, policy, phase)
@@ -543,9 +546,18 @@ def ingest_text(raw: str, *, session: str, expected_round: int, policy: dict, ph
                 if suffixes and path.lower().endswith(suffixes) and any(rx.search(entry["content"]) for rx in patterns):
                     status, reason = "quarantine", f"{kind}-has-script"   # code, however it is named (html -> html-has-script)
                     break
+        code = None
+        if status == "quarantine":
+            code_kind = codepolicy.kind_of(path, reason)
+            if codepolicy.accepts(code_mode, code_kind):
+                # Accepted by THIS machine's setting: still code, so it keeps its flag, its scan and (at apply) its confirmation.
+                status, reason = "allowed", None
+                code = {"kind": code_kind, "patterns": codepolicy.scan(entry["content"], code_kind), "mode": code_mode}
         out = {"path": path, "status": status, "reason": reason, "kind": entry["kind"],
                "labelSource": entry["labelSource"], "fenced": entry["fenced"], "repairs": entry["repairs"],
                "bytes": len(entry["content"].encode("utf-8")), "sha256": _sha(entry["content"])}
+        if code is not None:
+            out["code"] = code
         if status != "denied":
             out["content"] = entry["content"]
         else:
@@ -553,6 +565,9 @@ def ingest_text(raw: str, *, session: str, expected_round: int, policy: dict, ph
             ctx.add("path-denied", "error", path=path, reason=reason)
         if status == "quarantine":
             ctx.add("code-quarantined", "warning", path=path, reason=reason)
+        elif code is not None:
+            ctx.add("code-accepted", "warning", path=path, kind=code["kind"], mode=code["mode"],
+                    does=[p["id"] for p in code["patterns"]])
         result["files"].append(out)
     if len(result["files"]) > policy["limits"]["maxFiles"]:
         ctx.add("too-many-files", "error", count=len(result["files"]))
