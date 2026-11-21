@@ -45,7 +45,7 @@ import generate_dsl_reference as gdr  # noqa: E402
 
 MIN_FLOWSTEP_TYPES = 10
 MIN_CONCEPT_FIELDS = 8
-MIN_DISCRIMINATED_FIELDS = 9  # 10 before REG-342 removed root procedures[] and the procedureStep def (BREAKING.md); # 19 at F5/c0ecd84; 15 before FORM P5-T9b/c/e removed root documents/guidePages/aggregates/selectors (BREAKING.md 2026-11-17/18); 11 before FORM P4-T5 folded root customCapabilities into capabilities[] (BREAKING.md 2026-11-18) -- see check_breadth's own guard
+MIN_DISCRIMINATED_FIELDS = 7  # 9 before D-1 phases 2+3 folded root autoPanels and panels into screens[] (BREAKING.md 2026-11-21); 10 before REG-342 removed root procedures[] and the procedureStep def (BREAKING.md); # 19 at F5/c0ecd84; 15 before FORM P5-T9b/c/e removed root documents/guidePages/aggregates/selectors (BREAKING.md 2026-11-17/18); 11 before FORM P4-T5 folded root customCapabilities into capabilities[] (BREAKING.md 2026-11-18) -- see check_breadth's own guard
 
 
 def discriminated_array_fields(schema: dict) -> list[str]:
