@@ -42,8 +42,14 @@ detail: |
   browser-ai-code.json recorded it as java-extension, and Undo removed the class, the entry and the record and restored model.json. PROVEN in the Manager too (second run, a scratch app laid out like the Manager's own: model folder `<name>` + `<name>-app`; the first run's folder was refused as "not an npdev-init app" before generating, and an earlier
   version of the tour's generation check passed vacuously on the generic "The app could not be built." -- both corrected): after Apply the Manager's generate_app_from_model ACCEPTED the pinned class and the platform emitted
   npdev-generated/src/main/java/com/npdev/generated/trusted/Greeter.java; the build that followed failed only at the forced missing-libs step (exit code 1, its log names "Missing NPDev RuntimeHost libs"); Undo removed the class,
-  the manifest entry and the record and restored model.json (tour 16 of 16 checks, part B only). Still unseen: a class that the source policy or the bytecode inspector REFUSES on a real build (so the refusal sentence the person
-  would read is unmeasured), and a real build/boot of an app with the class (the libs were forced missing).
+  the manifest entry and the record and restored model.json (tour 16 of 16 checks, part B only). REFUSALS seen on the real Manager (NPDev_General__OutsideRepo/reg354-355-tour/refusal-tour.mjs, 7 of 8): the flow class goes through TrustedJavaSourcePolicy (a CLOSED import list: List, Map, Set, Optional, UUID,
+  BigDecimal, Instant, no static or wildcard imports, and forbidden identifiers such as Thread, File, Runtime, System.exit), NOT PluginJavaSourcePolicy (that one is for plugins, capabilities and hooks). The first
+  briefing said "use only java.util", which would let an AI write java.util.ArrayList and be refused only at generation, so the import rule is now MIRRORED in npdev_relay_extensions (pinned to the Java sets by
+  test_relay_extensions) and the briefing lists the allowed imports. R1 (an ArrayList import) is sent back at paste time naming the import and the allowed list, nothing written. R2 (Thread.sleep, which the relay
+  cannot see) is accepted and ticked, then the platform refuses at generation: "Forbidden Java source use in extensions/Greeter.java: forbidden method call Thread.sleep; forbidden identifier Thread" -- but the
+  window shows it INSIDE the generator log with the Java stack trace (`Exception in thread "main" java.lang.IllegalStateException ... at com.npdev.generator...`), so the person does not read a sentence (the one
+  failing check). Undo took every part out. STILL OPEN: (3) a Manager sentence for a generation refusal (browserai.js stop() could recognise `Forbidden Java source use in <file>: <reasons>` and say it in words, with a
+  Portuguese text; needs a Manager rebuild, a version bump and the render check); the kernel's bytecode inspector (a boot gate) on a real boot; a real build of an app with the class (the libs were forced missing).
 done_when: >-
   With the setting at `all`, a browser AI's answer that adds a Java procedure referenced by the model is confirmed by the owner, written with its manifest entry, generated, and refused in words when
   PluginJavaSourcePolicy or the bytecode inspector rejects it; Undo and remove-code take every part out; proven on the real Manager window.
