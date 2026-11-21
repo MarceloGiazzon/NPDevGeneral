@@ -71,6 +71,10 @@ keys:
     mechanism: "AI authoring bridge -- AgentProxyController / external-ai-http adapter, golden-ai-scenarios fixtures."
     status: shipped
 
+  - key: fieldConventions
+    mechanism: "FieldConventionExpansion (applied by ModelSourceResolver.resolveRoot): a typeless concept field is typed by its NAME from the first matching rule (built-in conventions-basic: name/*Name string(50), *Dt date, *Dtt datetime); the array never reaches the AST."
+    status: shipped
+
   - key: flows
     mechanism: "FlowAst + durable FlowEngine port hosted in KernelRunner (docs/FLOWS.md)."
     status: shipped

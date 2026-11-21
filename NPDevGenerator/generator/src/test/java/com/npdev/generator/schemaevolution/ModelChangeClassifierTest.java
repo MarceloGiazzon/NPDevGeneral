@@ -251,6 +251,13 @@ class ModelChangeClassifierTest {
                     if (field == null || !field.isObject()) {
                         continue;
                     }
+                    // Same reasoning again: a typeless field is typed from its NAME by fieldConventions[],
+                    // which ModelSourceResolver applies and this test's raw parse never runs, so the
+                    // parser would reject it ("Missing/blank required field: type").
+                    JsonNode fieldType = field.get("type");
+                    if (fieldType == null || fieldType.asText("").isBlank()) {
+                        return false;
+                    }
                     JsonNode reference = field.get("reference");
                     String target = reference != null && reference.isObject() && reference.has("target")
                             ? reference.get("target").asText("") : "";
