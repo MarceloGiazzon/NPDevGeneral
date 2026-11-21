@@ -19,7 +19,7 @@
     return e;
   }
 
-  function fmtDate(ms) { return ms ? new Date(ms).toLocaleString() : ""; }
+  function fmtDate(ms) { return ms ? new Date(ms).toLocaleString((window.NPDevI18n ? window.NPDevI18n.language() : undefined)) : ""; }
 
   function load() {
     shell.renderLoading(root, { message: NPDevI18n.t("shell.tasks.loading", "Loading your tasks...") });

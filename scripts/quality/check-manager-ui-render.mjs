@@ -1654,6 +1654,14 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   await page.waitForTimeout(300);
   check("browser AI: with an app selected in the workspace the screen opens on 'change that app'",
     (await page.$eval("#browserai-app", (e) => e.value)) === WS_APP && (await page.$eval("#browserai-intent-change", (e) => e.checked)), "");
+  check("browser AI: step 1 always offers 'Your own parts', and it opens the Ready-made parts screen where they are listed",
+    (await shown("#browserai-open-parts")) && (await text("#browserai-open-parts")) === "Your own parts", String(await text("#browserai-open-parts")));
+  await page.click("#browserai-open-parts");
+  await page.waitForTimeout(200);
+  check("browser AI: 'Your own parts' shows the Ready-made parts screen",
+    (await page.evaluate(() => !document.getElementById("screen-packs").hidden)) && (await shown("#packs-mine")), "");
+  await page.evaluate(() => window.__npdevShowScreen("browserai"));
+  await page.waitForTimeout(200);
   await page.evaluate(() => document.getElementById("browserai-intent-create").click());
   await rebuildPicker();
   await page.waitForTimeout(200);

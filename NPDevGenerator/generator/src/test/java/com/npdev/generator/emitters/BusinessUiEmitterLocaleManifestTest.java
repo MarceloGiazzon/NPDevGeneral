@@ -61,7 +61,7 @@ public class BusinessUiEmitterLocaleManifestTest {
     @Test
     void manifestListsDeclaredLocalesAndChromeStringsPerLanguage() throws Exception {
         String manifest = Files.readString(emit(LOCALIZED).resolve(STATIC + "generated-ui-manifest.json"));
-        assertTrue(manifest.contains("\"locales\" : [ \"es\", \"pt-BR\" ]"), manifest);
+        assertTrue(manifest.contains("\"locales\" : [ \"en\", \"es\", \"pt-BR\" ]"), manifest);
         assertTrue(manifest.contains("\"stringsByLocale\""), manifest);
         assertTrue(manifest.contains("\"shell.toggleMenu\" : \"Recolher/expandir menu\""), manifest);
         assertTrue(manifest.contains("\"shell.toggleMenu\" : \"Collapse/expand menu\""), manifest);
@@ -70,9 +70,10 @@ public class BusinessUiEmitterLocaleManifestTest {
     }
 
     @Test
-    void modelWithoutLocalizedLabelsDeclaresNoLocales() throws Exception {
+    void modelWithoutLocalizedLabelsStillOffersTheLanguagesThePlatformShipsIn() throws Exception {
+        // REG-353: an app whose labels are in one language still lets the visitor choose the platform language
         String manifest = Files.readString(emit(PLAIN).resolve(STATIC + "generated-ui-manifest.json"));
-        assertTrue(manifest.contains("\"locales\" : [ ]"), manifest);
+        assertTrue(manifest.contains("\"locales\" : [ \"en\", \"pt-BR\" ]"), manifest);
     }
 
     @Test

@@ -84,7 +84,7 @@
         row.href = n.link || "#";
         row.appendChild(el("div", "npdev-shell-bell-title", n.title));
         if (n.body) row.appendChild(el("div", "npdev-shell-bell-body", n.body));
-        row.appendChild(el("div", "npdev-shell-bell-time", new Date(n.createdAtEpochMs).toLocaleString()));
+        row.appendChild(el("div", "npdev-shell-bell-time", new Date(n.createdAtEpochMs).toLocaleString((window.NPDevI18n ? window.NPDevI18n.language() : undefined))));
         row.addEventListener("click", function (ev) { openItem(n, row, ev); });
         panel.appendChild(row);
       });

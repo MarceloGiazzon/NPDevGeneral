@@ -503,7 +503,7 @@
 
   function updateClock() {
     if (!el.clock) return;
-    el.clock.textContent = new Date().toLocaleString();
+    el.clock.textContent = new Date().toLocaleString((window.NPDevI18n ? window.NPDevI18n.language() : undefined));
   }
 
   function buildTopbar() {
@@ -1345,7 +1345,7 @@
   }
 
   function formatNumber(value) {
-    return value.toLocaleString ? value.toLocaleString() : String(value);
+    return value.toLocaleString ? value.toLocaleString((window.NPDevI18n ? window.NPDevI18n.language() : undefined)) : String(value);
   }
 
   // R7.5 (Roadmap R7.5): every gadget was a dead end -- clicking a KPI/bar/line/table datum did

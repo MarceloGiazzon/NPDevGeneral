@@ -3,7 +3,7 @@ title: >-
   A generated app is now translatable end to end, but five edges still show English in a Portuguese session: the language switch, model and pack labels, server text, the developer pages and the picker label
 type: GAP
 severity: LOW
-status: OPEN
+status: PARTIAL
 opened: 2026-11-20
 source: >-
   REG-349 closing notes (owner decision 2026-11-20: a supported language is supported integrally, except field names, commands and docs).
@@ -29,6 +29,16 @@ detail: |
   pack's labels (point 2) -- the page title and breadcrumb "Sales order", the column headers Order number / Customer / Order date / Status -- and, because the
   platform sentences embed the concept label, "Nada de Sales order para mostrar" and "Criar sales order". The sidebar says "Pedidos de Venda" (the model's own
   navigation label) while the page title says "Sales order": one concept, two names. No language dropdown was visible (point 1).
+  OWNER DECISIONS 2026-11-21 ("follow your suggestions"): (1) always offer the language switch; (2) translate model and pack labels, with a label map per language in the pack; (3) translate the
+  common server messages only; (4) the developer pages stay English (already in ui-i18n-policy `englishOnlyDeveloperTools`, nothing to build); (5) translate the picker label and make dates and
+  numbers follow the app language.
+  DONE 2026-11-21: (1) BusinessUiEmitter.declaredLocales adds the shipped languages (en, pt-BR) to whatever the model declares (an `en` or `pt` already declared is not duplicated), so
+  the dropdown is offered for every app; BusinessUiEmitterLocaleManifestTest pins [en, pt-BR] for a model with no label maps and [en, es, pt-BR] for one declaring es + pt-BR; checked on a
+  real generated app (SalesTest1 manifest: locales [en, pt-BR]). (5, dates and numbers) eleven places that used the browser's locale now pass NPDevI18n.language(): the business UI
+  (last-saved, stale-list and print stamps), the shell clock and number cell, the bell, tasks, executions and declared-panel run times, and the dashboard number tile.
+  STILL OPEN: (2) labels per language in the packs (the built-in packs and the NPR ones are English-only; a catalogue pack needs `label` maps and the relay briefing must ask for them);
+  (3) the common server messages (validation, error bodies, batch row messages); (5, picker) the typed picker's default `Select` is baked at compile (AutoPanelExpander line ~736) and needs a
+  labelKey like the action buttons got, plus the client reading it.
 done_when: >-
   The owner decides each of the five (translate, or declare English-only); the translated ones are covered by check-ui-i18n.py or the
   i18n-pt-verify-routine browser routine.

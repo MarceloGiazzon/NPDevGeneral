@@ -484,7 +484,7 @@
               const item = document.createElement("li");
               item.setAttribute("data-action", run.action);
               item.setAttribute("data-status", run.status);
-              item.textContent = run.at.toLocaleTimeString() + " \u2014 " + run.action + " \u2014 " + run.status;
+              item.textContent = run.at.toLocaleTimeString((window.NPDevI18n ? window.NPDevI18n.language() : undefined)) + " \u2014 " + run.action + " \u2014 " + run.status;
               if (run.failed) { item.style.color = "#c0392b"; }
               list.appendChild(item);
             });

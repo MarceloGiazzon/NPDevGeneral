@@ -31,7 +31,7 @@
   }
 
   function when(epochMs) {
-    return epochMs ? new Date(epochMs).toLocaleString() : "";
+    return epochMs ? new Date(epochMs).toLocaleString((window.NPDevI18n ? window.NPDevI18n.language() : undefined)) : "";
   }
 
   // What each status can be offered. Mirrors the server: retry only FAILED; cancel only

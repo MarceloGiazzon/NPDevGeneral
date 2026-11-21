@@ -14,7 +14,7 @@ const muted = (text) => h("p", { class: "muted note", text });
 export function showValue(v) {
   if (v === undefined || v === null || v === "") return h("span", { class: "muted", text: "\u2014" });
   if (typeof v === "boolean") return h("span", { text: v ? NPDevI18n.t("experience.core.yes", "Yes") : NPDevI18n.t("experience.core.no", "No") });
-  if (typeof v === "number") return h("span", { text: new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(v) });
+  if (typeof v === "number") return h("span", { text: new Intl.NumberFormat((typeof window !== "undefined" && window.NPDevI18n ? window.NPDevI18n.language() : undefined), { maximumFractionDigits: 2 }).format(v) });
   return h("span", { text: typeof v === "object" ? JSON.stringify(v) : String(v) });
 }
 

@@ -1103,10 +1103,15 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         return nodes;
     }
 
+    /** The languages the platform catalogue (npdev-i18n/*.json) is translated into. */
+    static final List<String> SHIPPED_LOCALES = List.of("en", "pt-BR");
+
     /**
      * Sorted, de-duplicated union of every locale tag a label map in the model uses (concept/field ui
-     * label + shortLabel maps, enum option labels) plus {@code backOffice.locale} when set. The server's
-     * LabelResolver owns resolution; this list only tells the UI which languages to offer.
+     * label + shortLabel maps, enum option labels) plus {@code backOffice.locale} when set, plus the languages the
+     * platform's own texts ship in ({@link #SHIPPED_LOCALES}, REG-353): a visitor of an app whose model labels are in
+     * one language can still choose the platform language. The server's LabelResolver owns resolution; this list only
+     * tells the UI which languages to offer.
      */
     static List<String> declaredLocales(CompiledModel model) {
         java.util.TreeSet<String> locales = new java.util.TreeSet<>();
@@ -1125,6 +1130,13 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         if (model.getSettings() != null && model.getSettings().getLocale() != null
                 && !model.getSettings().getLocale().isBlank()) {
             locales.add(model.getSettings().getLocale().trim());
+        }
+        for (String shipped : SHIPPED_LOCALES) {
+            String language = shipped.split("-")[0];
+            boolean covered = locales.stream().anyMatch(tag -> tag.split("-")[0].equalsIgnoreCase(language));
+            if (!covered) {
+                locales.add(shipped);
+            }
         }
         return new ArrayList<>(locales);
     }

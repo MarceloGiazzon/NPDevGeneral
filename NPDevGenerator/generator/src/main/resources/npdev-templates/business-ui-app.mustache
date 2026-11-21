@@ -1023,7 +1023,7 @@
           panel.staleSince = cached.savedAt;
           panel.offlineEmpty = false;
           setStatus(platformString("app.offline.showingCached", "You are offline - showing {name} as last updated {when}.",
-            { name: concept.displayName, when: new Date(cached.savedAt).toLocaleString() }), false);
+            { name: concept.displayName, when: new Date(cached.savedAt).toLocaleString((window.NPDevI18n ? window.NPDevI18n.language() : undefined)) }), false);
         } else {
           panel.records = [];
           panel.totalElements = 0;
@@ -1629,7 +1629,7 @@
       banner.className = "offline-banner";
       banner.setAttribute("role", "status");
       banner.textContent = panel.staleSince
-        ? platformString("app.offline.stale", "Offline - this list is stale. Last updated {when}.", { when: new Date(panel.staleSince).toLocaleString() })
+        ? platformString("app.offline.stale", "Offline - this list is stale. Last updated {when}.", { when: new Date(panel.staleSince).toLocaleString((window.NPDevI18n ? window.NPDevI18n.language() : undefined)) })
         : platformString("app.offline.nothingCached", "You are offline and {name} has not been opened on this device yet, so there is nothing to show.",
           { name: concept.displayName });
       section.appendChild(banner);
@@ -2182,8 +2182,8 @@
     const meta = document.createElement("div");
     meta.className = "print-meta";
     meta.textContent = panel.filter
-        ? platformString("app.print.metaFiltered", "Printed {when} -- filtered: \"{filter}\"", { when: new Date().toLocaleString(), filter: panel.filter })
-        : platformString("app.print.meta", "Printed {when}", { when: new Date().toLocaleString() });
+        ? platformString("app.print.metaFiltered", "Printed {when} -- filtered: \"{filter}\"", { when: new Date().toLocaleString((window.NPDevI18n ? window.NPDevI18n.language() : undefined)), filter: panel.filter })
+        : platformString("app.print.meta", "Printed {when}", { when: new Date().toLocaleString((window.NPDevI18n ? window.NPDevI18n.language() : undefined)) });
     header.appendChild(meta);
     doc.appendChild(header);
 
