@@ -1,0 +1,114 @@
+{
+  "pack": "inventory",
+  "locale": "pt-BR",
+  "labels": {
+    "concepts/Warehouse/ui": {
+      "en": "Warehouse",
+      "text": "Armazém"
+    },
+    "concepts/Warehouse/fields/code/ui": {
+      "en": "Code",
+      "text": "Código"
+    },
+    "concepts/Warehouse/fields/name/ui": {
+      "en": "Name",
+      "text": "Nome"
+    },
+    "concepts/Warehouse/fields/address/ui": {
+      "en": "Address",
+      "text": "Endereço"
+    },
+    "concepts/Warehouse/fields/active/ui": {
+      "en": "Active",
+      "text": "Ativo"
+    },
+    "concepts/StorageLocation/ui": {
+      "en": "Storage location",
+      "text": "Local de armazenamento"
+    },
+    "concepts/StorageLocation/fields/warehouseId/ui": {
+      "en": "Warehouse",
+      "text": "Armazém"
+    },
+    "concepts/StorageLocation/fields/code/ui": {
+      "en": "Code",
+      "text": "Código"
+    },
+    "concepts/StorageLocation/fields/kind/ui": {
+      "en": "Kind",
+      "text": "Tipo"
+    },
+    "concepts/StorageLocation/fields/active/ui": {
+      "en": "Active",
+      "text": "Ativo"
+    },
+    "concepts/StockItem/ui": {
+      "en": "Stock item",
+      "text": "Item de estoque"
+    },
+    "concepts/StockItem/fields/productId/ui": {
+      "en": "Product",
+      "text": "Produto"
+    },
+    "concepts/StockItem/fields/minimumStock/ui": {
+      "en": "Minimum stock",
+      "text": "Estoque mínimo"
+    },
+    "concepts/StockMovement/ui": {
+      "en": "Stock movement",
+      "text": "Movimentação de estoque"
+    },
+    "concepts/StockMovement/fields/type/ui": {
+      "en": "Type",
+      "text": "Tipo"
+    },
+    "concepts/StockMovement/fields/productId/ui": {
+      "en": "Product",
+      "text": "Produto"
+    },
+    "concepts/StockMovement/fields/fromLocationId/ui": {
+      "en": "From location",
+      "text": "Do local"
+    },
+    "concepts/StockMovement/fields/toLocationId/ui": {
+      "en": "To location",
+      "text": "Para o local"
+    },
+    "concepts/StockMovement/fields/quantity/ui": {
+      "en": "Quantity",
+      "text": "Quantidade"
+    },
+    "concepts/StockMovement/fields/status/ui": {
+      "en": "Status",
+      "text": "Status"
+    },
+    "concepts/StockMovement/fields/reference/ui": {
+      "en": "Document reference",
+      "text": "Referência do documento"
+    },
+    "concepts/StockMovement/fields/reason/ui": {
+      "en": "Reason",
+      "text": "Motivo"
+    },
+    "concepts/StockMovement/fields/movementDate/ui": {
+      "en": "Movement date",
+      "text": "Data da movimentação"
+    },
+    "concepts/StockMovement/lifecycle/states/DRAFT": {
+      "en": "Draft",
+      "text": "Rascunho"
+    },
+    "concepts/StockMovement/lifecycle/states/POSTED": {
+      "en": "Posted",
+      "text": "Lançada"
+    },
+    "concepts/StockMovement/lifecycle/states/REVERSED": {
+      "en": "Reversed",
+      "text": "Estornada"
+    },
+    "concepts/StockMovement/lifecycle/states/CANCELLED": {
+      "en": "Cancelled",
+      "text": "Cancelada"
+    }
+  }
+}

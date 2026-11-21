@@ -1,0 +1,122 @@
+{
+  "pack": "contacts",
+  "locale": "pt-BR",
+  "labels": {
+    "concepts/Organization/ui": {
+      "en": "Organization",
+      "text": "Organização"
+    },
+    "concepts/Organization/fields/name/ui": {
+      "en": "Name",
+      "text": "Nome"
+    },
+    "concepts/Organization/fields/legalName/ui": {
+      "en": "Legal name",
+      "text": "Razão social"
+    },
+    "concepts/Organization/fields/taxId/ui": {
+      "en": "Tax id",
+      "text": "Identificação fiscal"
+    },
+    "concepts/Organization/fields/kind/ui": {
+      "en": "Kind",
+      "text": "Tipo"
+    },
+    "concepts/Organization/fields/email/ui": {
+      "en": "Email",
+      "text": "E-mail"
+    },
+    "concepts/Organization/fields/phone/ui": {
+      "en": "Phone",
+      "text": "Telefone"
+    },
+    "concepts/Organization/fields/website/ui": {
+      "en": "Website",
+      "text": "Site"
+    },
+    "concepts/Organization/fields/notes/ui": {
+      "en": "Notes",
+      "text": "Observações"
+    },
+    "concepts/Organization/fields/active/ui": {
+      "en": "Active",
+      "text": "Ativo"
+    },
+    "concepts/Contact/ui": {
+      "en": "Contact",
+      "text": "Contato"
+    },
+    "concepts/Contact/fields/firstName/ui": {
+      "en": "First name",
+      "text": "Primeiro nome"
+    },
+    "concepts/Contact/fields/lastName/ui": {
+      "en": "Last name",
+      "text": "Sobrenome"
+    },
+    "concepts/Contact/fields/email/ui": {
+      "en": "Email",
+      "text": "E-mail"
+    },
+    "concepts/Contact/fields/phone/ui": {
+      "en": "Phone",
+      "text": "Telefone"
+    },
+    "concepts/Contact/fields/jobTitle/ui": {
+      "en": "Job title",
+      "text": "Cargo"
+    },
+    "concepts/Contact/fields/organizationId/ui": {
+      "en": "Organization",
+      "text": "Organização"
+    },
+    "concepts/Contact/fields/isPrimary/ui": {
+      "en": "Primary contact",
+      "text": "Contato principal"
+    },
+    "concepts/Contact/fields/active/ui": {
+      "en": "Active",
+      "text": "Ativo"
+    },
+    "concepts/Address/ui": {
+      "en": "Address",
+      "text": "Endereço"
+    },
+    "concepts/Address/fields/organizationId/ui": {
+      "en": "Organization",
+      "text": "Organização"
+    },
+    "concepts/Address/fields/kind/ui": {
+      "en": "Kind",
+      "text": "Tipo"
+    },
+    "concepts/Address/fields/line1/ui": {
+      "en": "Address line 1",
+      "text": "Endereço (linha 1)"
+    },
+    "concepts/Address/fields/line2/ui": {
+      "en": "Address line 2",
+      "text": "Endereço (linha 2)"
+    },
+    "concepts/Address/fields/city/ui": {
+      "en": "City",
+      "text": "Cidade"
+    },
+    "concepts/Address/fields/region/ui": {
+      "en": "State / region",
+      "text": "Estado / região"
+    },
+    "concepts/Address/fields/postalCode/ui": {
+      "en": "Postal code",
+      "text": "CEP"
+    },
+    "concepts/Address/fields/country/ui": {
+      "en": "Country (ISO-2)",
+      "text": "País (ISO-2)"
+    },
+    "concepts/Address/fields/isDefault/ui": {
+      "en": "Default for its kind",
+      "text": "Padrão do seu tipo"
+    }
+  }
+}

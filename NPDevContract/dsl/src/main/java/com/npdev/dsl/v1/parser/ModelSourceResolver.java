@@ -1494,6 +1494,8 @@ public final class ModelSourceResolver {
             throw error(packFile, "$", "Pack file must be a JSON object");
         }
         PACK_SCHEMA_VALIDATOR.validate(node, packFile.toString());
+        // REG-353: the platform's own translations of this pack's labels (the pack stays English on disk).
+        PackLabelTranslations.apply((ObjectNode) node);
         state.includedFiles.add(packFile);
         state.seenIncludedFiles.add(packFile);
         return (ObjectNode) node;

@@ -52,6 +52,21 @@
       var found = lookup(key);
       return fill(found != null ? found : fallback, vars);
     },
+    /**
+     * One text out of a per-language map ({ "pt-BR": "Pedido" }): the visitor's exact tag, else a tag of the language in force
+     * (the visitor's choice, else the app default's), else `fallback` (the English / default text).
+     */
+    pick: function (map, fallback) {
+      if (!map || typeof map !== "object") { return fallback; }
+      var chosen = stored();
+      if (chosen && typeof map[chosen] === "string" && map[chosen]) { return map[chosen]; }
+      var wanted = window.NPDevI18n.language().toLowerCase();
+      var keys = Object.keys(map);
+      for (var i = 0; i < keys.length; i++) {
+        if (keys[i].split("-")[0].toLowerCase() === wanted && typeof map[keys[i]] === "string" && map[keys[i]]) { return map[keys[i]]; }
+      }
+      return fallback;
+    },
     /** The language in force: the visitor's choice, else the app default's language, else "en". */
     language: function () {
       return language() || (catalogue && catalogue.defaultLanguage) || "en";

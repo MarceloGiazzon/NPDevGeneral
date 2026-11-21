@@ -1,0 +1,82 @@
+{
+  "pack": "approvals",
+  "locale": "pt-BR",
+  "labels": {
+    "concepts/ApprovalRequest/ui": {
+      "en": "Approval request",
+      "text": "Pedido de aprovação"
+    },
+    "concepts/ApprovalRequest/fields/title/ui": {
+      "en": "Title",
+      "text": "Título"
+    },
+    "concepts/ApprovalRequest/fields/requestedBy/ui": {
+      "en": "Requested by (login)",
+      "text": "Solicitado por (login)"
+    },
+    "concepts/ApprovalRequest/fields/description/ui": {
+      "en": "Description",
+      "text": "Descrição"
+    },
+    "concepts/ApprovalRequest/fields/subjectConcept/ui": {
+      "en": "About (concept)",
+      "text": "Sobre (tipo de registro)"
+    },
+    "concepts/ApprovalRequest/fields/subjectId/ui": {
+      "en": "About (record id)",
+      "text": "Sobre (id do registro)"
+    },
+    "concepts/ApprovalRequest/fields/status/ui": {
+      "en": "Status",
+      "text": "Status"
+    },
+    "concepts/ApprovalRequest/fields/decidedBy/ui": {
+      "en": "Decided by",
+      "text": "Decidido por"
+    },
+    "concepts/ApprovalRequest/fields/decisionComment/ui": {
+      "en": "Decision comment",
+      "text": "Comentário da decisão"
+    },
+    "concepts/ApprovalRequest/lifecycle/states/PENDING": {
+      "en": "Pending",
+      "text": "Pendente"
+    },
+    "concepts/ApprovalRequest/lifecycle/states/APPROVED": {
+      "en": "Approved",
+      "text": "Aprovado"
+    },
+    "concepts/ApprovalRequest/lifecycle/states/REJECTED": {
+      "en": "Rejected",
+      "text": "Rejeitado"
+    },
+    "concepts/ApprovalRequest/lifecycle/states/EXPIRED": {
+      "en": "Expired",
+      "text": "Expirado"
+    },
+    "concepts/ApprovalDecision/ui": {
+      "en": "Approval decision",
+      "text": "Decisão de aprovação"
+    },
+    "concepts/ApprovalDecision/fields/requestId/ui": {
+      "en": "Request",
+      "text": "Solicitação"
+    },
+    "concepts/ApprovalDecision/fields/status/ui": {
+      "en": "Decision",
+      "text": "Decisão"
+    },
+    "concepts/ApprovalDecision/fields/completedBy/ui": {
+      "en": "Decided by",
+      "text": "Decidido por"
+    },
+    "concepts/ApprovalDecision/fields/comment/ui": {
+      "en": "Comment",
+      "text": "Comentário"
+    },
+    "concepts/ApprovalDecision/fields/decidedAt/ui": {
+      "en": "Decided at",
+      "text": "Decidido em"
+    }
+  }
+}

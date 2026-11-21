@@ -3954,6 +3954,12 @@
     });
     state.manifest = await fetchJson("./generated-ui-manifest.json");
     if (window.NPDevI18n) { window.NPDevI18n.use(state.manifest); }
+    // REG-353: a concept's name in the visitor's language (the manifest carries the English default plus a per-language map).
+    if (window.NPDevI18n && Array.isArray(state.manifest.concepts)) {
+      state.manifest.concepts.forEach(function (c) {
+        if (c && c.displayNameLocales) { c.displayName = window.NPDevI18n.pick(c.displayNameLocales, c.displayName); }
+      });
+    }
     if (window.NPDevI18n) { window.NPDevI18n.apply(document); } // sets <html lang> for the visitor's language
     // Chrome built before the manifest (and so its catalogue) was available.
     if (el.apiKeyLabel) { el.apiKeyLabel.textContent = platformString("app.auth.apiKey", "API Key"); }

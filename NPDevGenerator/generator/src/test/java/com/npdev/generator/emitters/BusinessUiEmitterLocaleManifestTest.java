@@ -39,6 +39,7 @@ public class BusinessUiEmitterLocaleManifestTest {
               "namespace": "locale.demo", "dslVersion": "3.0.0", "version": "1.0",
               "concepts": [
                 { "name": "Order",
+                  "ui": { "label": { "default": "Order", "pt-BR": "Pedido" } },
                   "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "status", "type": "string",
@@ -67,6 +68,16 @@ public class BusinessUiEmitterLocaleManifestTest {
         assertTrue(manifest.contains("\"shell.toggleMenu\" : \"Collapse/expand menu\""), manifest);
         // the old single-catalogue key stays for old shells
         assertTrue(manifest.contains("\"strings\""), manifest);
+    }
+
+    @Test
+    void aConceptCarriesItsNamePerLanguageSoTheScreenTitleCanFollowTheVisitor() throws Exception {
+        // REG-353: a pack's catalogue translation (or the author's own label map) must reach the browser, not only the server
+        String manifest = Files.readString(emit(LOCALIZED).resolve(STATIC + "generated-ui-manifest.json"));
+        assertTrue(manifest.contains("\"displayNameLocales\""), manifest);
+        assertTrue(manifest.contains("\"pt-BR\" : \"Pedido\""), manifest);
+        String plain = Files.readString(emit(PLAIN).resolve(STATIC + "generated-ui-manifest.json"));
+        assertFalse(plain.contains("displayNameLocales"), "a concept with no label map has nothing to localize");
     }
 
     @Test

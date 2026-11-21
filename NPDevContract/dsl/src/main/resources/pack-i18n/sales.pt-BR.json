@@ -1,0 +1,150 @@
+{
+  "pack": "sales",
+  "locale": "pt-BR",
+  "labels": {
+    "concepts/Customer/ui": {
+      "en": "Customer",
+      "text": "Cliente"
+    },
+    "concepts/Customer/fields/organizationId/ui": {
+      "en": "Organization",
+      "text": "Organização"
+    },
+    "concepts/Customer/fields/code/ui": {
+      "en": "Code",
+      "text": "Código"
+    },
+    "concepts/Customer/fields/creditLimit/ui": {
+      "en": "Credit limit",
+      "text": "Limite de crédito"
+    },
+    "concepts/Customer/fields/active/ui": {
+      "en": "Active",
+      "text": "Ativo"
+    },
+    "concepts/SalesItem/ui": {
+      "en": "Price list item",
+      "text": "Item da tabela de preços"
+    },
+    "concepts/SalesItem/fields/productId/ui": {
+      "en": "Product",
+      "text": "Produto"
+    },
+    "concepts/SalesItem/fields/unitPrice/ui": {
+      "en": "Unit price",
+      "text": "Preço unitário"
+    },
+    "concepts/SalesItem/fields/active/ui": {
+      "en": "Active",
+      "text": "Ativo"
+    },
+    "concepts/SalesOrder/ui": {
+      "en": "Sales order",
+      "text": "Pedido de venda"
+    },
+    "concepts/SalesOrder/fields/orderNumber/ui": {
+      "en": "Order number",
+      "text": "Número do pedido"
+    },
+    "concepts/SalesOrder/fields/customerId/ui": {
+      "en": "Customer",
+      "text": "Cliente"
+    },
+    "concepts/SalesOrder/fields/status/ui": {
+      "en": "Status",
+      "text": "Status"
+    },
+    "concepts/SalesOrder/fields/orderDate/ui": {
+      "en": "Order date",
+      "text": "Data do pedido"
+    },
+    "concepts/SalesOrder/fields/notes/ui": {
+      "en": "Notes",
+      "text": "Observações"
+    },
+    "concepts/SalesOrder/lifecycle/states/DRAFT": {
+      "en": "Draft",
+      "text": "Rascunho"
+    },
+    "concepts/SalesOrder/lifecycle/states/CONFIRMED": {
+      "en": "Confirmed",
+      "text": "Confirmado"
+    },
+    "concepts/SalesOrder/lifecycle/states/INVOICED": {
+      "en": "Invoiced",
+      "text": "Faturado"
+    },
+    "concepts/SalesOrder/lifecycle/states/CANCELLED": {
+      "en": "Cancelled",
+      "text": "Cancelado"
+    },
+    "concepts/SalesOrderLine/ui": {
+      "en": "Order line",
+      "text": "Item do pedido"
+    },
+    "concepts/SalesOrderLine/fields/orderId/ui": {
+      "en": "Order",
+      "text": "Pedido"
+    },
+    "concepts/SalesOrderLine/fields/productId/ui": {
+      "en": "Product",
+      "text": "Produto"
+    },
+    "concepts/SalesOrderLine/fields/quantity/ui": {
+      "en": "Quantity",
+      "text": "Quantidade"
+    },
+    "concepts/SalesOrderLine/fields/unitPrice/ui": {
+      "en": "Unit price",
+      "text": "Preço unitário"
+    },
+    "concepts/SalesOrderLine/fields/lineTotal/ui": {
+      "en": "Line total",
+      "text": "Total da linha"
+    },
+    "concepts/Invoice/ui": {
+      "en": "Invoice",
+      "text": "Fatura"
+    },
+    "concepts/Invoice/fields/invoiceNumber/ui": {
+      "en": "Invoice number",
+      "text": "Número da fatura"
+    },
+    "concepts/Invoice/fields/orderId/ui": {
+      "en": "Order",
+      "text": "Pedido"
+    },
+    "concepts/Invoice/fields/customerId/ui": {
+      "en": "Customer",
+      "text": "Cliente"
+    },
+    "concepts/Invoice/fields/amount/ui": {
+      "en": "Amount",
+      "text": "Valor"
+    },
+    "concepts/Invoice/fields/issueDate/ui": {
+      "en": "Issued",
+      "text": "Emitida em"
+    },
+    "concepts/Invoice/fields/dueDate/ui": {
+      "en": "Due",
+      "text": "Vencimento"
+    },
+    "concepts/Invoice/fields/status/ui": {
+      "en": "Status",
+      "text": "Status"
+    },
+    "concepts/Invoice/lifecycle/states/ISSUED": {
+      "en": "Issued",
+      "text": "Emitida"
+    },
+    "concepts/Invoice/lifecycle/states/PAID": {
+      "en": "Paid",
+      "text": "Paga"
+    },
+    "concepts/Invoice/lifecycle/states/VOID": {
+      "en": "Void",
+      "text": "Anulada"
+    }
+  }
+}

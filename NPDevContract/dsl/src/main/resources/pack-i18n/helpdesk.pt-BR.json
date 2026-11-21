@@ -1,0 +1,138 @@
+{
+  "pack": "helpdesk",
+  "locale": "pt-BR",
+  "labels": {
+    "concepts/HelpdeskAgent/ui": {
+      "en": "Agent",
+      "text": "Atendente"
+    },
+    "concepts/HelpdeskAgent/fields/userId/ui": {
+      "en": "Login",
+      "text": "Login"
+    },
+    "concepts/HelpdeskAgent/fields/fullName/ui": {
+      "en": "Name",
+      "text": "Nome"
+    },
+    "concepts/HelpdeskAgent/fields/email/ui": {
+      "en": "Email",
+      "text": "E-mail"
+    },
+    "concepts/HelpdeskAgent/fields/active/ui": {
+      "en": "Active",
+      "text": "Ativo"
+    },
+    "concepts/TicketCategory/ui": {
+      "en": "Category",
+      "text": "Categoria"
+    },
+    "concepts/TicketCategory/fields/code/ui": {
+      "en": "Code",
+      "text": "Código"
+    },
+    "concepts/TicketCategory/fields/name/ui": {
+      "en": "Name",
+      "text": "Nome"
+    },
+    "concepts/TicketCategory/fields/active/ui": {
+      "en": "Active",
+      "text": "Ativo"
+    },
+    "concepts/Ticket/ui": {
+      "en": "Ticket",
+      "text": "Chamado"
+    },
+    "concepts/Ticket/fields/ticketNumber/ui": {
+      "en": "Ticket number",
+      "text": "Número do chamado"
+    },
+    "concepts/Ticket/fields/categoryId/ui": {
+      "en": "Category",
+      "text": "Categoria"
+    },
+    "concepts/Ticket/fields/assignedAgentId/ui": {
+      "en": "Assigned to",
+      "text": "Atribuído a"
+    },
+    "concepts/Ticket/fields/requesterId/ui": {
+      "en": "Requester login",
+      "text": "Login do solicitante"
+    },
+    "concepts/Ticket/fields/requesterName/ui": {
+      "en": "Requester",
+      "text": "Solicitante"
+    },
+    "concepts/Ticket/fields/requesterEmail/ui": {
+      "en": "Requester email",
+      "text": "E-mail do solicitante"
+    },
+    "concepts/Ticket/fields/subject/ui": {
+      "en": "Subject",
+      "text": "Assunto"
+    },
+    "concepts/Ticket/fields/description/ui": {
+      "en": "Description",
+      "text": "Descrição"
+    },
+    "concepts/Ticket/fields/priority/ui": {
+      "en": "Priority",
+      "text": "Prioridade"
+    },
+    "concepts/Ticket/fields/status/ui": {
+      "en": "Status",
+      "text": "Status"
+    },
+    "concepts/Ticket/fields/openedAt/ui": {
+      "en": "Opened",
+      "text": "Aberto em"
+    },
+    "concepts/Ticket/lifecycle/states/NEW": {
+      "en": "New",
+      "text": "Novo"
+    },
+    "concepts/Ticket/lifecycle/states/OPEN": {
+      "en": "Open",
+      "text": "Aberto"
+    },
+    "concepts/Ticket/lifecycle/states/PENDING": {
+      "en": "Waiting for requester",
+      "text": "Aguardando o solicitante"
+    },
+    "concepts/Ticket/lifecycle/states/RESOLVED": {
+      "en": "Resolved",
+      "text": "Resolvido"
+    },
+    "concepts/Ticket/lifecycle/states/CLOSED": {
+      "en": "Closed",
+      "text": "Fechado"
+    },
+    "concepts/TicketComment/ui": {
+      "en": "Comment",
+      "text": "Comentário"
+    },
+    "concepts/TicketComment/fields/ticketId/ui": {
+      "en": "Ticket",
+      "text": "Chamado"
+    },
+    "concepts/TicketComment/fields/authorId/ui": {
+      "en": "Author login",
+      "text": "Login do autor"
+    },
+    "concepts/TicketComment/fields/authorName/ui": {
+      "en": "Author",
+      "text": "Autor"
+    },
+    "concepts/TicketComment/fields/body/ui": {
+      "en": "Comment",
+      "text": "Comentário"
+    },
+    "concepts/TicketComment/fields/internal/ui": {
+      "en": "Internal note",
+      "text": "Nota interna"
+    },
+    "concepts/TicketComment/fields/postedAt/ui": {
+      "en": "Posted",
+      "text": "Publicado em"
+    }
+  }
+}

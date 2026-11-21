@@ -1,0 +1,14 @@
+{
+  "pack": "tracing",
+  "locale": "pt-BR",
+  "labels": {
+    "properties/tracing.enabled": {
+      "en": "Execution tracing",
+      "text": "Rastreamento de execução"
+    },
+    "properties/tracing.retentionDays": {
+      "en": "Trace retention (days)",
+      "text": "Retenção do rastreamento (dias)"
+    }
+  }
+}

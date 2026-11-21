@@ -1,0 +1,34 @@
+{
+  "pack": "ratings",
+  "locale": "pt-BR",
+  "labels": {
+    "concepts/Rating/ui": {
+      "en": "Rating",
+      "text": "Avaliação"
+    },
+    "concepts/Rating/fields/targetId/ui": {
+      "en": "Rated Item",
+      "text": "Item avaliado"
+    },
+    "concepts/Rating/fields/targetType/ui": {
+      "en": "Item Type",
+      "text": "Tipo do item"
+    },
+    "concepts/Rating/fields/authorAccount/ui": {
+      "en": "Author",
+      "text": "Autor"
+    },
+    "concepts/Rating/fields/stars/ui": {
+      "en": "Stars",
+      "text": "Estrelas"
+    },
+    "concepts/Rating/fields/comment/ui": {
+      "en": "Comment",
+      "text": "Comentário"
+    },
+    "concepts/Rating/fields/createdAt/ui": {
+      "en": "Created At",
+      "text": "Criado em"
+    }
+  }
+}

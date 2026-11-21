@@ -1,0 +1,154 @@
+{
+  "pack": "purchasing",
+  "locale": "pt-BR",
+  "labels": {
+    "concepts/Supplier/ui": {
+      "en": "Supplier",
+      "text": "Fornecedor"
+    },
+    "concepts/Supplier/fields/organizationId/ui": {
+      "en": "Organization",
+      "text": "Organização"
+    },
+    "concepts/Supplier/fields/code/ui": {
+      "en": "Code",
+      "text": "Código"
+    },
+    "concepts/Supplier/fields/paymentTermsDays/ui": {
+      "en": "Payment terms (days)",
+      "text": "Prazo de pagamento (dias)"
+    },
+    "concepts/Supplier/fields/active/ui": {
+      "en": "Active",
+      "text": "Ativo"
+    },
+    "concepts/PurchaseItem/ui": {
+      "en": "Purchasable item",
+      "text": "Item comprável"
+    },
+    "concepts/PurchaseItem/fields/productId/ui": {
+      "en": "Product",
+      "text": "Produto"
+    },
+    "concepts/PurchaseItem/fields/standardCost/ui": {
+      "en": "Standard cost",
+      "text": "Custo padrão"
+    },
+    "concepts/PurchaseItem/fields/active/ui": {
+      "en": "Active",
+      "text": "Ativo"
+    },
+    "concepts/PurchaseOrder/ui": {
+      "en": "Purchase order",
+      "text": "Pedido de compra"
+    },
+    "concepts/PurchaseOrder/fields/orderNumber/ui": {
+      "en": "Order number",
+      "text": "Número do pedido"
+    },
+    "concepts/PurchaseOrder/fields/supplierId/ui": {
+      "en": "Supplier",
+      "text": "Fornecedor"
+    },
+    "concepts/PurchaseOrder/fields/status/ui": {
+      "en": "Status",
+      "text": "Status"
+    },
+    "concepts/PurchaseOrder/fields/orderDate/ui": {
+      "en": "Order date",
+      "text": "Data do pedido"
+    },
+    "concepts/PurchaseOrder/fields/expectedDate/ui": {
+      "en": "Expected",
+      "text": "Previsto para"
+    },
+    "concepts/PurchaseOrder/fields/notes/ui": {
+      "en": "Notes",
+      "text": "Observações"
+    },
+    "concepts/PurchaseOrder/lifecycle/states/DRAFT": {
+      "en": "Draft",
+      "text": "Rascunho"
+    },
+    "concepts/PurchaseOrder/lifecycle/states/APPROVED": {
+      "en": "Approved",
+      "text": "Aprovado"
+    },
+    "concepts/PurchaseOrder/lifecycle/states/RECEIVED": {
+      "en": "Received",
+      "text": "Recebido"
+    },
+    "concepts/PurchaseOrder/lifecycle/states/CANCELLED": {
+      "en": "Cancelled",
+      "text": "Cancelado"
+    },
+    "concepts/PurchaseOrderLine/ui": {
+      "en": "Order line",
+      "text": "Item do pedido"
+    },
+    "concepts/PurchaseOrderLine/fields/orderId/ui": {
+      "en": "Order",
+      "text": "Pedido"
+    },
+    "concepts/PurchaseOrderLine/fields/productId/ui": {
+      "en": "Product",
+      "text": "Produto"
+    },
+    "concepts/PurchaseOrderLine/fields/quantity/ui": {
+      "en": "Quantity",
+      "text": "Quantidade"
+    },
+    "concepts/PurchaseOrderLine/fields/unitCost/ui": {
+      "en": "Unit cost",
+      "text": "Custo unitário"
+    },
+    "concepts/PurchaseOrderLine/fields/lineTotal/ui": {
+      "en": "Line total",
+      "text": "Total da linha"
+    },
+    "concepts/SupplierBill/ui": {
+      "en": "Supplier bill",
+      "text": "Fatura do fornecedor"
+    },
+    "concepts/SupplierBill/fields/billNumber/ui": {
+      "en": "Bill number",
+      "text": "Número da fatura"
+    },
+    "concepts/SupplierBill/fields/orderId/ui": {
+      "en": "Order",
+      "text": "Pedido"
+    },
+    "concepts/SupplierBill/fields/supplierId/ui": {
+      "en": "Supplier",
+      "text": "Fornecedor"
+    },
+    "concepts/SupplierBill/fields/amount/ui": {
+      "en": "Amount",
+      "text": "Valor"
+    },
+    "concepts/SupplierBill/fields/billDate/ui": {
+      "en": "Billed",
+      "text": "Data da fatura"
+    },
+    "concepts/SupplierBill/fields/dueDate/ui": {
+      "en": "Due",
+      "text": "Vencimento"
+    },
+    "concepts/SupplierBill/fields/status/ui": {
+      "en": "Status",
+      "text": "Status"
+    },
+    "concepts/SupplierBill/lifecycle/states/OPEN": {
+      "en": "Open",
+      "text": "Aberta"
+    },
+    "concepts/SupplierBill/lifecycle/states/PAID": {
+      "en": "Paid",
+      "text": "Paga"
+    },
+    "concepts/SupplierBill/lifecycle/states/VOID": {
+      "en": "Void",
+      "text": "Anulada"
+    }
+  }
+}

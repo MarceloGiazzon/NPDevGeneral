@@ -1,0 +1,22 @@
+{
+  "pack": "notification",
+  "locale": "pt-BR",
+  "labels": {
+    "concepts/OutgoingMessage/ui": {
+      "en": "Outgoing Message",
+      "text": "Mensagem de saída"
+    },
+    "concepts/OutgoingMessage/fields/status/enumValues/pending": {
+      "en": "Pending",
+      "text": "Pendente"
+    },
+    "concepts/OutgoingMessage/fields/status/enumValues/sent": {
+      "en": "Sent",
+      "text": "Enviada"
+    },
+    "concepts/OutgoingMessage/fields/status/enumValues/failed": {
+      "en": "Failed",
+      "text": "Falhou"
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "pack": "project-tracker-demo",
+  "locale": "pt-BR",
+  "labels": {
+    "concepts/Project/ui": {
+      "en": "Project",
+      "text": "Projeto"
+    },
+    "concepts/Project/fields/name/ui": {
+      "en": "Name",
+      "text": "Nome"
+    },
+    "concepts/Project/fields/status/ui": {
+      "en": "Status",
+      "text": "Status"
+    },
+    "concepts/Project/fields/ownerEmail/ui": {
+      "en": "Owner email",
+      "text": "E-mail do responsável"
+    },
+    "concepts/Project/fields/shipping/ui": {
+      "en": "Shipping",
+      "text": "Entrega"
+    }
+  }
+}

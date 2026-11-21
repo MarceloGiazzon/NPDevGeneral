@@ -1,0 +1,34 @@
+{
+  "pack": "products",
+  "locale": "pt-BR",
+  "labels": {
+    "concepts/Product/ui": {
+      "en": "Product",
+      "text": "Produto"
+    },
+    "concepts/Product/fields/sku/ui": {
+      "en": "SKU",
+      "text": "SKU"
+    },
+    "concepts/Product/fields/name/ui": {
+      "en": "Name",
+      "text": "Nome"
+    },
+    "concepts/Product/fields/description/ui": {
+      "en": "Description",
+      "text": "Descrição"
+    },
+    "concepts/Product/fields/kind/ui": {
+      "en": "Kind",
+      "text": "Tipo"
+    },
+    "concepts/Product/fields/unit/ui": {
+      "en": "Unit",
+      "text": "Unidade"
+    },
+    "concepts/Product/fields/active/ui": {
+      "en": "Active",
+      "text": "Ativo"
+    }
+  }
+}

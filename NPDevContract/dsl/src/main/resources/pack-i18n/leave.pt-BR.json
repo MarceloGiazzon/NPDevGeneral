@@ -1,0 +1,94 @@
+{
+  "pack": "leave",
+  "locale": "pt-BR",
+  "labels": {
+    "concepts/LeaveType/ui": {
+      "en": "Leave type",
+      "text": "Tipo de licença"
+    },
+    "concepts/LeaveType/fields/code/ui": {
+      "en": "Code",
+      "text": "Código"
+    },
+    "concepts/LeaveType/fields/name/ui": {
+      "en": "Name",
+      "text": "Nome"
+    },
+    "concepts/LeaveType/fields/paid/ui": {
+      "en": "Paid",
+      "text": "Pago"
+    },
+    "concepts/LeaveType/fields/annualAllowanceDays/ui": {
+      "en": "Days per year",
+      "text": "Dias por ano"
+    },
+    "concepts/LeaveType/fields/active/ui": {
+      "en": "Active",
+      "text": "Ativo"
+    },
+    "concepts/LeaveRequest/ui": {
+      "en": "Leave request",
+      "text": "Solicitação de licença"
+    },
+    "concepts/LeaveRequest/fields/requestNumber/ui": {
+      "en": "Request number",
+      "text": "Número da solicitação"
+    },
+    "concepts/LeaveRequest/fields/employeeId/ui": {
+      "en": "Employee login",
+      "text": "Login do funcionário"
+    },
+    "concepts/LeaveRequest/fields/employeeName/ui": {
+      "en": "Employee",
+      "text": "Funcionário"
+    },
+    "concepts/LeaveRequest/fields/leaveTypeId/ui": {
+      "en": "Leave type",
+      "text": "Tipo de licença"
+    },
+    "concepts/LeaveRequest/fields/startDate/ui": {
+      "en": "From",
+      "text": "De"
+    },
+    "concepts/LeaveRequest/fields/endDate/ui": {
+      "en": "To",
+      "text": "Para"
+    },
+    "concepts/LeaveRequest/fields/days/ui": {
+      "en": "Days",
+      "text": "Dias"
+    },
+    "concepts/LeaveRequest/fields/reason/ui": {
+      "en": "Reason",
+      "text": "Motivo"
+    },
+    "concepts/LeaveRequest/fields/status/ui": {
+      "en": "Status",
+      "text": "Status"
+    },
+    "concepts/LeaveRequest/fields/decidedBy/ui": {
+      "en": "Decided by",
+      "text": "Decidido por"
+    },
+    "concepts/LeaveRequest/fields/decisionComment/ui": {
+      "en": "Decision comment",
+      "text": "Comentário da decisão"
+    },
+    "concepts/LeaveRequest/lifecycle/states/PENDING": {
+      "en": "Pending",
+      "text": "Pendente"
+    },
+    "concepts/LeaveRequest/lifecycle/states/APPROVED": {
+      "en": "Approved",
+      "text": "Aprovada"
+    },
+    "concepts/LeaveRequest/lifecycle/states/REJECTED": {
+      "en": "Rejected",
+      "text": "Rejeitada"
+    },
+    "concepts/LeaveRequest/lifecycle/states/CANCELLED": {
+      "en": "Cancelled",
+      "text": "Cancelada"
+    }
+  }
+}

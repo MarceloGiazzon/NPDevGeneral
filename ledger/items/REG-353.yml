@@ -36,8 +36,16 @@ detail: |
   the dropdown is offered for every app; BusinessUiEmitterLocaleManifestTest pins [en, pt-BR] for a model with no label maps and [en, es, pt-BR] for one declaring es + pt-BR; checked on a
   real generated app (SalesTest1 manifest: locales [en, pt-BR]). (5, dates and numbers) eleven places that used the browser's locale now pass NPDevI18n.language(): the business UI
   (last-saved, stale-list and print stamps), the shell clock and number cell, the bell, tasks, executions and declared-panel run times, and the dashboard number tile.
-  STILL OPEN: (2) labels per language in the packs (the built-in packs and the NPR ones are English-only; a catalogue pack needs `label` maps and the relay briefing must ask for them);
-  (3) the common server messages (validation, error bodies, batch row messages); (5, picker) the typed picker's default `Select` is baked at compile (AutoPanelExpander line ~736) and needs a
+  DONE 2026-11-21 (2) labels per language in the packs, by the PLATFORM and not inside the pack: a pack stays English on disk (REG-347; a published version is immutable and every sample's
+  npdev.lock pins its bytes), so NPDevContract/dsl/src/main/resources/pack-i18n/<packId>.pt-BR.json holds 228 Portuguese labels (the 13 built-in packs with labels, plus the owner's
+  ratings) keyed by the label's path, with the English text recorded beside each; ModelSourceResolver.loadPackJson calls PackLabelTranslations.apply, which turns `label: "Sales order"`
+  into `{default: "Sales order", "pt-BR": "Pedido de venda"}` only when the path is in the catalogue AND the English still matches (a reworded newer pack stays English), never
+  overwrites an author's own map, and ignores flow-task labels (model.schema.json allows only plain text there). Because a concept's name was baked into the UI manifest as English
+  `displayName`, the emitter now also writes `displayNameLocales` and the client picks one with NPDevI18n.pick. Guards: PackLabelTranslationsTest (every label of every built-in
+  pack has a pt-BR entry), BusinessUiEmitterLocaleManifestTest. PROVED on SalesTest1 in a Portuguese headless browser: title "Pedido de venda", columns Organizacao/Tipo/Cidade/Pais/
+  Limite de credito/Numero da fatura/Cliente/Valor/Vencimento/Preco unitario. A third-party pack with no catalogue stays English; adding a label to a built-in pack fails the test until
+  its pt-BR entry is added.
+  STILL OPEN: (3) the common server messages (validation, error bodies, batch row messages); (5, picker) the typed picker's default `Select` is baked at compile (AutoPanelExpander line ~736) and needs a
   labelKey like the action buttons got, plus the client reading it.
 done_when: >-
   The owner decides each of the five (translate, or declare English-only); the translated ones are covered by check-ui-i18n.py or the

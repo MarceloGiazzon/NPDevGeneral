@@ -587,6 +587,11 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             Map<String, Object> node = new LinkedHashMap<>();
             node.put("conceptName", concept.getName());
             node.put("displayName", displayName(concept));
+            // REG-353: the concept's name per language (a pack's catalogue translation or the author's own label map), so the
+            // screen title, menu and sentences that name it follow the visitor's language like the field labels do.
+            if (concept.getUi() != null && concept.getUi().getLabelLocales() != null && !concept.getUi().getLabelLocales().isEmpty()) {
+                node.put("displayNameLocales", new LinkedHashMap<>(concept.getUi().getLabelLocales()));
+            }
             if (!hasDeclaredLabel(concept)) {
                 // "Create ride", not "Create Rides": the singular of the derived label. Absent when the author wrote
                 // ui.label, which the UI then uses exactly as written.
