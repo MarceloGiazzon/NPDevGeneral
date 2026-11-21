@@ -27,8 +27,11 @@ detail: |
   GET /api/schema/pack added; the npdev_validate tool description names the pack route; the response schema gained `kind`. Real jar, 2026-11-21: the published ratings 1.0.1
   -> passed (0 warnings, ~1 s), the same pack with roles[] -> failed with the relay's line, with a Portuguese label -> failed naming the text. The probe's own concept
   `Probe` now carries a label so a good pack is not given a warning nobody can fix. Tests: PackValidationTest (6) in NPDevMcp/tests/test_validation_service.py.
-  NOT done: the RUNNING service (port 8780, the tunnel and the token) was not restarted, so the public address still answers the old way until the owner restarts it;
-  and no online AI or browser agent has written a pack to `passed` yet (the last clause of done_when).
+  RESTARTED 2026-11-21 at the owner's word (only the service, same arguments and token file; ngrok, the static domain and the token untouched): through the PUBLIC
+  address the published ratings 1.0.1 answers passed / kind pack, the same pack with roles[] answers failed with the relay's line, GET /api/schema/pack is 200 and the
+  MCP tool list names the pack route. The service is now started by hand (no longer a child of Start-ValidatorTunnel.ps1): Ctrl+C on that script ends ngrok only.
+  NOT done: no online AI or browser agent has written a pack to `passed` yet (the last clause of done_when); a chat that already had the connector open may need a new
+  conversation to see the new tool description.
 guard:
   kind: test
   ref: NPDevMcp/tests/test_validation_service.py#PackValidationTest
