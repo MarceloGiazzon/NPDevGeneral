@@ -100,7 +100,7 @@
     const view = new DataView(buffer);
     let eocd = buffer.byteLength - 22;
     while (eocd >= 0 && view.getUint32(eocd, true) !== 0x06054b50) eocd--;
-    if (eocd < 0) throw new Error("Not an .xlsx (zip) file");
+    if (eocd < 0) throw new Error(NPDevI18n.t("common.xlsx.notXlsx", "Not an .xlsx (zip) file"));
     let ptr = view.getUint32(eocd + 16, true);
     const count = view.getUint16(eocd + 10, true), dec = new TextDecoder(), out = {};
     for (let i = 0; i < count; i++) {
@@ -114,7 +114,7 @@
         if (method === 0) out[name] = dec.decode(raw);
         else if (method === 8) out[name] = await new Response(new Blob([raw]).stream()
           .pipeThrough(new DecompressionStream("deflate-raw"))).text();
-        else throw new Error("Unsupported zip compression method " + method);
+        else throw new Error(NPDevI18n.t("common.xlsx.unsupportedCompression", "Unsupported zip compression method {method}", { method: method }));
       }
       ptr += 46 + nameLen + extraLen + commentLen;
     }
@@ -125,7 +125,7 @@
   // numbers unless the caller converts them (document it; do not guess styles).
   async function readFirstSheet(file) {
     const parts = await unzipEntries(await file.arrayBuffer(), ["xl/sharedStrings.xml", "xl/worksheets/sheet1.xml"]);
-    if (!parts["xl/worksheets/sheet1.xml"]) throw new Error("The workbook has no first worksheet (xl/worksheets/sheet1.xml)");
+    if (!parts["xl/worksheets/sheet1.xml"]) throw new Error(NPDevI18n.t("common.xlsx.noFirstSheet", "The workbook has no first worksheet (xl/worksheets/sheet1.xml)"));
     const parser = new DOMParser();
     const shared = [];
     if (parts["xl/sharedStrings.xml"]) {

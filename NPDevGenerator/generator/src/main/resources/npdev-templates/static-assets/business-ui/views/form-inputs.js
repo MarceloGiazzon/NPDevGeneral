@@ -309,7 +309,7 @@
       (Array.isArray(rows) ? rows : []).forEach(addRow);
       table.appendChild(tbody);
 
-      const addBtn = button("+ Add row", "", function () { addRow(null); });
+      const addBtn = button(NPDevI18n.t("panels.form.addRow", "+ Add row"), "", function () { addRow(null); });
       wrapper.appendChild(table);
       wrapper.appendChild(addBtn);
       wrapper.appendChild(hidden);
@@ -344,7 +344,7 @@
         const element = new Option(label, option.value);
         if (option.deprecated) {
           element.disabled = true;
-          element.textContent = label + " (deprecated)";
+          element.textContent = NPDevI18n.t("panels.form.deprecatedOption", "{label} (deprecated)", { label: label });
         }
         if (option.group) {
           element.dataset.group = option.group;
@@ -376,7 +376,7 @@
       display.type = "text";
       display.readOnly = true;
       display.className = "lookup-display";
-      display.placeholder = "— select " + humanize(field.reference.targetConcept || "record") + " —";
+      display.placeholder = NPDevI18n.t("panels.form.selectPlaceholder", "— select {concept} —", { concept: humanize(field.reference.targetConcept || NPDevI18n.t("panels.form.recordFallback", "record")) });
       wrapper.appendChild(display);
 
       if (!field.required) {
@@ -384,11 +384,11 @@
           hidden.value = "";
           display.value = "";
         });
-        clearBtn.title = "Clear selection";
+        clearBtn.title = NPDevI18n.t("panels.form.clearSelection", "Clear selection");
         wrapper.appendChild(clearBtn);
       }
 
-      const browseBtn = button("Browse…", "lookup-browse", function () {
+      const browseBtn = button(NPDevI18n.t("panels.form.browse", "Browse…"), "lookup-browse", function () {
         openPickerDialog(field, function (id, label) {
           hidden.value = id;
           display.value = label;
@@ -474,7 +474,7 @@
         const star = document.createElement("button");
         star.type = "button";
         star.className = "rating-star";
-        star.setAttribute("aria-label", "Rate " + (i + 1) + " of " + maxStars);
+        star.setAttribute("aria-label", NPDevI18n.t("panels.form.rateStar", "Rate {value} of {max}", { value: i + 1, max: maxStars }));
         star.addEventListener("click", function () {
           // Clicking the currently-set star clears the rating back to unset, same as most rating
           // widgets -- otherwise a required field could never be un-rated once clicked.
@@ -526,9 +526,9 @@
         });
         return btn;
       }
-      toolbar.appendChild(makeToolButton("B", "bold", "Bold"));
-      toolbar.appendChild(makeToolButton("I", "italic", "Italic"));
-      toolbar.appendChild(makeToolButton("• List", "insertUnorderedList", "Bulleted list"));
+      toolbar.appendChild(makeToolButton(NPDevI18n.t("panels.form.boldLabel", "B"), "bold", NPDevI18n.t("panels.form.boldTitle", "Bold")));
+      toolbar.appendChild(makeToolButton("I", "italic", NPDevI18n.t("panels.form.italicTitle", "Italic")));
+      toolbar.appendChild(makeToolButton(NPDevI18n.t("panels.form.listLabel", "• List"), "insertUnorderedList", NPDevI18n.t("panels.form.listTitle", "Bulleted list")));
 
       function syncHidden() {
         hidden.value = sanitizeRichText(editor.innerHTML);
@@ -566,12 +566,12 @@
       const copyButton = document.createElement("button");
       copyButton.type = "button";
       copyButton.className = "uuid-control-copy";
-      copyButton.textContent = "Copy";
+      copyButton.textContent = NPDevI18n.t("panels.form.copy", "Copy");
       copyButton.addEventListener("click", function () {
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(input.value);
           const original = copyButton.textContent;
-          copyButton.textContent = "Copied";
+          copyButton.textContent = NPDevI18n.t("panels.form.copied", "Copied");
           setTimeout(function () { copyButton.textContent = original; }, 1200);
         }
       });
@@ -592,11 +592,11 @@
       const toggle = document.createElement("button");
       toggle.type = "button";
       toggle.className = "password-control-toggle";
-      toggle.textContent = "Show";
+      toggle.textContent = NPDevI18n.t("panels.form.show", "Show");
       toggle.addEventListener("click", function () {
         const showing = input.type === "text";
         input.type = showing ? "password" : "text";
-        toggle.textContent = showing ? "Show" : "Hide";
+        toggle.textContent = showing ? NPDevI18n.t("panels.form.show", "Show") : NPDevI18n.t("panels.form.hide", "Hide");
       });
       wrapper.appendChild(toggle);
       return wrapper;
@@ -669,7 +669,7 @@
 
       const status = document.createElement("span");
       status.className = "file-control-status";
-      status.textContent = value && value.originalName ? value.originalName : "(no file)";
+      status.textContent = value && value.originalName ? value.originalName : NPDevI18n.t("panels.form.noFile", "(no file)");
       wrapper.appendChild(status);
 
       const downloadLink = document.createElement("a");
@@ -677,7 +677,7 @@
       downloadLink.target = "_blank";
       downloadLink.rel = "noopener";
       downloadLink.style.display = "none";
-      downloadLink.textContent = "Download";
+      downloadLink.textContent = NPDevI18n.t("panels.form.download", "Download");
       wrapper.appendChild(downloadLink);
 
       const preview = document.createElement("img");
@@ -712,7 +712,7 @@
       picker.onchange = async function () {
         const chosen = picker.files && picker.files[0];
         if (!chosen) { return; }
-        status.textContent = "Uploading…";
+        status.textContent = NPDevI18n.t("panels.form.uploading", "Uploading…");
         try {
           const formData = new FormData();
           formData.append("file", chosen);
@@ -724,14 +724,14 @@
           );
           if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(errorText || ("Upload failed: " + response.status));
+            throw new Error(errorText || NPDevI18n.t("panels.form.uploadFailed", "Upload failed: {status}", { status: response.status }));
           }
           const savedHandle = await response.json();
           hidden.value = JSON.stringify(savedHandle);
           status.textContent = savedHandle.originalName || chosen.name;
           refreshDownloadLink(savedHandle);
         } catch (error) {
-          status.textContent = "Upload failed";
+          status.textContent = NPDevI18n.t("panels.form.uploadFailedShort", "Upload failed");
           setStatus(error.message, true);
         }
       };
@@ -752,7 +752,7 @@
       select.name = field.name;
       const placeholder = document.createElement("option");
       placeholder.value = "";
-      placeholder.textContent = "— select " + humanize(reference.targetConcept || "record") + " —";
+      placeholder.textContent = NPDevI18n.t("panels.form.selectPlaceholder", "— select {concept} —", { concept: humanize(reference.targetConcept || NPDevI18n.t("panels.form.recordFallback", "record")) });
       select.appendChild(placeholder);
       const currentValue = text(value);
       select.value = "";
@@ -816,7 +816,7 @@
       const search = document.createElement("input");
       search.type = "text";
       search.className = "autocomplete-search";
-      search.placeholder = "Search " + humanize(reference.targetConcept || "records") + "…";
+      search.placeholder = NPDevI18n.t("panels.form.searchConcept", "Search {concept}…", { concept: humanize(reference.targetConcept || NPDevI18n.t("panels.form.recordsFallback", "records")) });
       search.autocomplete = "off";
       wrapper.appendChild(search);
 
@@ -830,7 +830,7 @@
           hidden.value = "";
           search.value = "";
         });
-        clearBtn.title = "Clear selection";
+        clearBtn.title = NPDevI18n.t("panels.form.clearSelection", "Clear selection");
         wrapper.appendChild(clearBtn);
       }
 
@@ -949,7 +949,7 @@
       async function loadOptionsAndCurrent() {
         window.NPDevShell.renderLoading(list);
         if (!reference.endpointBase || !reference.anchorField) {
-          window.NPDevShell.renderError(list, { message: "Reference metadata is incomplete." });
+          window.NPDevShell.renderError(list, { message: NPDevI18n.t("panels.form.referenceIncomplete", "Reference metadata is incomplete.") });
           return;
         }
         const params = new URLSearchParams();
@@ -983,7 +983,7 @@
         syncHidden();
         list.innerHTML = "";
         if (rows.length === 0) {
-          window.NPDevShell.renderEmpty(list, { message: "No candidates available to link." });
+          window.NPDevShell.renderEmpty(list, { message: NPDevI18n.t("panels.form.noCandidates", "No candidates available to link.") });
           return;
         }
         rows.forEach(function (row) {
@@ -1083,7 +1083,7 @@
       const search = document.createElement("input");
       search.type = "text";
       search.className = "autocomplete-search";
-      search.placeholder = "Search options…";
+      search.placeholder = NPDevI18n.t("panels.form.searchOptions", "Search options…");
       search.autocomplete = "off";
       wrapper.appendChild(search);
 
@@ -1101,7 +1101,7 @@
           hidden.value = "";
           search.value = "";
         });
-        clearBtn.title = "Clear selection";
+        clearBtn.title = NPDevI18n.t("panels.form.clearSelection", "Clear selection");
         wrapper.appendChild(clearBtn);
       }
 
@@ -1265,7 +1265,7 @@
 
       async function loadOptions() {
         if (!reference.endpointBase || !reference.targetIdField) {
-          window.NPDevShell.renderError(grid, { message: "Reference metadata is incomplete." });
+          window.NPDevShell.renderError(grid, { message: NPDevI18n.t("panels.form.referenceIncomplete", "Reference metadata is incomplete.") });
           return;
         }
         const params = new URLSearchParams();
@@ -1279,7 +1279,7 @@
           await labelRows(reference, rows); // REG-336: a satellite is labelled by the record it extends
           grid.innerHTML = "";
           if (rows.length === 0) {
-            window.NPDevShell.renderEmpty(grid, { message: "No options available." });
+            window.NPDevShell.renderEmpty(grid, { message: NPDevI18n.t("panels.form.noOptions", "No options available.") });
             return;
           }
           rows.forEach(function (row) {
@@ -1319,7 +1319,7 @@
       const searchInput = document.createElement("input");
       searchInput.type = "search";
       searchInput.className = "picker-search";
-      searchInput.placeholder = "Search " + humanize(reference.targetConcept || "records") + "…";
+      searchInput.placeholder = NPDevI18n.t("panels.form.searchConcept", "Search {concept}…", { concept: humanize(reference.targetConcept || NPDevI18n.t("panels.form.recordsFallback", "records")) });
       searchRow.appendChild(searchInput);
       content.appendChild(searchRow);
 
@@ -1335,7 +1335,7 @@
 
       async function loadPickerRows(filter) {
         if (!reference.endpointBase || !reference.targetIdField) {
-          window.NPDevShell.renderError(tableWrapper, { message: "Reference metadata is incomplete." });
+          window.NPDevShell.renderError(tableWrapper, { message: NPDevI18n.t("panels.form.referenceIncomplete", "Reference metadata is incomplete.") });
           return;
         }
         window.NPDevShell.renderLoading(tableWrapper);
@@ -1364,7 +1364,7 @@
           if (rows.length === 0) {
             window.NPDevShell.renderEmpty(tableWrapper, {
               filtered: Boolean(normalizedFilter),
-              message: normalizedFilter ? "No matches for “" + normalizedFilter + "”." : null
+              message: normalizedFilter ? NPDevI18n.t("panels.form.noMatches", "No matches for “{query}”.", { query: normalizedFilter }) : null
             });
             return;
           }
@@ -1437,7 +1437,7 @@
       });
 
       loadPickerRows("");
-      openModalInto(el.pickerModalRoot, "Select " + humanize(reference.targetConcept || "record"), content);
+      openModalInto(el.pickerModalRoot, NPDevI18n.t("panels.form.selectTitle", "Select {concept}", { concept: humanize(reference.targetConcept || NPDevI18n.t("panels.form.recordFallback", "record")) }), content);
       setTimeout(function () { searchInput.focus(); }, 50);
     }
     return { createInput, sanitizeRichText };

@@ -19,7 +19,7 @@ export function rowView(ctx, row) {
 
 export async function render(ctx, defaultPick) {
   const row = await resolveRow(ctx.api, ctx.screen, ctx.id, ctx.user, defaultPick);
-  if (row === undefined) { ctx.root.appendChild(card("empty", null, "Select a row to see its details.")); return; }
+  if (row === undefined) { ctx.root.appendChild(card("empty", null, NPDevI18n.t("experience.detail.selectRow", "Select a row to see its details."))); return; }
   if (row === null) { ctx.root.appendChild(emptyCard(ctx.screen)); return; }
   ctx.root.appendChild(rowView(ctx, row));
 }

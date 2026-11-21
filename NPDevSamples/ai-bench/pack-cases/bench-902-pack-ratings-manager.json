@@ -1,0 +1,8 @@
+{
+  "id": "bench-902",
+  "tier": "pack",
+  "intent": "pack",
+  "packId": "ratings",
+  "title": "A ratings part where a manager sees everything (the owner's real ask, 2026-11-20)",
+  "prompt": "A reusable ratings part: a person can rate a thing from 1 to 5 stars with an optional comment, each rating belongs to the person who made it, and a manager can see all ratings."
+}

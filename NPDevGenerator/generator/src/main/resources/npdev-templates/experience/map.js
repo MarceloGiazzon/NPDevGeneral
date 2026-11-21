@@ -74,11 +74,11 @@ function tileConfig(ctx, spec) {
   const own = spec && spec.tilesUrl; // a screen's own template brings its own attribution, never the experience's
   const url = own || exp.mapTilesUrl || "";
   if (!SAFE_TILES.test(url)) return null;
-  return { url, attribution: (own ? spec.attribution : exp.mapAttribution) || "Map tiles" };
+  return { url, attribution: (own ? spec.attribution : exp.mapAttribution) || NPDevI18n.t("experience.map.tilesAttribution", "Map tiles") };
 }
 
 function popupFor(p, href) {
-  return h("div", { class: "map-popup" }, h("strong", { text: p.label || coords(p) }), href ? h("a", { href, text: "Open" }) : null);
+  return h("div", { class: "map-popup" }, h("strong", { text: p.label || coords(p) }), href ? h("a", { href, text: NPDevI18n.t("experience.map.open", "Open") }) : null);
 }
 
 // ---- the map -------------------------------------------------------------------------------------------------
@@ -89,7 +89,7 @@ function popupFor(p, href) {
  */
 export function mountMap(ctx, spec, opts) {
   const o = opts || {};
-  const surface = h("div", { class: "np-map" + (o.compact ? " compact" : ""), role: "region", "aria-label": o.label || "Map" });
+  const surface = h("div", { class: "np-map" + (o.compact ? " compact" : ""), role: "region", "aria-label": o.label || NPDevI18n.t("experience.map.label", "Map") });
   let points = o.points || [];
   let live = null;
   let dead = false;
@@ -110,7 +110,7 @@ export function mountMap(ctx, spec, opts) {
     if (!live) return;
     live.layer.clearLayers();
     for (const p of points) {
-      const marker = live.L.marker([p.lat, p.lng], { title: p.label || coords(p), alt: p.label || "Location", keyboard: true });
+      const marker = live.L.marker([p.lat, p.lng], { title: p.label || coords(p), alt: p.label || NPDevI18n.t("experience.map.location", "Location"), keyboard: true });
       marker.bindPopup(popupFor(p, o.linkFor ? o.linkFor(p.row) : null));
       live.layer.addLayer(marker);
     }
@@ -126,7 +126,7 @@ export function mountMap(ctx, spec, opts) {
     fit();
     if (o.keepView) map.on("moveend", () => views.set(ctx.screen, { center: map.getCenter(), zoom: map.getZoom() }));
     return live;
-  }).catch(() => { surface.replaceChildren(card("notice", null, "The map could not load.")); return null; });
+  }).catch(() => { surface.replaceChildren(card("notice", null, NPDevI18n.t("experience.map.loadFailed", "The map could not load."))); return null; });
 
   // A map built before its container is on the page has no size: once it has one, refit.
   const RO = globalThis.ResizeObserver;
@@ -153,10 +153,10 @@ export function mountMap(ctx, spec, opts) {
   const nav = ctx.navigator || globalThis.navigator;
   if (o.locate && nav && nav.geolocation) {
     handle.el = h("div", { class: "map-wrap" }, h("button", {
-      type: "button", class: "btn secondary locate", text: "Use my location",
+      type: "button", class: "btn secondary locate", text: NPDevI18n.t("experience.map.useMyLocation", "Use my location"),
       onclick: () => nav.geolocation.getCurrentPosition(
         (pos) => handle.showMe(pos.coords.latitude, pos.coords.longitude),
-        () => { if (ctx.reportError) ctx.reportError("Your location is not available."); },
+        () => { if (ctx.reportError) ctx.reportError(NPDevI18n.t("experience.map.locationUnavailable", "Your location is not available.")); },
         { timeout: 10000 })
     }), surface);
   }
@@ -186,17 +186,17 @@ export async function render(ctx) {
   const points = rowPoints(rows, spec, ctx.user);
   if (!points.length) { root.appendChild(emptyCard(screen)); return; }
   const linkFor = linkTo(ctx, screen);
-  const view = mountMap(ctx, spec, { points, label: screen.title || "Map", keepView: true, linkFor, locate: spec.center === "me" });
+  const view = mountMap(ctx, spec, { points, label: screen.title || NPDevI18n.t("experience.map.label", "Map"), keepView: true, linkFor, locate: spec.center === "me" });
   root.appendChild(view.el);
   root.appendChild(placeList(points, linkFor));
-  if (truncated) root.appendChild(h("p", { class: "muted note", text: "Showing the first " + rows.length + " places." }));
+  if (truncated) root.appendChild(h("p", { class: "muted note", text: NPDevI18n.t("experience.map.firstPlaces", "Showing the first {count} places.", { count: rows.length }) }));
 }
 
 /** One marker per row, for a detail/status screen (`map` on the screen) or a dashboard widget. Returns an element or null. */
 export function rowMap(ctx, spec, rows, opts) {
   const points = rowPoints(rows, spec, ctx.user);
   if (!points.length) return null;
-  return mountMap(ctx, spec, Object.assign({ points, label: (ctx.screen && ctx.screen.title) || "Map", locate: (spec || {}).center === "me" }, opts)).el;
+  return mountMap(ctx, spec, Object.assign({ points, label: (ctx.screen && ctx.screen.title) || NPDevI18n.t("experience.map.label", "Map"), locate: (spec || {}).center === "me" }, opts)).el;
 }
 
 // ---- forms: pick points ------------------------------------------------------------------------------------------
@@ -208,7 +208,7 @@ export function rowMap(ctx, spec, rows, opts) {
  */
 export function pickMap(ctx, spec, controls) {
   const picks = (spec.pickPoints || []).filter((p) => p && controls[p.lat] && controls[p.lng]);
-  const handle = mountMap(ctx, spec, { label: "Choose places on the map", locate: spec.center === "me" });
+  const handle = mountMap(ctx, spec, { label: NPDevI18n.t("experience.map.choosePlaces", "Choose places on the map"), locate: spec.center === "me" });
   const markers = [];
   let active = 0;
   const read = (p) => [coordinate(controls[p.lat].value, 90), coordinate(controls[p.lng].value, 180)];
@@ -251,7 +251,7 @@ export function pickMap(ctx, spec, controls) {
       if (next >= 0) activate(next);
     });
   });
-  handle.el = h("div", { class: "pick-map" }, picks.length > 1 ? h("div", { class: "pick-choose", role: "group", "aria-label": "A tap on the map sets" }, buttons) : null, handle.el);
+  handle.el = h("div", { class: "pick-map" }, picks.length > 1 ? h("div", { class: "pick-choose", role: "group", "aria-label": NPDevI18n.t("experience.map.tapSets", "A tap on the map sets") }, buttons) : null, handle.el);
   handle.activate = activate;
   return handle;
 }

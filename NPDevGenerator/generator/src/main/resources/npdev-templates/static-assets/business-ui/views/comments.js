@@ -74,7 +74,8 @@
       document.body.removeChild(link);
       setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
     }).catch(function (error) {
-      status.textContent = "Could not download: " + (error && error.message ? error.message : "error");
+      status.textContent = NPDevI18n.t("views.comments.downloadFailed", "Could not download: {message}",
+        { message: error && error.message ? error.message : NPDevI18n.t("views.comments.errorWord", "error") });
     });
   }
 
@@ -89,7 +90,7 @@
     row.className = "comment-row" + (item.mine ? " comment-mine" : "");
     var head = document.createElement("div");
     head.className = "comment-head";
-    head.textContent = item.author + " · " + new Date(item.createdAtEpochMs).toLocaleString();
+    head.textContent = item.author + " · " + new Date(item.createdAtEpochMs).toLocaleString(NPDevI18n.language());
     row.appendChild(head);
     var text = document.createElement("div");
     text.className = "comment-body";
@@ -109,7 +110,7 @@
       var remove = document.createElement("button");
       remove.type = "button";
       remove.className = "comment-delete";
-      remove.textContent = "Delete";
+      remove.textContent = NPDevI18n.t("views.comments.delete", "Delete");
       remove.addEventListener("click", function () {
         remove.disabled = true;
         call(ctx, "DELETE", threadUrl(ctx) + "/" + encodeURIComponent(item.id)).then(reload, function () { remove.disabled = false; });
@@ -126,7 +127,7 @@
     var section = document.createElement("section");
     section.className = "detail-comments";
     var title = document.createElement("h3");
-    title.textContent = "Comments";
+    title.textContent = NPDevI18n.t("views.comments.title", "Comments");
     section.appendChild(title);
     var list = document.createElement("ul");
     list.className = "comment-list";
@@ -138,10 +139,10 @@
     input.className = "comment-input";
     input.rows = 2;
     input.maxLength = 4000;
-    input.placeholder = "Write a comment — use @username to notify someone";
+    input.placeholder = NPDevI18n.t("views.comments.placeholder", "Write a comment — use @username to notify someone");
     var post = document.createElement("button");
     post.type = "button";
-    post.textContent = "Comment";
+    post.textContent = NPDevI18n.t("views.comments.post", "Comment");
     var status = document.createElement("div");
     status.className = "comment-status";
     form.appendChild(input);
@@ -154,9 +155,9 @@
       picker.type = "file";
       var attach = document.createElement("button");
       attach.type = "button";
-      attach.textContent = "Attach file";
+      attach.textContent = NPDevI18n.t("views.comments.attach", "Attach file");
       attach.addEventListener("click", function () {
-        if (!picker.files || !picker.files.length) { status.textContent = "Choose a file first."; return; }
+        if (!picker.files || !picker.files.length) { status.textContent = NPDevI18n.t("views.comments.chooseFile", "Choose a file first."); return; }
         var data = new FormData();
         data.append("file", picker.files[0]);
         attach.disabled = true;
@@ -174,7 +175,8 @@
           return load();
         }, function (error) {
           attach.disabled = false;
-          status.textContent = "Could not attach: " + (error && error.message ? error.message : "error");
+          status.textContent = NPDevI18n.t("views.comments.attachFailed", "Could not attach: {message}",
+            { message: error && error.message ? error.message : NPDevI18n.t("views.comments.errorWord", "error") });
         });
       });
       attachRow.appendChild(picker);
@@ -188,11 +190,12 @@
         list.textContent = "";
         status.textContent = "";
         (Array.isArray(items) ? items : []).forEach(function (item) { list.appendChild(renderRow(ctx, item, load, status)); });
-        if (!list.childNodes.length) { status.textContent = "No comments yet."; }
+        if (!list.childNodes.length) { status.textContent = NPDevI18n.t("views.comments.empty", "No comments yet."); }
       }, function (error) {
         form.style.display = "none";
-        status.textContent = error && error.status === 404 ? "Comments are not available for this record."
-          : "Could not load comments: " + (error && error.message ? error.message : "error");
+        status.textContent = error && error.status === 404 ? NPDevI18n.t("views.comments.notAvailable", "Comments are not available for this record.")
+          : NPDevI18n.t("views.comments.loadFailed", "Could not load comments: {message}",
+            { message: error && error.message ? error.message : NPDevI18n.t("views.comments.errorWord", "error") });
       });
     }
 
@@ -206,7 +209,8 @@
         return load();
       }, function (error) {
         post.disabled = false;
-        status.textContent = "Could not post: " + (error && error.message ? error.message : "error");
+        status.textContent = NPDevI18n.t("views.comments.postFailed", "Could not post: {message}",
+          { message: error && error.message ? error.message : NPDevI18n.t("views.comments.errorWord", "error") });
       });
     });
 

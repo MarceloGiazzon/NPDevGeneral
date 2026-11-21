@@ -13,6 +13,12 @@
       button, el, evaluateWhen, fetchJson, fileHandleUrl, formatValue, headerRow, headers, isImageFileValue, notify, panelContextValues, panelSectionRef, render, sectionId, setStatus, state, text, trackFlowExecution
     } = host;
 
+    // REG-349: a label the compiler baked from the platform catalogue (New/Save/Delete/...) carries its id as
+    // labelKey, so it follows the visitor's language; any other label is the model's own text.
+    function actionLabel(action) {
+      return action.labelKey ? NPDevI18n.t(action.labelKey, action.label) : action.label;
+    }
+
     function declaredPanelState(panelMeta) {
       if (!state.declaredPanels[panelMeta.name]) {
         state.declaredPanels[panelMeta.name] = {
@@ -75,7 +81,7 @@
           // against, reached through a Panel action instead of a raw 202.
           trackFlowExecution(payload.executionId, (payload.result && payload.result.flowName) || actionName);
         } else {
-          notify("Action \"" + actionName + "\" completed: " + (payload.status || "OK"), payload.status === "FAILED");
+          notify(NPDevI18n.t("panels.declared.actionCompleted", "Action \"{action}\" completed: {status}", { action: actionName, status: payload.status || "OK" }), payload.status === "FAILED");
         }
         await loadDeclaredPanel(panelMeta);
       } catch (error) {
@@ -98,7 +104,7 @@
             + "/dataSources/" + encodeURIComponent(dataSourceName) + "/rows",
           { method: "POST", headers: headers(), body: JSON.stringify(body) }
         );
-        notify("Row added to \"" + dataSourceName + "\".", false);
+        notify(NPDevI18n.t("panels.declared.rowAdded", "Row added to \"{dataSource}\".", { dataSource: dataSourceName }), false);
         await loadDeclaredPanel(panelMeta);
       } catch (error) {
         setStatus(error.message, true);
@@ -114,7 +120,7 @@
             + "/dataSources/" + encodeURIComponent(dataSourceName) + "/rows/" + encodeURIComponent(id),
           { method: "DELETE", headers: headers() }
         );
-        notify("Row removed from \"" + dataSourceName + "\".", false);
+        notify(NPDevI18n.t("panels.declared.rowRemoved", "Row removed from \"{dataSource}\".", { dataSource: dataSourceName }), false);
         await loadDeclaredPanel(panelMeta);
       } catch (error) {
         setStatus(error.message, true);
@@ -174,7 +180,7 @@
         inputsByField[field] = input;
         form.appendChild(input);
       });
-      form.appendChild(button("+ Add row", "secondary small", function () {
+      form.appendChild(button(NPDevI18n.t("panels.declared.addRow", "+ Add row"), "secondary small", function () {
         const data = {};
         Object.keys(inputsByField).forEach(function (field) { data[field] = inputsByField[field].value; });
         const parentId = dataSourceMeta.parentDataSource ? currentDeclaredPanelParentId(entry, dataSourceMeta) : null;
@@ -244,8 +250,7 @@
         mount.body.innerHTML = "";
         const note = document.createElement("p");
         note.className = "sub";
-        note.textContent = 'Component "' + slot.component + '" is not registered — check that web/regions/'
-          + slot.component + '.js loads and calls window.npdev.regions.register.';
+        note.textContent = NPDevI18n.t("panels.declared.slotNotRegistered", "Component \"{component}\" is not registered — check that web/regions/{component}.js loads and calls window.npdev.regions.register.", { component: slot.component });
         mount.body.appendChild(note);
         mount.name = null;
         return mount.el;
@@ -300,7 +305,7 @@
       const groups = {};
       const order = [];
       rows.forEach(function (row) {
-        const key = row[widget.groupBy] === undefined || row[widget.groupBy] === null ? "(none)" : String(row[widget.groupBy]);
+        const key = row[widget.groupBy] === undefined || row[widget.groupBy] === null ? NPDevI18n.t("panels.declared.groupNone", "(none)") : String(row[widget.groupBy]);
         if (!groups[key]) { groups[key] = []; order.push(key); }
         groups[key].push(row);
       });
@@ -453,7 +458,7 @@
           if (!points.length) {
             const none = document.createElement("p");
             none.className = "sub";
-            none.textContent = "No data.";
+            none.textContent = NPDevI18n.t("panels.declared.noData", "No data.");
             card.appendChild(none);
           } else if (widget.chart === "line") {
             card.appendChild(renderLineChart(points));
@@ -469,7 +474,7 @@
           if (!history.length) {
             const none = document.createElement("p");
             none.className = "sub";
-            none.textContent = "No actions run yet.";
+            none.textContent = NPDevI18n.t("panels.declared.noActionsYet", "No actions run yet.");
             card.appendChild(none);
           } else {
             const list = document.createElement("ol");
@@ -511,7 +516,7 @@
         const link = document.createElement("a");
         link.className = "declared-panel-body";
         link.href = panelMeta.workbenchUrl;
-        link.textContent = "Open " + (panelMeta.title || panelMeta.name) + " workbench →";
+        link.textContent = NPDevI18n.t("panels.declared.openWorkbench", "Open {panel} workbench →", { panel: panelMeta.title || panelMeta.name });
         section.appendChild(link);
         return section;
       }
@@ -523,7 +528,7 @@
       header.appendChild(title);
       const headerActions = document.createElement("div");
       headerActions.className = "panel-actions";
-      headerActions.appendChild(button("Refresh", "", function () { loadDeclaredPanel(panelMeta); }));
+      headerActions.appendChild(button(NPDevI18n.t("panels.declared.refresh", "Refresh"), "", function () { loadDeclaredPanel(panelMeta); }));
       header.appendChild(headerActions);
       section.appendChild(header);
 
@@ -549,7 +554,7 @@
         // carries a paired workbench (panelMeta.newWorkbenchUrl, ADR-0005), navigate straight to
         // that workbench's own empty-shell editor instead of invoking the mutation.
         if (action.name === "new" && panelMeta.newWorkbenchUrl) {
-          const newButton = button(action.label, "primary", function () {
+          const newButton = button(actionLabel(action), "primary", function () {
             window.location.href = panelMeta.newWorkbenchUrl;
           });
           newButton.disabled = !panelEnabled || !evaluateWhen(action.enabledWhen, panelContext);
@@ -574,7 +579,7 @@
           });
           actionHost.appendChild(inlineForm);
         }
-        const actionButton = button(action.label, "primary", function () {
+        const actionButton = button(actionLabel(action), "primary", function () {
           const liveAction = (headerEntry.actions || []).find(function (a) { return a.name === action.name; });
           if (liveAction && liveAction.confirmationText && !window.confirm(liveAction.confirmationText)) { return; }
           const data = {};
@@ -594,7 +599,7 @@
       const body = document.createElement("div");
       body.className = "declared-panel-body";
       if (entry.loading) {
-        body.textContent = "Loading…";
+        body.textContent = NPDevI18n.t("panels.declared.loading", "Loading…");
       } else if (entry.loaded) {
         Object.keys(entry.data || {}).forEach(function (dataSourceName) {
           const block = document.createElement("div");
@@ -609,7 +614,7 @@
           const resultBlock = document.createElement("div");
           resultBlock.className = "declared-panel-datasource";
           const label = document.createElement("h3");
-          label.textContent = "Last action result (" + entry.lastActionName + ")";
+          label.textContent = NPDevI18n.t("panels.declared.lastActionResult", "Last action result ({action})", { action: entry.lastActionName });
           resultBlock.appendChild(label);
           resultBlock.appendChild(renderDeclaredPanelValueGeneric(entry.lastActionResult));
           body.appendChild(resultBlock);
@@ -673,7 +678,7 @@
       if (Array.isArray(value) && value.length === 0) {
         const empty = document.createElement("div");
         empty.className = "empty";
-        empty.textContent = "(empty)";
+        empty.textContent = NPDevI18n.t("panels.declared.empty", "(empty)");
         return empty;
       }
       const pre = document.createElement("pre");
@@ -791,18 +796,18 @@
         if (saveAction || deletable || rowActions.length || cloneTargets.length) {
           const actionTd = document.createElement("td");
           if (cloneTargets.length) {
-            actionTd.appendChild(button("Clonar", "secondary small", function () {
+            actionTd.appendChild(button(NPDevI18n.t("panels.declared.clone", "Clone"), "secondary small", function () {
               cloneTargets.forEach(function (target) {
                 target.fields.forEach(function (field) {
                   const value = rowData[field];
                   target.inputsByField[field].value = value === null || value === undefined ? "" : value;
                 });
               });
-              notify("Valores copiados para \"Adicionar Item\" -- ajuste e confirme.", false);
+              notify(NPDevI18n.t("panels.declared.cloneDone", "Values copied to the add-item form -- adjust and confirm."), false);
             }));
           }
           if (saveAction) {
-            actionTd.appendChild(button("Save", "secondary small", function () {
+            actionTd.appendChild(button(NPDevI18n.t("panels.declared.save", "Save"), "secondary small", function () {
               const data = Object.assign({}, rowData);
               Object.keys(inputsByField).forEach(function (field) {
                 const input = inputsByField[field];
@@ -836,7 +841,7 @@
               // shared template.
               if (actionInputsByName) { actionInputsByName[action.name] = rowInputsByField; }
             }
-            const rowActionButton = button(action.label || action.name, "secondary small", function () {
+            const rowActionButton = button(actionLabel(action) || action.name, "secondary small", function () {
               // WMS-15: entry.actions already carries confirmationText (resolved server-side from
               // the invoked flow's own declared action.confirmationText) -- no name lookup needed here
               // since this list IS the live one, unlike the header-button loop above.
@@ -887,7 +892,7 @@
         const totalTd = document.createElement("td");
         totalTd.colSpan = headerLabels.length;
         totalTd.className = "declared-panel-total";
-        totalTd.textContent = "Total " + (totalColumn ? (totalColumn.label || totalColumn.sourceField) : dataSourceMeta.totalField) + ": " + formatValue(total);
+        totalTd.textContent = NPDevI18n.t("panels.declared.total", "Total {field}: {value}", { field: totalColumn ? (totalColumn.label || totalColumn.sourceField) : dataSourceMeta.totalField, value: formatValue(total) });
         totalTr.appendChild(totalTd);
         tfoot.appendChild(totalTr);
         table.appendChild(tfoot);

@@ -134,7 +134,8 @@ class IngestPackTests(EngineCase):
         self.assertIn('"ratings" (version 1.0.0)', text)
         self.assertIn("Nothing is replaced", text)
         self.assertIn("Rating: 5 fields", text)
-        self.assertIn("seen by only the people a rule allows", text)
+        self.assertIn("seen by whoever owns each record", text)   # `field == $user.id` is said as "owns", not as "a rule"
+        self.assertIn("1 kind of record, 5 fields", text)         # the total does not count the internal id, like the line below it
         self.assertIn("Search RatingsOfSubject", text)
         self.assertEqual(len(preview["lines"]), len(preview["sentences"]))
         self.assertFalse(preview["dataLoss"])
@@ -147,9 +148,25 @@ class IngestPackTests(EngineCase):
         self.assertIn('Um pacote reutilizável "ratings" (versão 1.0.0)', text)
         self.assertIn("Nada é substituído", text)
         self.assertIn("Rating: 5 campos", text)
-        self.assertIn("visto por só as pessoas que uma regra permite", text)
+        self.assertIn("visto por quem é dono de cada registro", text)
         self.assertIn("Busca RatingsOfSubject", text)
         self.assertEqual([l["code"] for l in result["preview"]["lines"]][:2], ["PACK_SUMMARY", "PACK_NEW"])
+
+    def test_wording_only_changes_collapse_into_one_plain_line_in_both_languages(self):
+        import npdev_pack_sheet as sheet
+        import npdev_relay_preview_pt as pt
+        suffix = "changed (presentation text only)"
+        findings = [{"classification": "PATCH", "message": f"concepts.Rating.fields.f{i}.ui.label {suffix}"} for i in range(7)]
+        findings.append({"classification": "ADDITIVE", "message": "query Q added"})
+        preview = sheet.plain_preview(GOOD, GOOD, {"overallClassification": "PATCH", "findings": findings})
+        text = " ".join(preview["sentences"])
+        self.assertIn("7 texts were reworded", text)
+        self.assertIn("query Q added", text)
+        self.assertNotIn("ui.label", text)
+        line = next(l for l in preview["lines"] if l["code"] == "PACK_TEXTS_REWORDED")
+        self.assertEqual(line["params"], {"count": 7})
+        self.assertEqual(pt._line_text("PACK_TEXTS_REWORDED", line["params"]), "7 textos foram reescritos (só rótulos ou textos de ajuda).")
+        self.assertEqual(pt._line_text("PACK_TEXTS_REWORDED", {"count": 1}), "1 texto foi reescrito (só rótulos ou textos de ajuda).")
 
     def test_a_new_version_shows_what_changed_and_warns_when_it_is_breaking(self):
         newer = self.with_(version="2.0.0")

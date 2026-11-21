@@ -42,6 +42,23 @@
     } catch (ignored) { /* installability is an extra, never a blocker */ }
   })();
 
+  // REG-349: every shell-wrapped page draws translated chrome, so the lookup helper (/npdev-i18n.js) must be there even
+  // on a hand-made page that never listed it. A page that already lists it (before or after this script) is left alone;
+  // shellString falls back to the English text until the helper arrives, and the manifest pass repaints the chrome.
+  var i18nScriptEl = document.querySelector('script[src="/npdev-i18n.js"]');
+  if (!window.NPDevI18n && !i18nScriptEl) {
+    i18nScriptEl = document.createElement("script");
+    i18nScriptEl.src = "/npdev-i18n.js";
+    document.head.appendChild(i18nScriptEl);
+  }
+  function whenI18nReady(callback) {
+    if (window.NPDevI18n || !i18nScriptEl) { callback(); return; }
+    var done = false;
+    var once = function () { if (done) return; done = true; callback(); };
+    i18nScriptEl.addEventListener("load", once);
+    i18nScriptEl.addEventListener("error", once);
+  }
+
   // MOB-1 (M3): the last OFFLINE_MAX_ENTRIES successful list responses, per tenant AND user. Entries
   // live in localStorage under an unguessable-by-scope key and are wiped on sign-out and whenever the
   // signed-in principal differs from the one that wrote them, so a shared phone never shows user A's
@@ -572,7 +589,7 @@
     var executionsToggle = document.createElement("button");
     executionsToggle.className = "npdev-shell-executions-toggle";
     executionsToggle.type = "button";
-    executionsToggle.title = "Recent flow executions";
+    executionsToggle.title = shellString("shell.executions.title", "Recent flow executions");
     executionsToggle.textContent = "⏱";
     executionsToggle.addEventListener("click", function () {
       el.executionsPanel.classList.toggle("npdev-shell-executions-panel-open");
@@ -583,7 +600,7 @@
     var executionsPanel = document.createElement("div");
     executionsPanel.className = "npdev-shell-executions-panel";
     executionsPanel.setAttribute("role", "region");
-    executionsPanel.setAttribute("aria-label", "Recent flow executions");
+    executionsPanel.setAttribute("aria-label", shellString("shell.executions.title", "Recent flow executions"));
     bar.appendChild(executionsPanel);
     el.executionsPanel = executionsPanel;
 
@@ -613,7 +630,7 @@
 
     var identity = document.createElement("span");
     identity.className = "npdev-shell-identity";
-    identity.textContent = "carregando...";
+    identity.textContent = shellString("shell.topbar.loading", "Loading...");
     bar.appendChild(identity);
     el.identity = identity;
 
@@ -661,11 +678,11 @@
     sidebar.id = "sideNav";
     sidebar.className = "npdev-shell-sidebar";
     sidebar.setAttribute("role", "navigation");
-    sidebar.setAttribute("aria-label", "Main navigation");
+    sidebar.setAttribute("aria-label", shellString("shell.nav.main", "Main navigation"));
     var rightbar = document.createElement("div");
     rightbar.className = "npdev-shell-rightbar";
     rightbar.setAttribute("role", "complementary");
-    rightbar.setAttribute("aria-label", "Side panel");
+    rightbar.setAttribute("aria-label", shellString("shell.rightbar.label", "Side panel"));
 
     // R7.10: the drawer's dismiss surface -- covers the content column at MOBILE_BREAKPOINT_PX and
     // below (see injectResponsiveShellStyle's .npdev-shell-sidebar-backdrop rule), hidden otherwise.
@@ -721,15 +738,15 @@
 
   // Chrome strings come from the app's manifest (PlatformStrings defaults + settings.strings);
   // the English fallback covers an app generated before the manifest carried them.
-  function shellString(key, fallback) {
-    // UI-8: the per-locale catalogue for the user's chosen language ("pt-BR" -> "pt") wins, then the
-    // app-default catalogue (generation-time settings.locale), then the English fallback.
-    var manifest = state.manifest;
-    var language = readUiLocale().split("-")[0].toLowerCase();
-    var byLocale = manifest && manifest.stringsByLocale && language ? manifest.stringsByLocale[language] : null;
-    if (byLocale && byLocale[key]) return byLocale[key];
-    var strings = manifest && manifest.strings;
-    return (strings && strings[key]) || fallback;
+  function shellString(key, fallback, vars) {
+    // REG-349: the lookup lives in /npdev-i18n.js (chosen language, then the app default, then the English
+    // text given here); the shell only hands it the manifest it fetched. A page that did not load the helper
+    // still gets the English text.
+    if (window.NPDevI18n) {
+      if (state.manifest) { window.NPDevI18n.use(state.manifest); }
+      return window.NPDevI18n.t(key, fallback, vars);
+    }
+    return fallback;
   }
 
   function applyIdentity() {
@@ -774,7 +791,7 @@
         // while edits have not reached the server yet.
         var unsynced = queuePendingCount();
         if (unsynced > 0 && !window.confirm(shellString("shell.signOutUnsynced",
-            "You have " + unsynced + " change(s) saved on this device that have not synced yet. Signing out discards them. Sign out anyway?"))) {
+            "You have {count} change(s) saved on this device that have not synced yet. Signing out discards them. Sign out anyway?", { count: unsynced }))) {
           return;
         }
         // SEC-2: the npdev_jwt cookie is HttpOnly, so only the server can expire it. Reload after
@@ -815,14 +832,20 @@
   // PROC-4: the bell lives in a verbatim static file; the shell only loads it when the model binds the
   // notify capability (manifest.collaboration.notifications). Idempotent, and never loads for a
   // logged-out visitor.
+  var bellQueued = false;
   function loadCollabScript(manifest) {
     var collab = manifest && manifest.collaboration;
     if (!collab || !collab.notifications || !state.token) return;
-    if (document.querySelector("script[data-npdev-bell]")) return;
+    if (document.querySelector("script[data-npdev-bell]") || bellQueued) return;
+    bellQueued = true;
     var s = document.createElement("script");
     s.src = "/npdev-business-ui/collab/bell.js";
     s.setAttribute("data-npdev-bell", "1");
-    document.head.appendChild(s);
+    // bell.js reads its texts through NPDevI18n, so it waits for the helper (and hands it the manifest first).
+    whenI18nReady(function () {
+      if (window.NPDevI18n && state.manifest) { window.NPDevI18n.use(state.manifest); }
+      document.head.appendChild(s);
+    });
   }
 
   // ------------------------------------------------------- executions rail ----
@@ -862,8 +885,8 @@
       name.textContent = item.flowName || item.executionId;
       var status = document.createElement("span");
       status.className = "npdev-shell-execution-status";
-      status.textContent = item.outcome === "PENDING" ? "pending"
-        : (item.outcome === "SUCCEEDED" ? "completed" : "failed");
+      status.textContent = item.outcome === "PENDING" ? shellString("shell.executions.pending", "pending")
+        : (item.outcome === "SUCCEEDED" ? shellString("shell.executions.completed", "completed") : shellString("shell.executions.failed", "failed"));
       row.appendChild(name);
       row.appendChild(status);
       el.executionsPanel.appendChild(row);
@@ -1040,7 +1063,7 @@
 
   function renderSystemSection(container, appName, rows) {
     if (!rows.length) return;
-    addSectionHeader(container, appName || "Sistema");
+    addSectionHeader(container, appName || shellString("shell.nav.system", "System"));
     var byId = {};
     rows.forEach(function (row) { byId[row.id] = row; });
     var childrenByParent = {};
@@ -1074,10 +1097,10 @@
     adminConcepts.forEach(function (concept) {
       addLeafLink(container, businessHref(concept.conceptName), concept.displayName, null);
     });
-    addLeafLink(container, businessHref("__store__"), "Store", null);
-    addLeafLink(container, businessHref("__boxview__"), "Box Inspector", null);
-    addLeafLink(container, businessHref("__promotion__"), "Promotion", null);
-    addLeafLink(container, "/npdev-business-ui/ops/executions.html", "Executions", null);
+    addLeafLink(container, businessHref("__store__"), shellString("shell.nav.store", "Store"), null);
+    addLeafLink(container, businessHref("__boxview__"), shellString("shell.nav.boxInspector", "Box Inspector"), null);
+    addLeafLink(container, businessHref("__promotion__"), shellString("shell.nav.promotion", "Promotion"), null);
+    addLeafLink(container, "/npdev-business-ui/ops/executions.html", shellString("shell.nav.executions", "Executions"), null);
   }
 
   // Host-mode-only: business concepts and declared Panels have no natural home in the System tree
@@ -1153,7 +1176,7 @@
     if (!items.length) {
       var empty = document.createElement("div");
       empty.className = "npdev-shell-quickaccess-empty";
-      empty.textContent = "Nenhum item recente ainda.";
+      empty.textContent = shellString("shell.gadgets.noRecent", "No recent items yet.");
       container.appendChild(empty);
       return;
     }
@@ -1174,7 +1197,7 @@
     if (!items.length) {
       var empty = document.createElement("div");
       empty.className = "npdev-shell-gadget-empty";
-      empty.textContent = "Nenhum item recente ainda.";
+      empty.textContent = shellString("shell.gadgets.noRecent", "No recent items yet.");
       container.appendChild(empty);
       return;
     }
@@ -1194,7 +1217,7 @@
     if (!contextState.rows || !contextState.rows.length) {
       var empty = document.createElement("div");
       empty.className = "npdev-shell-gadget-empty";
-      empty.textContent = "Sem contexto no momento.";
+      empty.textContent = shellString("shell.gadgets.noContext", "No context right now.");
       container.appendChild(empty);
       return;
     }
@@ -1211,12 +1234,12 @@
     var url = config && config.url;
     if (!url) return;
     if (!/^\/(?!\/)/.test(url)) {
-      gadgetMessage(container, "page-fragment url must be a same-origin path");
+      gadgetMessage(container, shellString("shell.gadgets.fragmentBadUrl", "The page-fragment URL must be a same-origin path"));
       return;
     }
     fetch(url).then(function (res) {
       if (!res.ok) {
-        gadgetMessage(container, "Fragment unavailable (" + res.status + ")");
+        gadgetMessage(container, shellString("shell.gadgets.fragmentUnavailableStatus", "Fragment unavailable ({status})", { status: res.status }));
         return null;
       }
       return res.text();
@@ -1227,7 +1250,7 @@
       var holder = document.createElement("div");
       holder.innerHTML = html;
       container.appendChild(holder);
-    }).catch(function () { gadgetMessage(container, "Fragment unavailable"); });
+    }).catch(function () { gadgetMessage(container, shellString("shell.gadgets.fragmentUnavailable", "Fragment unavailable")); });
   }
 
   gadgetRenderers["recent-items"] = function (container) { renderRecentItemsGadget(container); };
@@ -1240,7 +1263,7 @@
   // CDN (bar/line are hand-rolled inline SVG, self-contained like the rest of this generated file).
 
   function fetchGadgetQuery(gadget) {
-    if (!gadget || !gadget.query) return Promise.reject(new Error("gadget has no query binding"));
+    if (!gadget || !gadget.query) return Promise.reject(new Error(shellString("shell.gadgets.noQuery", "This gadget has no query binding")));
     // UI-9: a query that declares parameters needs them on the call (the endpoint answers 400
     // "Query parameter X is required" otherwise); values come from the dashboard filter bar.
     var params = new URLSearchParams();
@@ -1253,7 +1276,7 @@
       }
       params.append(p.name, String(value));
     });
-    if (missing) return Promise.reject(new Error("Set " + missing + " above"));
+    if (missing) return Promise.reject(new Error(shellString("shell.gadgets.setParam", "Set {name} above", { name: missing })));
     var qs = params.toString();
     return fetchJson("/api/queries/" + encodeURIComponent(gadget.query) + (qs ? "?" + qs : ""), state.token);
   }
@@ -1413,23 +1436,23 @@
   function renderKpiGadget(container, gadget) {
     fetchGadgetQuery(gadget).then(function (result) {
       var rows = (result && result.rows) || [];
-      if (!rows.length) { gadgetMessage(container, "Sem dados."); return; }
+      if (!rows.length) { gadgetMessage(container, shellString("shell.gadgets.noData", "No data.")); return; }
       var total = 0;
       rows.forEach(function (row) { total += numberOrZero(row[gadget.y]); });
       var big = document.createElement("div");
       big.className = "npdev-shell-gadget-kpi";
       big.textContent = formatNumber(total);
       if (result && result.concept) {
-        makeClickableElement(big, "Ver " + result.concept, function () { navigateToDrilldown(result.concept, [], {}); });
+        makeClickableElement(big, shellString("shell.gadgets.view", "View {concept}", { concept: result.concept }),function () { navigateToDrilldown(result.concept, [], {}); });
       }
       container.appendChild(big);
-    }).catch(function (err) { gadgetMessage(container, "Erro: " + err.message); });
+    }).catch(function (err) { gadgetMessage(container, shellString("shell.gadgets.error", "Error: {message}", { message: err.message })); });
   }
 
   function renderTableGadget(container, gadget) {
     fetchGadgetQuery(gadget).then(function (result) {
       var rows = (result && result.rows) || [];
-      if (!rows.length) { gadgetMessage(container, "Sem dados."); return; }
+      if (!rows.length) { gadgetMessage(container, shellString("shell.gadgets.noData", "No data.")); return; }
       var columns = Object.keys(rows[0]);
       var table = document.createElement("table");
       table.className = "npdev-shell-gadget-table";
@@ -1454,13 +1477,13 @@
           tr.appendChild(td);
         });
         if (drillConcept) {
-          makeClickableElement(tr, "Ver " + drillConcept, function () { navigateToDrilldown(drillConcept, drillKeys, row); });
+          makeClickableElement(tr, shellString("shell.gadgets.view", "View {concept}", { concept: drillConcept }),function () { navigateToDrilldown(drillConcept, drillKeys, row); });
         }
         tbody.appendChild(tr);
       });
       table.appendChild(tbody);
       container.appendChild(table);
-    }).catch(function (err) { gadgetMessage(container, "Erro: " + err.message); });
+    }).catch(function (err) { gadgetMessage(container, shellString("shell.gadgets.error", "Error: {message}", { message: err.message })); });
   }
 
   var CHART_COLORS = ["#295572", "#4d8fe8", "#e05d5d", "#f0a868", "#4caf7d", "#9b6bd1", "#c2185b", "#607d8b"];
@@ -1599,9 +1622,9 @@
   function renderXyChartGadget(container, gadget, chartType) {
     fetchGadgetQuery(gadget).then(function (result) {
       var rows = (result && result.rows) || [];
-      if (!rows.length) { gadgetMessage(container, "Sem dados."); return; }
+      if (!rows.length) { gadgetMessage(container, shellString("shell.gadgets.noData", "No data.")); return; }
       renderXyChart(container, rows, gadget, chartType, result);
-    }).catch(function (err) { gadgetMessage(container, "Erro: " + err.message); });
+    }).catch(function (err) { gadgetMessage(container, shellString("shell.gadgets.error", "Error: {message}", { message: err.message })); });
   }
 
   // VIEW-2: share-of-total ring + legend (label, value, percent). Same SVG maths as the panel widget's
@@ -1613,7 +1636,7 @@
         return { label: String(row[gadget.x] == null ? "" : row[gadget.x]), value: Math.max(0, numberOrZero(row[gadget.y])), row: row };
       });
       var total = points.reduce(function (sum, p) { return sum + p.value; }, 0);
-      if (!points.length || total <= 0) { gadgetMessage(container, "Sem dados."); return; }
+      if (!points.length || total <= 0) { gadgetMessage(container, shellString("shell.gadgets.noData", "No data.")); return; }
       var drillConcept = result && result.concept;
       var drillKeys = drillableKeys(result);
       var wrap = document.createElement("div");
@@ -1653,13 +1676,13 @@
         item.appendChild(document.createTextNode(
           point.label + " — " + formatNumber(point.value) + " (" + Math.round(point.value / total * 100) + "%)"));
         if (drillConcept) {
-          makeClickableElement(item, "Ver " + drillConcept, function () { navigateToDrilldown(drillConcept, drillKeys, point.row); });
+          makeClickableElement(item, shellString("shell.gadgets.view", "View {concept}", { concept: drillConcept }),function () { navigateToDrilldown(drillConcept, drillKeys, point.row); });
         }
         legend.appendChild(item);
       });
       wrap.appendChild(legend);
       container.appendChild(wrap);
-    }).catch(function (err) { gadgetMessage(container, "Erro: " + err.message); });
+    }).catch(function (err) { gadgetMessage(container, shellString("shell.gadgets.error", "Error: {message}", { message: err.message })); });
   }
 
   gadgetRenderers["kpi"] = function (container, gadget) { renderKpiGadget(container, gadget); };
@@ -1686,7 +1709,7 @@
       } else {
         var placeholder = document.createElement("div");
         placeholder.className = "npdev-shell-gadget-empty";
-        placeholder.textContent = "Tipo de gadget desconhecido: " + gadget.type;
+        placeholder.textContent = shellString("shell.gadgets.unknownType", "Unknown gadget type: {type}", { type: gadget.type });
         body.appendChild(placeholder);
       }
       el.rightbar.appendChild(card);
@@ -1827,7 +1850,7 @@
     var ctx = context || {};
     container.innerHTML = "";
     var box = stateBox("loading");
-    appendStateLine(box, "npdev-shell-state-message", ctx.message || "Loading…");
+    appendStateLine(box, "npdev-shell-state-message", ctx.message || shellString("shell.state.loading", "Loading…"));
     container.appendChild(box);
   }
 
@@ -1839,7 +1862,7 @@
     var ctx = context || {};
     container.innerHTML = "";
     var box = stateBox("empty");
-    var message = ctx.message || (ctx.filtered ? "No matches for your filter." : "No records yet.");
+    var message = ctx.message || (ctx.filtered ? shellString("shell.state.noMatches", "No matches for your filter.") : shellString("shell.state.noRecords", "No records yet."));
     appendStateLine(box, "npdev-shell-state-message", message);
     appendStateAction(box, ctx.action);
     container.appendChild(box);
@@ -1851,7 +1874,7 @@
     var ctx = context || {};
     container.innerHTML = "";
     var box = stateBox("error");
-    appendStateLine(box, "npdev-shell-state-message", ctx.message || "Something went wrong.");
+    appendStateLine(box, "npdev-shell-state-message", ctx.message || shellString("shell.state.error", "Something went wrong."));
     appendStateAction(box, ctx.action);
     container.appendChild(box);
   }
@@ -1863,7 +1886,7 @@
     var ctx = context || {};
     container.innerHTML = "";
     var box = stateBox("denied");
-    appendStateLine(box, "npdev-shell-state-message", "You don't have permission to view this.");
+    appendStateLine(box, "npdev-shell-state-message", shellString("shell.state.denied", "You don't have permission to view this."));
     appendStateLine(box, "npdev-shell-state-reason", ctx.reason);
     container.appendChild(box);
   }
@@ -1878,7 +1901,7 @@
     var ctx = context || {};
     container.innerHTML = "";
     var box = stateBox("offline");
-    appendStateLine(box, "npdev-shell-state-message", ctx.message || "You're offline. Reconnect to continue.");
+    appendStateLine(box, "npdev-shell-state-message", ctx.message || shellString("shell.state.offline", "You're offline. Reconnect to continue."));
     appendStateAction(box, ctx.retry);
     container.appendChild(box);
   }
@@ -2006,7 +2029,7 @@
         try { parsed = raw ? JSON.parse(raw) : null; } catch (ignored) { parsed = raw; }
         if (!res.ok) {
           var message = (parsed && (parsed.message || parsed.error)) || (method + " " + path + " -> HTTP " + res.status);
-          if (res.status === 401) { message = "Your session expired. Sign in again."; }
+          if (res.status === 401) { message = shellString("shell.api.sessionExpired", "Your session expired. Sign in again."); }
           var error = new Error(message);
           error.status = res.status;
           error.body = parsed;
@@ -2029,11 +2052,28 @@
     if (el.rightbarToggle) { el.rightbarToggle.title = rail; }
   }
 
+  // REG-349: a hand-made or platform page that marks static text with data-i18n / data-i18n-attrs gets it
+  // translated here, once the manifest (and so the catalogue) is in hand -- no page fetches the manifest itself.
+  // The topbar logo and the hidden page heading were copied from document.title before that, so refresh them.
+  function applyStaticTranslations() {
+    if (!window.NPDevI18n || !window.NPDevI18n.apply) return;
+    try {
+      window.NPDevI18n.apply(document);
+      var title = (document.title || "").split(" - ")[0];
+      if (el.logo && !el.logo.querySelector("img") && title) el.logo.textContent = title;
+      if (el.pageTitle && title && !(contextState.path && contextState.path.length) && !contextState.title) {
+        el.pageTitle.textContent = title;
+      }
+    } catch (ignored) { /* translation is an extra, never a blocker */ }
+  }
+
   function applyData(me, menuRows, manifest, token) {
     state.token = token;
     state.roles = Array.isArray(me.roles) ? me.roles : [];
     state.actorId = me.actorId || "";
     state.manifest = manifest;
+    if (window.NPDevI18n) { window.NPDevI18n.use(manifest); }
+    applyStaticTranslations();
     state.menuRows = menuRows;
     var superUserRole = manifest && manifest.superUserRole;
     state.isSuperUser = Boolean(superUserRole) && state.roles.indexOf(superUserRole) !== -1;
@@ -2176,8 +2216,8 @@
     var path = window.location.pathname + window.location.search;
     if (rec.lastPath !== path && rec.steps.length < RECORDER_MAX_STEPS) {
       rec.steps.push(rec.lastPath
-        ? { action: "goto", url: window.location.origin + path, label: "Navigate to " + path }
-        : { action: "goto", url: "$targetUrl", label: "Open the app" });
+        ? { action: "goto", url: window.location.origin + path, label: "Navigate to " + path } /* i18n-ignore: routine-file data */
+        : { action: "goto", url: "$targetUrl", label: "Open the app" }); /* i18n-ignore: routine-file data */
       if (!rec.targetPath) rec.targetPath = window.location.pathname;
     }
     rec.lastPath = path;
@@ -2266,7 +2306,7 @@
   function recorderCommit(step) {
     if (!recorder || !recorder.active) return;
     if (recorder.steps.length >= RECORDER_MAX_STEPS) {
-      recorderSetStatus("Step limit reached (" + RECORDER_MAX_STEPS + " -- the engine's own per-routine max). Download this routine and start a new one to continue.");
+      recorderSetStatus(shellString("shell.recorder.stepLimit", "Step limit reached ({max} -- the engine's own per-routine max). Download this routine and start a new one to continue.", { max: RECORDER_MAX_STEPS }));
       return;
     }
     recorder.steps.push(step);
@@ -2363,7 +2403,7 @@
     recorder.active = true;
     recorder.targetPath = window.location.pathname;
     recorder.lastPath = window.location.pathname + window.location.search;
-    recorder.steps.push({ action: "goto", url: "$targetUrl", label: "Open the app" });
+    recorder.steps.push({ action: "goto", url: "$targetUrl", label: "Open the app" }); /* i18n-ignore: routine-file data */
     recorderSaveState();
     recorderRefreshUi();
   }
@@ -2396,7 +2436,7 @@
 
   function recorderAddScreenshot() {
     if (!recorder || !recorder.active) return;
-    recorderCommit({ action: "screenshot", name: "shot_" + (recorder.steps.length + 1), label: "Screenshot" });
+    recorderCommit({ action: "screenshot", name: "shot_" + (recorder.steps.length + 1), label: "Screenshot" }); /* i18n-ignore: routine-file data */
   }
 
   // Composes exactly the file shape every browser-routines/ corpus entry uses -- `targetPath` (not
@@ -2429,9 +2469,9 @@
   function recorderCopy() {
     if (!recorder || !recorder.steps.length || !navigator.clipboard) return;
     navigator.clipboard.writeText(JSON.stringify(recorderComposeDocument(), null, 2)).then(function () {
-      recorderSetStatus("Copied " + recorder.steps.length + " step(s) to the clipboard.");
+      recorderSetStatus(shellString("shell.recorder.copied", "Copied {count} step(s) to the clipboard.", { count: recorder.steps.length }));
     }, function () {
-      recorderSetStatus("Copy failed -- clipboard access was denied by the browser.");
+      recorderSetStatus(shellString("shell.recorder.copyFailed", "Copy failed -- clipboard access was denied by the browser."));
     });
   }
 
@@ -2484,7 +2524,7 @@
     dot.className = "npdev-rec-dot";
     head.appendChild(dot);
     var title = document.createElement("span");
-    title.textContent = "Routine recorder";
+    title.textContent = shellString("shell.recorder.title", "Routine recorder");
     title.style.flex = "1";
     title.style.marginLeft = "4px";
     head.appendChild(title);
@@ -2501,7 +2541,7 @@
 
     var nameInput = document.createElement("input");
     nameInput.type = "text";
-    nameInput.placeholder = "scenario name (optional)";
+    nameInput.placeholder = shellString("shell.recorder.scenarioName", "scenario name (optional)");
     nameInput.addEventListener("input", function () {
       if (recorder) { recorder.scenarioName = nameInput.value; recorderSaveState(); }
     });
@@ -2517,13 +2557,13 @@
     row1.appendChild(startStopBtn);
     var assertBtn = document.createElement("button");
     assertBtn.type = "button";
-    assertBtn.textContent = "Mark assertion";
-    assertBtn.title = "Arm: the next click records an assertion step instead of a click step.";
+    assertBtn.textContent = shellString("shell.recorder.markAssertion", "Mark assertion");
+    assertBtn.title = shellString("shell.recorder.markAssertionTip", "Arm: the next click records an assertion step instead of a click step.");
     assertBtn.addEventListener("click", recorderToggleAssertArm);
     row1.appendChild(assertBtn);
     var shotBtn = document.createElement("button");
     shotBtn.type = "button";
-    shotBtn.textContent = "Screenshot";
+    shotBtn.textContent = shellString("shell.recorder.screenshot", "Screenshot");
     shotBtn.addEventListener("click", recorderAddScreenshot);
     row1.appendChild(shotBtn);
     body.appendChild(row1);
@@ -2532,24 +2572,24 @@
     row2.className = "npdev-rec-row";
     var undoBtn = document.createElement("button");
     undoBtn.type = "button";
-    undoBtn.textContent = "Undo last";
+    undoBtn.textContent = shellString("shell.recorder.undo", "Undo last");
     undoBtn.addEventListener("click", recorderUndo);
     row2.appendChild(undoBtn);
     var clearBtn = document.createElement("button");
     clearBtn.type = "button";
-    clearBtn.textContent = "Clear";
+    clearBtn.textContent = shellString("shell.recorder.clear", "Clear");
     clearBtn.addEventListener("click", function () {
-      if (window.confirm("Discard all " + (recorder ? recorder.steps.length : 0) + " recorded step(s)?")) recorderClear();
+      if (window.confirm(shellString("shell.recorder.discardConfirm", "Discard all {count} recorded step(s)?", { count: recorder ? recorder.steps.length : 0 }))) recorderClear();
     });
     row2.appendChild(clearBtn);
     var copyBtn = document.createElement("button");
     copyBtn.type = "button";
-    copyBtn.textContent = "Copy JSON";
+    copyBtn.textContent = shellString("shell.recorder.copyJson", "Copy JSON");
     copyBtn.addEventListener("click", recorderCopy);
     row2.appendChild(copyBtn);
     var downloadBtn = document.createElement("button");
     downloadBtn.type = "button";
-    downloadBtn.textContent = "Download";
+    downloadBtn.textContent = shellString("shell.recorder.download", "Download");
     downloadBtn.addEventListener("click", recorderDownload);
     row2.appendChild(downloadBtn);
     body.appendChild(row2);
@@ -2579,10 +2619,10 @@
   function recorderRefreshUi() {
     if (!recorderUiBuilt || !recorder) return;
     el.recorderPanel.classList.toggle("npdev-rec-active", Boolean(recorder.active));
-    el.recorderStartStopBtn.textContent = recorder.active ? "Stop" : "Start";
+    el.recorderStartStopBtn.textContent = recorder.active ? shellString("shell.recorder.stop", "Stop") : shellString("shell.recorder.start", "Start");
     el.recorderStartStopBtn.className = recorder.active ? "npdev-rec-primary" : "";
     el.recorderAssertBtn.className = recorder.assertArmed ? "npdev-rec-armed" : "";
-    el.recorderAssertBtn.textContent = recorder.assertArmed ? "Assertion armed..." : "Mark assertion";
+    el.recorderAssertBtn.textContent = recorder.assertArmed ? shellString("shell.recorder.armed", "Assertion armed...") : shellString("shell.recorder.markAssertion", "Mark assertion");
     el.recorderUndoBtn.disabled = !recorder.steps.length;
     el.recorderDownloadBtn.disabled = !recorder.steps.length;
     el.recorderCopyBtn.disabled = !recorder.steps.length;
@@ -2596,7 +2636,9 @@
       el.recorderSteps.appendChild(row);
     });
     el.recorderStatus.textContent = recorderStatusOverride ||
-      (recorder.steps.length + "/" + RECORDER_MAX_STEPS + " step(s) recorded" + (recorder.active ? "" : " (stopped)"));
+      (recorder.active
+        ? shellString("shell.recorder.status", "{count}/{max} step(s) recorded", { count: recorder.steps.length, max: RECORDER_MAX_STEPS })
+        : shellString("shell.recorder.statusStopped", "{count}/{max} step(s) recorded (stopped)", { count: recorder.steps.length, max: RECORDER_MAX_STEPS }));
     recorderStatusOverride = null;
   }
 

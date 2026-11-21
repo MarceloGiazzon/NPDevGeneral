@@ -1,0 +1,85 @@
+/* NPDev platform text catalogue lookup (REG-349). Emitted to static/npdev-i18n.js and loaded by every
+ * page the platform draws (business UI, shell, workbench, sign-in pages) BEFORE their own script.
+ *
+ * Every platform-owned text is `NPDevI18n.t(id, englishText, vars)`: the id is looked up in
+ * the language the visitor chose (localStorage "npdev.ui.locale", "pt-BR" -> "pt"), then in the app's own
+ * catalogue (its generation-time backOffice.locale, plus backOffice.strings overrides), then the English text in
+ * the call itself, so a page still reads right when the catalogue is missing. `{name}` placeholders are replaced
+ * from the third argument. The English text in the call must equal the English catalogue entry
+ * (scripts/quality/check-ui-i18n.py compares them), which is why a call site never needs a second source.
+ *
+ * The catalogue arrives as `{ strings, stringsByLocale }`: the generated manifest already has this shape, so a page
+ * with a manifest calls `NPDevI18n.use(manifest)`; a page without one inlines the same two keys.
+ * This file is static (no Mustache tags).
+ */
+(function () {
+  "use strict";
+  if (window.NPDevI18n) { return; }
+  var KEY = "npdev.ui.locale";
+  var catalogue = null;
+
+  function stored() {
+    try { return localStorage.getItem(KEY) || ""; } catch (ignored) { return ""; }
+  }
+
+  function language() {
+    return stored().split("-")[0].toLowerCase();
+  }
+
+  function fill(text, vars) {
+    if (!vars) { return text; }
+    return String(text).replace(/\{([A-Za-z0-9_]+)\}/g, function (whole, name) {
+      return Object.prototype.hasOwnProperty.call(vars, name) && vars[name] != null ? String(vars[name]) : whole;
+    });
+  }
+
+  function lookup(key) {
+    if (!catalogue) { return null; }
+    var lang = language();
+    var byLocale = lang && catalogue.stringsByLocale ? catalogue.stringsByLocale[lang] : null;
+    if (byLocale && byLocale[key]) { return byLocale[key]; }
+    var strings = catalogue.strings;
+    return strings && strings[key] ? strings[key] : null;
+  }
+
+  window.NPDevI18n = {
+    /** The catalogue in force (for the browser routines that audit a page for untranslated text). */
+    catalogue: function () { return catalogue; },
+    /** Hand over the catalogue ({ strings, stringsByLocale }); the manifest object itself qualifies. */
+    use: function (source) { if (source && typeof source === "object") { catalogue = source; } },
+    /** The text for `key`, placeholders filled; `fallback` (English) when the catalogue has none. */
+    t: function (key, fallback, vars) {
+      var found = lookup(key);
+      return fill(found != null ? found : fallback, vars);
+    },
+    /** The language in force: the visitor's choice, else the app default's language, else "en". */
+    language: function () {
+      return language() || (catalogue && catalogue.defaultLanguage) || "en";
+    },
+    /**
+     * Translate static markup in place. `data-i18n="id"` replaces the element's text, `data-i18n-attrs=
+     * "placeholder=id;title=id"` replaces those attributes, and the element's own English text/attribute is the
+     * fallback (and what check-ui-i18n.py compares with the English catalogue). Also sets <html lang>.
+     */
+    apply: function (root) {
+      var scope = root || document;
+      var html = document.documentElement;
+      if (html && scope === document) { html.setAttribute("lang", window.NPDevI18n.language()); }
+      var texts = scope.querySelectorAll("[data-i18n]");
+      for (var i = 0; i < texts.length; i++) {
+        var node = texts[i];
+        node.textContent = window.NPDevI18n.t(node.getAttribute("data-i18n"), node.textContent.trim());
+      }
+      var withAttrs = scope.querySelectorAll("[data-i18n-attrs]");
+      for (var j = 0; j < withAttrs.length; j++) {
+        var holder = withAttrs[j];
+        holder.getAttribute("data-i18n-attrs").split(";").forEach(function (pair) {
+          var at = pair.indexOf("=");
+          if (at < 1) { return; }
+          var attr = pair.slice(0, at).trim();
+          holder.setAttribute(attr, window.NPDevI18n.t(pair.slice(at + 1).trim(), holder.getAttribute(attr) || ""));
+        });
+      }
+    }
+  };
+})();

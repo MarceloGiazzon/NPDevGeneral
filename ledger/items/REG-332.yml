@@ -4,7 +4,7 @@ title: >-
   briefing told the AI not to try
 type: FEATURE
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-11-11
 source: >-
   Ride-hailing S2 plan, objective 9 (relay consumption of NPR packs); TASKS.md P1 + P2. Owner decision 2026-11-11: accept unsigned
@@ -85,13 +85,20 @@ detail: |
   NOT done: `pack update` always clones (a cached pack is not reused offline) -- offline therefore fails with the sentence above
   even when the pack is cached; the catalog list itself does fall back to its cache. The real relay round with a real chat AI on the
   owner's machine (P2 "Verify") has not been run.
+  REAL ROUND 2026-11-20 (owner's machine, Manager 0.13.40, "Use a browser AI" > Create a new app `SalesTest1`, ask naming the `sales` pack): chat AI =
+  Gemini ("Hydrogen", medium effort), ONE round, READY on the first answer. NOTE: that chat had NPDev tools attached (the model's own account lists
+  ~42,000 chars of NPDev tool calls/returns), so it may have iterated on its own before answering; the relay itself saw one answer. The proposal
+  imported sales 2.0.0 + contacts 1.1.0 + products 1.0.0 with all three roles (salesRep, salesManager, accountant) bound in one answer plus one
+  local concept (SalesTarget). Apply generated and built the app; "Open the app" opened http://localhost:8080/npdev-business-ui/ signed in as
+  developer (ADMIN), menu showing Sales orders, Order lines, Customers, Price list, Invoices, Products, Organizations, Contacts, Addresses and
+  Sales targets (owner screenshot). done_when met.
 files:
   - NPDevCli/npdev_relay_files.py
   - NPDevCli/npdev_relay_engine.py
   - NPDevCli/tests/test_relay_packs.py
   - NPDevCli/pack-trust-defaults.json
   - docs/content/authoring-for-ai.yml
-verification: UNIT_TESTED
+verification: VERIFIED_LIVE
 guard:
   kind: test
   ref: NPDevCli/tests/test_relay_packs.py

@@ -78,8 +78,13 @@ def check_pack(cli, pack_dir: Path, checkout: Path, work: Path, validate) -> tup
     return pack, previous, problems, report
 
 
-def summary_of(pack: dict, previous: dict | None, report: dict | None, checkout: Path) -> dict:
-    preview = npdev_pack_sheet.plain_preview(pack, previous, report)
+PUBLIC_PT = "Qualquer pessoa na internet poderá ver e usar esta parte."
+
+
+def summary_of(pack: dict, previous: dict | None, report: dict | None, checkout: Path, language: str = "English") -> dict:
+    import npdev_relay_preview_pt as preview_pt  # the same Portuguese sentences the proposal of a pack uses; English passes through
+
+    preview = preview_pt.localize_preview(npdev_pack_sheet.plain_preview(pack, previous, report), language)
     pack_id = pack["pack"]
     return {
         "packId": pack_id,
@@ -91,12 +96,12 @@ def summary_of(pack: dict, previous: dict | None, report: dict | None, checkout:
         "warnings": [w["text"] for w in preview["warnings"]],
         "changes": [f"{f.get('classification')}: {f.get('message')}" for f in (report or {}).get("findings") or []],
         "catalog": str(checkout),
-        "public": "Anyone on the internet will be able to see and use this part.",
+        "public": PUBLIC_PT if preview_pt.is_portuguese(language) else "Anyone on the internet will be able to see and use this part.",
     }
 
 
 def push(cli, *, pack_dir, npr_checkout, dry_run=False, confirm_public=None, remote="origin", repository_url=None,
-         validate=None) -> dict:
+         validate=None, language: str = "English") -> dict:
     """The whole of `pack push`. Returns the JSON document the command prints (ok / pushed / committed / problems / summary)."""
     pack_dir, checkout = Path(pack_dir).expanduser().resolve(), Path(npr_checkout).expanduser().resolve()
     if not (checkout / ".git").exists():
@@ -109,7 +114,7 @@ def push(cli, *, pack_dir, npr_checkout, dry_run=False, confirm_public=None, rem
         pack, previous, problems, report = check_pack(cli, pack_dir, checkout, Path(tmp), validate)
         if pack is None or problems:
             return _fail(problems, error="checks-failed")
-        summary = summary_of(pack, previous, report, checkout)
+        summary = summary_of(pack, previous, report, checkout, language)
     pack_id, version = pack["pack"], pack["version"]
     needed = f"{pack_id}@{version}"
     base = {"packId": pack_id, "version": version, "summary": summary, "confirmWith": needed}
@@ -146,7 +151,8 @@ def push(cli, *, pack_dir, npr_checkout, dry_run=False, confirm_public=None, rem
 
 def main(cli, args: argparse.Namespace) -> int:
     document = push(cli, pack_dir=args.pack_dir, npr_checkout=args.npr_checkout, dry_run=args.dry_run,
-                    confirm_public=args.confirm_public, remote=args.remote, repository_url=args.repository_url)
+                    confirm_public=args.confirm_public, remote=args.remote, repository_url=args.repository_url,
+                    language=getattr(args, "language", None) or "English")
     if getattr(args, "json", False):
         print(json.dumps(document, indent=2, ensure_ascii=False))
     else:

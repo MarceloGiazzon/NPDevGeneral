@@ -216,6 +216,9 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                         .replace("/*@stdlib-table*/[]/*@end*/", com.npdev.dsl.v1.expr.StdlibRegistry.functionsJson()));
         // INT-9: zero-dependency .xlsx writer/reader for the grid's Export Excel / Import dialog.
         // Static (no model data); loaded by the business UI index before app.js.
+        // REG-349: the platform text catalogue lookup every page loads before its own script.
+        writer.writeRelative("src/main/resources/static/npdev-i18n.js",
+                templates.render("npdev-i18n.js.mustache", java.util.Map.of()));
         writer.writeRelative("src/main/resources/static/npdev-xlsx.js",
                 templates.render("npdev-xlsx.js.mustache", java.util.Map.of()));
         if (conceptsByName.containsKey(MENU_CONCEPT_NAME)) {
@@ -253,7 +256,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             }
             String stringsJson;
             try {
-                stringsJson = OBJECT_MAPPER.writeValueAsString(model.getSettings().getStrings());
+                stringsJson = OBJECT_MAPPER.writeValueAsString(UiStrings.appStrings(model));
             } catch (com.fasterxml.jackson.core.JsonProcessingException ignored) {
                 stringsJson = "{}";
             }
@@ -266,6 +269,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             // Move 6 Move A: the app's full resolved string catalogue (platform English defaults
             // merged with any backOffice.strings overrides) -- see CompiledSettings/PlatformStrings.
             ctx.put("stringsJson", stringsJson);
+            // REG-349: the whole catalogue (every language), so the page follows the visitor's language.
+            ctx.put("i18nJson", UiStrings.catalogueJson(model));
             writer.writeRelative(
                     "src/main/resources/static/npdev-workbench/" + panel.name() + ".html",
                     templates.render("workbench-page.html.mustache", ctx));
@@ -294,6 +299,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                 "/npdev-display.js",
                 "/npdev-a11y.css",
                 "/themes/index.json",
+                "/npdev-i18n.js",
                 "/npdev-xlsx.js",
                 "/npdev-manifest.json",
                 "/npdev-icon-192.png",
@@ -493,12 +499,13 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         // The shell carries no model data (see shellCtx), so its own chrome strings travel here:
         // PlatformStrings defaults (English) with the model's backOffice.strings merged on top.
         if (model != null && model.getSettings() != null) {
-            root.put("strings", model.getSettings().getStrings());
+            root.put("strings", UiStrings.appStrings(model));
         }
         // UI-8: the languages the model declares labels for (drives the top-bar language switch) and the
         // shell chrome catalogue per language. `strings` above stays for old shells / "Auto".
         root.put("locales", declaredLocales(model));
         root.put("stringsByLocale", stringsByLocale(model));
+        root.put("defaultLanguage", UiStrings.appLanguage(model));
 
         GuidePageDefaults.Result guidePages = GuidePageDefaults.withBuiltins(model == null ? List.of() : model.getGuidePages());
         Set<String> knownGuidePageNames = new LinkedHashSet<>();
@@ -964,6 +971,12 @@ public final class BusinessUiEmitter extends AbstractEmitter {
      * the Store/Box View sections already fetch their own data on demand.
      */
     private static List<Map<String, Object>> panelNodes(CompiledModel model, Set<String> knownGuidePageNames) {
+        Map<String, String> platformActionLabelKeys = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : UiStrings.appStrings(model).entrySet()) {
+            if (entry.getKey().startsWith("action.")) {
+                platformActionLabelKeys.putIfAbsent(entry.getValue(), entry.getKey());
+            }
+        }
         List<Map<String, Object>> panels = new ArrayList<>();
         if (model == null) {
             return panels;
@@ -1008,6 +1021,12 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                 Map<String, Object> actionNode = new LinkedHashMap<>();
                 actionNode.put("name", action.name());
                 actionNode.put("label", action.label() == null || action.label().isBlank() ? action.name() : action.label());
+                // REG-349: a label the compiler baked from the platform catalogue (action.new/save/delete/...) carries its id, so
+                // the browser can show it in the visitor's language instead of the app's generation-time one.
+                String platformLabelKey = platformActionLabelKeys.get(action.label());
+                if (platformLabelKey != null) {
+                    actionNode.put("labelKey", platformLabelKey);
+                }
                 actionNode.put("binding", action.binding());
                 actionNode.put("visibleWhen", action.visibleWhen() == null ? "" : action.visibleWhen());
                 actionNode.put("enabledWhen", action.enabledWhen() == null ? "" : action.enabledWhen());
@@ -1134,19 +1153,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
      * model's backOffice.strings overrides layered onto the one matching backOffice.locale.
      */
     static Map<String, Map<String, String>> stringsByLocale(CompiledModel model) {
-        Map<String, String> en = new LinkedHashMap<>(PlatformStrings.DEFAULTS);
-        en.putAll(PlatformStrings.localeDefaults("en"));
-        Map<String, String> pt = new LinkedHashMap<>(PlatformStrings.DEFAULTS);
-        pt.putAll(PlatformStrings.localeDefaults("pt"));
-        if (model != null && model.getSettings() != null) {
-            String locale = model.getSettings().getLocale();
-            boolean portuguese = locale != null && locale.trim().toLowerCase(Locale.ROOT).startsWith("pt");
-            (portuguese ? pt : en).putAll(model.getSettings().getStrings());
-        }
-        Map<String, Map<String, String>> byLocale = new LinkedHashMap<>();
-        byLocale.put("en", en);
-        byLocale.put("pt", pt);
-        return byLocale;
+        return UiStrings.byLocale(model);
     }
 
     private static String blankToNull(String value) {

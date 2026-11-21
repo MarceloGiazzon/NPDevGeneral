@@ -203,6 +203,7 @@ try {
         "theme-switch-verify-routine.json"        = @{}
         "theme-a11y-dark-verify-routine.json"          = @{}
         "theme-a11y-high-contrast-verify-routine.json" = @{}
+        "i18n-pt-verify-routine.json"                  = @{}  # REG-349: leaves the profile as found
     }
     $routineOrder = @(
         "list-verify-routine.json",
@@ -215,7 +216,8 @@ try {
         "selection-tools-verify-routine.json",
         "theme-switch-verify-routine.json",
         "theme-a11y-dark-verify-routine.json",
-        "theme-a11y-high-contrast-verify-routine.json"
+        "theme-a11y-high-contrast-verify-routine.json",
+        "i18n-pt-verify-routine.json"
     )
     $routineDir = Join-Path $repoRoot "NPDevSamples\scripts\browser\browser-routines"
     $evidenceDir = Join-Path (Join-Path $outputRoot "RunOutput") "browser"

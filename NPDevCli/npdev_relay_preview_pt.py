@@ -64,7 +64,7 @@ SENSITIVE_PT = {"marked as sensitive": "marcado como sensível", "no longer mark
 PACK_CHANGE_PT = {"ADDITIVE": "algo novo", "BREAKING": "algo removido ou mudado em que os apps podem se apoiar", "PATCH": "um ajuste pequeno"}
 PACK_KIND_PT = {"ADDITIVE": "Novidade", "BREAKING": "Atenção, pode quebrar apps", "PATCH": "Ajuste"}
 PACK_WHO_PT = {"anyone": "qualquer pessoa conectada", "nobody": "ninguém",
-               "rule": "só as pessoas que uma regra permite (por exemplo, o dono do registro)"}
+               "rule": "quem uma regra permite", "owner": "quem é dono de cada registro"}
 
 # Every preview line and warning, by the CLI's own code / family. Same placeholders as the English templates.
 TEMPLATES_PT = {
@@ -100,6 +100,7 @@ TEMPLATES_PT = {
     "PACK_NEEDS": "Pede ao app que o usar: {names_text}.",
     "PACK_CHANGE": "{kind_text}: {message}",
     "PACK_MORE": "...e mais {count} {what}.",
+    "PACK_TEXTS_REWORDED": "{texts_text} (só rótulos ou textos de ajuda).",
     "PACK_BREAKING": "Esta versão remove ou muda algo em que os apps que já usam o pacote podem se apoiar: eles vão precisar de uma atualização.",
     "COULD_NOT_EXPRESS": "A IA não conseguiu fazer esta parte: {text}",
 }
@@ -197,6 +198,9 @@ def _line_text(code: str, p: dict):
         return template.format(names_text=_join(p["names"]))
     if code == "PACK_CHANGE":
         return template.format(kind_text=PACK_KIND_PT.get(p.get("classification"), "Mudança"), message=p["message"])
+    if code == "PACK_TEXTS_REWORDED":
+        count = int(p["count"])
+        return template.format(texts_text="1 texto foi reescrito" if count == 1 else f"{count} textos foram reescritos")
     if code == "PACK_MORE":
         what = "tipos de registro" if p.get("key") == "concepts" else "mudanças"
         return template.format(count=p["count"], what=what)
@@ -204,6 +208,8 @@ def _line_text(code: str, p: dict):
 
 
 def _who_pt(kind: str, roles) -> str:
+    if kind == "roles+owner" and roles:
+        return f"{_join(roles)} e quem é dono de cada registro"
     return _join(roles) if kind == "roles" and roles else PACK_WHO_PT.get(kind, kind)
 
 

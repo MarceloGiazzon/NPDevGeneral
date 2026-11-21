@@ -1,0 +1,4 @@
+{
+  "locales": ["en", "pt"],
+  "fragments": ["app", "admin", "panels", "views", "shell", "workbench", "pages", "experience", "common"]
+}

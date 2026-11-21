@@ -79,6 +79,16 @@ def _t(template: str, **values) -> str:
     return Template(template).substitute(**values)
 
 
+def _language(p: dict, values: dict, pack: bool = False) -> str:
+    """The language block. For any language but English it also asks for the sentences of npdev-submission.json (assumptions, security
+    changes, what could not be expressed) in that language: the Manager shows them inside a sentence of its own, and an English line in
+    a Portuguese frame reads as a mistake. English prompts stay byte-identical to the measured ones."""
+    text = _t(p["pack"]["language"] if pack else p["language"], **values)
+    if str(values.get("language", "")).strip().lower() != "english" and p.get("languageSubmission"):
+        text += " " + _t(p["languageSubmission"], **values)
+    return text
+
+
 def _wrap(p: dict, code: str, rnd: int, body: str) -> str:
     return "\n\n".join([_t(p["header"], code=code, round=rnd), body.strip(), _t(p["footer"], code=code, round=rnd)]) + "\n"
 
@@ -99,7 +109,7 @@ def compose_round1(p: dict, *, code: str, intent: str, ask: str, language: str, 
         # shared authoring knowledge; the language, interview and knowledge parts are the same ones an app gets.
         parts = [
             _t(p["pack"]["formatContract"], **values),
-            _t(p["language"], **values),
+            _language(p, values, pack=True),
             _t(p["interview"]["on" if interview else "off"], **values),
             _t(p["knowledgeHeading"], **values),
             _t(p["intent"]["pack"], **values),
@@ -108,7 +118,7 @@ def compose_round1(p: dict, *, code: str, intent: str, ask: str, language: str, 
         return _wrap(p, code, 1, "\n\n".join(parts))
     parts = [
         _t(p["formatContract"], **values),
-        _t(p["language"], **values),
+        _language(p, values),
         _t(p["interview"]["on" if interview else "off"], **values),
         _t(p["knowledgeHeading"], **values),
         _t(p["intent"][intent], **values),
@@ -160,7 +170,7 @@ def compose_fresh_chat(p: dict, *, code: str, rnd: int, ask: str, language: str,
     if intent == "pack":
         parts = [
             _t(p["pack"]["formatContract"], **values),
-            _t(p["language"], **values),
+            _language(p, values, pack=True),
             _t(p["interview"]["off"], **values),
             _t(p["knowledgeHeading"], **values),
             _t(p["pack"]["freshChat"], **values),
@@ -169,7 +179,7 @@ def compose_fresh_chat(p: dict, *, code: str, rnd: int, ask: str, language: str,
     else:
         parts = [
             _t(p["formatContract"], **values),
-            _t(p["language"], **values),
+            _language(p, values),
             _t(p["interview"]["off"], **values),
             _t(p["knowledgeHeading"], **values),
             _t(p["freshChat"], **values),

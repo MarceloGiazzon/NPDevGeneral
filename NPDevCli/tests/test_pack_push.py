@@ -196,6 +196,14 @@ class ProbeStagingTests(unittest.TestCase):
             self.assertEqual(model["provides"]["roleBindings"], {"boss": "PROBE_BOSS"})
             self.assertEqual(model["propertyScopes"], [{"name": "tenant"}])
 
+    def test_the_probes_own_concept_is_opened_so_a_pack_with_roles_is_not_refused_for_it(self):
+        # Found on the owner's real round (REG-334, 2026-11-20): a pack declaring roles was answered with "Concept Probe has no
+        # read/write rule and roles exist" -- a problem in the relay's own probe, which no chat AI can fix.
+        import npdev_relay_pack as relay_pack
+
+        probe = next(c for c in relay_pack.probe_model("solo")["concepts"] if c["name"] == "Probe")
+        self.assertEqual(probe["access"], {"read": "true", "write": "true"})
+
     def test_a_pack_with_no_dependencies_gets_the_plain_probe_and_no_lock(self):
         import npdev_relay_pack as relay_pack
 

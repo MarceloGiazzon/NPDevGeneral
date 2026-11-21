@@ -65,7 +65,7 @@ public class BusinessUiEmitterListUxTest {
         String js = emitAppJs();
         assertFalse(js.contains("Delete this record?"));
         assertTrue(js.contains("function recordDisplayLabel(concept, record)"));
-        assertTrue(js.contains("window.confirm(\"Delete \\\"\" + label + \"\\\"?\")"));
+        assertTrue(js.contains("window.confirm(platformString(\"app.row.confirmDelete\", \"Delete \\\"{label}\\\"?\", { label: label }))"));
     }
 
     @Test
@@ -74,7 +74,7 @@ public class BusinessUiEmitterListUxTest {
         assertTrue(js.contains("const FILTER_DEBOUNCE_MS = 300;"));
         assertTrue(js.contains("function scheduleFilterReload(concept, delay)"));
         assertTrue(js.contains("addEventListener(\"search\""), "native clear (x) must reload");
-        assertTrue(js.contains("button(\"Clear\", \"\""), "the toolbar's one Clear button resets every filter");
+        assertTrue(js.contains("button(platformString(\"app.toolbar.clear\", \"Clear\"), \"\""), "the toolbar's one Clear button resets every filter");
         assertFalse(js.contains("\"Clear filters\""), "no second clear control: the golden routines click Clear");
         assertTrue(js.contains("dataset.filterKey"), "focus must survive the re-render a reload causes");
     }

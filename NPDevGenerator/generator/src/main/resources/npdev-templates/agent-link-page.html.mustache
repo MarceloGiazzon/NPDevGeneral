@@ -45,25 +45,27 @@
   .hidden { display: none; }
   .countdown { font-size: .8rem; color: var(--muted); }
 </style>
+<script src="/npdev-i18n.js"></script>
+<script>NPDevI18n.use({{{i18nJson}}});</script>
 </head>
-<body>
+<body data-app-name="{{appName}}">
 <main>
-  <h1>Agent access</h1>
-  <p class="sub">Connect a chat app or an AI coding agent to your account on {{appName}}.</p>
+  <h1 data-i18n="pages.agentLink.heading">Agent access</h1>
+  <p class="sub" id="subLine">Connect a chat app or an AI coding agent to your account on {{appName}}.</p>
 
   <section class="card" id="telegramCard">
-    <h2>Telegram</h2>
-    <p class="note" id="telegramIntro">Connect your Telegram account so you can chat with this app.</p>
+    <h2>Telegram</h2><!-- i18n-ignore: product name -->
+    <p class="note" id="telegramIntro" data-i18n="pages.agentLink.telegramIntro">Connect your Telegram account so you can chat with this app.</p>
     <div id="telegramLinked" class="hidden">
-      <div class="row"><span class="pill">✓ Connected<button id="telegramUnlink" type="button" title="Unlink">✕</button></span></div>
+      <div class="row"><span class="pill"><span data-i18n="pages.agentLink.connected">✓ Connected</span><button id="telegramUnlink" type="button" title="Unlink" data-i18n-attrs="title=pages.agentLink.unlink">✕</button></span></div>
     </div>
     <div id="telegramConnect">
-      <button class="primary" id="telegramConnectBtn" type="button">Connect Telegram</button>
+      <button class="primary" id="telegramConnectBtn" type="button" data-i18n="pages.agentLink.connectTelegram">Connect Telegram</button>
       <div id="telegramCodeBlock" class="hidden">
-        <p class="note">Your code (valid 10 minutes):</p>
+        <p class="note" data-i18n="pages.agentLink.yourCode">Your code (valid 10 minutes):</p>
         <div class="code" id="telegramCode">--------</div>
         <div class="row">
-          <a id="telegramDeepLink" class="primary" href="#" target="_blank" rel="noopener">Open Telegram</a>
+          <a id="telegramDeepLink" class="primary" href="#" target="_blank" rel="noopener" data-i18n="pages.agentLink.openTelegram">Open Telegram</a>
           <span class="countdown" id="telegramCountdown"></span>
         </div>
       </div>
@@ -72,16 +74,16 @@
   </section>
 
   <section class="card" id="whatsappCard">
-    <h2>WhatsApp</h2>
-    <p class="note" id="whatsappIntro">Connect your WhatsApp account so you can chat with this app.</p>
+    <h2>WhatsApp</h2><!-- i18n-ignore: product name -->
+    <p class="note" id="whatsappIntro" data-i18n="pages.agentLink.whatsappIntro">Connect your WhatsApp account so you can chat with this app.</p>
     <div id="whatsappLinked" class="hidden">
-      <div class="row"><span class="pill">✓ Connected<button id="whatsappUnlink" type="button" title="Unlink">✕</button></span></div>
+      <div class="row"><span class="pill"><span data-i18n="pages.agentLink.connected">✓ Connected</span><button id="whatsappUnlink" type="button" title="Unlink" data-i18n-attrs="title=pages.agentLink.unlink">✕</button></span></div>
     </div>
     <div id="whatsappConnect">
-      <button class="primary" id="whatsappConnectBtn" type="button">Connect WhatsApp</button>
+      <button class="primary" id="whatsappConnectBtn" type="button" data-i18n="pages.agentLink.connectWhatsapp">Connect WhatsApp</button>
       <div id="whatsappCodeBlock" class="hidden">
-        <p class="note">Send this message to the number shown below:</p>
-        <div class="code" id="whatsappCommand">link --------</div>
+        <p class="note" data-i18n="pages.agentLink.sendMessage">Send this message to the number shown below:</p>
+        <div class="code" id="whatsappCommand">link --------</div><!-- i18n-ignore: code placeholder -->
         <p class="note" id="whatsappPhone"></p>
         <span class="countdown" id="whatsappCountdown"></span>
       </div>
@@ -90,19 +92,19 @@
   </section>
 
   <section class="card">
-    <h2>MCP (Claude Code / Claude Desktop / any MCP agent)</h2>
-    <p class="note">Create a token this app's MCP endpoint accepts as your own login. Shown once -- copy it now.</p>
-    <button class="primary" id="mcpCreateBtn" type="button">Create MCP token</button>
+    <h2 data-i18n="pages.agentLink.mcpHeading">MCP (Claude Code / Claude Desktop / any MCP agent)</h2>
+    <p class="note" data-i18n="pages.agentLink.mcpNote">Create a token this app's MCP endpoint accepts as your own login. Shown once -- copy it now.</p>
+    <button class="primary" id="mcpCreateBtn" type="button" data-i18n="pages.agentLink.createMcpToken">Create MCP token</button>
     <div id="mcpResult" class="hidden">
-      <p class="note">Token:</p>
+      <p class="note" data-i18n="pages.agentLink.token">Token:</p>
       <div class="token-box" id="mcpToken"></div>
-      <button class="secondary" id="mcpCopyToken" type="button">Copy token</button>
-      <p class="note">Add to Claude Code:</p>
+      <button class="secondary" id="mcpCopyToken" type="button" data-i18n="pages.agentLink.copyToken">Copy token</button>
+      <p class="note" data-i18n="pages.agentLink.addToClaudeCode">Add to Claude Code:</p>
       <div class="cmd-box" id="mcpCommand"></div>
-      <button class="secondary" id="mcpCopyCommand" type="button">Copy command</button>
-      <p class="note">Or add to Claude Desktop (Settings &gt; Developer &gt; Edit Config, merge into <code>claude_desktop_config.json</code>, restart; needs Node.js for <code>npx</code>):</p>
+      <button class="secondary" id="mcpCopyCommand" type="button" data-i18n="pages.agentLink.copyCommand">Copy command</button>
+      <p class="note" data-i18n="pages.agentLink.addToClaudeDesktop">Or add to Claude Desktop (Settings &gt; Developer &gt; Edit Config, merge into claude_desktop_config.json, restart; needs Node.js for npx):</p>
       <div class="cmd-box" id="mcpDesktopConfig" style="white-space:pre"></div>
-      <button class="secondary" id="mcpCopyDesktopConfig" type="button">Copy config</button>
+      <button class="secondary" id="mcpCopyDesktopConfig" type="button" data-i18n="pages.agentLink.copyConfig">Copy config</button>
     </div>
     <p id="mcpError" class="banner error hidden"></p>
   </section>
@@ -111,6 +113,13 @@
 <script>
 (function () {
   "use strict";
+  // REG-349: the page's static text is translated once the DOM is ready; dynamic messages call NPDevI18n.t directly.
+  var APP_NAME = document.body.getAttribute("data-app-name");
+  document.addEventListener("DOMContentLoaded", function () {
+    NPDevI18n.apply(document);
+    document.getElementById("subLine").textContent = NPDevI18n.t("pages.agentLink.intro", "Connect a chat app or an AI coding agent to your account on {appName}.", { appName: APP_NAME });
+  });
+  document.title = NPDevI18n.t("pages.agentLink.title", "Agent access — {appName}", { appName: APP_NAME });
   var TOKEN_KEYS = ["npdev.shell.token", "npdev.businessUi.apiKey"];
   function currentToken() {
     for (var i = 0; i < TOKEN_KEYS.length; i++) {
@@ -148,7 +157,9 @@
     var expiresAt = new Date(expiresAtIso).getTime();
     function tick() {
       var remaining = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
-      el.textContent = remaining > 0 ? ("expires in " + remaining + "s") : "expired -- create a new one";
+      el.textContent = remaining > 0
+        ? NPDevI18n.t("pages.agentLink.expiresIn", "expires in {seconds}s", { seconds: remaining })
+        : NPDevI18n.t("pages.agentLink.expired", "expired -- create a new one");
       if (remaining > 0) { setTimeout(tick, 1000); }
     }
     tick();
@@ -179,7 +190,7 @@
 
   if (!token) {
     ["telegramError", "whatsappError", "mcpError"].forEach(function (id) {
-      showError(id, "Sign in first to connect agent access.");
+      showError(id, NPDevI18n.t("pages.agentLink.signInFirst", "Sign in first to connect agent access."));
     });
   } else {
     refreshLinks();
@@ -188,8 +199,8 @@
 
     document.getElementById("telegramConnectBtn").addEventListener("click", function () {
       authedFetch("/api/agent/link-code", { method: "POST" }).then(function (res) {
-        if (res.status !== 200) { showError("telegramError", "Could not create a code."); return; }
-        if (!res.body.telegram) { showError("telegramError", "Telegram is not configured on this app."); return; }
+        if (res.status !== 200) { showError("telegramError", NPDevI18n.t("pages.agentLink.codeFailed", "Could not create a code.")); return; }
+        if (!res.body.telegram) { showError("telegramError", NPDevI18n.t("pages.agentLink.telegramNotConfigured", "Telegram is not configured on this app.")); return; }
         document.getElementById("telegramCode").textContent = res.body.code;
         document.getElementById("telegramDeepLink").href = res.body.telegram.deepLink;
         document.getElementById("telegramCodeBlock").classList.remove("hidden");
@@ -199,10 +210,10 @@
 
     document.getElementById("whatsappConnectBtn").addEventListener("click", function () {
       authedFetch("/api/agent/link-code", { method: "POST" }).then(function (res) {
-        if (res.status !== 200) { showError("whatsappError", "Could not create a code."); return; }
-        if (!res.body.whatsapp) { showError("whatsappError", "WhatsApp is not configured on this app."); return; }
+        if (res.status !== 200) { showError("whatsappError", NPDevI18n.t("pages.agentLink.codeFailed", "Could not create a code.")); return; }
+        if (!res.body.whatsapp) { showError("whatsappError", NPDevI18n.t("pages.agentLink.whatsappNotConfigured", "WhatsApp is not configured on this app.")); return; }
         document.getElementById("whatsappCommand").textContent = res.body.whatsapp.linkCommand;
-        document.getElementById("whatsappPhone").textContent = "Number: " + res.body.whatsapp.phoneDisplay;
+        document.getElementById("whatsappPhone").textContent = NPDevI18n.t("pages.agentLink.number", "Number: {number}", { number: res.body.whatsapp.phoneDisplay });
         document.getElementById("whatsappCodeBlock").classList.remove("hidden");
         startCountdown("whatsappCountdown", res.body.expiresAt);
       });
@@ -210,7 +221,7 @@
 
     document.getElementById("mcpCreateBtn").addEventListener("click", function () {
       authedFetch("/api/agent/mcp-token", { method: "POST" }).then(function (res) {
-        if (res.status !== 200) { showError("mcpError", "Could not create a token."); return; }
+        if (res.status !== 200) { showError("mcpError", NPDevI18n.t("pages.agentLink.tokenFailed", "Could not create a token.")); return; }
         document.getElementById("mcpToken").textContent = res.body.token;
         document.getElementById("mcpCommand").textContent = res.body.claudeCodeCommand;
         document.getElementById("mcpDesktopConfig").textContent = res.body.claudeDesktopConfig || "";

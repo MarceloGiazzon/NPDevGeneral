@@ -215,6 +215,13 @@ def _plural(count: int, key: str) -> str:
     return f"{count} {one if count == 1 else many}"
 
 
+PRESENTATION_SUFFIX = "(presentation text only)"     # the message PackDiffEngine gives a wording-only change
+
+
+def _plural_texts(count: int) -> str:
+    return "1 text was" if count == 1 else f"{count} texts were"
+
+
 def _words(items) -> str:
     items = [str(i) for i in items]
     return items[0] if len(items) == 1 else (", ".join(items[:-1]) + " and " + items[-1] if items else "")
@@ -235,12 +242,18 @@ def who_kind(expression) -> tuple[str, list[str]]:
     if text == "false":
         return "nobody", []
     roles = roles_in(text)
-    return ("roles", roles) if roles else ("rule", [])
+    owner = bool(re.search(r"\$user\.id\b", text))     # `field == $user.id`: the person the record belongs to
+    if roles and owner:
+        return "roles+owner", roles
+    if roles:
+        return "roles", roles
+    return ("owner", []) if owner else ("rule", [])
 
 
 def _who_en(kind: str, roles: list[str]) -> str:
-    return {"anyone": "anyone signed in", "nobody": "nobody", "rule": "only the people a rule allows (for example the owner of the record)",
-            "roles": _words(roles)}[kind]
+    return {"anyone": "anyone signed in", "nobody": "nobody", "rule": "only the people a rule allows",
+            "owner": "whoever owns each record", "roles": _words(roles),
+            "roles+owner": f"{_words(roles)} and whoever owns each record"}[kind]
 
 
 def _line(code: str, text: str, **params) -> dict:
@@ -253,7 +266,9 @@ def plain_preview(pack: dict, base: dict | None = None, gate: dict | None = None
     lines: list[dict] = []
     warnings: list[dict] = []
     concepts = _list(pack, "concepts")
-    totals = {"concepts": len(concepts), "fields": sum(len([f for f in c.get("fields", []) if isinstance(f, dict)]) for c in concepts)}
+    # The fields a person sees: the internal id is not counted, so the total agrees with each kind-of-record line below it.
+    totals = {"concepts": len(concepts),
+              "fields": sum(len([f for f in c.get("fields", []) if isinstance(f, dict) and not f.get("id")]) for c in concepts)}
     for key in COUNTED[2:]:
         totals[key] = len(pack.get(key) or []) if isinstance(pack.get(key), list) else 0
     counts = [[key, totals[key]] for key in COUNTED if totals[key]]
@@ -297,6 +312,11 @@ def plain_preview(pack: dict, base: dict | None = None, gate: dict | None = None
     if needs:
         lines.append(_line("PACK_NEEDS", f"It asks the app that uses it to provide: {_words(needs)}.", names=needs))
     findings = [f for f in (gate or {}).get("findings") or [] if isinstance(f, dict) and f.get("message")]
+    # Wording-only changes (labels, help, placeholders...) are one plain line, not one raw path per text.
+    wording = [f for f in findings if str(f["message"]).endswith(PRESENTATION_SUFFIX)]
+    if wording:
+        findings = [f for f in findings if f not in wording]
+        lines.append(_line("PACK_TEXTS_REWORDED", f"{_plural_texts(len(wording))} reworded (labels or help text only).", count=len(wording)))
     for finding in findings[:SHOWN_CHANGES]:
         lines.append(_line("PACK_CHANGE", str(finding["message"]), classification=str(finding.get("classification") or "PATCH"),
                            message=str(finding["message"])))

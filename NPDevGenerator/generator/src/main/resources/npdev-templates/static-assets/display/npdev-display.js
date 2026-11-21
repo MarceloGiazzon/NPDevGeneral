@@ -229,13 +229,38 @@
 
   // ----------------------------------------------------------------------------------- the menu
 
-  var DEFAULT_LABELS = {
-    button: "Display", title: "Display", theme: "Theme", textSize: "Text size", motion: "Motion",
-    motionSystem: "Follow my device", motionReduce: "Reduce", focus: "Keyboard focus", focusAuto: "Normal",
-    focusAlways: "Always visible", spacing: "Text spacing", spacingNormal: "Normal", spacingWide: "Wide",
-    links: "Links", linksAuto: "Normal", linksUnderline: "Always underlined", cvd: "Status colours",
-    cvdOff: "Normal", cvdSafe: "Colour-blind safe", reset: "Reset", close: "Close"
+  // REG-349: the menu's texts are catalogue ids (shell.display.*); the English text is the call's own fallback, so a
+  // page that never loaded /npdev-i18n.js (or has no catalogue) still reads right.
+  var NPDevI18n = {
+    t: function (id, english, vars) { return root.NPDevI18n ? root.NPDevI18n.t(id, english, vars) : english; }
   };
+
+  function label(k) {
+    switch (k) {
+      case "button": return NPDevI18n.t("shell.display.button", "Display");
+      case "title": return NPDevI18n.t("shell.display.title", "Display");
+      case "theme": return NPDevI18n.t("shell.display.theme", "Theme");
+      case "textSize": return NPDevI18n.t("shell.display.textSize", "Text size");
+      case "motion": return NPDevI18n.t("shell.display.motion", "Motion");
+      case "motionSystem": return NPDevI18n.t("shell.display.motionSystem", "Follow my device");
+      case "motionReduce": return NPDevI18n.t("shell.display.motionReduce", "Reduce");
+      case "focus": return NPDevI18n.t("shell.display.focus", "Keyboard focus");
+      case "focusAuto": return NPDevI18n.t("shell.display.focusAuto", "Normal");
+      case "focusAlways": return NPDevI18n.t("shell.display.focusAlways", "Always visible");
+      case "spacing": return NPDevI18n.t("shell.display.spacing", "Text spacing");
+      case "spacingNormal": return NPDevI18n.t("shell.display.spacingNormal", "Normal");
+      case "spacingWide": return NPDevI18n.t("shell.display.spacingWide", "Wide");
+      case "links": return NPDevI18n.t("shell.display.links", "Links");
+      case "linksAuto": return NPDevI18n.t("shell.display.linksAuto", "Normal");
+      case "linksUnderline": return NPDevI18n.t("shell.display.linksUnderline", "Always underlined");
+      case "cvd": return NPDevI18n.t("shell.display.cvd", "Status colours");
+      case "cvdOff": return NPDevI18n.t("shell.display.cvdOff", "Normal");
+      case "cvdSafe": return NPDevI18n.t("shell.display.cvdSafe", "Colour-blind safe");
+      case "reset": return NPDevI18n.t("shell.display.reset", "Reset");
+      case "close": return NPDevI18n.t("shell.display.close", "Close");
+      default: return k;
+    }
+  }
 
   var MENU_CSS =
     ".np-display{position:relative;display:inline-block;margin-left:8px}" +
@@ -280,12 +305,12 @@
   }
 
   /**
-   * Builds the Display button + panel into `container`. opts: { t(key, fallback), showThemes }.
+   * Builds the Display button + panel into `container`. opts: { showThemes, showA11y }.
    * The a11y preferences are always offered; the theme picker only when the author allowed more than one theme.
    */
   function mountMenu(container, opts) {
     opts = opts || {};
-    var t = function (k) { return opts.t ? opts.t("display." + k, DEFAULT_LABELS[k]) : DEFAULT_LABELS[k]; };
+    var t = label;
     injectMenuCss();
     var wrap = root.document.createElement("span");
     wrap.className = "np-display";

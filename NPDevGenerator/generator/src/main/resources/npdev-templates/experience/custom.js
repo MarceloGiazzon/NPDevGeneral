@@ -21,7 +21,7 @@ export function registry() {
 
 /** Load /regions/<name>.js once; resolves with the registered implementation, rejects with a sentence when it is missing. */
 export function loadRegion(name, doc) {
-  if (!COMPONENT.test(String(name))) return Promise.reject(new Error("The component name is not valid."));
+  if (!COMPONENT.test(String(name))) return Promise.reject(new Error(NPDevI18n.t("experience.custom.invalidName", "The component name is not valid.")));
   const known = registry().get(name);
   if (known) return Promise.resolve(known);
   if (loading.has(name)) return loading.get(name);
@@ -29,7 +29,7 @@ export function loadRegion(name, doc) {
   const promise = new Promise((resolve, reject) => {
     const script = h("script", { src: "/regions/" + encodeURIComponent(name) + ".js" });
     script.addEventListener("load", resolve);
-    script.addEventListener("error", () => reject(new Error('The component "' + name + '" could not load (web/regions/' + name + ".js).")));
+    script.addEventListener("error", () => reject(new Error(NPDevI18n.t("experience.custom.loadFailed", "The component \"{name}\" could not load (web/regions/{name}.js).", { name }))));
     head.appendChild(script);
   }).then(() => {
     const impl = registry().get(name);
@@ -52,5 +52,5 @@ export async function render(ctx) {
     refresh: () => ctx.reload()
   });
   try { impl.mount(host, api); }
-  catch (error) { host.replaceChildren(card("error", "This component could not start", error.message)); }
+  catch (error) { host.replaceChildren(card("error", NPDevI18n.t("experience.custom.startFailed", "This component could not start"), error.message)); }
 }

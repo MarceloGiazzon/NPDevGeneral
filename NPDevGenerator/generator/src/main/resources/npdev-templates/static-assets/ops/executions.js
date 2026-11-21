@@ -38,31 +38,32 @@
   // WAITING_EVENT / STUCK (never RUNNING); unstick only STUCK.
   function actionsFor(item) {
     var actions = [];
-    if (item.status === "FAILED") actions.push({ label: "Retry", path: item.retryPath, confirm: null });
+    if (item.status === "FAILED") actions.push({ label: NPDevI18n.t("shell.common.retry", "Retry"), path: item.retryPath, confirm: null });
     if (item.status === "STUCK" || item.status === "WAITING_EVENT") {
       actions.push({
-        label: "Cancel", path: item.cancelPath,
-        confirm: "Cancel this execution for good? An awaited event will no longer resume it."
+        label: NPDevI18n.t("shell.ops.cancel", "Cancel"), path: item.cancelPath,
+        confirm: NPDevI18n.t("shell.ops.cancelConfirm", "Cancel this execution for good? An awaited event will no longer resume it.")
       });
     }
-    if (item.status === "STUCK") actions.push({ label: "Unstick", path: item.unstickPath, confirm: null });
+    if (item.status === "STUCK") actions.push({ label: NPDevI18n.t("shell.ops.unstick", "Unstick"), path: item.unstickPath, confirm: null });
     return actions;
   }
 
   function outcomeText(body) {
-    if (!body) return "done";
+    if (!body) return NPDevI18n.t("shell.ops.done", "done");
     return (body.outcome || "") + (body.message ? " - " + body.message : "");
   }
 
   function runAction(action, item) {
     if (action.confirm && !window.confirm(action.confirm)) return;
-    setMessage(action.label + " " + item.flowName + " ...", false);
+    setMessage(NPDevI18n.t("shell.ops.running", "{action} {flow} ...", { action: action.label, flow: item.flowName }), false);
     window.NPDevShell.api.post(action.path, {}).then(function (body) {
-      setMessage(action.label + ": " + outcomeText(body), false);
+      setMessage(NPDevI18n.t("shell.ops.actionResult", "{action}: {outcome}", { action: action.label, outcome: outcomeText(body) }), false);
       load();
     }).catch(function (error) {
       // A 409/404 carries the outcome body ({ outcome: NOT_RETRYABLE, message: ... }).
-      setMessage(action.label + " failed: " + outcomeText(error && error.body || { message: error && error.message }), true);
+      setMessage(NPDevI18n.t("shell.ops.actionFailed", "{action} failed: {outcome}",
+        { action: action.label, outcome: outcomeText(error && error.body || { message: error && error.message }) }), true);
       load();
     });
   }
@@ -73,7 +74,7 @@
       var empty = document.createElement("tr");
       var td = document.createElement("td");
       td.colSpan = 6;
-      td.textContent = "Nothing needs attention for this tenant.";
+      td.textContent = NPDevI18n.t("shell.ops.noAttention", "Nothing needs attention for this tenant.");
       empty.appendChild(td);
       rowsBody.appendChild(empty);
       return;
@@ -106,7 +107,7 @@
   function load() {
     var tenant = tenantInput.value.trim();
     if (!tenant) {
-      setMessage("Enter a tenant id.", true);
+      setMessage(NPDevI18n.t("shell.ops.enterTenant", "Enter a tenant id."), true);
       return;
     }
     rememberTenant(tenant);
@@ -115,13 +116,14 @@
     }).catch(function (error) {
       rowsBody.innerHTML = "";
       setMessage(error && error.status === 403
-        ? "Only the Super User can use this page."
-        : "Could not load executions: " + (error && error.message), true);
+        ? NPDevI18n.t("shell.ops.superUserOnly", "Only the Super User can use this page.")
+        : NPDevI18n.t("shell.ops.loadFailed", "Could not load executions: {message}", { message: error && error.message }), true);
     });
   }
 
   tenantInput.value = readTenant() || "default";
   loadButton.addEventListener("click", load);
   tenantInput.addEventListener("keydown", function (event) { if (event.key === "Enter") load(); });
-  if (readTenant()) load();
+  // The first load waits for the shell: it hands the language catalogue to NPDevI18n before ready() resolves.
+  if (readTenant()) window.NPDevShell.api.ready().then(load);
 })();

@@ -31,9 +31,9 @@ export function card(kind, title, text) {
     title ? h("strong", { text: title }) : null, text ? h("p", { text }) : null);
 }
 
-export const emptyCard = (screen) => card("empty", null, (screen.empty && screen.empty.text) || "Nothing here yet.");
-export const notSupportedCard = (screen) => card("notice", "Not supported yet",
-  "The \"" + screen.kind + "\" screen type is not available in this version of the app.");
+export const emptyCard = (screen) => card("empty", null, (screen.empty && screen.empty.text) || NPDevI18n.t("experience.core.nothingYet", "Nothing here yet."));
+export const notSupportedCard = (screen) => card("notice", NPDevI18n.t("experience.core.notSupportedTitle", "Not supported yet"),
+  NPDevI18n.t("experience.core.notSupportedBody", "The \"{kind}\" screen type is not available in this version of the app.", { kind: screen.kind }));
 
 // ---- text, paths, routes -----------------------------------------------------------------------------------
 export function humanize(name) {
@@ -68,13 +68,13 @@ export function resolveRoute(hash, experience, screensByName) {
   const route = parseHash(hash);
   const name = route.screen || experience.home;
   const screen = screensByName[name];
-  return screen ? { screen, id: route.id } : { error: "There is no screen called \"" + name + "\"." };
+  return screen ? { screen, id: route.id } : { error: NPDevI18n.t("experience.core.noScreen", "There is no screen called \"{name}\".", { name }) };
 }
 
 // ---- expressions (the platform's browser engine, loaded by index.html as /npdev-expr.js) -------------------
 function engine() {
   const expr = globalThis.npdev && globalThis.npdev.expr;
-  if (!expr) throw new Error("The expression engine is not loaded.");
+  if (!expr) throw new Error(NPDevI18n.t("experience.core.engineMissing", "The expression engine is not loaded."));
   return expr;
 }
 
@@ -177,8 +177,13 @@ export function relativeTime(value, now) {
   const ms = new Date(value).getTime() - now;
   if (Number.isNaN(ms)) return String(value);
   const mins = Math.round(Math.abs(ms) / 60000);
-  const span = mins < 1 ? "just now" : mins < 60 ? mins + " min" : mins < 1440 ? Math.round(mins / 60) + " h" : Math.round(mins / 1440) + " d";
-  return span === "just now" ? span : ms < 0 ? span + " ago" : "in " + span;
+  const past = ms < 0;
+  const hours = Math.round(mins / 60);
+  const days = Math.round(mins / 1440);
+  if (mins < 1) return NPDevI18n.t("experience.time.now", "just now");
+  if (mins < 60) return past ? NPDevI18n.t("experience.time.minAgo", "{n} min ago", { n: mins }) : NPDevI18n.t("experience.time.minIn", "in {n} min", { n: mins });
+  if (mins < 1440) return past ? NPDevI18n.t("experience.time.hourAgo", "{n} h ago", { n: hours }) : NPDevI18n.t("experience.time.hourIn", "in {n} h", { n: hours });
+  return past ? NPDevI18n.t("experience.time.dayAgo", "{n} d ago", { n: days }) : NPDevI18n.t("experience.time.dayIn", "in {n} d", { n: days });
 }
 
 function duration(minutes) {
@@ -210,7 +215,7 @@ export function formatValue(value, column, opts) {
       return asText(format === "date" ? d.toLocaleDateString(o.locale) : d.toLocaleString(o.locale));
     }
     default:
-      if (typeof value === "boolean") return asText(value ? "Yes" : "No");
+      if (typeof value === "boolean") return asText(value ? NPDevI18n.t("experience.core.yes", "Yes") : NPDevI18n.t("experience.core.no", "No"));
       return asText(typeof value === "object" ? JSON.stringify(value) : String(value));
   }
 }
@@ -240,11 +245,11 @@ export function coerceFormValue(raw, meta) {
   if (type === "boolean") return { value: raw === true || raw === "true" || raw === "on" };
   if (raw == null || String(raw).trim() === "") return { value: null };
   const text = String(raw).trim();
-  if (type === "integer" || type === "long") return /^-?\d+$/.test(text) ? { value: parseInt(text, 10) } : { error: "Enter a whole number." };
-  if (type === "decimal" || type === "number") return Number.isFinite(Number(text)) ? { value: Number(text) } : { error: "Enter a number." };
+  if (type === "integer" || type === "long") return /^-?\d+$/.test(text) ? { value: parseInt(text, 10) } : { error: NPDevI18n.t("experience.form.wholeNumber", "Enter a whole number.") };
+  if (type === "decimal" || type === "number") return Number.isFinite(Number(text)) ? { value: Number(text) } : { error: NPDevI18n.t("experience.form.enterNumber", "Enter a number.") };
   if (type === "datetime" || type === "instant" || type === "timestamp") {
     const d = new Date(text);
-    return Number.isNaN(d.getTime()) ? { error: "Enter a valid date and time." } : { value: d.toISOString() };
+    return Number.isNaN(d.getTime()) ? { error: NPDevI18n.t("experience.form.enterDateTime", "Enter a valid date and time.") } : { value: d.toISOString() };
   }
   return { value: text };
 }
@@ -257,7 +262,7 @@ export function validateForm(fields, raw, fieldMeta) {
     const meta = (fieldMeta || {})[f.value] || {};
     const r = coerceFormValue(raw[f.value], meta);
     if (r.error) errors[f.value] = r.error;
-    else if (r.value == null && meta.required && meta.type !== "boolean") errors[f.value] = "This field is required.";
+    else if (r.value == null && meta.required && meta.type !== "boolean") errors[f.value] = NPDevI18n.t("experience.form.required", "This field is required.");
     else values[f.value] = r.value;
   }
   return { values, errors };
@@ -284,7 +289,7 @@ export function fieldErrors(payload, knownFields) {
   const out = [];
   const known = knownFields || [];
   // the server names a flow input "$.customerEmail": drop the leading "$." before taking the first path segment
-  const push = (field, message) => { const name = String(field || "").replace(/^\$\.?/, "").split(/[.[]/)[0].trim(); if (name) out.push({ field: name, message: String(message || "Invalid value.") }); };
+  const push = (field, message) => { const name = String(field || "").replace(/^\$\.?/, "").split(/[.[]/)[0].trim(); if (name) out.push({ field: name, message: String(message || NPDevI18n.t("experience.form.invalidValue", "Invalid value.")) }); };
   if (payload && typeof payload === "object") {
     (payload.inputValidationErrors || []).forEach((e) => e && push(e.field, e.message));
     (payload.violations || []).forEach((v) => v && String(v.path || "").split(",").forEach((p) => push(p, v.message)));

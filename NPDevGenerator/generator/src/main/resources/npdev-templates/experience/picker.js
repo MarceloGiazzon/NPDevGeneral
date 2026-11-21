@@ -56,7 +56,7 @@ export async function render(ctx) {
   const searchBy = (screen.filters || []).filter((f) => typeof f === "string");
   let query = "";
   const list = h("ul", { class: "rows", role: many ? "group" : "radiogroup" });
-  const done = h("button", { type: "button", class: "btn primary", text: "Done", onclick: () => finish() });
+  const done = h("button", { type: "button", class: "btn primary", text: NPDevI18n.t("experience.picker.done", "Done"), onclick: () => finish() });
   done.disabled = true;
   const opener = ctx.id && ctx.screensByName && ctx.screensByName[ctx.id] ? ctx.id : null;
 
@@ -70,19 +70,19 @@ export async function render(ctx) {
       columns.map((col, i) => h("div", { class: i === 0 ? "cell title" : "cell" }, valueNode(formatValue(cellValue(row, col, ctx.user), col))))));
     }));
     done.disabled = chosen.size === 0;
-    if (!shown.length) list.appendChild(h("li", null, card("empty", null, "No match.")));
+    if (!shown.length) list.appendChild(h("li", null, card("empty", null, NPDevI18n.t("experience.picker.noMatch", "No match."))));
   }
   function finish() {
     const picked = [...chosen.values()].map((row) => returned(row, screen.returnMapping, idField));
     const store = storeOf(ctx);
     try { if (store) store.setItem(pickerKey(screen.name), JSON.stringify({ picked, at: ctx.clock ? ctx.clock() : Date.now() })); } catch (e) { /* storage blocked: nothing to hand back */ }
-    if (opener && ctx.go) ctx.go(buildHash(opener)); else ctx.toast("Selection kept.");
+    if (opener && ctx.go) ctx.go(buildHash(opener)); else ctx.toast(NPDevI18n.t("experience.picker.kept", "Selection kept."));
   }
 
-  if (searchBy.length) root.appendChild(h("input", { type: "search", class: "search", "aria-label": "Search", placeholder: "Search",
+  if (searchBy.length) root.appendChild(h("input", { type: "search", class: "search", "aria-label": NPDevI18n.t("experience.picker.search", "Search"), placeholder: NPDevI18n.t("experience.picker.search", "Search"),
     oninput: (e) => { query = text(e.target && e.target.value).trim().toLowerCase(); paint(); } }));
   paint();
   root.appendChild(list);
   root.appendChild(h("div", { class: "actions" }, done,
-    opener ? h("button", { type: "button", class: "btn secondary", text: "Cancel", onclick: () => ctx.go && ctx.go(buildHash(opener)) }) : null));
+    opener ? h("button", { type: "button", class: "btn secondary", text: NPDevI18n.t("experience.picker.cancel", "Cancel"), onclick: () => ctx.go && ctx.go(buildHash(opener)) }) : null));
 }

@@ -62,54 +62,56 @@
   .pw-toggle:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); }
   button[aria-busy="true"] { cursor: progress; }
 </style>
+<script src="/npdev-i18n.js"></script>
+<script>NPDevI18n.use({{{i18nJson}}});</script>
 <script src="/npdev-display.js"></script>
 <script>if (window.NPDevDisplay) { NPDevDisplay.boot(); }</script>
 </head>
-<body>
+<body data-app-name="{{appName}}">
 <main class="card">
   <h1>{{appName}}</h1>
 
   <div class="tabs" role="tablist">
-    <button id="tabSignin" class="tab active" type="button" role="tab" aria-selected="true">Sign in</button>
-    <button id="tabSignup" class="tab" type="button" role="tab" aria-selected="false">Create account</button>
+    <button id="tabSignin" class="tab active" type="button" role="tab" aria-selected="true" data-i18n="pages.login.signIn">Sign in</button>
+    <button id="tabSignup" class="tab" type="button" role="tab" aria-selected="false" data-i18n="pages.login.createAccount">Create account</button>
   </div>
 
   <form id="signinForm" class="pane" autocomplete="on">
-    <label>Username
+    <label><span data-i18n="pages.login.username">Username</span>
       <input id="username" name="username" autocomplete="username" required>
     </label>
-    <label>Password
+    <label><span data-i18n="pages.login.password">Password</span>
       <input id="password" name="password" type="password" autocomplete="current-password" required>
     </label>
-    <button class="primary" type="submit">Sign in</button>
-    <p class="note" style="margin-top:.9rem"><a href="/reset-password.html">Forgot password?</a></p>
+    <button class="primary" type="submit" data-i18n="pages.login.signIn">Sign in</button>
+    <p class="note" style="margin-top:.9rem"><a href="/reset-password.html" data-i18n="pages.login.forgotPassword">Forgot password?</a></p>
   </form>
 
   <form id="mfaForm" class="pane hidden" autocomplete="off">
-    <p class="note" id="mfaNote">Enter the 6-digit code from your authenticator app.</p>
-    <label><span id="mfaLabel">Authentication code</span>
+    <p class="note" id="mfaNote" data-i18n="pages.login.mfaNote">Enter the 6-digit code from your authenticator app.</p>
+    <label><span id="mfaLabel" data-i18n="pages.login.mfaLabel">Authentication code</span>
       <input id="mfaCode" name="mfaCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required>
     </label>
-    <button class="primary" type="submit">Verify</button>
-    <p class="note" style="margin-top:.9rem"><a href="#" id="mfaToggle">Use a recovery code</a></p>
+    <button class="primary" type="submit" data-i18n="pages.login.verify">Verify</button>
+    <p class="note" style="margin-top:.9rem"><a href="#" id="mfaToggle" data-i18n="pages.login.useRecoveryCode">Use a recovery code</a></p>
   </form>
 
   <section id="signupPane" class="pane hidden">
     <form id="signupForm" class="hidden" autocomplete="on">
-      <p class="note">Enter your email address. We send you a link to finish creating the account.</p>
-      <label>Email
+      <p class="note" data-i18n="pages.login.signupNote">Enter your email address. We send you a link to finish creating the account.</p>
+      <label><span data-i18n="pages.login.email">Email</span>
         <input id="signupEmail" name="email" type="email" autocomplete="email" maxlength="254" required>
       </label>
-      <label>Name (optional)
+      <label><span data-i18n="pages.login.nameOptional">Name (optional)</span>
         <input id="signupName" name="name" autocomplete="name" maxlength="120">
       </label>
-      <button class="primary" type="submit">Send link</button>
+      <button class="primary" type="submit" data-i18n="pages.login.sendLink">Send link</button>
     </form>
     <p id="signupSent" class="banner ok hidden"></p>
-    <p class="note">Or continue with an external identity provider below — its verified email becomes your username.</p>
+    <p class="note" data-i18n="pages.login.signupProviderNote">Or continue with an external identity provider below — its verified email becomes your username.</p>
   </section>
 
-  <div class="divider hidden" id="divider"><span>or</span></div>
+  <div class="divider hidden" id="divider"><span data-i18n="pages.login.or">or</span></div>
 
   <div id="oauthButtons" class="oauth-buttons"></div>
 
@@ -120,6 +122,9 @@
 <script>
 (function () {
   "use strict";
+  // REG-349: the page's static text is translated once the DOM is ready; dynamic messages call NPDevI18n.t directly.
+  document.addEventListener("DOMContentLoaded", function () { NPDevI18n.apply(document); });
+  document.title = NPDevI18n.t("pages.login.title", "Sign in — {appName}", { appName: document.body.getAttribute("data-app-name") });
   var params = new URLSearchParams(window.location.search);
   // Mirror of the server's open-redirect guard: only same-origin relative paths survive.
   function safeNext(value) {
@@ -141,7 +146,8 @@
     }).catch(function () { return target; });
   }
   // UX: show-password toggle + Caps Lock hint for every password input, and an in-flight guard.
-  var PW_SHOW = "Show", PW_HIDE = "Hide", PW_CAPS = "Caps Lock is on";
+  var PW_SHOW = NPDevI18n.t("pages.password.show", "Show"), PW_HIDE = NPDevI18n.t("pages.password.hide", "Hide"),
+      PW_CAPS = NPDevI18n.t("pages.password.capsLockOn", "Caps Lock is on");
   function enhancePasswordField(input) {
     var anchor = input.closest("label") || input;
     var row = document.createElement("div");
@@ -207,28 +213,28 @@
   // (the callback's own redirect only ever carries ?error=<code>), so these messages never name a
   // specific provider even where an app has only one configured.
   var MESSAGES = {
-    invalid_credentials: "Incorrect username or password.",
-    too_many_attempts: "Too many attempts. Wait a moment and try again.",
+    invalid_credentials: NPDevI18n.t("pages.login.errInvalidCredentials", "Incorrect username or password."),
+    too_many_attempts: NPDevI18n.t("pages.login.errTooManyAttempts", "Too many attempts. Wait a moment and try again."),
     // REG-293 / X0: a store outage is not a wrong password -- say so, and never suggest retyping it.
-    login_unavailable: "Sign-in is temporarily unavailable. Your password was not checked. Try again shortly.",
-    identity_store_unavailable: "Sign-in is temporarily unavailable. Try again shortly.",
-    email_exists_requires_link: "This email already has an account. Sign in with your password, then link the provider account from your profile.",
-    oauth_state_invalid: "That sign-in request expired or was already used. Start again.",
-    oauth_unverified_email: "The provider did not verify this email address, so it cannot be used to sign in.",
-    oauth_provider_refused: "The provider could not complete the sign-in. Try again.",
-    oauth_link_already_used: "That provider account is already linked to a different account here.",
-    oauth_link_requires_session: "Sign in first, then link the provider account from your profile.",
-    oauth_already_linked: "This provider account is already linked to your profile.",
-    oauth_link_email_mismatch: "The provider's email does not match this account's email.",
-    oauth_inactive_user: "This account is disabled. Contact the administrator.",
-    oauth_missing_email: "The provider did not provide a usable email address for this account.",
-    oauth_domain_not_allowed: "This sign-in is limited to approved email domains.",
-    oauth_signup_disabled: "Creating a new account with a provider is turned off here. Sign in with an existing account.",
-    signup_disabled: "Creating an account is turned off here.",
-    signup_failed: "Could not send the link. Try again.",
-    invalid_mfa_code: "That code is not valid. Try again.",
-    mfa_challenge_expired: "Sign-in timed out. Start again.",
-    oauth_login_failed: "The provider sign-in could not be completed. Try again."
+    login_unavailable: NPDevI18n.t("pages.login.errLoginUnavailable", "Sign-in is temporarily unavailable. Your password was not checked. Try again shortly."),
+    identity_store_unavailable: NPDevI18n.t("pages.login.errIdentityStoreUnavailable", "Sign-in is temporarily unavailable. Try again shortly."),
+    email_exists_requires_link: NPDevI18n.t("pages.login.errEmailExistsRequiresLink", "This email already has an account. Sign in with your password, then link the provider account from your profile."),
+    oauth_state_invalid: NPDevI18n.t("pages.login.errOauthStateInvalid", "That sign-in request expired or was already used. Start again."),
+    oauth_unverified_email: NPDevI18n.t("pages.login.errOauthUnverifiedEmail", "The provider did not verify this email address, so it cannot be used to sign in."),
+    oauth_provider_refused: NPDevI18n.t("pages.login.errOauthProviderRefused", "The provider could not complete the sign-in. Try again."),
+    oauth_link_already_used: NPDevI18n.t("pages.login.errOauthLinkAlreadyUsed", "That provider account is already linked to a different account here."),
+    oauth_link_requires_session: NPDevI18n.t("pages.login.errOauthLinkRequiresSession", "Sign in first, then link the provider account from your profile."),
+    oauth_already_linked: NPDevI18n.t("pages.login.errOauthAlreadyLinked", "This provider account is already linked to your profile."),
+    oauth_link_email_mismatch: NPDevI18n.t("pages.login.errOauthLinkEmailMismatch", "The provider's email does not match this account's email."),
+    oauth_inactive_user: NPDevI18n.t("pages.login.errOauthInactiveUser", "This account is disabled. Contact the administrator."),
+    oauth_missing_email: NPDevI18n.t("pages.login.errOauthMissingEmail", "The provider did not provide a usable email address for this account."),
+    oauth_domain_not_allowed: NPDevI18n.t("pages.login.errOauthDomainNotAllowed", "This sign-in is limited to approved email domains."),
+    oauth_signup_disabled: NPDevI18n.t("pages.login.errOauthSignupDisabled", "Creating a new account with a provider is turned off here. Sign in with an existing account."),
+    signup_disabled: NPDevI18n.t("pages.login.errSignupDisabled", "Creating an account is turned off here."),
+    signup_failed: NPDevI18n.t("pages.login.errSignupFailed", "Could not send the link. Try again."),
+    invalid_mfa_code: NPDevI18n.t("pages.login.errInvalidMfaCode", "That code is not valid. Try again."),
+    mfa_challenge_expired: NPDevI18n.t("pages.login.errMfaChallengeExpired", "Sign-in timed out. Start again."),
+    oauth_login_failed: NPDevI18n.t("pages.login.errOauthLoginFailed", "The provider sign-in could not be completed. Try again.")
   };
 
   // Inline, stroke-based, no icon font -- a provider absent from this map still gets a plain
@@ -239,7 +245,7 @@
   };
 
   function showError(code) {
-    errorBanner.textContent = MESSAGES[code] || "Sign-in failed (" + code + ").";
+    errorBanner.textContent = MESSAGES[code] || NPDevI18n.t("pages.login.errSignInFailed", "Sign-in failed ({code}).", { code: code });
     errorBanner.classList.remove("hidden");
   }
   var initialError = params.get("error");
@@ -256,10 +262,14 @@
   function setRecoveryMode(on) {
     useRecovery = on;
     document.getElementById("mfaNote").textContent = on
-      ? "Enter one of your recovery codes. Each code works once."
-      : "Enter the 6-digit code from your authenticator app.";
-    document.getElementById("mfaLabel").textContent = on ? "Recovery code" : "Authentication code";
-    document.getElementById("mfaToggle").textContent = on ? "Use the authenticator app code" : "Use a recovery code";
+      ? NPDevI18n.t("pages.login.mfaNoteRecovery", "Enter one of your recovery codes. Each code works once.")
+      : NPDevI18n.t("pages.login.mfaNote", "Enter the 6-digit code from your authenticator app.");
+    document.getElementById("mfaLabel").textContent = on
+      ? NPDevI18n.t("pages.login.recoveryCode", "Recovery code")
+      : NPDevI18n.t("pages.login.mfaLabel", "Authentication code");
+    document.getElementById("mfaToggle").textContent = on
+      ? NPDevI18n.t("pages.login.useAuthenticatorCode", "Use the authenticator app code")
+      : NPDevI18n.t("pages.login.useRecoveryCode", "Use a recovery code");
     mfaCodeInput.setAttribute("inputmode", on ? "text" : "numeric");
     mfaCodeInput.setAttribute("maxlength", on ? "20" : "7");
     mfaCodeInput.value = "";
@@ -298,7 +308,7 @@
     if (useRecovery) { payload.recoveryCode = value; } else { payload.code = value; }
     var mfaBtn = mfaForm.querySelector('button[type="submit"]');
     if (mfaBtn.disabled) { return; }
-    setBusy(mfaBtn, true, "Verifying\u2026");
+    setBusy(mfaBtn, true, NPDevI18n.t("pages.login.verifying", "Verifying\u2026"));
     var redirecting = false;
     fetch("/api/auth/login/mfa", {
       method: "POST",
@@ -328,7 +338,7 @@
   });
   if (params.get("mfa")) { showMfa(params.get("mfa"), returnUrl); }
   if (params.has("linked")) {
-    linkedBanner.textContent = "Account linked successfully.";
+    linkedBanner.textContent = NPDevI18n.t("pages.login.accountLinked", "Account linked successfully.");
     linkedBanner.classList.remove("hidden");
   }
 
@@ -361,7 +371,7 @@
       // The icon is a fixed internal SVG; the label is operator-supplied (SEC-9) and is only ever
       // inserted as a text node, never parsed as HTML.
       button.innerHTML = PROVIDER_ICONS[p.id] || "";
-      button.appendChild(document.createTextNode("Continue with " + p.label));
+      button.appendChild(document.createTextNode(NPDevI18n.t("pages.login.continueWith", "Continue with {provider}", { provider: p.label })));
       button.addEventListener("click", function () {
         window.location.href = p.authorizePath + "?purpose=login&next=" + encodeURIComponent(returnUrl);
       });
@@ -376,7 +386,7 @@
     errorBanner.classList.add("hidden");
     var signupBtn = signupForm.querySelector('button[type="submit"]');
     if (signupBtn.disabled) { return; }
-    setBusy(signupBtn, true, "Sending\u2026");
+    setBusy(signupBtn, true, NPDevI18n.t("pages.login.sending", "Sending\u2026"));
     fetch("/api/auth/signup", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-NPDev-Request": "1" },
@@ -386,7 +396,7 @@
     }).then(function (res) {
       if (res.status === 200) {
         signupForm.classList.add("hidden");
-        signupSent.textContent = res.body.message || "Check your email for the link.";
+        signupSent.textContent = res.body.message || NPDevI18n.t("pages.login.checkEmail", "Check your email for the link.");
         signupSent.classList.remove("hidden");
       } else {
         showError(res.body && res.body.error ? res.body.error : "signup_failed");
@@ -401,7 +411,7 @@
     if (!username || !password) { return; }
     var signinBtn = document.getElementById("signinForm").querySelector('button[type="submit"]');
     if (signinBtn.disabled) { return; }
-    setBusy(signinBtn, true, "Signing in\u2026");
+    setBusy(signinBtn, true, NPDevI18n.t("pages.login.signingIn", "Signing in\u2026"));
     var redirecting = false;
     fetch("/api/auth/login", {
       method: "POST",

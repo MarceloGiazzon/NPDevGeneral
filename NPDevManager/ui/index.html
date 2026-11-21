@@ -581,9 +581,14 @@
           <textarea id="browserai-ask" rows="5" aria-label="Describe what you want" placeholder="Describe it in your own words, as you would to a person."></textarea>
           <details class="ba-details">
             <summary>Help me describe it</summary>
-            <p class="subtitle">
+            <p class="subtitle" id="browserai-help-app">
               Say what the app is for, who will use it and what they need to keep track of. For example:
               A bike repair shop with customers, bikes and repair orders, each order with a status.
+            </p>
+            <p class="subtitle" id="browserai-help-pack" hidden>
+              Say what the part keeps track of and who may see it. For example:
+              Star ratings: a person rates something from 1 to 5 with a comment, and only that person and a manager can see the rating.
+              Write it in your own words. A part is shared with everyone, so the AI writes its names and texts in English.
             </p>
           </details>
           <label class="ba-field"><input type="checkbox" id="browserai-interview"> Let the AI ask me questions first</label>
@@ -940,10 +945,12 @@
       <div id="packs-publish" class="packs-publish" hidden></div>
 
       <h2 class="packs-h">In this app</h2>
+      <p class="subtitle">The app picked at the top already uses these parts. Press Why is it here? to see which part needs which.</p>
       <div id="packs-list"></div>
       <div id="packs-why" hidden></div>
 
       <h2 class="packs-h">Find more</h2>
+      <p class="subtitle">Parts from the public catalog that you can add to the app picked at the top.</p>
       <div class="packs-toolbar">
         <input id="packs-search" type="search" placeholder="Search, for example customers or stock" />
         <button class="btn" id="packs-search-go">SEARCH</button>

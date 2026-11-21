@@ -22,5 +22,5 @@ export async function render(ctx) {
     list.appendChild(rowCard(ctx, row, columns, id == null ? null : buildHash(target, id)));
   }
   root.appendChild(list);
-  if (truncated) root.appendChild(h("p", { class: "muted note", text: "Showing the first " + rows.length + " rows." }));
+  if (truncated) root.appendChild(h("p", { class: "muted note", text: NPDevI18n.t("experience.list.firstRows", "Showing the first {count} rows.", { count: rows.length }) }));
 }

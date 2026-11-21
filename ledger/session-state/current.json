@@ -1,20 +1,36 @@
 {
-  "closedAt": "2026-11-20T12:23:57.3958796Z",
+  "closedAt": "2026-11-21T01:02:17.0839567Z",
   "branch": "main",
-  "head": "c4a648d5",
-  "headSubject": "fix(gates): T2 green -- dead RuntimeApiEmitter overloads removed (generator coverage), DONE guards for REG-321/343/344/345, validation service drains an unread body before any answer (REG-346)",
-  "summary": "All owner-independent items done. REG-344 proven on a real regenerated app (GET / 302 -> /npdev-business-ui/; headless /#npdev-key= lands signed in as ADMIN, key wiped, API 200 vs 401 without; open-signed-in.mjs 6/6) and on the real Manager 0.13.40 window via CDP (Home Start+Open sends open_app_signed_in with address and folder; tour.mjs 6/6). T2: all four gates green (generator/runtimeHost/kernel in run 2, aiKnowledge in run 3) after removing dead RuntimeApiEmitter overloads (coverage), adding DONE guards (REG-321/343/344/345) and fixing REG-346 (validation service drained no body before a refusal -> WinError 10053 on Windows; test proven red). Bench: relay create arm on gemini 5/5; f4 arm's split fixture used the removed root fragments key (fixed); f4 on gemini 4/5 complete. Commits 5fef169a, c4a648d5 + bench fixture.",
-  "nextStep": "Owner-dependent only: real chat-AI rounds for REG-332/334/335 per D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\OWNER_REAL_ROUNDS_2026-11-19.md; when a round reaches its done_when set that item DONE with a guard: block and commit on main.",
-  "plan": "",
-  "blocked": "",
-  "verified": "T2 four gates green (run 2 + aiKnowledge run 3); NPDevMcp 150/150; bench test_bench 120/120; relay create gemini 5/5; f4 gemini 4/5 (split READY but page dropped after a BAD_JSON repair, one run); real app + real window checks 6/6 each. Scripts and evidence in D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\reg344-check.",
-  "dirtyCount": 1,
+  "head": "e327d37c",
+  "headSubject": "fix(bench): f4 split fixture uses an in-array $ref, not the removed root `fragments` key",
+  "summary": "REG-349 DONE (owner chose full pt): 918 platform texts are catalogue ids (npdev-i18n/*.json en+pt, 9 fragments) via NPDevI18n.t, baked panel action labels carry labelKey, check-ui-i18n.py = aiKnowledge step 57, i18n-pt browser routine 0 English left; REG-353 opened for residual gaps. During the owner's REG-334 round PackDiffEngine now treats ui.label/shortLabel/help/placeholder/hint/title changes as PATCH (was BREAKING, forced 2.0.0); ratings 1.0.1 passed the gate, owner judged the preview readable and acceptable.",
+  "nextStep": "Owner: in the Manager click Save to My parts for ratings 1.0.1, then Publish to the public catalog (type 'ratings' exactly; version must be 1.0.1) and report commit/tag; then optionally rebuild SalesTest1 and report any English platform text left in pt (Etapa 4 of D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\ROTEIRO_PROXIMA_TAREFA_2026-11-20.md). After the publish: set REG-334 DONE with a guard, run scripts/hygiene/clean-workspace-state.ps1, make ONE commit on main of all uncommitted files (about 126), then REG-335 validator round (Start-ValidatorTunnel.ps1). Optional small fix first: pack preview shows 7 raw lines like concepts.Rating.fields.targetId.ui.label changed; collapse presentation-only changes into one plain line in NPDevCli/npdev_pack_sheet.py plain_preview.",
+  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\ROTEIRO_PROXIMA_TAREFA_2026-11-20.md",
+  "blocked": "REG-334 done_when (owner publishes ratings 1.0.1) and REG-335 need the owner's real rounds; REG-353 needs owner decisions (language switch for English-only apps, model/pack labels, operator console).",
+  "verified": "dsl and generator full unit tests green (gradle :dsl:test :generator:test, 2m07s) before the last two small edits; after them only PackDiffEngine pack tests and BusinessUiEmitterLocaleManifestTest were re-run (green); check-ui-i18n, check-twin-pair-consistency, check-experience-client, check-cadence-coverage, check-doc-inventory, check-no-markdown-reads, check-record-surfaces, script inventory all OK; run-shell-scenarios: 11 existing golden routines green (before the labelKey change) and i18n-pt-verify-routine green after it. NOT run: T2 gates, canary, exposure-matrix, a real Manager window check of Save/Publish, any real pt app seen by the owner.",
+  "dirtyCount": 128,
   "dirtyFiles": [
-    " M scripts/ai/bench/relay_f4_arm.py"
+    " M BREAKING.md",
+    " M CLAUDE.md",
+    " M NPDevCli/npdev_cli.py",
+    " M NPDevCli/npdev_pack_push.py",
+    " M NPDevCli/npdev_pack_sheet.py",
+    " M NPDevCli/npdev_relay_pack.py",
+    " M NPDevCli/npdev_relay_preview_pt.py",
+    " M NPDevCli/npdev_relay_prompts.py",
+    " M NPDevCli/relay-prompts.json",
+    " M NPDevCli/tests/test_pack_push.py",
+    " M NPDevCli/tests/test_relay_pack_ingest.py",
+    " M NPDevCli/tests/test_relay_prompts.py",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/PlatformStrings.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/pack/PackDiffEngine.java",
+    " M NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/pack/PackDiffEngineTest.java",
+    " M NPDevGenerator/generator/src/main/java/com/npdev/generator/api/GeneratorFacade.java",
+    " M NPDevGenerator/generator/src/main/java/com/npdev/generator/assembly/FinalAppAssembler.java",
+    " M NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/AgentLinkPageEmitter.java",
+    " M NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java",
+    " M NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/ChangePasswordPageEmitter.java"
   ],
   "unpushed": 0,
-  "landedCommits": [
-    "c4a648d5 fix(gates): T2 green -- dead RuntimeApiEmitter overloads removed (generator coverage), DONE guards for REG-321/343/344/345, validation service drains an unread body before any answer (REG-346)",
-    "b63003a7 chore(session): handoff 2026-11-20"
-  ]
+  "landedCommits": []
 }

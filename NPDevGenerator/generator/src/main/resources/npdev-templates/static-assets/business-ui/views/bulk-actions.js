@@ -101,21 +101,23 @@
     // Reuses .import-preview-table/.badge-* wholesale (business-ui-style.mustache) rather than
     // introducing a second results-table style -- one row per requested id, "OK" or the server's own
     // error code, and its message when it failed.
-    function showBatchResultsModal(concept, operationLabel, response) {
+    function showBatchResultsModal(concept, operationKind, response) {
       const results = Array.isArray(response.results) ? response.results : [];
       const body = document.createElement("div");
       body.className = "import-modal-body";
       const summary = document.createElement("p");
       summary.className = "import-summary";
-      summary.textContent = operationLabel + " complete: " + (response.succeeded || 0) + " succeeded, "
-          + (response.failed || 0) + " failed (of " + (response.requested || results.length) + " selected).";
+      const isDelete = operationKind === "delete";
+      summary.textContent = isDelete
+        ? NPDevI18n.t("panels.bulk.summaryDelete", "Delete complete: {succeeded} succeeded, {failed} failed (of {requested} selected).", { succeeded: response.succeeded || 0, failed: response.failed || 0, requested: response.requested || results.length })
+        : NPDevI18n.t("panels.bulk.summarySetField", "Set field complete: {succeeded} succeeded, {failed} failed (of {requested} selected).", { succeeded: response.succeeded || 0, failed: response.failed || 0, requested: response.requested || results.length });
       body.appendChild(summary);
       const wrap = document.createElement("div");
       wrap.className = "import-preview-wrap";
       const table = document.createElement("table");
       table.className = "import-preview-table";
       const thead = document.createElement("thead");
-      thead.appendChild(headerRow(["Record", "Result", "Message"]));
+      thead.appendChild(headerRow([NPDevI18n.t("panels.bulk.headerRecord", "Record"), NPDevI18n.t("panels.bulk.headerResult", "Result"), NPDevI18n.t("panels.bulk.headerMessage", "Message")]));
       table.appendChild(thead);
       const tbody = document.createElement("tbody");
       results.forEach(function (row) {
@@ -124,7 +126,7 @@
         const statusTd = document.createElement("td");
         const badge = document.createElement("span");
         badge.className = "badge " + (row.ok ? "badge-success" : "badge-danger");
-        badge.textContent = row.ok ? "OK" : (row.code || "Error");
+        badge.textContent = row.ok ? NPDevI18n.t("panels.bulk.resultOk", "OK") : (row.code || NPDevI18n.t("panels.bulk.resultError", "Error"));
         statusTd.appendChild(badge);
         tr.appendChild(statusTd);
         tr.appendChild(textCell(row.ok ? "" : (row.message || "")));
@@ -133,21 +135,23 @@
       table.appendChild(tbody);
       wrap.appendChild(table);
       body.appendChild(wrap);
-      openModal(operationLabel + " results -- " + concept.displayName, body);
+      openModal(isDelete
+        ? NPDevI18n.t("panels.bulk.resultsTitleDelete", "Delete results -- {concept}", { concept: concept.displayName })
+        : NPDevI18n.t("panels.bulk.resultsTitleSetField", "Set field results -- {concept}", { concept: concept.displayName }), body);
     }
 
 
     async function runBulkDelete(concept, panel) {
       const ids = selectedRecordIds(panel).slice();
       if (!ids.length) { return; }
-      if (!window.confirm("Delete " + ids.length + " selected " + concept.displayName + " record(s)? This cannot be undone.")) {
+      if (!window.confirm(NPDevI18n.t("panels.bulk.confirmDelete", "Delete {count} selected {concept} record(s)? This cannot be undone.", { count: ids.length, concept: concept.displayName }))) {
         return;
       }
       try {
         const response = await postConceptBatch(concept, "delete", ids);
         clearSelection(panel);
-        showBatchResultsModal(concept, "Delete", response);
-        notify("Deleted " + (response.succeeded || 0) + " of " + ids.length + " selected record(s).", (response.failed || 0) > 0);
+        showBatchResultsModal(concept, "delete", response);
+        notify(NPDevI18n.t("panels.bulk.notifyDeleted", "Deleted {succeeded} of {count} selected record(s).", { succeeded: response.succeeded || 0, count: ids.length }),(response.failed || 0) > 0);
         if ((response.succeeded || 0) > 0) {
           await reloadAfterMutation(concept);
         } else {
@@ -167,20 +171,20 @@
       if (!ids.length) { return; }
       const fields = bulkEditableFields(concept);
       if (!fields.length) {
-        notify("No editable fields are available for bulk update on " + concept.displayName + ".", true);
+        notify(NPDevI18n.t("panels.bulk.noEditableFields", "No editable fields are available for bulk update on {concept}.", { concept: concept.displayName }), true);
         return;
       }
       const body = document.createElement("div");
       body.className = "import-modal-body";
       const intro = document.createElement("p");
       intro.className = "import-intro";
-      intro.textContent = "Set a field to a new value on " + ids.length + " selected " + concept.displayName + " record(s).";
+      intro.textContent = NPDevI18n.t("panels.bulk.setFieldIntro", "Set a field to a new value on {count} selected {concept} record(s).", { count: ids.length, concept: concept.displayName });
       body.appendChild(intro);
 
       const fieldLabel = document.createElement("label");
       const fieldLabelText = document.createElement("span");
       fieldLabelText.className = "field-label-text";
-      fieldLabelText.textContent = "Field";
+      fieldLabelText.textContent = NPDevI18n.t("panels.bulk.fieldLabel", "Field");
       fieldLabel.appendChild(fieldLabelText);
       const fieldSelect = document.createElement("select");
       fields.forEach(function (field) {
@@ -202,7 +206,7 @@
         const valueLabel = document.createElement("label");
         const valueLabelText = document.createElement("span");
         valueLabelText.className = "field-label-text";
-        valueLabelText.textContent = "New value";
+        valueLabelText.textContent = NPDevI18n.t("panels.bulk.newValueLabel", "New value");
         valueLabel.appendChild(valueLabelText);
         valueControl = createInput(field, "", null);
         valueLabel.appendChild(valueControl);
@@ -213,11 +217,11 @@
 
       const actions = document.createElement("div");
       actions.className = "modal-actions form-actions";
-      const applyButton = button("Set field", "primary", async function () {
+      const applyButton = button(NPDevI18n.t("panels.bulk.setFieldApply", "Set field"), "primary", async function () {
         const field = fields.find(function (f) { return f.name === fieldSelect.value; }) || fields[0];
         if (!field || !valueControl) { return; }
         const value = bulkValueFromControl(field, valueControl);
-        if (!window.confirm("Set " + (field.label || field.name) + " to \"" + value + "\" on " + ids.length + " record(s)?")) {
+        if (!window.confirm(NPDevI18n.t("panels.bulk.confirmSetField", "Set {field} to \"{value}\" on {count} record(s)?", { field: field.label || field.name, value: value, count: ids.length }))) {
           return;
         }
         applyButton.disabled = true;
@@ -225,8 +229,8 @@
           const response = await postConceptBatch(concept, "setField", ids, { field: field.name, value: value });
           clearSelection(panel);
           closeModal();
-          showBatchResultsModal(concept, "Set field", response);
-          notify("Updated " + (response.succeeded || 0) + " of " + ids.length + " selected record(s).", (response.failed || 0) > 0);
+          showBatchResultsModal(concept, "setField", response);
+          notify(NPDevI18n.t("panels.bulk.notifyUpdated", "Updated {succeeded} of {count} selected record(s).", { succeeded: response.succeeded || 0, count: ids.length }),(response.failed || 0) > 0);
           if ((response.succeeded || 0) > 0) {
             await reloadAfterMutation(concept);
           } else {
@@ -238,11 +242,11 @@
           applyButton.disabled = false;
         }
       });
-      actions.appendChild(button("Cancel", "", closeModal));
+      actions.appendChild(button(NPDevI18n.t("panels.bulk.cancel", "Cancel"), "", closeModal));
       actions.appendChild(applyButton);
       body.appendChild(actions);
 
-      openModal("Set field -- " + concept.displayName, body);
+      openModal(NPDevI18n.t("panels.bulk.setFieldTitle", "Set field -- {concept}", { concept: concept.displayName }), body);
     }
 
 
@@ -312,7 +316,7 @@
       area.select();
       const ok = document.execCommand("copy");
       document.body.removeChild(area);
-      if (!ok) { throw new Error("The browser blocked copying to the clipboard."); }
+      if (!ok) { throw new Error(NPDevI18n.t("panels.bulk.clipboardBlocked", "The browser blocked copying to the clipboard.")); }
     }
 
 
@@ -321,7 +325,7 @@
       if (!picked.rows.length) { return; }
       try {
         await writeClipboard(buildTsv(picked.columns, picked.rows));
-        notify("Copied " + picked.rows.length + " selected row(s) to the clipboard.", false);
+        notify(NPDevI18n.t("panels.bulk.notifyCopied", "Copied {count} selected row(s) to the clipboard.", { count: picked.rows.length }), false);
       } catch (error) {
         notify(error.message, true);
       }
@@ -333,7 +337,7 @@
       const picked = selectedExport(concept, panel);
       if (!picked.rows.length) { return; }
       downloadCsv(buildCsv(picked.columns, picked.rows), csvFilenameFor(concept).replace(/\.csv$/, "-selected.csv"));
-      setStatus(picked.rows.length + " selected row(s) downloaded.", false);
+      setStatus(NPDevI18n.t("panels.bulk.statusDownloaded", "{count} selected row(s) downloaded.", { count: picked.rows.length }), false);
     }
 
 
@@ -347,20 +351,20 @@
       bar.className = "bulk-actions-bar";
       const count = document.createElement("span");
       count.className = "bulk-actions-count";
-      count.textContent = ids.length + " selected";
+      count.textContent = NPDevI18n.t("panels.bulk.selectedCount", "{count} selected", { count: ids.length });
       bar.appendChild(count);
       if (ids.length < panel.records.length) {
-        bar.appendChild(button("Select all", "", function () { selectAllOnPage(concept, panel); }));
+        bar.appendChild(button(NPDevI18n.t("panels.bulk.selectAll", "Select all"), "", function () { selectAllOnPage(concept, panel); }));
       }
-      bar.appendChild(button("Deselect all", "", function () { clearSelection(panel); render(); }));
+      bar.appendChild(button(NPDevI18n.t("panels.bulk.deselectAll", "Deselect all"), "", function () { clearSelection(panel); render(); }));
       // ui.selectionTools: on unless the concept declares it false (the manifest carries the key only then).
       if (concept.selectionTools !== false) {
-        bar.appendChild(button("Open selected", "", function () { openSelected(concept, panel); }));
-        bar.appendChild(button("Copy selected", "", function () { copySelected(concept, panel); }));
-        bar.appendChild(button("Download selected", "", function () { downloadSelected(concept, panel); }));
+        bar.appendChild(button(NPDevI18n.t("panels.bulk.openSelected", "Open selected"), "", function () { openSelected(concept, panel); }));
+        bar.appendChild(button(NPDevI18n.t("panels.bulk.copySelected", "Copy selected"), "", function () { copySelected(concept, panel); }));
+        bar.appendChild(button(NPDevI18n.t("panels.bulk.downloadSelected", "Download selected"), "", function () { downloadSelected(concept, panel); }));
       }
-      bar.appendChild(button("Set field…", "", function () { openBulkSetFieldDialog(concept, panel); }));
-      bar.appendChild(button("Delete selected", "danger", function () { runBulkDelete(concept, panel); }));
+      bar.appendChild(button(NPDevI18n.t("panels.bulk.setFieldOpen", "Set field…"), "", function () { openBulkSetFieldDialog(concept, panel); }));
+      bar.appendChild(button(NPDevI18n.t("panels.bulk.deleteSelected", "Delete selected"), "danger", function () { runBulkDelete(concept, panel); }));
       return bar;
     }
     return { isRowSelected, toggleRowSelected, postConceptBatch, buildBulkActionsBar };

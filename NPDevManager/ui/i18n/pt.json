@@ -1220,7 +1220,7 @@
   "Ask the AI to fix this": "Pedir à IA para corrigir isto",
   "The end of what went wrong goes into a message for the chat AI you choose, after NPDev has removed passwords and folder names from it.": "O final do que deu errado vai para uma mensagem para a IA de chat que você escolher, depois de o NPDev remover senhas e nomes de pastas.",
   "Show my apps": "Mostrar meus apps",
-  "The AI made a mistake. Copy this message and paste it in the same conversation.": "A IA cometeu um erro. Copie esta mensagem e cole na mesma conversa.",
+  "The AI made a mistake. Press Copy message, paste it in the same conversation, then bring the AI's new answer back here.": "A IA cometeu um erro. Clique em Copiar mensagem, cole na mesma conversa e traga a nova resposta da IA de volta aqui.",
   "NPDev cannot check the answer yet because Java is missing on this computer. Install it in Settings, then paste the answer again.": "O NPDev ainda não consegue conferir a resposta porque falta o Java neste computador. Instale em Configurações e cole a resposta de novo.",
   "Take it to another AI": "Levar para outra IA",
   "Copy for a new conversation": "Copiar para conversa nova",
@@ -1358,10 +1358,16 @@
   "What becomes public: {name} {version}": "O que vai se tornar público: {name} {version}",
   "What changed since the last version": "O que mudou desde a última versão",
   "Anyone on the internet will be able to see and use it.": "Qualquer pessoa na internet poderá ver e usar.",
-  "Type the part's name to publish: {name}": "Digite o nome do pacote para publicar: {name}",
+  "To publish, type this name exactly:": "Para publicar, digite este nome exatamente:",
+  "Part name": "Nome do pacote",
   "Publish": "Publicar",
   "Publishing…": "Publicando…",
   "Published. It appears in Find more within a few minutes.": "Publicado. Ele aparece em Encontrar mais em poucos minutos.",
   "Nothing was published.": "Nada foi publicado.",
-  "Change the catalog folder": "Trocar a pasta do catálogo"
+  "Change the catalog folder": "Trocar a pasta do catálogo",
+  "The folder chosen before is not a copy (git clone) of the public catalog.": "A pasta escolhida antes não é uma cópia (git clone) do catálogo público.",
+  "This part has problems an AI can fix. Press Make a part with a browser AI, choose a new version of this part, and paste the details below to the AI.": "Este pacote tem problemas que uma IA pode corrigir. Clique em Criar um pacote com uma IA do navegador, escolha uma nova versão deste pacote e cole os detalhes abaixo para a IA.",
+  "The app picked at the top already uses these parts. Press Why is it here? to see which part needs which.": "O app escolhido no alto já usa estes pacotes. Clique em Por que está aqui? para ver qual pacote precisa de qual.",
+  "Parts from the public catalog that you can add to the app picked at the top.": "Pacotes do catálogo público que você pode adicionar ao app escolhido no alto.",
+  "Say what the part keeps track of and who may see it. For example: Star ratings: a person rates something from 1 to 5 with a comment, and only that person and a manager can see the rating. Write it in your own words. A part is shared with everyone, so the AI writes its names and texts in English.": "Diga o que o pacote guarda e quem pode ver. Por exemplo: Avaliações com estrelas: uma pessoa avalia algo de 1 a 5 com um comentário, e só essa pessoa e um gerente podem ver a avaliação. Escreva com as suas palavras. Um pacote é compartilhado com todos, então a IA escreve os nomes e os textos dele em inglês."
 }

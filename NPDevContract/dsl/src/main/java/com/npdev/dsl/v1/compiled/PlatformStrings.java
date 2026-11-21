@@ -60,20 +60,35 @@ public final class PlatformStrings {
         // staying just as immutable to callers.
         DEFAULTS = Collections.unmodifiableMap(d);
 
-        // backOffice.locale "pt*": the shell chrome was hard-coded Portuguese until 2026-10-07, so a
-        // pt app (WmsOffice) keeps exactly those words; every other locale gets the English above.
+        // backOffice.locale "pt*" (REG-349: a Portuguese app is Portuguese everywhere, not only in the shell
+        // chrome; the rest of the platform text lives in the generator's npdev-i18n catalogue). Brazilian
+        // Portuguese, with accents.
         Map<String, String> pt = new LinkedHashMap<>();
-        pt.put("shell.signedInAs", "logado como");
+        pt.put("workbench.header", "Cabeçalho");
+        pt.put("workbench.readOnly", "Somente leitura");
+        pt.put("workbench.editingDisabled", "A edição está desativada neste estado.");
+        pt.put("workbench.revert", "desfazer");
+        pt.put("workbench.revertTitle", "Descartar as alterações desta região");
+        pt.put("workbench.saved", "Salvo");
+        pt.put("workbench.saving", "Salvando");
+        pt.put("state.phase", "Fase");
+        pt.put("action.select", "Selecionar");
+        pt.put("action.add", "Adicionar");
+        pt.put("action.cancel", "Cancelar");
+        pt.put("action.save", "Salvar");
+        pt.put("action.delete", "Excluir");
+        pt.put("action.new", "Novo");
+        pt.put("shell.signedInAs", "Conectado como");
         pt.put("shell.changePassword", "Alterar senha");
-        pt.put("shell.inviteUser", "Convidar usuario");
+        pt.put("shell.inviteUser", "Convidar usuário");
         pt.put("shell.signOut", "Sair");
-        pt.put("shell.notSignedIn", "nao autenticado");
+        pt.put("shell.notSignedIn", "Não autenticado");
         pt.put("shell.toggleMenu", "Recolher/expandir menu");
         pt.put("shell.quickAccess", "Acesso rápido");
         pt.put("shell.toggleRightbar", "Mostrar/ocultar painel lateral");
-        pt.put("shell.security", "Seguranca");
+        pt.put("shell.security", "Segurança");
         pt.put("shell.navData", "Dados");
-        pt.put("shell.navPanels", "Paineis");
+        pt.put("shell.navPanels", "Painéis");
         PORTUGUESE = Collections.unmodifiableMap(pt);
     }
 

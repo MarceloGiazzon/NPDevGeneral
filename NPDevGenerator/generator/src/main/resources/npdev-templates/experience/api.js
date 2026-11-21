@@ -14,13 +14,13 @@ export class ApiError extends Error {
 }
 
 function messageFor(status, payload) {
-  if (status === 401) return "Your session expired. Sign in again.";
-  if (status === 403) return "You don't have permission to do that.";
-  if (status === 404) return "That record no longer exists.";
-  if (status >= 500) return "The server had a problem. Try again.";
+  if (status === 401) return NPDevI18n.t("experience.api.sessionExpired", "Your session expired. Sign in again.");
+  if (status === 403) return NPDevI18n.t("experience.api.noPermission", "You don't have permission to do that.");
+  if (status === 404) return NPDevI18n.t("experience.api.notFound", "That record no longer exists.");
+  if (status >= 500) return NPDevI18n.t("experience.api.serverProblem", "The server had a problem. Try again.");
   const text = payload && typeof payload === "object" ? (payload.message || payload.error || "") : String(payload || "");
   const prose = typeof text === "string" && text.trim() && !/^[A-Z0-9_.:-]+$/.test(text.trim()) && !/^<(!doctype|html)/i.test(text.trim());
-  return prose ? text.trim() : "Request failed (HTTP " + status + ").";
+  return prose ? text.trim() : NPDevI18n.t("experience.api.requestFailed", "Request failed (HTTP {status}).", { status });
 }
 
 export function createApi(deps) {
@@ -72,7 +72,7 @@ export function createApi(deps) {
     const init = { method, headers: headers(body !== undefined) };
     if (body !== undefined) init.body = JSON.stringify(body);
     let res;
-    try { res = await fetchFn(url, init); } catch (e) { throw new ApiError("Can't reach the server. Check your connection.", 0, null); }
+    try { res = await fetchFn(url, init); } catch (e) { throw new ApiError(NPDevI18n.t("experience.api.unreachable", "Can't reach the server. Check your connection."), 0, null); }
     const raw = await res.text();
     let payload = raw;
     try { payload = raw ? JSON.parse(raw) : null; } catch (e) { payload = raw; }

@@ -1,0 +1,8 @@
+{
+  "id": "bench-903",
+  "tier": "pack",
+  "intent": "pack",
+  "packId": "ratings",
+  "title": "The same ratings part asked for in Portuguese (run with NPDEV_BENCH_RELAY_LANGUAGE=\"Portuguese (Brazil)\")",
+  "prompt": "Um pacote reutilizável de avaliações: uma pessoa avalia algo de 1 a 5 estrelas, com um comentário opcional. Cada avaliação pertence a quem a fez, e um gerente pode ver todas as avaliações. Quero também ver a média de estrelas de cada item avaliado."
+}

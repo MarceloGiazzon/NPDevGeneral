@@ -567,12 +567,17 @@ the top bar. The choice is stored in `localStorage` key `npdev.ui.locale` and se
 every call (`app.js` `headers()`, `shell.js` `authHeaders()`); picking one reloads the page. The server
 resolves labels (kernel `LabelResolver`: exact tag, then language, then default) and the UI copies the
 already-resolved `label` / `shortLabel` from `GET /api/v1/runtime/metadata/ui/bundle` onto the manifest
-fields; the client never interprets a locale map. Shell chrome strings come from the manifest's
-`stringsByLocale` (`en`, `pt`; `backOffice.strings` overrides are layered onto the entry matching
-`backOffice.locale`), looked up by the language part of the chosen tag, then `strings`, then the English
-fallback. "Auto" clears the key, so `Accept-Language` decides server-side and `strings` (the app's
-generation-time catalogue) decides the chrome. Known gap: the Aggregate Workbench page bakes its
-strings at generation and does not follow the switch.
+fields; the client never interprets a locale map. Every text the platform itself draws (buttons,
+headings, placeholders, dialogs, messages; the shell, the list/detail/form screens, the workbench, the
+sign-in pages and the experience client) is a catalogue id with an English and a Portuguese text
+(REG-349): `NPDevGenerator/generator/src/main/resources/npdev-i18n/<fragment>.<lang>.json` plus the
+small contract map `PlatformStrings`. Pages call `NPDevI18n.t(id, englishText, vars)` from the shared
+`/npdev-i18n.js`: the chosen language's catalogue (language part of the tag), then the app's own catalogue
+(`backOffice.locale`, with `backOffice.strings` overrides), then the English text in the call. Not
+translated by design: model labels (the model's own label maps), field/concept names, commands, the
+documentation, the developer pages (info page, model surface, model authoring, operator console) and text
+the server sends. `scripts/quality/check-ui-i18n.py` keeps both languages in step. "Auto" clears the key, so
+`Accept-Language` decides server-side and the app's generation-time catalogue decides the platform text.
 
 ## Breadcrumbs and default route (W1.6)
 

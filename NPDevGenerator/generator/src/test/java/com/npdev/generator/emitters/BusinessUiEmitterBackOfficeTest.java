@@ -123,8 +123,8 @@ public class BusinessUiEmitterBackOfficeTest {
         assertTrue(js.contains("/api/me/permissions"));
         assertTrue(js.contains("&& conceptAllows(c, \"list\")"), "navigation drops concepts the role cannot list");
         assertTrue(js.contains("conceptAllows(concept, \"create\")"), "no Create button for a role that cannot create");
-        assertTrue(js.contains("\"Create \" + singularLabel(concept)"));
-        assertFalse(js.contains("\"Create \" + concept.displayName"));
+        assertTrue(js.contains("{ name: singularLabel(concept) }"), "the form title names the singular label");
+        assertFalse(js.contains("\"Create \" + concept.displayName"), "no hand-concatenated English title");
         assertTrue(js.contains("only sees the ones that belong to it"));
         assertTrue(js.contains("function defaultHiddenColumns(concept)"));
     }

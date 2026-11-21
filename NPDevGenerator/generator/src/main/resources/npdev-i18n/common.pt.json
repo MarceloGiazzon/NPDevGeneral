@@ -1,0 +1,13 @@
+{
+  "common.review.rowOne": "{count} linha",
+  "common.review.rowMany": "{count} linhas",
+  "common.review.defaultTitle": "Revisar alterações propostas",
+  "common.review.columnField": "Campo",
+  "common.review.columnNow": "Agora",
+  "common.review.columnProposed": "Proposto",
+  "common.review.discard": "Descartar",
+  "common.review.applySelected": "Aplicar selecionados",
+  "common.xlsx.notXlsx": "Não é um arquivo .xlsx (zip)",
+  "common.xlsx.unsupportedCompression": "Método de compactação zip não suportado: {method}",
+  "common.xlsx.noFirstSheet": "A pasta de trabalho não tem uma primeira planilha (xl/worksheets/sheet1.xml)"
+}

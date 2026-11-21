@@ -3,17 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Loading...</title>
+<title data-i18n="experience.app.loading">Loading...</title>
 <!-- Theme tokens (--np-*) come from the app's shell.css and optional theme.css; /x/style.css only adds layout. -->
 <link rel="stylesheet" href="/shell.css">
 <link rel="stylesheet" href="/theme.css">
 <link rel="stylesheet" href="/x/style.css">
 </head>
 <body>
-<div id="app"><p class="boot">Loading...</p></div>
-<noscript><p class="boot">This app needs JavaScript.</p></noscript>
+<div id="app"><p class="boot" data-i18n="experience.app.loading">Loading...</p></div>
+<noscript><p class="boot">This app needs JavaScript.</p></noscript><!-- i18n-ignore: no script runs to translate it -->
 <!-- The platform's browser expression engine (same grammar as the server); then the client modules. -->
 <script src="/npdev-expr.js"></script>
+<!-- The platform text lookup, then this page's catalogue (written by the generator into /x/strings.js). -->
+<script src="/npdev-i18n.js"></script>
+<script src="/x/strings.js"></script>
 <script type="module" src="/x/app.js"></script>
 </body>
 </html>

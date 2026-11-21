@@ -13,7 +13,7 @@ const muted = (text) => h("p", { class: "muted note", text });
 
 export function showValue(v) {
   if (v === undefined || v === null || v === "") return h("span", { class: "muted", text: "\u2014" });
-  if (typeof v === "boolean") return h("span", { text: v ? "Yes" : "No" });
+  if (typeof v === "boolean") return h("span", { text: v ? NPDevI18n.t("experience.core.yes", "Yes") : NPDevI18n.t("experience.core.no", "No") });
   if (typeof v === "number") return h("span", { text: new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(v) });
   return h("span", { text: typeof v === "object" ? JSON.stringify(v) : String(v) });
 }
@@ -40,13 +40,13 @@ async function chartEntries(ctx, w, target) {
   if (!field) return [];
   const { rows } = await loadRows(ctx.api, target, { want: 200, user: ctx.user });
   const counts = new Map();
-  for (const row of rows) { const k = pathValue(row, field); const key = k == null || k === "" ? "No value" : String(k); counts.set(key, (counts.get(key) || 0) + 1); }
+  for (const row of rows) { const k = pathValue(row, field); const key = k == null || k === "" ? NPDevI18n.t("experience.board.noValue", "No value") : String(k); counts.set(key, (counts.get(key) || 0) + 1); }
   return Array.from(counts, ([label, value]) => ({ label, value }));
 }
 
 async function chart(ctx, w, target) {
   const entries = await chartEntries(ctx, w, target);
-  if (!entries.length) return muted("Nothing to chart yet.");
+  if (!entries.length) return muted(NPDevI18n.t("experience.dashboard.noChart", "Nothing to chart yet."));
   const nums = entries.map((e) => (typeof e.value === "number" && Number.isFinite(e.value) ? Math.max(0, e.value) : 0));
   const max = Math.max(...nums, 0);
   const summary = (w.title ? w.title + ": " : "") + entries.map((e, i) => e.label + " " + nums[i]).join(", ");
@@ -57,9 +57,9 @@ async function chart(ctx, w, target) {
 }
 
 async function rowsWidget(ctx, w, target, compact) {
-  if (!target || !target.dataUrl) return muted("Nothing to show.");
+  if (!target || !target.dataUrl) return muted(NPDevI18n.t("experience.dashboard.nothingToShow", "Nothing to show."));
   const { rows } = await loadRows(ctx.api, target, { want: 5, user: ctx.user });
-  if (!rows.length) return muted((target.empty && target.empty.text) || "Nothing here yet.");
+  if (!rows.length) return muted((target.empty && target.empty.text) || NPDevI18n.t("experience.core.nothingYet", "Nothing here yet."));
   const detail = ctx.detailFor(target);
   const idOf = (row) => row[target.idField || "id"];
   const columns = selectColumns(target).slice(0, compact ? 2 : 4);
@@ -82,11 +82,11 @@ async function rowsWidget(ctx, w, target, compact) {
 
 /** A `map` widget shows the markers of the linked screen's rows (that screen's `map` says where lat/lng are). */
 async function mapWidget(ctx, w, target) {
-  if (!target || !target.dataUrl || !target.map) return muted("Nothing to show.");
+  if (!target || !target.dataUrl || !target.map) return muted(NPDevI18n.t("experience.dashboard.nothingToShow", "Nothing to show."));
   const { rows } = await loadRows(ctx.api, target, { want: 100, user: ctx.user });
   const points = rowPoints(rows, target.map, ctx.user);
-  if (!points.length) return muted((target.empty && target.empty.text) || "Nothing here yet.");
-  return mountMap(ctx, target.map, { points, label: w.title || target.title || "Map", compact: true }).el;
+  if (!points.length) return muted((target.empty && target.empty.text) || NPDevI18n.t("experience.core.nothingYet", "Nothing here yet."));
+  return mountMap(ctx, target.map, { points, label: w.title || target.title || NPDevI18n.t("experience.map.label", "Map"), compact: true }).el;
 }
 
 async function body(ctx, w, target) {
@@ -96,7 +96,7 @@ async function body(ctx, w, target) {
     case "table": return rowsWidget(ctx, w, target, false);
     case "list": return rowsWidget(ctx, w, target, true);
     case "map": return mapWidget(ctx, w, target);
-    default: return muted("Not supported yet.");
+    default: return muted(NPDevI18n.t("experience.dashboard.notSupported", "Not supported yet."));
   }
 }
 
@@ -104,7 +104,7 @@ async function widget(ctx, w) {
   const target = w.screen && ctx.screensByName ? ctx.screensByName[w.screen] : null;
   let content;
   try { content = await body(ctx, w, target); }
-  catch (e) { content = muted("This widget could not load."); }
+  catch (e) { content = muted(NPDevI18n.t("experience.dashboard.widgetFailed", "This widget could not load.")); }
   const title = w.title ? h("h3", { class: "widget-title", text: w.title }) : null;
   const link = target ? buildHash(target.name) : null;
   const linkAll = link && LINKED.includes(w.kind) && w.kind !== "map"; // a map must stay tappable: only its title links
@@ -115,7 +115,7 @@ async function widget(ctx, w) {
 
 export async function render(ctx) {
   const widgets = Array.isArray(ctx.screen.widgets) ? ctx.screen.widgets : [];
-  if (!widgets.length) { ctx.root.appendChild(card("empty", null, (ctx.screen.empty && ctx.screen.empty.text) || "Nothing here yet.")); return; }
+  if (!widgets.length) { ctx.root.appendChild(card("empty", null, (ctx.screen.empty && ctx.screen.empty.text) || NPDevI18n.t("experience.core.nothingYet", "Nothing here yet."))); return; }
   // every widget starts synchronously, so all their server values share one /api/x/eval request
   const built = await Promise.all(widgets.map((w) => widget(ctx, w || {})));
   ctx.root.appendChild(h("div", { class: "widgets" }, built));

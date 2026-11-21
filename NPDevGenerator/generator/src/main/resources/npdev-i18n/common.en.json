@@ -1,0 +1,13 @@
+{
+  "common.review.rowOne": "{count} row",
+  "common.review.rowMany": "{count} rows",
+  "common.review.defaultTitle": "Review proposed changes",
+  "common.review.columnField": "Field",
+  "common.review.columnNow": "Now",
+  "common.review.columnProposed": "Proposed",
+  "common.review.discard": "Discard",
+  "common.review.applySelected": "Apply selected",
+  "common.xlsx.notXlsx": "Not an .xlsx (zip) file",
+  "common.xlsx.unsupportedCompression": "Unsupported zip compression method {method}",
+  "common.xlsx.noFirstSheet": "The workbook has no first worksheet (xl/worksheets/sheet1.xml)"
+}

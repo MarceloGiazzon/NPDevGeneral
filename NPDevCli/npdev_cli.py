@@ -17389,6 +17389,7 @@ def build_parser() -> argparse.ArgumentParser:
     pack_push.add_argument("--dry-run", action="store_true", help="Check and show what would become public; touch nothing.")
     pack_push.add_argument("--confirm-public", metavar="ID@VERSION",
                            help="The owner's explicit yes: this exact part and version. Without it nothing is pushed.")
+    pack_push.add_argument("--language", default="English", help="The language of the summary the Manager shows (English or Portuguese (Brazil)).")
     pack_push.add_argument("--remote", default="origin", help="The clone's remote (default: origin).")
     pack_push.add_argument("--repository-url", help="The catalog's public URL (default: read from the remote).")
     pack_push.add_argument("--json", action="store_true", help="One JSON document (what the Manager reads).")

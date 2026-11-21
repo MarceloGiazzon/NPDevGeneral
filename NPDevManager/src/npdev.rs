@@ -1054,6 +1054,7 @@ pub async fn run_pack_push(
     npr_checkout: &str,
     dry_run: bool,
     confirm_public: Option<&str>,
+    language: &str,
 ) -> Result<Value, String> {
     check_relay_value("the part's folder", pack_dir)?;
     check_relay_value("the catalog folder", npr_checkout)?;
@@ -1067,7 +1068,7 @@ pub async fn run_pack_push(
     if let Some(confirm) = confirm_public {
         args.extend(["--confirm-public", confirm]);
     }
-    args.push("--json");
+    args.extend(["--language", language, "--json"]);
     run_relay_json(python_exe, npdev_cli, java_home, &args, "pack push").await
 }
 
@@ -3215,13 +3216,14 @@ mod relay_pipe_tests {
         }
         let dir = scratch("push");
         let script = write_echo_cli(&dir);
-        let ok = run_pack_push(&python, &script, None, "some/part", "some/npr", false, Some("ratings@1.0.0")).await.expect("echo CLI answers");
+        let ok = run_pack_push(&python, &script, None, "some/part", "some/npr", false, Some("ratings@1.0.0"), "Portuguese (Brazil)").await.expect("echo CLI answers");
         let argv = argv_of(&ok);
         assert!(has_pair(&argv, "--confirm-public", "ratings@1.0.0") && !argv.iter().any(|a| a == "--dry-run"), "{argv:?}");
-        let dry = argv_of(&run_pack_push(&python, &script, None, "some/part", "some/npr", true, None).await.unwrap());
+        assert!(has_pair(&argv, "--language", "Portuguese (Brazil)"), "the summary must be asked for in the person's language: {argv:?}");
+        let dry = argv_of(&run_pack_push(&python, &script, None, "some/part", "some/npr", true, None, "English").await.unwrap());
         assert!(dry.iter().any(|a| a == "--dry-run") && !dry.iter().any(|a| a == "--confirm-public"), "{dry:?}");
         for bad in ["", "ratings", "ratings@1.0", "ratings@1.0.0 --json", "-x@1.0.0", "ratings@a.b.c", "../x@1.0.0", "ratings@1.0.0;x"] {
-            assert!(run_pack_push(&python, &script, None, "p", "n", false, Some(bad)).await.is_err(), "accepted {bad:?}");
+            assert!(run_pack_push(&python, &script, None, "p", "n", false, Some(bad), "English").await.is_err(), "accepted {bad:?}");
         }
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -1,0 +1,141 @@
+{
+  "scenarioName": "shell-i18n-pt-golden-scenario",
+  "targetPath": "/npdev-business-ui/",
+  "options": {
+    "headless": true,
+    "screenshots": "always",
+    "collectDomOnFailure": true,
+    "viewport": {
+      "width": 1400,
+      "height": 900
+    }
+  },
+  "steps": [
+    {
+      "action": "goto",
+      "url": "$targetUrl"
+    },
+    {
+      "action": "waitForSelector",
+      "selector": "#apiKey",
+      "state": "visible"
+    },
+    {
+      "action": "fill",
+      "selector": "#apiKey",
+      "valueFromCredential": "apiKey"
+    },
+    {
+      "action": "reload"
+    },
+    {
+      "action": "waitForSelector",
+      "selector": "#concept-WidgetOrder",
+      "state": "visible",
+      "label": "Confirm auth landed"
+    },
+    {
+      "action": "evaluate",
+      "name": "choose_pt",
+      "script": "localStorage.setItem('npdev.ui.locale','pt'); return {chosen: localStorage.getItem('npdev.ui.locale')};",
+      "label": "The visitor picks Portuguese (the key the language switch writes)"
+    },
+    {
+      "action": "goto",
+      "url": "http://127.0.0.1:8099/npdev-business-ui/#concept-WidgetCatalogEntry",
+      "label": "Open the WidgetCatalogEntry list"
+    },
+    {
+      "action": "reload"
+    },
+    {
+      "action": "waitForSelector",
+      "selector": "#concept-WidgetCatalogEntry",
+      "state": "visible"
+    },
+    {
+      "action": "waitForTimeout",
+      "timeoutMs": 800
+    },
+    {
+      "action": "assertTextContains",
+      "selector": ".npdev-shell-logout",
+      "text": "Sair",
+      "label": "The shell chrome is Portuguese"
+    },
+    {
+      "action": "evaluate",
+      "name": "audit_list",
+      "script": "var DOLLAR = String.fromCharCode(36), SPECIAL = '.*+?^()|[]' + String.fromCharCode(92) + DOLLAR;\nfunction esc(s) { var o = ''; for (var i = 0; i < s.length; i++) { var ch = s.charAt(i); o += SPECIAL.indexOf(ch) >= 0 ? String.fromCharCode(92) + ch : ch; } return o; }\nvar c = NPDevI18n.catalogue(); var en = c.stringsByLocale.en, pt = c.stringsByLocale.pt; var pats = [];\nObject.keys(en).forEach(function (k) { var e = en[k]; if (!pt[k] || pt[k] === e || e.length < 3) return; var parts = e.split(/\\{[A-Za-z0-9_]+\\}/); var literal = parts.join('').trim().length; if (parts.length > 1 && literal < 6) return; pats.push([new RegExp('^' + parts.map(esc).join('.{1,60}') + DOLLAR), k, e]); });\nfunction ownText(t, e) { return t.indexOf('Create the order, then add its lines') === 0 || (t === 'Export CSV' && /ReviewPanel/.test(where(e))); } /* the sample model's own help text and its own 'Export CSV' action label, not platform text */\nfunction hit(t) { t = (t || '').replace(/\\s+/g, ' ').trim(); if (t.length < 3 || t.length > 300) return null; for (var i = 0; i < pats.length; i++) { if (pats[i][0].test(t)) return pats[i][1] + '=' + t.slice(0, 60); } return null; }\nfunction where(e) { var id = e.closest('[id]'); return (e.tagName + '.' + String(e.className).split(' ')[0] + ' in #' + (id ? id.id : '?')); }\nvar left = [], w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);\nwhile (w.nextNode()) { var n = w.currentNode; var pe = n.parentElement; if (!pe || /^(SCRIPT|STYLE|TH|TD|LABEL|OPTION)$/.test(pe.tagName) || pe.id === 'i18n-audit' || pe.closest('th,td,label,option,.badge')) continue; var h = ownText((n.nodeValue||'').trim(), pe) ? null : hit(n.nodeValue); if (h) left.push(h + ' @ ' + where(pe)); }\nArray.prototype.forEach.call(document.querySelectorAll('[placeholder],[title],[aria-label]'), function (e) { ['placeholder', 'title', 'aria-label'].forEach(function (a) { var h = hit(e.getAttribute(a)); if (h) left.push(a + ':' + h + ' @ ' + where(e)); }); });\nvar o = document.getElementById('i18n-audit'); if (!o) { o = document.createElement('pre'); o.id = 'i18n-audit'; document.body.appendChild(o); }\no.textContent = 'ENGLISH-LEFT: ' + left.length + ' ' + left.slice(0, 12).join(' | '); return { left: left, patterns: pats.length };",
+      "label": "Audit the list screen: no visible text equals an English platform string"
+    },
+    {
+      "action": "assertTextContains",
+      "selector": "#i18n-audit",
+      "text": "ENGLISH-LEFT: 0",
+      "label": "List screen has no English platform text"
+    },
+    {
+      "action": "click",
+      "selector": "#concept-WidgetCatalogEntry .panel-actions button:first-child",
+      "label": "Open the create form (first panel action is New)"
+    },
+    {
+      "action": "waitForTimeout",
+      "timeoutMs": 500
+    },
+    {
+      "action": "evaluate",
+      "name": "audit_form",
+      "script": "var DOLLAR = String.fromCharCode(36), SPECIAL = '.*+?^()|[]' + String.fromCharCode(92) + DOLLAR;\nfunction esc(s) { var o = ''; for (var i = 0; i < s.length; i++) { var ch = s.charAt(i); o += SPECIAL.indexOf(ch) >= 0 ? String.fromCharCode(92) + ch : ch; } return o; }\nvar c = NPDevI18n.catalogue(); var en = c.stringsByLocale.en, pt = c.stringsByLocale.pt; var pats = [];\nObject.keys(en).forEach(function (k) { var e = en[k]; if (!pt[k] || pt[k] === e || e.length < 3) return; var parts = e.split(/\\{[A-Za-z0-9_]+\\}/); var literal = parts.join('').trim().length; if (parts.length > 1 && literal < 6) return; pats.push([new RegExp('^' + parts.map(esc).join('.{1,60}') + DOLLAR), k, e]); });\nfunction ownText(t, e) { return t.indexOf('Create the order, then add its lines') === 0 || (t === 'Export CSV' && /ReviewPanel/.test(where(e))); } /* the sample model's own help text and its own 'Export CSV' action label, not platform text */\nfunction hit(t) { t = (t || '').replace(/\\s+/g, ' ').trim(); if (t.length < 3 || t.length > 300) return null; for (var i = 0; i < pats.length; i++) { if (pats[i][0].test(t)) return pats[i][1] + '=' + t.slice(0, 60); } return null; }\nfunction where(e) { var id = e.closest('[id]'); return (e.tagName + '.' + String(e.className).split(' ')[0] + ' in #' + (id ? id.id : '?')); }\nvar left = [], w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);\nwhile (w.nextNode()) { var n = w.currentNode; var pe = n.parentElement; if (!pe || /^(SCRIPT|STYLE|TH|TD|LABEL|OPTION)$/.test(pe.tagName) || pe.id === 'i18n-audit' || pe.closest('th,td,label,option,.badge')) continue; var h = ownText((n.nodeValue||'').trim(), pe) ? null : hit(n.nodeValue); if (h) left.push(h + ' @ ' + where(pe)); }\nArray.prototype.forEach.call(document.querySelectorAll('[placeholder],[title],[aria-label]'), function (e) { ['placeholder', 'title', 'aria-label'].forEach(function (a) { var h = hit(e.getAttribute(a)); if (h) left.push(a + ':' + h + ' @ ' + where(e)); }); });\nvar o = document.getElementById('i18n-audit'); if (!o) { o = document.createElement('pre'); o.id = 'i18n-audit'; document.body.appendChild(o); }\no.textContent = 'ENGLISH-LEFT: ' + left.length + ' ' + left.slice(0, 12).join(' | '); return { left: left, patterns: pats.length };",
+      "label": "Audit the create form"
+    },
+    {
+      "action": "assertTextContains",
+      "selector": "#i18n-audit",
+      "text": "ENGLISH-LEFT: 0",
+      "label": "Create form has no English platform text"
+    },
+    {
+      "action": "screenshot",
+      "name": "i18n_pt_form"
+    },
+    {
+      "action": "goto",
+      "url": "http://127.0.0.1:8099/npdev-workbench/WidgetOrderWorkbenchWorkbench.html",
+      "label": "Open the aggregate workbench"
+    },
+    {
+      "action": "waitForSelector",
+      "selector": "button:has-text(\"Novo\")",
+      "label": "The workbench toolbar is Portuguese",
+      "state": "visible"
+    },
+    {
+      "action": "waitForTimeout",
+      "timeoutMs": 500
+    },
+    {
+      "action": "evaluate",
+      "name": "audit_workbench",
+      "script": "var DOLLAR = String.fromCharCode(36), SPECIAL = '.*+?^()|[]' + String.fromCharCode(92) + DOLLAR;\nfunction esc(s) { var o = ''; for (var i = 0; i < s.length; i++) { var ch = s.charAt(i); o += SPECIAL.indexOf(ch) >= 0 ? String.fromCharCode(92) + ch : ch; } return o; }\nvar c = NPDevI18n.catalogue(); var en = c.stringsByLocale.en, pt = c.stringsByLocale.pt; var pats = [];\nObject.keys(en).forEach(function (k) { var e = en[k]; if (!pt[k] || pt[k] === e || e.length < 3) return; var parts = e.split(/\\{[A-Za-z0-9_]+\\}/); var literal = parts.join('').trim().length; if (parts.length > 1 && literal < 6) return; pats.push([new RegExp('^' + parts.map(esc).join('.{1,60}') + DOLLAR), k, e]); });\nfunction ownText(t, e) { return t.indexOf('Create the order, then add its lines') === 0 || (t === 'Export CSV' && /ReviewPanel/.test(where(e))); } /* the sample model's own help text and its own 'Export CSV' action label, not platform text */\nfunction hit(t) { t = (t || '').replace(/\\s+/g, ' ').trim(); if (t.length < 3 || t.length > 300) return null; for (var i = 0; i < pats.length; i++) { if (pats[i][0].test(t)) return pats[i][1] + '=' + t.slice(0, 60); } return null; }\nfunction where(e) { var id = e.closest('[id]'); return (e.tagName + '.' + String(e.className).split(' ')[0] + ' in #' + (id ? id.id : '?')); }\nvar left = [], w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);\nwhile (w.nextNode()) { var n = w.currentNode; var pe = n.parentElement; if (!pe || /^(SCRIPT|STYLE|TH|TD|LABEL|OPTION)$/.test(pe.tagName) || pe.id === 'i18n-audit' || pe.closest('th,td,label,option,.badge')) continue; var h = ownText((n.nodeValue||'').trim(), pe) ? null : hit(n.nodeValue); if (h) left.push(h + ' @ ' + where(pe)); }\nArray.prototype.forEach.call(document.querySelectorAll('[placeholder],[title],[aria-label]'), function (e) { ['placeholder', 'title', 'aria-label'].forEach(function (a) { var h = hit(e.getAttribute(a)); if (h) left.push(a + ':' + h + ' @ ' + where(e)); }); });\nvar o = document.getElementById('i18n-audit'); if (!o) { o = document.createElement('pre'); o.id = 'i18n-audit'; document.body.appendChild(o); }\no.textContent = 'ENGLISH-LEFT: ' + left.length + ' ' + left.slice(0, 12).join(' | '); return { left: left, patterns: pats.length };",
+      "label": "Audit the workbench"
+    },
+    {
+      "action": "assertTextContains",
+      "selector": "#i18n-audit",
+      "text": "ENGLISH-LEFT: 0",
+      "label": "Workbench has no English platform text"
+    },
+    {
+      "action": "screenshot",
+      "name": "i18n_pt_workbench"
+    },
+    {
+      "action": "evaluate",
+      "name": "restore_en",
+      "script": "localStorage.removeItem('npdev.ui.locale'); return {restored: true};",
+      "label": "Leave the browser profile as found"
+    }
+  ]
+}

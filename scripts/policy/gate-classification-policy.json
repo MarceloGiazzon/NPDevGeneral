@@ -200,6 +200,12 @@
       "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
       "movedToWeekly": false
     },
+    "check-ui-i18n.py": {
+      "classification": "product",
+      "reason": "REG-349: keeps the generated apps' platform text integrally translatable -- every UI text is a catalogue id with English and Portuguese, call sites match the catalogue, and unrouted literal English only ratchets down. A drift here puts English back into a Portuguese app.",
+      "hostedIn": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "movedToWeekly": false
+    },
     "check-schema-mirror-consistency.py": {
       "classification": "product",
       "reason": "Guards the FOUR copies of model.schema.json actually read by different real code paths (JsonModelParser, the authoring UI, the legacy authoring location) -- a drift here silently teaches a stale contract to whichever consumer reads it, a real behavioral divergence risk, not a documentation nicety.",

@@ -4,8 +4,9 @@ title: >-
   with their own confirmation
 type: FEATURE
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-11-11
+closed: 2026-11-21
 source: >-
   Ride-hailing S2 plan, objective 8 (browser AI writes a PACK, then publish); TASKS.md P4, P5, P6. Owner rule: publishing to the
   public catalog always needs the owner's explicit confirmation, every time, no remembered choice.
@@ -40,6 +41,20 @@ detail: |
   EMPTY replies (reasoning models, NO_FILES in every round) -- an infrastructure outcome, not a pack result.
   NOT done: a real round with a real chat AI in a browser through the Manager (the bench is an API stand-in), and the owner publishing
   one part. Rust unit tests exist (cargo test) for the argv of pack push / start pack.
+  REAL ROUND 2026-11-20 (owner's machine, Manager 0.13.40, Gemini "Hydrogen" medium effort, "Make a reusable part", id ratings): the first
+  answer was refused with four problems, one a RELAY defect (the probe's own concept had no access rule; fixed, REG-350), one a pack read
+  rule using $user.isSystem that blocks aggregates, two roles[] naming Rating (briefing blind spot, REG-350). A second conversation was
+  refused for roles[] again; the answer after the owner told the AI to drop roles[] was accepted, saved to My parts as ratings 1.0.0
+  ("Your own parts"), and the owner PUBLISHED it through the Manager: tag ratings-1.0.0, NPR commit a60babe 2026-11-20 18:26 -0300, verified
+  with `gh api` and an anonymous fetch of packs/ratings/pack.json (200) and of catalog-index.json (entry present). First publish attempt
+  was refused because the Manager remembered a tour's scratch folder as the catalog (REG-351); "Change the catalog folder" fixed it.
+  FOUND: the published pack's ui.labels are Portuguese (REG-347); the publish dialog's sentences are English in the Portuguese Manager and
+  the preview is understandable but not for a non-expert (REG-348). NOT closed: the done_when asks for a "readable preview" -- the owner
+  has not yet judged it; the half about publishing is met.
+  CLOSED 2026-11-21: the owner judged the preview readable and acceptable (2026-11-20 round) and published ratings 1.0.1 through the Manager:
+  tag ratings-1.0.1, NPR commit 4d418561 2026-11-21, verified with `gh api` (tags, commit, packs/ratings/pack.json version 1.0.1). 1.0.1 exists
+  because PackDiffEngine now treats ui.label/shortLabel/help/placeholder/hint/title changes as PATCH (was BREAKING, forced 2.0.0), and the pack
+  preview collapses wording-only changes into one plain line (PACK_TEXTS_REWORDED, en + pt).
 files:
   - NPDevCli/npdev_pack_sheet.py
   - NPDevCli/npdev_pack_push.py

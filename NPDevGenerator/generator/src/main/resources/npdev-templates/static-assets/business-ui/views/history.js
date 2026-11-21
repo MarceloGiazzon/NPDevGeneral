@@ -35,7 +35,15 @@
     });
   }
 
-  var ACTION_LABELS = { CRUD_CREATE: "Created", CRUD_UPDATE: "Updated", CRUD_DELETE: "Deleted", CRUD_RESTORE: "Restored" };
+  function actionLabel(action) {
+    switch (action) {
+      case "CRUD_CREATE": return NPDevI18n.t("views.history.actionCreated", "Created");
+      case "CRUD_UPDATE": return NPDevI18n.t("views.history.actionUpdated", "Updated");
+      case "CRUD_DELETE": return NPDevI18n.t("views.history.actionDeleted", "Deleted");
+      case "CRUD_RESTORE": return NPDevI18n.t("views.history.actionRestored", "Restored");
+      default: return action;
+    }
+  }
 
   function shown(value) {
     return value === null || value === undefined || value === "null" || value === "" ? "—" : String(value);
@@ -44,7 +52,7 @@
   function renderEntries(ctx, rows, target) {
     target.innerHTML = "";
     if (!rows.length) {
-      target.textContent = "No recorded changes yet.";
+      target.textContent = NPDevI18n.t("views.history.empty", "No recorded changes yet.");
       return;
     }
     var list = document.createElement("ol");
@@ -54,8 +62,8 @@
       item.className = "history-entry";
       var head = document.createElement("div");
       head.className = "history-head";
-      head.textContent = new Date(row.timestampMs).toLocaleString() + " · " + (row.actorId || "system")
-        + " · " + (ACTION_LABELS[row.action] || row.action) + (row.outcome && row.outcome !== "ALLOW" ? " (" + row.outcome + ")" : "");
+      head.textContent = new Date(row.timestampMs).toLocaleString(NPDevI18n.language()) + " · " + (row.actorId || NPDevI18n.t("views.history.systemActor", "system"))
+        + " · " + actionLabel(row.action) + (row.outcome && row.outcome !== "ALLOW" ? " (" + row.outcome + ")" : "");
       item.appendChild(head);
       var changes = parseChanges(row.meta).filter(function (c) { return c.field !== "version"; });
       if (changes.length) {
@@ -85,17 +93,17 @@
     var section = document.createElement("section");
     section.className = "detail-history";
     var title = document.createElement("h3");
-    title.textContent = "History";
+    title.textContent = NPDevI18n.t("views.history.title", "History");
     section.appendChild(title);
     var body = document.createElement("div");
     var load = document.createElement("button");
     load.type = "button";
-    load.textContent = "Show history";
+    load.textContent = NPDevI18n.t("views.history.show", "Show history");
     body.appendChild(load);
     section.appendChild(body);
 
     load.addEventListener("click", async function () {
-      body.textContent = "Loading…";
+      body.textContent = NPDevI18n.t("views.history.loading", "Loading…");
       var params = new URLSearchParams();
       params.set("resourceType", String(ctx.concept.conceptName).toUpperCase());
       params.set("resourceId", String(ctx.record[ctx.concept.idField]));
@@ -105,8 +113,9 @@
         renderEntries(ctx, Array.isArray(rows) ? rows : [], body);
       } catch (error) {
         body.textContent = error && error.status === 403
-          ? "Change history is visible to users with the audit permission."
-          : "Could not load history: " + (error && error.message ? error.message : "error");
+          ? NPDevI18n.t("views.history.forbidden", "Change history is visible to users with the audit permission.")
+          : NPDevI18n.t("views.history.loadFailed", "Could not load history: {message}",
+            { message: error && error.message ? error.message : NPDevI18n.t("views.history.errorWord", "error") });
       }
     });
     return section;

@@ -14,7 +14,9 @@
 
   function show(value) {
     if (value === null || value === undefined || value === '') return '—';
-    if (Array.isArray(value)) return value.length + ' row(s)';
+    if (Array.isArray(value)) return value.length === 1
+      ? NPDevI18n.t('common.review.rowOne', '{count} row', { count: value.length })
+      : NPDevI18n.t('common.review.rowMany', '{count} rows', { count: value.length });
     if (typeof value === 'object') return '{…}';
     return String(value);
   }
@@ -33,12 +35,18 @@
 
     var dlg = document.createElement('dialog');
     dlg.className = 'npdev-review';
-    var html = '<form method="dialog"><h3></h3><table><thead><tr><th></th><th>Field</th>'
-      + '<th>Now</th><th>Proposed</th></tr></thead><tbody></tbody></table>'
-      + '<p class="npdev-review-actions"><button value="cancel" type="submit">Discard</button> '
-      + '<button value="apply" type="submit" class="primary">Apply selected</button></p></form>';
+    var html = '<form method="dialog"><h3></h3><table><thead><tr><th></th><th></th>'
+      + '<th></th><th></th></tr></thead><tbody></tbody></table>'
+      + '<p class="npdev-review-actions"><button value="cancel" type="submit"></button> '
+      + '<button value="apply" type="submit" class="primary"></button></p></form>';
     dlg.innerHTML = html;
-    dlg.querySelector('h3').textContent = opts.title || 'Review proposed changes';
+    dlg.querySelector('h3').textContent = opts.title || NPDevI18n.t('common.review.defaultTitle', 'Review proposed changes');
+    var heads = dlg.querySelectorAll('th');
+    heads[1].textContent = NPDevI18n.t('common.review.columnField', 'Field');
+    heads[2].textContent = NPDevI18n.t('common.review.columnNow', 'Now');
+    heads[3].textContent = NPDevI18n.t('common.review.columnProposed', 'Proposed');
+    dlg.querySelector('button[value=cancel]').textContent = NPDevI18n.t('common.review.discard', 'Discard');
+    dlg.querySelector('button[value=apply]').textContent = NPDevI18n.t('common.review.applySelected', 'Apply selected');
     var body = dlg.querySelector('tbody');
     keys.forEach(function (k) {
       var tr = document.createElement('tr');

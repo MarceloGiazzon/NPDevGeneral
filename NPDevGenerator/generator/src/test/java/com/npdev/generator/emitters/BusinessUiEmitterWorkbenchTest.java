@@ -125,8 +125,9 @@ public class BusinessUiEmitterWorkbenchTest {
         assertTrue(html.contains("var STRINGS ="), "page carries the resolved string catalogue");
         assertTrue(html.contains("Salvar"), "app override for action.save renders into the page");
         assertTrue(html.contains("Select"), "an id the app didn't override keeps the platform English default");
-        assertFalse(html.contains("Selecionar"),
-                "no hardcoded Portuguese fallback should be baked into the template anymore");
+        // REG-349: the page also ships every language's catalogue so it follows the visitor's choice.
+        assertTrue(html.contains("\"stringsByLocale\""), "page carries the per-language catalogue");
+        assertTrue(html.contains("NPDevI18n.use("), "page hands the catalogue to NPDevI18n");
     }
 
     @Test

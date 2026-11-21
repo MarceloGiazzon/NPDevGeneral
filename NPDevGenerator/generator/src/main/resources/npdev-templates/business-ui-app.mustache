@@ -107,7 +107,8 @@
     const field = document.createElement("label");
     field.className = "api-key-field";
     const label = document.createElement("span");
-    label.textContent = "API Key";
+    label.textContent = platformString("app.auth.apiKey", "API Key");
+    el.apiKeyLabel = label; // relabelled in bootstrap() once the catalogue (manifest) is loaded
     field.appendChild(label);
     field.appendChild(el.apiKey);
     bar.appendChild(field);
@@ -325,7 +326,7 @@
   // load, and showConcept clears that chatter on navigation -- never a real action/error message.
   function announceLoaded(concept) {
     if (state.activeConcept && state.activeConcept !== concept) { return; }
-    setStatus(concept.displayName + " loaded.", false);
+    setStatus(platformString("app.status.loaded", "{name} loaded.", { name: concept.displayName }), false);
     state.statusIsLoadChatter = true;
   }
 
@@ -338,7 +339,7 @@
   el.toastHost = document.createElement("div");
   el.toastHost.className = "toast-host";
   el.toastHost.setAttribute("role", "region");
-  el.toastHost.setAttribute("aria-label", "Notifications");
+  el.toastHost.setAttribute("aria-label", platformString("app.toast.notifications", "Notifications"));
   document.body.appendChild(el.toastHost);
 
   // Errors never auto-dismiss -- a validation message the user has to act on must not vanish while
@@ -359,7 +360,7 @@
     body.textContent = copy;
     node.appendChild(body);
     const dismiss = button("×", "toast-close", function () { dismissToast(node); });
-    dismiss.setAttribute("aria-label", "Dismiss");
+    dismiss.setAttribute("aria-label", platformString("app.toast.dismiss", "Dismiss"));
     node.appendChild(dismiss);
     el.toastHost.appendChild(node);
     if (kind !== "error" && kind !== "pending") {
@@ -422,8 +423,8 @@
     if (!executionId) {
       return;
     }
-    const label = flowName || "Flow";
-    const pending = toast(label + " is running…", "pending");
+    const label = flowName || platformString("app.flow.defaultName", "Flow");
+    const pending = toast(platformString("app.flow.running", "{name} is running…", { name: label }), "pending");
     if (!(window.NPDevShell && typeof window.NPDevShell.trackExecution === "function")) {
       return;
     }
@@ -432,8 +433,12 @@
       flowName: label,
       onSettled: function (outcome, detail) {
         const failed = outcome !== "SUCCEEDED";
-        const errorSuffix = failed && detail && detail.lastErrorMessage ? ": " + detail.lastErrorMessage : "";
-        resolveToast(pending, !failed, label + (failed ? " failed" + errorSuffix + "." : " completed."));
+        const errorDetail = failed && detail && detail.lastErrorMessage ? detail.lastErrorMessage : "";
+        resolveToast(pending, !failed, !failed
+          ? platformString("app.flow.completed", "{name} completed.", { name: label })
+          : (errorDetail
+            ? platformString("app.flow.failedWithDetail", "{name} failed: {detail}.", { name: label, detail: errorDetail })
+            : platformString("app.flow.failed", "{name} failed.", { name: label })));
       }
     });
   }
@@ -443,7 +448,7 @@
   // toast stack only ever carries outcomes the user asked for.
   function notify(message, error) {
     setStatus(message, error);
-    if (error && message === SESSION_EXPIRED_MESSAGE) {
+    if (error && message === sessionExpiredMessage()) {
       return sessionExpiredToast();
     }
     return toast(message, error ? "error" : "success");
@@ -452,14 +457,16 @@
   // Expired session: ONE persistent error toast with a sign-in link (carrying the current page as
   // ?next=, which login-page.html honours). Nothing is cleared, so an open form/modal keeps what
   // the user typed while they sign in from the link.
-  const SESSION_EXPIRED_MESSAGE = "Your session expired. Sign in again.";
+  function sessionExpiredMessage() {
+    return platformString("app.session.expired", "Your session expired. Sign in again.");
+  }
 
   function sessionExpiredToast() {
     const existing = el.toastHost.querySelector(".toast-session-expired");
     if (existing) {
       return existing;
     }
-    const node = toast(SESSION_EXPIRED_MESSAGE, "error");
+    const node = toast(sessionExpiredMessage(), "error");
     if (!node) {
       return node;
     }
@@ -468,7 +475,7 @@
     if (loginPath) {
       const link = document.createElement("a");
       link.className = "toast-link";
-      link.textContent = "Sign in";
+      link.textContent = platformString("app.session.signIn", "Sign in");
       link.href = "/" + String(loginPath).replace(/^\/+/, "") + "?next="
         + encodeURIComponent(window.location.pathname + window.location.search + window.location.hash);
       link.target = "_blank";
@@ -486,12 +493,13 @@
 
   // Platform chrome text, resolved exactly like shell.js's shellString(): the chosen language's
   // catalogue ("pt-BR" -> "pt"), then the app-default catalogue, then the English fallback.
-  function platformString(key, fallback) {
-    const manifest = state.manifest || {};
-    const language = uiLocale().split("-")[0].toLowerCase();
-    const byLocale = manifest.stringsByLocale && language ? manifest.stringsByLocale[language] : null;
-    if (byLocale && byLocale[key]) return byLocale[key];
-    return (manifest.strings && manifest.strings[key]) || fallback;
+  function platformString(key, fallback, vars) {
+    // REG-349: the lookup lives in /npdev-i18n.js (shared with the shell, the views and the sign-in pages).
+    if (window.NPDevI18n) {
+      if (state.manifest) { window.NPDevI18n.use(state.manifest); }
+      return window.NPDevI18n.t(key, fallback, vars);
+    }
+    return fallback;
   }
 
   function headers() {
@@ -529,9 +537,9 @@
       link.click();
       link.remove();
       setTimeout(function () { URL.revokeObjectURL(link.href); }, 1000);
-      notify("Downloaded " + doc.name + ".csv.", false);
+      notify(platformString("app.report.downloaded", "Downloaded {file}.", { file: doc.name + ".csv" }), false);
     } catch (error) {
-      notify("Could not download " + doc.name + ".csv: " + error.message, true);
+      notify(platformString("app.report.downloadFailed", "Could not download {file}: {reason}", { file: doc.name + ".csv", reason: error.message }), true);
     }
   }
 
@@ -543,7 +551,7 @@
       console.warn("Network failure for " + url, networkError);
       // no `status` on purpose: the offline fallbacks (cached list, queued write, cached principal)
       // all detect a dropped connection as `error.status === undefined`
-      throw new Error("Can't reach the server. Check your connection.");
+      throw new Error(platformString("app.error.offline", "Can't reach the server. Check your connection."));
     }
     const contentType = response.headers.get("content-type") || "";
     const payload = contentType.includes("application/json") ? await response.json() : await response.text();
@@ -574,24 +582,24 @@
       serverText = raw.trim();
     }
     if (status === 401) {
-      return SESSION_EXPIRED_MESSAGE;
+      return sessionExpiredMessage();
     }
     if (status === 403) {
-      return "You don't have permission to do that.";
+      return platformString("app.error.forbidden", "You don't have permission to do that.");
     }
     if (status === 404) {
-      return "That record no longer exists.";
+      return platformString("app.error.notFound", "That record no longer exists.");
     }
     if (status >= 500) {
       console.warn("Server error HTTP " + status + ": " + raw);
-      return "The server had a problem. Try again.";
+      return platformString("app.error.server", "The server had a problem. Try again.");
     }
     const looksLikeCode = /^[A-Z0-9_.:-]+$/.test(serverText) || /^<(!doctype|html)/i.test(serverText);
     if (serverText && !looksLikeCode) {
       return serverText;
     }
     console.warn("HTTP " + status + ": " + raw);
-    return raw && !/^<(!doctype|html)/i.test(raw) ? raw : "Request failed (HTTP " + status + ").";
+    return raw && !/^<(!doctype|html)/i.test(raw) ? raw : platformString("app.error.requestFailed", "Request failed (HTTP {status}).", { status: status });
   }
 
   // Path A P6.2: the shell reads its per-concept fields from ./generated-ui-manifest.json (static,
@@ -613,7 +621,7 @@
         + ") -- falling back to the generated manifest's own (unfiltered) field metadata.");
     if (!uiContractDiagnosticShown) {
       uiContractDiagnosticShown = true;
-      toast("Live permission data unavailable from the UI contract bundle; showing the generated manifest instead.", "info");
+      toast(platformString("app.contract.degraded", "Live permission data unavailable from the UI contract bundle; showing the generated manifest instead."), "info");
     }
   }
 
@@ -755,7 +763,7 @@
     wrap.setAttribute("role", "tablist");
     views.forEach(function (name) {
       const impl = name === "table" ? null : window.NPDevViews.get(name);
-      const label = impl && impl.label ? impl.label : (name === "table" ? "Table" : name.charAt(0).toUpperCase() + name.slice(1));
+      const label = impl && impl.label ? impl.label : (name === "table" ? platformString("app.views.table", "Table") : name.charAt(0).toUpperCase() + name.slice(1));
       const b = button(label, name === active ? "primary" : "", function () { setActiveView(concept, name); });
       b.dataset.view = name;
       b.setAttribute("role", "tab");
@@ -780,7 +788,7 @@
           const response = await postConceptBatch(concept, "setField", [record[concept.idField]], { field: fieldName, value: value });
           const row = Array.isArray(response.results) ? response.results[0] : null;
           const ok = Boolean(row && row.ok);
-          if (!ok) { notify((row && (row.message || row.error)) || "Update refused.", true); }
+          if (!ok) { notify((row && (row.message || row.error)) || platformString("app.batch.updateRefused", "Update refused."), true); }
           await reloadAfterMutation(concept);
           return { ok: ok, message: row ? (row.message || "") : "" };
         },
@@ -830,7 +838,12 @@
   // parseWhereClauses) -- LNCH-5 shipped that server contract, but nothing in this UI ever built a
   // `where` string until now. Only "eq"/"ne"/"contains" are accepted server-side (parseWhereClause
   // rejects any other operator token), so the control set below is deliberately limited to those.
-  const FILTER_OPERATOR_LABELS = { contains: "contains", eq: "=", ne: "≠" };
+  function filterOperatorLabel(op) {
+    if (op === "contains") { return platformString("app.filter.contains", "contains"); }
+    if (op === "eq") { return "="; }
+    if (op === "ne") { return "≠"; }
+    return op;
+  }
 
   function filterOperatorsFor(field) {
     if (field.type === "boolean") {
@@ -888,13 +901,14 @@
   function activeFilterSummary(concept, panel) {
     const parts = [];
     if (panel.filter) {
-      parts.push("search “" + panel.filter + "”");
+      parts.push(platformString("app.filter.searchSummary", "search “{text}”", { text: panel.filter }));
     }
     filterableVisibleFields(concept, panel).forEach(function (field) {
       const entry = panel.columnFilters[field.name];
       if (entry && String(entry.value || "").length > 0) {
-        const opLabel = FILTER_OPERATOR_LABELS[entry.operator] || entry.operator;
-        parts.push((field.label || field.name) + " " + opLabel + " “" + entry.value + "”");
+        const opLabel = filterOperatorLabel(entry.operator);
+        parts.push(platformString("app.filter.clauseSummary", "{field} {operator} “{value}”",
+          { field: field.label || field.name, operator: opLabel, value: entry.value }));
       }
     });
     return parts.join("; ");
@@ -1008,8 +1022,8 @@
           panel.totalElements = Number(cachedPayload.totalElements || panel.records.length);
           panel.staleSince = cached.savedAt;
           panel.offlineEmpty = false;
-          setStatus("You are offline - showing " + concept.displayName + " as last updated "
-            + new Date(cached.savedAt).toLocaleString() + ".", false);
+          setStatus(platformString("app.offline.showingCached", "You are offline - showing {name} as last updated {when}.",
+            { name: concept.displayName, when: new Date(cached.savedAt).toLocaleString() }), false);
         } else {
           panel.records = [];
           panel.totalElements = 0;
@@ -1017,8 +1031,8 @@
           // Shown inside the panel as well: the single status line is overwritten by whichever load
           // finishes last, and this message must not be the one that gets lost.
           panel.offlineEmpty = true;
-          setStatus("You are offline and " + concept.displayName
-            + " has not been opened on this device yet, so there is nothing to show.", true);
+          setStatus(platformString("app.offline.nothingCached", "You are offline and {name} has not been opened on this device yet, so there is nothing to show.",
+            { name: concept.displayName }), true);
         }
       } else {
         setStatus(error.message, true);
@@ -1056,7 +1070,9 @@
     return Boolean(off.queueAdd({
       concept: concept.conceptName, conceptLabel: concept.displayName,
       method: mode === "edit" ? "PUT" : "POST", url: url, body: body, baseVersion: baseVersion,
-      summary: (mode === "edit" ? "Update " : "New ") + singularLabel(concept)
+      summary: mode === "edit"
+        ? platformString("app.form.titleEdit", "Edit {name}", { name: singularLabel(concept) })
+        : platformString("app.form.titleNew", "New {name}", { name: singularLabel(concept) })
     }));
   }
 
@@ -1099,21 +1115,22 @@
     box.setAttribute("role", "status");
     const head = document.createElement("div");
     head.textContent = pending.length
-      ? pending.length + " change(s) saved on this device, pending sync."
-      : "Some changes could not be synced and need attention.";
+      ? platformString("app.offline.pendingCount", "{count} change(s) saved on this device, pending sync.", { count: pending.length })
+      : platformString("app.offline.needsAttention", "Some changes could not be synced and need attention.");
     box.appendChild(head);
     if (pending.length) {
-      box.appendChild(button("Sync now", "", function () { syncPendingWrites(); }));
+      box.appendChild(button(platformString("app.offline.syncNow", "Sync now"), "", function () { syncPendingWrites(); }));
     }
     entries.forEach(function (item) {
       const row = document.createElement("div");
       row.className = "pending-sync-item";
       const label = document.createElement("span");
-      label.textContent = item.summary + " - "
-        + (item.status === "pending" ? "pending sync" : "needs attention: " + item.message);
+      label.textContent = item.status === "pending"
+        ? platformString("app.offline.itemPending", "{summary} - pending sync", { summary: item.summary })
+        : platformString("app.offline.itemRejected", "{summary} - needs attention: {reason}", { summary: item.summary, reason: item.message });
       row.appendChild(label);
       if (item.status !== "pending") {
-        row.appendChild(button("Discard", "", function () {
+        row.appendChild(button(platformString("app.offline.discard", "Discard"), "", function () {
           shellOffline().queueRemove(item.id);
           render();
         }));
@@ -1171,7 +1188,7 @@
     if (!state.manifest) {
       return;
     }
-    const appTitle = state.manifest.appName || "Business Data";
+    const appTitle = state.manifest.appName || platformString("app.page.title", "Business Data");
     document.title = appTitle;
     el.apiKeyField.style.display = (state.manifest.auth && state.manifest.auth.mode === "jwt") ? "none" : "";
     // Live filtering re-renders the whole app while the user is typing: remember which filter box had
@@ -1260,9 +1277,9 @@
   function activeSectionLabel(concept) {
     if (!concept) return "";
     if (concept.declaredPanel) return concept.declaredPanel.title;
-    if (concept === STORE_SECTION) return "Store";
-    if (concept === BOX_VIEW_SECTION) return "Box Inspector";
-    if (concept === PROMOTION_SECTION) return "Promotion";
+    if (concept === STORE_SECTION) return platformString("app.section.store", "Store");
+    if (concept === BOX_VIEW_SECTION) return platformString("app.section.boxInspector", "Box Inspector");
+    if (concept === PROMOTION_SECTION) return platformString("app.section.promotion", "Promotion");
     return concept.displayName || "";
   }
 
@@ -1500,7 +1517,7 @@
       const escapeHatch = document.createElement("a");
       escapeHatch.className = "frame-escape-hatch";
       escapeHatch.href = "#";
-      escapeHatch.textContent = "← Back to app";
+      escapeHatch.textContent = platformString("app.frame.backToApp", "← Back to app");
       escapeHatch.addEventListener("click", function (e) {
         e.preventDefault();
         const target = visibleConcepts().find(function (c) {
@@ -1522,12 +1539,14 @@
       const formHeader = document.createElement("div");
       formHeader.className = "panel-header";
       const formTitle = document.createElement("h2");
-      formTitle.textContent = (panel.formMode.mode === "edit" ? "Edit " : "New ") + singularLabel(concept);
+      formTitle.textContent = panel.formMode.mode === "edit"
+        ? platformString("app.form.titleEdit", "Edit {name}", { name: singularLabel(concept) })
+        : platformString("app.form.titleNew", "New {name}", { name: singularLabel(concept) });
       formHeader.appendChild(formTitle);
       const backActions = document.createElement("div");
       backActions.className = "panel-actions";
       let panelForm = null;
-      backActions.appendChild(button("« Back to list", "", function () {
+      backActions.appendChild(button(platformString("app.form.backToList", "« Back to list"), "", function () {
         confirmIfDirty(panelForm).then(function (ok) {
           if (!ok) { return; }
           panel.formMode = null;
@@ -1560,10 +1579,10 @@
     const actions = document.createElement("div");
     actions.className = "panel-actions";
     if (conceptAllows(concept, "create")) {
-      actions.appendChild(button("New", "primary", function () { openForm(concept, "create", null); }));
+      actions.appendChild(button(platformString("app.toolbar.new", "New"), "primary", function () { openForm(concept, "create", null); }));
     }
-    actions.appendChild(button("Refresh", "", function () { loadPanel(concept); }));
-    actions.appendChild(button("Clear", "", function () {
+    actions.appendChild(button(platformString("app.toolbar.refresh", "Refresh"), "", function () { loadPanel(concept); }));
+    actions.appendChild(button(platformString("app.toolbar.clear", "Clear"), "", function () {
       panel.filter = "";
       panel.columnFilters = {};
       panel.page = 0;
@@ -1572,9 +1591,9 @@
     // R7.3: a real <button>, not an <a href>, because the CSV is now built client-side (see
     // exportPanelCsv) by walking the SAME list request the grid just made -- so the export can never
     // drift from whatever filter/sort state is currently on screen.
-    const exportButton = button("Export CSV", "", function () { exportPanelCsv(concept); });
+    const exportButton = button(platformString("app.toolbar.exportCsv", "Export CSV"), "", function () { exportPanelCsv(concept); });
     actions.appendChild(exportButton);
-    actions.appendChild(button("Export Excel", "", function () { exportPanelXlsx(concept); }));
+    actions.appendChild(button(platformString("app.toolbar.exportExcel", "Export Excel"), "", function () { exportPanelXlsx(concept); }));
     // R7.6: generalizes the propose (parse) -> review (per-row-validated preview) -> commit (atomic
     // per accepted row) triad that three hand-authored WmsOffice aggregate wizards already proved
     // (DocumentoFiscalAggregate/RomaneioAggregate/InventarioArquivoAggregate, each parse->review->
@@ -1582,17 +1601,17 @@
     // machinery to propose into, so "propose" is a client-side CSV parse and "commit" is N
     // independently atomic single-row POSTs to the SAME create endpoint the New/Edit form already
     // uses, not one multi-row transaction. See openImportDialog.
-    actions.appendChild(button("Import CSV", "", function () { openImportDialog(concept); }));
+    actions.appendChild(button(platformString("app.toolbar.importCsv", "Import CSV"), "", function () { openImportDialog(concept); }));
     // LNCH-10 slice 2 (REG-12): prints exactly the currently loaded page -- the same filtered/sorted
     // rows on screen, not a full-table export (Export CSV already owns "every matching row").
-    actions.appendChild(button("Print", "", function () { printPanel(concept); }));
+    actions.appendChild(button(platformString("app.toolbar.print", "Print"), "", function () { printPanel(concept); }));
     // LNCH-10 slice 3 (REG-12): a declared `document` bound to this concept -- a server-rendered PDF
     // of every matching row (mirrors Export CSV's data path, not the on-screen page). Usually 0 or 1
     // per concept; render one link per document if more than one is declared.
     (concept.documents || []).forEach(function (doc) {
       const pdfLink = document.createElement("a");
       pdfLink.href = "/api/documents/" + encodeURIComponent(doc.name) + "/render.pdf";
-      pdfLink.textContent = "Download PDF";
+      pdfLink.textContent = platformString("app.report.downloadPdf", "Download PDF");
       pdfLink.target = "_blank";
       pdfLink.rel = "noopener";
       actions.appendChild(pdfLink);
@@ -1600,7 +1619,7 @@
       // app's own request headers (API key / session) and saved as a file, so it works in API-key mode
       // where a plain <a href> would carry no credential.
       if (doc.kind === "list") {
-        actions.appendChild(button("Download CSV", "", function () { downloadReportCsv(doc); }));
+        actions.appendChild(button(platformString("app.report.downloadCsv", "Download CSV"), "", function () { downloadReportCsv(doc); }));
       }
     });
     header.appendChild(actions);
@@ -1610,8 +1629,9 @@
       banner.className = "offline-banner";
       banner.setAttribute("role", "status");
       banner.textContent = panel.staleSince
-        ? "Offline - this list is stale. Last updated " + new Date(panel.staleSince).toLocaleString() + "."
-        : "You are offline and " + concept.displayName + " has not been opened on this device yet, so there is nothing to show.";
+        ? platformString("app.offline.stale", "Offline - this list is stale. Last updated {when}.", { when: new Date(panel.staleSince).toLocaleString() })
+        : platformString("app.offline.nothingCached", "You are offline and {name} has not been opened on this device yet, so there is nothing to show.",
+          { name: concept.displayName });
       section.appendChild(banner);
     }
     appendPendingSyncBanner(section, concept);
@@ -1628,8 +1648,8 @@
     if (panel.filter || columnFiltersActive(panel)) {
       const exportNotice = document.createElement("div");
       exportNotice.className = "export-filter-notice";
-      exportNotice.textContent = "Filtered (" + activeFilterSummary(concept, panel)
-          + ") -- Export CSV exports exactly these rows, sorted as shown.";
+      exportNotice.textContent = platformString("app.filter.exportNotice", "Filtered ({summary}) -- Export CSV exports exactly these rows, sorted as shown.",
+          { summary: activeFilterSummary(concept, panel) });
       section.appendChild(exportNotice);
     }
 
@@ -1638,8 +1658,8 @@
     const input = document.createElement("input");
     input.type = "search";
     input.value = panel.filter;
-    input.placeholder = "Filter";
-    input.setAttribute("aria-label", "Filter " + concept.displayName);
+    input.placeholder = platformString("app.filter.placeholder", "Filter");
+    input.setAttribute("aria-label", platformString("app.filter.ariaLabel", "Filter {name}", { name: concept.displayName }));
     input.dataset.filterKey = "__global";
     input.dataset.filterScope = concept.conceptName || "";
     input.addEventListener("input", function () {
@@ -1657,7 +1677,7 @@
       }
     });
     filters.appendChild(input);
-    filters.appendChild(button("Search", "", function () {
+    filters.appendChild(button(platformString("app.filter.search", "Search"), "", function () {
       scheduleFilterReload(concept, 0);
     }));
     section.appendChild(filters);
@@ -1676,7 +1696,7 @@
     if (panel.loading) {
       const loading = document.createElement("div");
       loading.className = "empty";
-      loading.textContent = "Loading";
+      loading.textContent = platformString("app.state.loading", "Loading");
       section.appendChild(loading);
       return section;
     }
@@ -1698,7 +1718,7 @@
         viewElement = viewImpl.render(viewContext(concept, panel));
       } catch (error) {
         console.error("NPDevViews." + activeView + " failed", error);
-        notify("The " + activeView + " view failed to render; showing the table.", true);
+        notify(platformString("app.views.renderFailed", "The {view} view failed to render; showing the table.", { view: activeView }), true);
         viewElement = null;
       }
       if (viewElement) {
@@ -1745,11 +1765,11 @@
     if (operators.length > 1) {
       const opSelect = document.createElement("select");
       opSelect.className = "column-filter-op";
-      opSelect.setAttribute("aria-label", (field.label || field.name) + " filter operator");
+      opSelect.setAttribute("aria-label", platformString("app.filter.operatorAria", "{field} filter operator", { field: field.label || field.name }));
       operators.forEach(function (op) {
         const option = document.createElement("option");
         option.value = op;
-        option.textContent = FILTER_OPERATOR_LABELS[op] || op;
+        option.textContent = filterOperatorLabel(op);
         if (op === entry.operator) {
           option.selected = true;
         }
@@ -1766,7 +1786,7 @@
       entry.operator = operators[0];
     }
     const valueControl = buildColumnFilterValueControl(field, entry, apply);
-    valueControl.setAttribute("aria-label", (field.label || field.name) + " filter value");
+    valueControl.setAttribute("aria-label", platformString("app.filter.valueAria", "{field} filter value", { field: field.label || field.name }));
     valueControl.dataset.filterKey = "col:" + field.name;
     valueControl.dataset.filterScope = concept.conceptName || "";
     wrap.appendChild(valueControl);
@@ -1782,7 +1802,8 @@
     if (field.type === "boolean") {
       const select = document.createElement("select");
       select.className = "column-filter-value";
-      [["", "Any"], ["true", "True"], ["false", "False"]].forEach(function (pair) {
+      [["", platformString("app.filter.any", "Any")], ["true", platformString("app.filter.true", "True")],
+        ["false", platformString("app.filter.false", "False")]].forEach(function (pair) {
         const option = document.createElement("option");
         option.value = pair[0];
         option.textContent = pair[1];
@@ -1802,7 +1823,7 @@
       select.className = "column-filter-value";
       const any = document.createElement("option");
       any.value = "";
-      any.textContent = "Any";
+      any.textContent = platformString("app.filter.any", "Any");
       select.appendChild(any);
       const options = (field.enumOptions && field.enumOptions.length)
           ? field.enumOptions
@@ -1833,7 +1854,7 @@
       input.type = "datetime-local";
     } else {
       input.type = "search";
-      input.placeholder = "contains…";
+      input.placeholder = platformString("app.filter.containsPlaceholder", "contains…");
     }
     input.addEventListener("input", function () {
       entry.value = input.value;
@@ -1866,25 +1887,27 @@
     // Why an empty list is empty, in the order a person would ask: filters, no access to the concept at all,
     // a rule that shows each role only its own rows, and only then "nothing has been created".
     message.textContent = hasActiveFilter
-        ? "No " + concept.displayName + " match the current filters."
+        ? platformString("app.empty.filtered", "No {name} match the current filters.", { name: concept.displayName })
         : !conceptAllows(concept, "list")
-            ? "Your role cannot see " + concept.displayName + "."
+            ? platformString("app.empty.noAccess", "Your role cannot see {name}.", { name: concept.displayName })
             : concept.rowScoped
-                ? "No " + concept.displayName + " to show: your role only sees the ones that belong to it."
-                : "No " + concept.displayName + " yet.";
+                ? platformString("app.empty.rowScoped", "No {name} to show: your role only sees the ones that belong to it.", { name: concept.displayName })
+                : platformString("app.empty.none", "No {name} yet.", { name: concept.displayName });
     wrap.appendChild(message);
 
     const actions = document.createElement("div");
     actions.className = "empty-state-actions";
     if (conceptAllows(concept, "create")) {
-      actions.appendChild(button("Create " + singularLabel(concept), "primary", function () {
+      actions.appendChild(button(platformString("app.empty.create", "Create {name}", { name: singularLabel(concept) }), "primary", function () {
         openForm(concept, "create", null);
       }));
     }
     if (!hasActiveFilter && canManageSeeds() && state.seeds.loaded && state.seeds.available.length) {
       const multiple = state.seeds.available.length > 1;
       state.seeds.available.forEach(function (seed) {
-        const label = "Load sample data" + (multiple ? ": " + (seed.label || seed.id) : "");
+        const label = multiple
+          ? platformString("app.seed.loadNamed", "Load sample data: {name}", { name: seed.label || seed.id })
+          : platformString("app.seed.load", "Load sample data");
         const seedButton = button(label, "secondary", function () { runSeed(seed.id, concept); });
         // REG-192: a stable, data-shape-independent hook (the seed's own id) so a routine can address
         // this CTA without coupling to its rendered label, which changed "Demo users" -> "Load sample
@@ -1924,18 +1947,19 @@
 
   async function runSeed(seedId, concept) {
     try {
-      setStatus("Loading sample data…", false);
+      setStatus(platformString("app.seed.loading", "Loading sample data…"), false);
       const result = await fetchJson("/api/admin/seeds/" + encodeURIComponent(seedId) + "/run", {
         method: "POST",
         headers: headers()
       });
       if (!result || result.ok === false) {
-        notify("Sample data load failed: " + (result && result.failureMessage ? result.failureMessage : "unknown error"), true);
+        notify(platformString("app.seed.failed", "Sample data load failed: {reason}",
+          { reason: result && result.failureMessage ? result.failureMessage : platformString("app.seed.unknownError", "unknown error") }), true);
         return;
       }
       const counts = (result && result.createdCounts) || {};
       const total = Object.keys(counts).reduce(function (sum, key) { return sum + (counts[key] || 0); }, 0);
-      notify(total + " sample record(s) loaded.", false);
+      notify(platformString("app.seed.loaded", "{count} sample record(s) loaded.", { count: total }), false);
       const panel = panelState(concept);
       panel.page = 0;
       await loadPanel(concept);
@@ -1959,7 +1983,7 @@
     const badge = document.createElement("span");
     badge.className = "ext-field-badge";
     badge.textContent = "+" + packAlias;
-    badge.title = "Added by extension pack \"" + packAlias + "\"";
+    badge.title = platformString("app.badge.extensionTitle", "Added by extension pack \"{pack}\"", { pack: packAlias });
     el.appendChild(badge);
   }
 
@@ -1974,9 +1998,8 @@
     }
     const badge = document.createElement("span");
     badge.className = "access-restricted-badge";
-    badge.textContent = "restricted";
-    badge.title = "This field's write access is restricted by server-side policy -- shown "
-        + "read-only here; the server, not this screen, decides who may actually change it.";
+    badge.textContent = platformString("app.badge.restricted", "restricted");
+    badge.title = platformString("app.badge.restrictedTitle", "This field's write access is restricted by server-side policy -- shown read-only here; the server, not this screen, decides who may actually change it.");
     el.appendChild(badge);
   }
 
@@ -1995,7 +2018,9 @@
     const selectedOnPage = pageIds.filter(function (id) { return isRowSelected(panel, id); });
     const selectAllBox = document.createElement("input");
     selectAllBox.type = "checkbox";
-    selectAllBox.setAttribute("aria-label", "Select all rows on this page");
+    selectAllBox.setAttribute("aria-label", platformString("app.table.selectAllRows", "Select all rows on this page"));
+    // Read by business-ui-style.mustache's mobile card-mode `::after { content: attr(data-select-all-label) }`.
+    selectAllTh.setAttribute("data-select-all-label", platformString("app.table.selectAll", "Select all"));
     selectAllBox.disabled = pageIds.length === 0;
     selectAllBox.checked = pageIds.length > 0 && selectedOnPage.length === pageIds.length;
     selectAllBox.indeterminate = selectedOnPage.length > 0 && selectedOnPage.length < pageIds.length;
@@ -2045,7 +2070,7 @@
     });
     const actionHead = document.createElement("th");
     // a11y: an empty <th> fails axe `empty-table-header`; the visually hidden text names the column.
-    actionHead.appendChild(srOnlyLabel("Actions"));
+    actionHead.appendChild(srOnlyLabel(platformString("app.table.actions", "Actions")));
     headRow.appendChild(actionHead);
     thead.appendChild(headRow);
     thead.appendChild(buildColumnFilterRow(concept, panel, fields));
@@ -2068,7 +2093,7 @@
         selectTd.className = "bulk-select-col";
         const rowBox = document.createElement("input");
         rowBox.type = "checkbox";
-        rowBox.setAttribute("aria-label", "Select row");
+        rowBox.setAttribute("aria-label", platformString("app.table.selectRow", "Select row"));
         rowBox.checked = isRowSelected(panel, recordId);
         rowBox.addEventListener("change", function () {
           toggleRowSelected(panel, recordId, rowBox.checked);
@@ -2087,9 +2112,9 @@
         });
         const td = document.createElement("td");
         td.className = "row-actions";
-        td.appendChild(button("View", "", function () { openDetails(concept, record); }));
-        td.appendChild(button("Edit", "", function () { openForm(concept, "edit", record); }));
-        td.appendChild(button("Delete", "danger", function () { deleteRecord(concept, record); }));
+        td.appendChild(button(platformString("app.row.view", "View"), "", function () { openDetails(concept, record); }));
+        td.appendChild(button(platformString("app.row.edit", "Edit"), "", function () { openForm(concept, "edit", record); }));
+        td.appendChild(button(platformString("app.row.delete", "Delete"), "danger", function () { deleteRecord(concept, record); }));
         tr.appendChild(td);
         // Whole-row click opens the same details as the View button. Clicks on a control inside the
         // row (buttons, links, checkboxes, inputs) and the end of a text selection are not "open".
@@ -2118,15 +2143,15 @@
     const start = panel.totalElements === 0 ? 0 : panel.page * panel.size + 1;
     const end = Math.min(panel.totalElements, (panel.page + 1) * panel.size);
     const label = document.createElement("span");
-    label.textContent = start + "-" + end + " of " + panel.totalElements;
+    label.textContent = platformString("app.pager.range", "{start}-{end} of {total}", { start: start, end: end, total: panel.totalElements });
     pager.appendChild(label);
-    const prev = button("Previous", "", function () {
+    const prev = button(platformString("app.pager.previous", "Previous"), "", function () {
       panel.page = Math.max(0, panel.page - 1);
       loadPanel(concept);
     });
     prev.disabled = panel.page === 0;
     pager.appendChild(prev);
-    const next = button("Next", "", function () {
+    const next = button(platformString("app.pager.next", "Next"), "", function () {
       panel.page += 1;
       loadPanel(concept);
     });
@@ -2156,8 +2181,9 @@
     header.appendChild(title);
     const meta = document.createElement("div");
     meta.className = "print-meta";
-    meta.textContent = "Printed " + new Date().toLocaleString()
-        + (panel.filter ? " -- filtered: \"" + panel.filter + "\"" : "");
+    meta.textContent = panel.filter
+        ? platformString("app.print.metaFiltered", "Printed {when} -- filtered: \"{filter}\"", { when: new Date().toLocaleString(), filter: panel.filter })
+        : platformString("app.print.meta", "Printed {when}", { when: new Date().toLocaleString() });
     header.appendChild(meta);
     doc.appendChild(header);
 
@@ -2179,7 +2205,7 @@
       const td = document.createElement("td");
       td.colSpan = Math.max(1, fields.length);
       td.className = "empty";
-      td.textContent = "No records";
+      td.textContent = platformString("app.print.noRecords", "No records");
       tr.appendChild(td);
       tbody.appendChild(tr);
     } else {
@@ -2198,7 +2224,7 @@
 
     const footer = document.createElement("div");
     footer.className = "print-footer";
-    footer.textContent = "Total: " + panel.records.length + " of " + panel.totalElements + " record(s)";
+    footer.textContent = platformString("app.print.total", "Total: {shown} of {total} record(s)", { shown: panel.records.length, total: panel.totalElements });
     doc.appendChild(footer);
 
     el.printRoot.replaceChildren(doc);
@@ -2377,7 +2403,7 @@
   async function saveCurrentView(concept, name, scopeKind) {
     const scopeType = scopeNameForKind(scopeKind);
     if (!scopeType) {
-      throw new Error("This app has no '" + scopeKind + "' property scope declared.");
+      throw new Error(platformString("app.views.noScope", "This app has no '{scope}' property scope declared.", { scope: scopeKind }));
     }
     const key = savedViewsPropertyKey(concept);
     const combined = await fetchSavedViews(concept);
@@ -2395,7 +2421,7 @@
   async function deleteSavedView(concept, scopeKind, name) {
     const scopeType = scopeNameForKind(scopeKind);
     if (!scopeType) {
-      throw new Error("This app has no '" + scopeKind + "' property scope declared.");
+      throw new Error(platformString("app.views.noScope", "This app has no '{scope}' property scope declared.", { scope: scopeKind }));
     }
     const key = savedViewsPropertyKey(concept);
     const combined = await fetchSavedViews(concept);
@@ -2413,22 +2439,24 @@
   async function promptSaveView(concept) {
     const panel = panelState(concept);
     const suggested = panel.activeViewToken ? panel.activeViewToken.slice(panel.activeViewToken.indexOf(":") + 1) : "";
-    const name = window.prompt("Save the current filter, sort and columns as a view named:", suggested);
+    const name = window.prompt(platformString("app.views.savePrompt", "Save the current filter, sort and columns as a view named:"), suggested);
     if (name === null) {
       return;
     }
     const trimmed = name.trim();
     if (!trimmed) {
-      notify("A view needs a name.", true);
+      notify(platformString("app.views.needsName", "A view needs a name."), true);
       return;
     }
     const canShare = Boolean(sharedScopeName());
     const share = canShare && window.confirm(
-        "Share \"" + trimmed + "\" with everyone in this workspace?\n\nOK = shared with the team\nCancel = just me");
+        platformString("app.views.sharePrompt", "Share \"{name}\" with everyone in this workspace?\n\nOK = shared with the team\nCancel = just me", { name: trimmed }));
     try {
       await saveCurrentView(concept, trimmed, share ? "shared" : "mine");
       panel.activeViewToken = (share ? "shared:" : "mine:") + trimmed;
-      notify("View “" + trimmed + "” saved" + (share ? " (shared with the team)." : " (just for you)."), false);
+      notify(share
+        ? platformString("app.views.savedShared", "View “{name}” saved (shared with the team).", { name: trimmed })
+        : platformString("app.views.savedMine", "View “{name}” saved (just for you).", { name: trimmed }), false);
       await ensureSavedViewsLoaded(concept, true);
     } catch (error) {
       notify(error.message, true);
@@ -2439,19 +2467,21 @@
     const panel = panelState(concept);
     const token = panel.activeViewToken;
     if (!token) {
-      notify("Select a saved view to delete first.", true);
+      notify(platformString("app.views.selectToDelete", "Select a saved view to delete first."), true);
       return;
     }
     const idx = token.indexOf(":");
     const scopeKind = token.slice(0, idx);
     const name = token.slice(idx + 1);
-    if (!window.confirm("Delete the " + (scopeKind === "shared" ? "shared" : "personal") + " view “" + name + "”?")) {
+    if (!window.confirm(scopeKind === "shared"
+        ? platformString("app.views.confirmDeleteShared", "Delete the shared view “{name}”?", { name: name })
+        : platformString("app.views.confirmDeletePersonal", "Delete the personal view “{name}”?", { name: name }))) {
       return;
     }
     try {
       await deleteSavedView(concept, scopeKind, name);
       panel.activeViewToken = "";
-      notify("View “" + name + "” deleted.", false);
+      notify(platformString("app.views.deleted", "View “{name}” deleted.", { name: name }), false);
       await ensureSavedViewsLoaded(concept, true);
     } catch (error) {
       notify(error.message, true);
@@ -2466,18 +2496,20 @@
     bar.className = "views-bar";
     const label = document.createElement("span");
     label.className = "views-bar-label";
-    label.textContent = "View:";
+    label.textContent = platformString("app.views.label", "View:");
     bar.appendChild(label);
 
     const select = document.createElement("select");
     select.className = "views-select";
     const blank = document.createElement("option");
     blank.value = "";
-    blank.textContent = panel.savedViews.loading ? "Loading views…" : "-- Select a saved view --";
+    blank.textContent = panel.savedViews.loading
+      ? platformString("app.views.loading", "Loading views…")
+      : platformString("app.views.select", "-- Select a saved view --");
     select.appendChild(blank);
     if (panel.savedViews.mine.length) {
       const group = document.createElement("optgroup");
-      group.label = "My views";
+      group.label = platformString("app.views.mine", "My views");
       panel.savedViews.mine.forEach(function (view) {
         const opt = document.createElement("option");
         opt.value = "mine:" + view.name;
@@ -2488,7 +2520,7 @@
     }
     if (panel.savedViews.shared.length) {
       const group = document.createElement("optgroup");
-      group.label = "Shared views";
+      group.label = platformString("app.views.shared", "Shared views");
       panel.savedViews.shared.forEach(function (view) {
         const opt = document.createElement("option");
         opt.value = "shared:" + view.name;
@@ -2513,8 +2545,8 @@
       }
     });
     bar.appendChild(select);
-    bar.appendChild(button("Save view…", "", function () { promptSaveView(concept); }));
-    bar.appendChild(button("Delete view", "danger", function () { deleteSelectedView(concept); }));
+    bar.appendChild(button(platformString("app.views.save", "Save view…"), "", function () { promptSaveView(concept); }));
+    bar.appendChild(button(platformString("app.views.delete", "Delete view"), "danger", function () { deleteSelectedView(concept); }));
     return bar;
   }
 
@@ -2529,7 +2561,7 @@
     const details = document.createElement("details");
     details.className = "columns-toggle";
     const summary = document.createElement("summary");
-    summary.textContent = "Columns";
+    summary.textContent = platformString("app.views.columns", "Columns");
     details.appendChild(summary);
     const list = document.createElement("div");
     list.className = "columns-toggle-list";
@@ -2549,7 +2581,7 @@
         } else {
           if (allFields.length - hidden.length <= 1) {
             checkbox.checked = true;
-            notify("At least one column must stay visible.", true);
+            notify(platformString("app.views.oneColumn", "At least one column must stay visible."), true);
             return;
           }
           if (at === -1) {
@@ -2681,11 +2713,12 @@
       const forbidden = !missing && /forbidden|403/i.test(error.message || "");
       state.referenceLabels[key] = {
         status: missing ? "missing" : (forbidden ? "forbidden" : "failed"),
-        label: missing ? "<missing: " + rawId + ">" : rawId,
-        error: error.message || "Reference label lookup failed."
+        label: missing ? platformString("app.reference.missing", "<missing: {id}>", { id: rawId }) : rawId,
+        error: error.message || platformString("app.reference.lookupFailedShort", "Reference label lookup failed.")
       };
       if (!missing && !forbidden) {
-        setStatus("Reference label lookup failed for " + (field.label || field.name) + ": " + state.referenceLabels[key].error, true);
+        setStatus(platformString("app.reference.lookupFailed", "Reference label lookup failed for {field}: {reason}",
+          { field: field.label || field.name, reason: state.referenceLabels[key].error }), true);
       }
       return state.referenceLabels[key].label;
     });
@@ -2742,7 +2775,7 @@
         image.src = link.href;
         link.appendChild(image);
       } else {
-        link.textContent = value.originalName || "Download";
+        link.textContent = value.originalName || platformString("app.file.download", "Download");
       }
       target.appendChild(link);
       return;
@@ -2894,7 +2927,7 @@
       appendExtensionBadge(label, field.extensionSource);
       const value = document.createElement("span");
       if (field.widget === "multiselect" && field.reference) {
-        value.textContent = "Loading…";
+        value.textContent = platformString("app.state.loadingEllipsis", "Loading…");
         loadMultiSelectSummary(value, field, record[concept.idField]);
       } else {
         renderFieldValue(value, field, record[field.name], true);
@@ -2932,7 +2965,7 @@
       );
       const anchorList = (Array.isArray(anchors) ? anchors : []).map(function (v) { return text(v); });
       if (anchorList.length === 0) {
-        targetSpan.textContent = "(none linked)";
+        targetSpan.textContent = platformString("app.multiselect.none", "(none linked)");
         return;
       }
       const params = new URLSearchParams();
@@ -2948,7 +2981,7 @@
       });
       targetSpan.textContent = labels.join(", ");
     } catch (error) {
-      targetSpan.textContent = "(could not load: " + text(error.message) + ")";
+      targetSpan.textContent = platformString("app.multiselect.loadFailed", "(could not load: {reason})", { reason: text(error.message) });
     }
   }
 
@@ -3035,7 +3068,7 @@
 
   // Promise<boolean>: true = discard, false = keep editing (also Escape / Close).
   function confirmDiscard() {
-    if (!el.confirmRoot) { return Promise.resolve(window.confirm("You have unsaved changes. Discard them?")); }
+    if (!el.confirmRoot) { return Promise.resolve(window.confirm(platformString("app.guard.unsaved", "You have unsaved changes. Discard them?"))); }
     if (confirmFinish) { confirmFinish(false); }
     return new Promise(function (resolve) {
       let settled = false;
@@ -3049,14 +3082,14 @@
       confirmFinish = finish;
       const content = document.createElement("div");
       const message = document.createElement("p");
-      message.textContent = "You have unsaved changes. Discard them?";
+      message.textContent = platformString("app.guard.unsaved", "You have unsaved changes. Discard them?");
       content.appendChild(message);
       const actions = document.createElement("div");
       actions.className = "modal-actions";
-      actions.appendChild(button("Keep editing", "primary", function () { finish(false); }));
-      actions.appendChild(button("Discard", "", function () { finish(true); }));
+      actions.appendChild(button(platformString("app.guard.keepEditing", "Keep editing"), "primary", function () { finish(false); }));
+      actions.appendChild(button(platformString("app.guard.discard", "Discard"), "", function () { finish(true); }));
       content.appendChild(actions);
-      openModalInto(el.confirmRoot, "Unsaved changes", content, function () { finish(false); return false; });
+      openModalInto(el.confirmRoot, platformString("app.guard.title", "Unsaved changes"), content, function () { finish(false); return false; });
     });
   }
 
@@ -3067,7 +3100,9 @@
   function openForm(concept, mode, record) {
     if (isModalPresentation(concept)) {
       const form = buildFormElement(concept, mode, record, closeModal);
-      openModal(mode === "edit" ? "Edit " + singularLabel(concept) : "New " + singularLabel(concept), form,
+      openModal(mode === "edit"
+          ? platformString("app.form.titleEdit", "Edit {name}", { name: singularLabel(concept) })
+          : platformString("app.form.titleNew", "New {name}", { name: singularLabel(concept) }), form,
         function () { return confirmIfDirty(form); });
       return;
     }
@@ -3141,7 +3176,7 @@
       sections.push(section);
 
       if (tabStrip) {
-        const tabButton = button(group.name || "General", index === 0 ? "form-tab active" : "form-tab", function () {
+        const tabButton = button(group.name || platformString("app.form.generalTab", "General"), index === 0 ? "form-tab active" : "form-tab", function () {
           sections.forEach(function (s, i) { s.classList.toggle("field-hidden", i !== index); });
           Array.prototype.forEach.call(tabStrip.querySelectorAll(".form-tab"), function (b) { b.classList.remove("active"); });
           tabButton.classList.add("active");
@@ -3152,10 +3187,10 @@
 
     const footer = document.createElement("div");
     footer.className = "modal-actions";
-    footer.appendChild(button("Cancel", "", function () {
+    footer.appendChild(button(platformString("app.form.cancel", "Cancel"), "", function () {
       confirmIfDirty(form).then(function (ok) { if (ok) { onDone(); } });
     }));
-    const submit = button(mode === "edit" ? "Save" : "Create", "primary", function () {});
+    const submit = button(mode === "edit" ? platformString("app.form.save", "Save") : platformString("app.form.create", "Create"), "primary", function () {});
     submit.type = "submit";
     footer.appendChild(submit);
     form.appendChild(footer);
@@ -3319,7 +3354,7 @@
       const note = document.createElement("span");
       note.className = "field-error";
       note.id = "np-field-error-" + (++fieldErrorSeq);
-      note.textContent = entry.message || "This value is not valid.";
+      note.textContent = entry.message || platformString("app.validation.invalid", "This value is not valid.");
       wrapper.appendChild(note);
       control.setAttribute("aria-invalid", "true");
       control.setAttribute("aria-describedby", note.id);
@@ -3390,7 +3425,7 @@
     fallback.type = "text";
     fallback.disabled = true;
     fallback.value = value === null || value === undefined ? "" : String(value);
-    fallback.title = "Custom widget \"" + field.customWidgetRef + "\" failed to load.";
+    fallback.title = platformString("app.widget.loadFailed", "Custom widget \"{widget}\" failed to load.", { widget: field.customWidgetRef });
     return fallback;
   }
 
@@ -3544,7 +3579,7 @@
         let arrValue;
         try { arrValue = JSON.parse(control.value || "[]"); } catch (e) { arrValue = []; }
         if (required && (!Array.isArray(arrValue) || arrValue.length === 0)) {
-          blocked.push({ field: field.name, message: (field.label || field.name) + " must have at least one item." });
+          blocked.push({ field: field.name, message: platformString("app.validation.minItems", "{field} must have at least one item.", { field: field.label || field.name }) });
           continue;
         }
         payload[field.name] = arrValue;
@@ -3560,7 +3595,7 @@
         // The hidden input holds the FileHandle JSON that createFileInput's upload set (or the
         // record's existing value, unchanged, if the author didn't pick a new file this edit).
         if (required && !control.value) {
-          blocked.push({ field: field.name, message: (field.label || field.name) + " requires an uploaded file." });
+          blocked.push({ field: field.name, message: platformString("app.validation.fileRequired", "{field} requires an uploaded file.", { field: field.label || field.name }) });
           continue;
         }
         if (control.value) {
@@ -3570,7 +3605,7 @@
       }
       const rawValue = control.type === "checkbox" ? control.checked : text(control.value).trim();
       if (required && (rawValue === "" || rawValue === null || rawValue === undefined)) {
-        blocked.push({ field: field.name, message: (field.label || field.name) + " is required." });
+        blocked.push({ field: field.name, message: platformString("app.validation.required", "{field} is required.", { field: field.label || field.name }) });
         continue;
       }
       if (rawValue !== "" || field.required || control.type === "checkbox") {
@@ -3593,7 +3628,7 @@
       applyFieldErrors(form, blocked);
       notify(blocked.length === 1
         ? blocked[0].message
-        : blocked.length + " fields need attention before saving.", true);
+        : platformString("app.validation.needAttention", "{count} fields need attention before saving.", { count: blocked.length }), true);
       return;
     }
     const id = record ? record[concept.idField] : null;
@@ -3606,7 +3641,7 @@
     if (submitBtn) {
       submitBtn.disabled = true;
       submitBtn.setAttribute("aria-busy", "true");
-      submitBtn.textContent = "Saving…";
+      submitBtn.textContent = platformString("app.form.saving", "Saving…");
     }
     try {
       const saved = await fetchJson(mode === "edit" ? concept.endpointBase + "/" + encodeURIComponent(id) : concept.endpointBase, {
@@ -3626,7 +3661,7 @@
         );
       }
       onDone();
-      notify(mode === "edit" ? "Record updated." : "Record created.", false);
+      notify(mode === "edit" ? platformString("app.form.updated", "Record updated.") : platformString("app.form.created", "Record created."), false);
       await reloadAfterMutation(concept);
     } catch (error) {
       // MOB-2: no HTTP status = the request never reached the server. A concept that opted in keeps the
@@ -3634,7 +3669,7 @@
       if (error.status === undefined && concept.offlineWrite
           && queueOfflineWrite(concept, mode, id, record, payload, bondFieldsToSync.length > 0)) {
         onDone();
-        notify("You are offline - saved on this device, pending sync.", false);
+        notify(platformString("app.offline.savedPending", "You are offline - saved on this device, pending sync."), false);
         render();
         return;
       }
@@ -3674,7 +3709,7 @@
   async function deleteRecord(concept, record) {
     const id = record[concept.idField];
     const label = recordDisplayLabel(concept, record);
-    if (!window.confirm("Delete \"" + label + "\"?")) {
+    if (!window.confirm(platformString("app.row.confirmDelete", "Delete \"{label}\"?", { label: label }))) {
       return;
     }
     try {
@@ -3683,7 +3718,7 @@
         method: "DELETE",
         headers: headers()
       });
-      notify("Deleted \"" + label + "\".", false);
+      notify(platformString("app.row.deleted", "Deleted \"{label}\".", { label: label }), false);
       await reloadAfterMutation(concept);
     } catch (error) {
       notify(error.message, true);
@@ -3758,7 +3793,7 @@
     const heading = document.createElement("h3");
     heading.textContent = title;
     header.appendChild(heading);
-    header.appendChild(button("Close", "", function () { requestCloseModal(root); }));
+    header.appendChild(button(platformString("app.modal.close", "Close"), "", function () { requestCloseModal(root); }));
     modal.appendChild(header);
     modal.appendChild(content);
     backdrop.appendChild(modal);
@@ -3846,7 +3881,7 @@
       const th = document.createElement("th");
       if (label === "") {
         // a11y: an empty <th> fails axe `empty-table-header` (the row-delete column passes "").
-        th.appendChild(srOnlyLabel("Actions"));
+        th.appendChild(srOnlyLabel(platformString("app.table.actions", "Actions")));
       } else {
         th.textContent = label;
       }
@@ -3885,10 +3920,12 @@
     if (specializes.changes && specializes.changes.length) parts.push("~" + specializes.changes.length);
     cell.textContent = specializes.parent + (parts.length ? " (" + parts.join(" ") + ")" : "");
     const versionSuffix = specializes.parentVersion ? "@" + specializes.parentVersion : "";
-    cell.title = "Specializes " + specializes.parent + versionSuffix
-        + "\nInherits: " + (specializes.inherits || []).join(", ")
-        + "\nAdds: " + (specializes.adds || []).join(", ")
-        + "\nChanges: " + (specializes.changes || []).join(", ");
+    cell.title = platformString("app.lineage.title", "Specializes {parent}\nInherits: {inherits}\nAdds: {adds}\nChanges: {changes}", {
+      parent: specializes.parent + versionSuffix,
+      inherits: (specializes.inherits || []).join(", "),
+      adds: (specializes.adds || []).join(", "),
+      changes: (specializes.changes || []).join(", ")
+    });
     return cell;
   }
 
@@ -3916,11 +3953,16 @@
       localStorage.setItem(STORAGE_KEY, el.apiKey.value.trim());
     });
     state.manifest = await fetchJson("./generated-ui-manifest.json");
+    if (window.NPDevI18n) { window.NPDevI18n.use(state.manifest); }
+    if (window.NPDevI18n) { window.NPDevI18n.apply(document); } // sets <html lang> for the visitor's language
+    // Chrome built before the manifest (and so its catalogue) was available.
+    if (el.apiKeyLabel) { el.apiKeyLabel.textContent = platformString("app.auth.apiKey", "API Key"); }
+    el.toastHost.setAttribute("aria-label", platformString("app.toast.notifications", "Notifications"));
     await loadCustomWidgetScripts(state.manifest);
     // Set before NPDevShell.mount() below, which paints its logo from document.title synchronously
     // -- setting this later (e.g. inside render()) would leave the shell's own logo showing the
     // page's static <title> until some later re-render happened to run.
-    document.title = state.manifest.appName || "Business Data";
+    document.title = state.manifest.appName || platformString("app.page.title", "Business Data");
     if (state.manifest.auth && state.manifest.auth.devKeyHint) {
       // R7 Stage D: devKeyHint is a static generation-time guess (the Spring `dev` profile's own
       // known default) -- it is NOT the app's real key once launched via any of the platform's

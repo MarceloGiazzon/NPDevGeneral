@@ -1,0 +1,38 @@
+id: REG-349
+title: >-
+  A generated app whose locale is Portuguese is mixed by construction: only 11 shell strings are translated, every other platform text stays English
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-11-20
+source: >-
+  Owner's real round 2026-11-20 (REG-332): the SalesTest1 business UI showed "logado como developer (ADMIN)", "Sair" and a Portuguese side
+  menu next to New, Refresh, Clear, Export CSV, Import CSV, Print, Table/Board/Calendar, Filter, Search, English column headers and
+  "No Sales order to show: your role only sees the ones that belong to it."
+surface: contract/dsl, generator/business-ui
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/PlatformStrings.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/shell.js.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache
+detail: |
+  PlatformStrings.PORTUGUESE holds exactly 11 shell ids (signedInAs, changePassword, inviteUser, signOut, notSignedIn, toggleMenu,
+  quickAccess, toggleRightbar, security, navData, navPanels); backOffice.locale pt* switches those and nothing else. The list and
+  workbench screens draw their own English text. Pack concept labels come from the pack (sales is English), the menu from the chat AI
+  (Portuguese), so one screen shows three sources. Also inside the Portuguese map: "Convidar usuario", "nao autenticado", "Seguranca" and
+  "Paineis" have no accents while "Acesso rapido" does.
+  Owner decision needed: either (a) a pt locale translates the whole business UI (a catalogue per locale for every platform string, the
+  way the Manager's i18n works, with a checker like check-manager-i18n.py), or (b) it is documented and told to the AI that backOffice.locale
+  translates the shell only, and the briefing stops asking for Portuguese menus on an app whose body stays English.
+done_when: >-
+  Owner picks (a) or (b); with (a) a generated app with locale pt shows no English platform text on its list, detail and workbench screens
+  (browser routine) and the Portuguese strings carry their accents.
+resolution: >-
+  Owner picked (a) on 2026-11-20 ("Business UI para pt ... integral, except field names, commands, docs"). 918 platform texts are catalogue
+  ids (npdev-i18n/<fragment>.{en,pt}.json, 9 fragments) plus the contract map PlatformStrings (25, corrected accents), looked up in the
+  browser by NPDevI18n.t(id, english, vars) from static/npdev-i18n.js (shell, business UI and its views, workbench, sign-in pages,
+  experience client, review dialog, xlsx). Panel action labels the compiler bakes (New/Save/Delete) carry labelKey in the manifest.
+  Guards: scripts/quality/check-ui-i18n.py (aiKnowledge step 57: ids en/pt parity, placeholders, accents, call-site English == catalogue,
+  unused ids, per-file unrouted-literal ratchet in scripts/policy/ui-i18n-policy.json), UiStringsTest, the BusinessUiEmitter*Test
+  updates and the browser routine NPDevSamples/scripts/browser/browser-routines/i18n-pt-verify-routine.json (list, create form and
+  workbench with locale pt: 0 visible texts equal to an English platform string, 909 patterns), green 2026-11-20 (the 11
+  existing golden scenarios were green in the same session before the labelKey change, not re-run after it). Residual gaps are REG-353.

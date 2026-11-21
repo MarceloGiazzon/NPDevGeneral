@@ -20,6 +20,38 @@ MODEL = json.dumps({"namespace": "t.x", "version": "1.0", "concepts": [
     {"name": "Item", "fields": [{"name": "id", "type": "uuid", "id": True, "required": True}]}]}, indent=2)
 
 
+class PackLanguageTests(unittest.TestCase):
+    """REG-334, 2026-11-20: a pack asked for in a Portuguese Manager came back with Portuguese ui.labels and was published to the
+    public catalog that way. A pack's text is English whatever the Manager's language; only the explanation follows the person."""
+
+    def _prompts(self):
+        return [
+            rp.compose_round1(P, code="K7Q2", intent="pack", ask="ratings", language="Portuguese (Brazil)", knowledge=KNOWLEDGE),
+            rp.compose_fresh_chat(P, code="K7Q2", rnd=3, ask="ratings", language="Portuguese (Brazil)", knowledge=KNOWLEDGE,
+                                  model="", errors="x", trail=["a"], intent="pack"),
+        ]
+
+    def test_a_pack_prompt_asks_for_english_text_in_the_file_and_the_explanation_in_the_persons_language(self):
+        for text in self._prompts():
+            self.assertIn("explanation in Portuguese (Brazil)", text)
+            self.assertIn("in English, whatever language I write in", text)
+            self.assertNotIn("Write every user-visible label of the app", text)
+
+    def test_the_submission_sentences_follow_the_persons_language_but_an_english_prompt_is_unchanged(self):
+        # Owner's real round: "A IA presumiu: Imported contacts ..." -- English inside a Portuguese frame.
+        sentence = "Write every sentence you put in npdev-submission.json (assumptions, securityChanges, couldNotExpress) in Portuguese (Brazil) too."
+        for text in self._prompts():
+            self.assertIn(sentence, text)
+        english = rp.compose_round1(P, code="K7Q2", intent="create", ask="A shop", language="English", knowledge=KNOWLEDGE)
+        self.assertNotIn("couldNotExpress) in", english)
+        app_pt = rp.compose_round1(P, code="K7Q2", intent="create", ask="A shop", language="Portuguese (Brazil)", knowledge=KNOWLEDGE)
+        self.assertIn(sentence, app_pt)
+
+    def test_an_app_prompt_still_asks_for_labels_in_the_persons_language(self):
+        text = rp.compose_round1(P, code="K7Q2", intent="create", ask="A shop", language="Portuguese (Brazil)", knowledge=KNOWLEDGE)
+        self.assertIn("Write every user-visible label of the app (ui.label, enum display labels, page and menu titles) in Portuguese (Brazil)", text)
+
+
 class ComposeTests(unittest.TestCase):
     def test_every_prompt_is_detected_as_echo(self):
         prompts = [

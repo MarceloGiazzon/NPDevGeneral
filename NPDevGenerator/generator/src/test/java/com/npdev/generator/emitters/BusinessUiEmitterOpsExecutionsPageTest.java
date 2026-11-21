@@ -73,6 +73,6 @@ public class BusinessUiEmitterOpsExecutionsPageTest {
     void shellNpdevSectionLinksTheExecutionsPage() throws Exception {
         String shell = TEMPLATES.render("shell.js.mustache", Map.of(
                 "shellVersion", "t", "uiContractCompatMin", "1", "uiContractCompatMax", "2"));
-        assertTrue(shell.contains("addLeafLink(container, \"/npdev-business-ui/ops/executions.html\", \"Executions\", null)"));
+        assertTrue(shell.contains("addLeafLink(container, \"/npdev-business-ui/ops/executions.html\", shellString(\"shell.nav.executions\", \"Executions\"), null)"));
     }
 }

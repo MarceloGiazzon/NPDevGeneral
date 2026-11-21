@@ -390,24 +390,24 @@ public final class GeneratorFacade {
             // authenticates with JWT (apiKey apps sign in through the inline key field instead).
             new LoginPageEmitter(templates, writer).emit(
                     model == null ? "" : model.getNamespace(),
-                    "jwt".equalsIgnoreCase(settingResolver.value(NpdevSettings.AUTH_MODE, SettingTarget.app())));
+                    "jwt".equalsIgnoreCase(settingResolver.value(NpdevSettings.AUTH_MODE, SettingTarget.app())), model);
             // WMS-9 N6: logged-in self-service "change my password" screen, same jwt-mode gating
             // as the login/signup screen above (an apiKey app has no user session to change).
             new ChangePasswordPageEmitter(templates, writer).emit(
                     model == null ? "" : model.getNamespace(),
-                    "jwt".equalsIgnoreCase(settingResolver.value(NpdevSettings.AUTH_MODE, SettingTarget.app())));
+                    "jwt".equalsIgnoreCase(settingResolver.value(NpdevSettings.AUTH_MODE, SettingTarget.app())), model);
             // SEC-7: tenant-admin "Invite user" screen (backed by SEC-6's InvitationController), jwt-mode only.
             new InviteUserPageEmitter(templates, writer).emit(
                     model == null ? "" : model.getNamespace(),
-                    "jwt".equalsIgnoreCase(settingResolver.value(NpdevSettings.AUTH_MODE, SettingTarget.app())));
+                    "jwt".equalsIgnoreCase(settingResolver.value(NpdevSettings.AUTH_MODE, SettingTarget.app())), model);
             // SEC-12: signed-in account-security screen (authenticator-app second factor), same gating.
             new SecurityPageEmitter(templates, writer).emit(
                     model == null ? "" : model.getNamespace(),
-                    "jwt".equalsIgnoreCase(settingResolver.value(NpdevSettings.AUTH_MODE, SettingTarget.app())));
+                    "jwt".equalsIgnoreCase(settingResolver.value(NpdevSettings.AUTH_MODE, SettingTarget.app())), model);
             // SEC-4: logged-out "forgot password" screen (mailed single-use code), same jwt-mode gating.
             new ResetPasswordPageEmitter(templates, writer).emit(
                     model == null ? "" : model.getNamespace(),
-                    "jwt".equalsIgnoreCase(settingResolver.value(NpdevSettings.AUTH_MODE, SettingTarget.app())));
+                    "jwt".equalsIgnoreCase(settingResolver.value(NpdevSettings.AUTH_MODE, SettingTarget.app())), model);
             // AGENT-1 (A6.4): the Telegram/WhatsApp/MCP self-service page, same jwt-mode gating,
             // only when the model declares an agentAccess block at all.
             new AgentLinkPageEmitter(templates, writer).emit(

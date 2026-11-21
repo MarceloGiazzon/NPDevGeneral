@@ -49,6 +49,23 @@
       "costSeconds": 2
     },
     {
+      "id": "check-ui-i18n",
+      "tier": "T0",
+      "maxStaleness": "every-run",
+      "invokedBy": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "run": ["{python}", "scripts/quality/check-ui-i18n.py"],
+      "description": "REG-349: every platform UI text drawn by a generated app is a catalogue id (npdev-i18n/*.json + PlatformStrings) with English and Portuguese, call sites carry the exact English text, pt carries its accents, and unrouted literal English only ratchets down per file.",
+      "level": "core",
+      "protects": "correctness",
+      "triggers": [
+        "NPDevGenerator/generator/src/main/resources/npdev-i18n/**",
+        "NPDevGenerator/generator/src/main/resources/npdev-templates/**",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/PlatformStrings.java",
+        "scripts/policy/ui-i18n-policy.json"
+      ],
+      "costSeconds": 3
+    },
+    {
       "id": "check-schema-mirror-consistency",
       "tier": "T0",
       "maxStaleness": "every-run",

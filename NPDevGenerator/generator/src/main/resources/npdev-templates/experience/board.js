@@ -6,7 +6,7 @@ import { cellValue, formatValue, h, emptyCard, card, pathValue, selectColumns, v
 import { renderActions } from "./actions.js";
 import { loadRows } from "./api.js";
 
-export const NO_VALUE = "No value";
+export const noValue = () => NPDevI18n.t("experience.board.noValue", "No value");
 const keyOf = (v) => (v == null ? "" : String(v));
 
 /** Column keys in order: the declared enum values first, then any other value found (and "" for rows without one). */
@@ -23,7 +23,7 @@ const isMove = (a) => a && a.style === "move" && a.moveTo != null && a.moveTo !=
 export async function render(ctx) {
   const { screen, root } = ctx;
   const field = screen.groupBy;
-  if (!field) { root.appendChild(card("notice", "This board has no groupBy field", "Set groupBy to the field that makes the columns.")); return; }
+  if (!field) { root.appendChild(card("notice", NPDevI18n.t("experience.board.noGroupByTitle", "This board has no groupBy field"), NPDevI18n.t("experience.board.noGroupByHint", "Set groupBy to the field that makes the columns."))); return; }
   const { rows, truncated } = await loadRows(ctx.api, screen, { want: 200, user: ctx.user });
   if (!rows.length) { root.appendChild(emptyCard(screen)); return; }
   const labelColumns = selectColumns(screen).filter((c) => c.value !== field).slice(0, 4);
@@ -37,7 +37,7 @@ export async function render(ctx) {
     const ul = h("ul", { class: "rows" });
     lists.set(key, ul);
     const count = h("span", { class: "badge", text: "0" });
-    const el = h("section", { class: "board-col", "aria-label": key === "" ? NO_VALUE : key,
+    const el = h("section", { class: "board-col", "aria-label": key === "" ? noValue() : key,
       ondragover: (e) => { if (moveFor(dragging, key) && e && e.preventDefault) e.preventDefault(); },
       ondrop: (e) => {
         if (e && e.preventDefault) e.preventDefault();
@@ -45,7 +45,7 @@ export async function render(ctx) {
         if (action) dragging.box.activate(action);
         dragging = null;
       }
-    }, h("h3", { class: "board-col-title" }, h("span", { text: key === "" ? NO_VALUE : key }), count), ul);
+    }, h("h3", { class: "board-col-title" }, h("span", { text: key === "" ? noValue() : key }), count), ul);
     el.count = count;
     return el;
   };
@@ -68,8 +68,8 @@ export async function render(ctx) {
   columns.forEach((el, key) => {
     const n = lists.get(key).children.length;
     el.count.textContent = String(n);
-    if (!n) lists.get(key).appendChild(h("li", { class: "muted note", text: "Nothing here." }));
+    if (!n) lists.get(key).appendChild(h("li", { class: "muted note", text: NPDevI18n.t("experience.board.nothingHere", "Nothing here.") }));
   });
   root.appendChild(board);
-  if (truncated) root.appendChild(h("p", { class: "muted note", text: "Showing the first " + rows.length + " rows." }));
+  if (truncated) root.appendChild(h("p", { class: "muted note", text: NPDevI18n.t("experience.list.firstRows", "Showing the first {count} rows.", { count: rows.length }) }));
 }

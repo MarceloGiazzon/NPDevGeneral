@@ -1,0 +1,47 @@
+id: REG-347
+title: >-
+  A pack asked for through a Portuguese Manager came back with Portuguese ui.labels and was published that way to the public catalog
+type: BUG
+severity: MEDIUM
+status: PARTIAL
+opened: 2026-11-20
+source: >-
+  Owner's real round 2026-11-20 (REG-334): ratings 1.0.0 was published to the public NPR with labels Avaliacao, Item avaliado, Tipo do
+  item, Autor, Estrelas, Comentario, Criado em beside an English description and English queries. The owner asked for a deep search
+  for language mixing; this is the one in the catalog itself.
+surface: cli/relay, packs/catalog
+files:
+  - NPDevCli/relay-prompts.json
+  - NPDevCli/npdev_relay_prompts.py
+  - NPDevCli/tests/test_relay_prompts.py
+detail: |
+  Cause: relay-prompts.json `language` told the AI to write "every user-visible label of the app (ui.label ...)" in the Manager's language
+  (the Manager sends "Portuguese (Brazil)", npdev.rs relay_language_name), and compose_round1 / compose_fresh_chat reused that block for
+  intent pack. The product rule is English for everything shipped (packs, catalog, schemas); only the explanation to the person follows
+  their language.
+  FIXED 2026-11-20: relay-prompts.json gained `pack.language` (explanation in $language, every text inside pack.json in English whatever
+  language the person writes in); both pack call sites use it; app prompts are untouched (test_relay_answer_size pins their hashes, still
+  green; 105 relay/pack tests OK). The pack prompt text is NOT bench-measured with this block: run the relay bench arm, intent pack
+  (NPDevSamples/ai-bench/pack-cases/bench-901) once before relying on it.
+  NOT done: the public ratings 1.0.0 is immutable and still carries the Portuguese labels. The fix is ratings 1.0.1 with English labels,
+  published by the OWNER through the Manager (the typed-name confirmation is theirs, every time).
+  Checked clean the same day: NPDevContract/packs, schemas, the whole local NPR clone except ratings, RuntimeHost main, Manager ui and src
+  (no accented text outside the translation files).
+  ALSO FIXED 2026-11-20 (same session, after the owner's question about mixed languages): npdev_relay_pack.static_errors now refuses a pack whose
+  ui.label / description / title / placeholder / hint / message carries a letter outside plain ASCII ("is not English ... write it in English"),
+  so a pack is refused BEFORE it can be saved or published even when an AI ignores the prompt (pack push uses the same check). The briefing's
+  "Writing a pack" gained a Language rule. Bench (NPDevSamples/ai-bench/pack-cases bench-902 = the owner's ask, bench-903 = the same in Portuguese,
+  NPDEV_BENCH_RELAY_LANGUAGE="Portuguese (Brazil)", relay arm, gemini-3.6-flash, one run each): both PASSED in round 1 (8.7k tokens each), English
+  description, no accents in the pack, the explanation in Portuguese. One model, one run: a smoke test, not a rate.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_relay_prompts.py#PackLanguageTests
+  asserts: >-
+    a pack prompt (round 1 and fresh chat) asks for the explanation in the person's language and for every text inside pack.json in English,
+    and no longer carries the app's "write every user-visible label" sentence; an app prompt still asks for labels in the person's language
+    (PackLanguageTests); static_errors refuses accented letters in a pack's human texts (test_relay_pack_static.EnglishInAPackTests).
+  provenRed: false
+verification: UNIT_TESTED
+done_when: >-
+  ratings 1.0.1 with English labels is on the public NPR (published by the owner) and the pack prompt has had one bench run with the new
+  language block.

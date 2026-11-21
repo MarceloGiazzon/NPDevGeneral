@@ -51,47 +51,49 @@
   .linkrow input { flex: 1; margin: 0; }
   .hidden { display: none; }
 </style>
+<script src="/npdev-i18n.js"></script>
+<script>NPDevI18n.use({{{i18nJson}}});</script>
 <script src="/npdev-display.js"></script>
 <script>if (window.NPDevDisplay) { NPDevDisplay.boot(); }</script>
 </head>
-<body>
+<body data-app-name="{{appName}}">
 <main class="card">
-  <h1>Invite user</h1>
-  <p class="note">Enter an e-mail address and choose the roles. The person receives a one-time link to choose their own password; you never see it.</p>
+  <h1 data-i18n="pages.invite.heading">Invite user</h1>
+  <p class="note" data-i18n="pages.invite.note">Enter an e-mail address and choose the roles. The person receives a one-time link to choose their own password; you never see it.</p>
 
-  <p id="forbidden" class="banner error hidden">Only administrators can invite users.</p>
+  <p id="forbidden" class="banner error hidden" data-i18n="pages.invite.forbidden">Only administrators can invite users.</p>
 
   <div id="panels">
     <form id="inviteForm" autocomplete="off">
-      <label>E-mail
+      <label><span data-i18n="pages.invite.email">E-mail</span>
         <input id="email" name="email" type="email" autocomplete="off" required>
       </label>
-      <label>Display name (optional)
+      <label><span data-i18n="pages.invite.displayNameOptional">Display name (optional)</span>
         <input id="displayName" name="displayName" type="text" autocomplete="off">
       </label>
       <fieldset>
-        <legend>Roles</legend>
-        <div id="roles"><span class="note">Loading roles...</span></div>
+        <legend data-i18n="pages.invite.roles">Roles</legend>
+        <div id="roles"><span class="note" data-i18n="pages.invite.loadingRoles">Loading roles...</span></div>
       </fieldset>
-      <button class="primary" id="inviteBtn" type="submit">Send invitation</button>
+      <button class="primary" id="inviteBtn" type="submit" data-i18n="pages.invite.sendInvitation">Send invitation</button>
     </form>
 
-    <h2>Resend invitation</h2>
+    <h2 data-i18n="pages.invite.resendInvitation">Resend invitation</h2>
     <form id="resendForm" autocomplete="off">
-      <label>Username
+      <label><span data-i18n="pages.invite.username">Username</span>
         <input id="resendUsername" name="resendUsername" type="text" autocomplete="off" required>
       </label>
-      <button class="secondary" id="resendBtn" type="submit">Resend</button>
+      <button class="secondary" id="resendBtn" type="submit" data-i18n="pages.invite.resend">Resend</button>
     </form>
   </div>
 
   <p id="errorBanner" class="banner error hidden"></p>
   <p id="okBanner" class="banner ok hidden"></p>
   <div id="linkBox" class="hidden">
-    <p class="note" style="margin-top:1rem">No e-mail was sent. Pass this link on to the invitee (it works once):</p>
+    <p class="note" style="margin-top:1rem" data-i18n="pages.invite.noEmailSent">No e-mail was sent. Pass this link on to the invitee (it works once):</p>
     <div class="linkrow">
       <input id="linkValue" type="text" readonly>
-      <button class="secondary" id="copyBtn" type="button">Copy</button>
+      <button class="secondary" id="copyBtn" type="button" data-i18n="pages.invite.copy">Copy</button>
     </div>
   </div>
 </main>
@@ -99,6 +101,9 @@
 <script>
 (function () {
   "use strict";
+  // REG-349: the page's static text is translated once the DOM is ready; dynamic messages call NPDevI18n.t directly.
+  document.addEventListener("DOMContentLoaded", function () { NPDevI18n.apply(document); });
+  document.title = NPDevI18n.t("pages.invite.title", "Invite user — {appName}", { appName: document.body.getAttribute("data-app-name") });
   var TOKEN_KEYS = ["npdev.shell.token", "npdev.businessUi.apiKey"];
 
   function currentToken() {
@@ -116,15 +121,15 @@
   var rolesBox = document.getElementById("roles");
 
   var MESSAGES = {
-    unauthenticated: "Your session expired. Sign in again.",
-    forbidden: "Only administrators can invite users.",
-    username_taken: "A user with that e-mail/username already exists. Use Resend below to send a new link.",
-    invalid_email: "Enter a valid e-mail address.",
-    role_not_declared_by_model: "One of the selected roles is not declared by this application.",
-    user_not_found: "No user with that username in your workspace.",
-    no_email_on_file: "That user has no e-mail on file; invite them again with an e-mail address.",
-    identity_pack_not_composed: "This application has no sign-in configured.",
-    invite_failed: "The invitation could not be created."
+    unauthenticated: NPDevI18n.t("pages.invite.errUnauthenticated", "Your session expired. Sign in again."),
+    forbidden: NPDevI18n.t("pages.invite.forbidden", "Only administrators can invite users."),
+    username_taken: NPDevI18n.t("pages.invite.errUsernameTaken", "A user with that e-mail/username already exists. Use Resend below to send a new link."),
+    invalid_email: NPDevI18n.t("pages.invite.errInvalidEmail", "Enter a valid e-mail address."),
+    role_not_declared_by_model: NPDevI18n.t("pages.invite.errRoleNotDeclared", "One of the selected roles is not declared by this application."),
+    user_not_found: NPDevI18n.t("pages.invite.errUserNotFound", "No user with that username in your workspace."),
+    no_email_on_file: NPDevI18n.t("pages.invite.errNoEmailOnFile", "That user has no e-mail on file; invite them again with an e-mail address."),
+    identity_pack_not_composed: NPDevI18n.t("pages.invite.errIdentityPackNotComposed", "This application has no sign-in configured."),
+    invite_failed: NPDevI18n.t("pages.invite.errInviteFailed", "The invitation could not be created.")
   };
   function clearBanners() {
     errorBanner.classList.add("hidden");
@@ -132,15 +137,15 @@
     linkBox.classList.add("hidden");
   }
   function showError(code) {
-    errorBanner.textContent = MESSAGES[code] || ("Could not send the invitation (" + code + ").");
+    errorBanner.textContent = MESSAGES[code] || NPDevI18n.t("pages.invite.errSendFailed", "Could not send the invitation ({code}).", { code: code });
     errorBanner.classList.remove("hidden");
   }
   function showOutcome(body, who) {
     if (body.emailed) {
-      okBanner.textContent = "Invitation sent to " + who;
+      okBanner.textContent = NPDevI18n.t("pages.invite.invitationSent", "Invitation sent to {who}", { who: who });
       okBanner.classList.remove("hidden");
     } else if (body.acceptPath) {
-      okBanner.textContent = "Invitation created for " + who + ".";
+      okBanner.textContent = NPDevI18n.t("pages.invite.invitationCreated", "Invitation created for {who}.", { who: who });
       okBanner.classList.remove("hidden");
       document.getElementById("linkValue").value = window.location.origin + body.acceptPath;
       linkBox.classList.remove("hidden");

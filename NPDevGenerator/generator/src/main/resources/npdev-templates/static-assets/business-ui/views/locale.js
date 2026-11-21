@@ -21,11 +21,11 @@
     if (locales.length < 2) { return; }
     var select = document.createElement("select");
     select.className = "npdev-shell-locale";
-    select.setAttribute("aria-label", "Language");
-    select.title = "Language";
+    select.setAttribute("aria-label", NPDevI18n.t("views.locale.language", "Language"));
+    select.title = NPDevI18n.t("views.locale.language", "Language");
     var auto = document.createElement("option");
     auto.value = "";
-    auto.textContent = "Auto";
+    auto.textContent = NPDevI18n.t("views.locale.auto", "Auto");
     select.appendChild(auto);
     locales.forEach(function (tag) {
       var option = document.createElement("option");

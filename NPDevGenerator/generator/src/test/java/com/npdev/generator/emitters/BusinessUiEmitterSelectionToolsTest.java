@@ -84,6 +84,7 @@ class BusinessUiEmitterSelectionToolsTest {
         String script = """
                 var copied = null, downloaded = null, opened = null, notes = [], rendered = 0;
                 var window = { isSecureContext: true };
+                var NPDevI18n = { t: function (k, f, v) { var s = String(f); Object.keys(v || {}).forEach(function (n) { s = s.split("{" + n + "}").join(v[n]); }); return s; }, language: function () { return "en"; } };
                 var navigator = { clipboard: { writeText: function (t) { copied = t; return Promise.resolve(); } } };
                 var document = { createElement: function (tag) {
                   return { tag: tag, children: [], className: "", textContent: "", style: {},

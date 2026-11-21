@@ -210,8 +210,8 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   → `run-kernel-quality-gate.ps1` (`kernelQualityGate`: `:kernel:test` + all 36+ `:adapters:*:test`,
   then the kernel aggregate ratchet) → `run-ai-knowledge-gate.ps1` (mostly static,
   but some checks generate and boot probe apps and it runs the NPDevCli suite -- never run a build
-  alongside it; hosts 48 of the 62 `scripts/quality/check-*.py` across 56 numbered checks, the last
-  being `run-portable-tooling-check.ps1`, the scan the Linux CI maturity job runs, so a drive-letter
+  alongside it; hosts 49 of the 63 `scripts/quality/check-*.py` across 57 numbered checks, the last
+  being `check-ui-i18n.py`, and step 56 `run-portable-tooling-check.ps1`, the scan the Linux CI maturity job runs, so a drive-letter
   string in `NPDevCli` is red in T2 and not only in CI).
   **Twelve checkers are not in it:** `check-dsl-reference-output-floor.py` runs in
   `run-generator-gate.ps1` (needs a build), `check-a11y-baseline.py` runs only in
@@ -422,6 +422,13 @@ reported, not enforced (`check-pack-diff-gate.py --advisory`). Restore the codem
 - **Adding a script under `scripts/`?** It needs a classification (pattern-matched in
   `scripts/policy/script-inventory-policy.json`) and a declared `invocation` in
   `scripts/policy/script-invocation-declarations.json`; `run-script-inventory-check.ps1` enforces both.
+- **Adding or changing text a generated app shows the person?** (button, heading, placeholder, dialog, message in the shell, business UI,
+  workbench, sign-in pages, experience client) It is a catalogue id with English AND Portuguese (REG-349, owner 2026-11-20: a supported
+  language is supported integrally): `NPDevI18n.t("<fragment>.<area>.<name>", "English text", {vars})` in the browser code, the two texts
+  in `NPDevGenerator/generator/src/main/resources/npdev-i18n/<fragment>.{en,pt}.json`. Never concatenate translated pieces; pt carries its
+  accents. `scripts/quality/check-ui-i18n.py` (aiKnowledge gate) fails on a missing/untranslated/unaccented id, a call whose English text
+  differs, and new literal English drawn outside the catalogue. Model labels, field/command names, docs and the developer pages listed in
+  `scripts/policy/ui-i18n-policy.json` (`englishOnlyDeveloperTools`) stay English.
 - **Adding a corpus model** (`AppGen/apps` or `NPDevSamples`)? It needs a `corpusRole` entry in
   `scripts/quality/corpus-roles.json` (`dsl-fixture` / `engine-variant` / `repro-case` / `showcase` / `canary` / `probe`).
 - **Frontend contract:** `docs/UI_CONTRACT.md` · screen classes: `docs/SCREEN_TAXONOMY.md` · the

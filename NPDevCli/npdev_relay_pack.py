@@ -39,6 +39,55 @@ def _semver(text) -> tuple | None:
     return tuple(int(part) for part in match.groups()) if match else None
 
 
+# The keys whose string is read by a person on a screen. A pack is published for everyone, so these are English (REG-347).
+HUMAN_TEXT_KEYS = ("label", "description", "title", "placeholder", "hint", "message", "emptyText", "displayName")
+MAX_LANGUAGE_LINES = 4
+
+
+def _roles_errors(pack: dict) -> list[str]:
+    """REG-350: `roles[]` that name the pack's own concepts can never resolve (inside an application they are `alias::Name`,
+    which the author cannot know), so say so first, with the way out, instead of letting the validator's generic line send the
+    AI guessing."""
+    roles = pack.get("roles")
+    own = {c.get("name") for c in pack.get("concepts") or [] if isinstance(c, dict) and c.get("name")}
+    if not isinstance(roles, list):
+        return []
+    for role in roles:
+        named = [n for n in (role.get("concepts") or {}) if n in own] if isinstance(role, dict) and isinstance(role.get("concepts"), dict) else []
+        if named:
+            return [f'pack.json roles - a pack cannot grant its own concept "{named[0]}" to a role by name (the name only exists inside '
+                    f'the application that imports it) - remove "roles" and write who may read or write inside each concept\'s '
+                    f'"access", for example $user.roles.contains(\'Manager\')']
+    return []
+
+
+def _non_english_texts(node, path: str = "") -> list[tuple[str, str]]:
+    found: list[tuple[str, str]] = []
+    if isinstance(node, dict):
+        for key, value in node.items():
+            here = f"{path}/{key}"
+            if key in HUMAN_TEXT_KEYS and isinstance(value, str):
+                if any(ch.isalpha() and ord(ch) > 127 for ch in value):
+                    found.append((here, value))
+            else:
+                found.extend(_non_english_texts(value, here))
+    elif isinstance(node, list):
+        for index, value in enumerate(node):
+            found.extend(_non_english_texts(value, f"{path}/{index}"))
+    return found
+
+
+def _language_errors(pack: dict) -> list[str]:
+    """REG-347: a letter outside plain ASCII in a text a person reads means the AI wrote it in the person's language (an
+    accent is the cheap, certain sign). Said once per text, at most MAX_LANGUAGE_LINES of them."""
+    found = _non_english_texts(pack)
+    lines = [f'pack.json {where} - "{value[:60]}" is not English: every text in a pack is English (it is published for everyone) - '
+             f'write it in English' for where, value in found[:MAX_LANGUAGE_LINES]]
+    if len(found) > MAX_LANGUAGE_LINES:
+        lines.append(f"pack.json - {len(found) - MAX_LANGUAGE_LINES} more texts are not English: translate all of them")
+    return lines
+
+
 def static_errors(pack, pack_id: str, text: str) -> list[str]:
     """Checks 1-3: nothing here needs Java or the network."""
     if not isinstance(pack, dict):
@@ -69,6 +118,8 @@ def static_errors(pack, pack_id: str, text: str) -> list[str]:
     for key in NPDEV_OWNED:
         if key in pack:
             lines.append(f'pack.json {key} - NPDev fills this when the pack is published - remove "{key}"')
+    lines.extend(_roles_errors(pack))
+    lines.extend(_language_errors(pack))
     _, counts = npdev_redact.redact_text(text, classes=("secret",))
     if counts:
         lines.append("pack.json - it contains something that looks like a key, password or token - "
@@ -111,7 +162,10 @@ def probe_model(pack_id: str, pack: dict | None = None) -> dict:
     real consumer supplies."""
     model = {"namespace": "relay.probe", "dslVersion": "3.0.0", "version": "1.0",
              "packs": [{"$ref": f"packs/{pack_id}/pack.json", "as": PROBE_ALIAS}],
-             "concepts": [{"name": "Probe", "fields": [{"name": "id", "type": "uuid", "id": True, "required": True}]}]}
+             # The probe's own concept is opened on purpose: a pack that declares roles makes every concept without an access
+             # rule a validation problem, and `Probe` is the relay's, not the author's -- no chat AI can fix it.
+             "concepts": [{"name": "Probe", "access": {"read": "true", "write": "true"},
+                           "fields": [{"name": "id", "type": "uuid", "id": True, "required": True}]}]}
     if isinstance(pack, dict):
         needed = (pack.get("requires") or {}).get("capabilities") or []
         if needed:

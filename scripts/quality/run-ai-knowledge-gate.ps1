@@ -1102,6 +1102,15 @@ try {
         $failures += "the portable-tooling check failed: see scripts/quality/run-portable-tooling-check.ps1 output above and scripts/reports/out/portable-tooling-report.json (pathNeutralityScan lists any drive-letter text; commands lists each npdev command's exit code) -- split the string or read the folder from the environment, never write a drive path in code"
     }
 
+    # REG-349: a supported language is supported integrally. Every platform text the generated apps draw is a
+    # catalogue id with English and Portuguese, call sites carry the English text, and literal English drawn
+    # without the catalogue is ratcheted down per file (scripts/policy/ui-i18n-policy.json).
+    Write-Host '[57/57] Checking every platform UI text is a catalogue id translated in every shipped language...'
+    & $py "scripts/quality/check-ui-i18n.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "a generated-app UI text is missing, untranslated or unrouted: see scripts/quality/check-ui-i18n.py output above (catalogue: NPDevGenerator/generator/src/main/resources/npdev-i18n/, policy: scripts/policy/ui-i18n-policy.json)"
+    }
+
     if ($failures.Count -gt 0) {
         Write-Host ""
         Write-Host "AI knowledge gate FAILED:" -ForegroundColor Red

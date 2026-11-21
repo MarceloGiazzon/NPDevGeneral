@@ -231,6 +231,9 @@ public final class PackDiffEngine {
         }
     }
 
+    private static final java.util.regex.Pattern PRESENTATION_TEXT =
+            java.util.regex.Pattern.compile("(^|[.])ui[.](label|shortLabel|help|placeholder|hint|title)$");
+
     private static void diffKeyedValue(
             String section, String path, String key, JsonNode oldVal, JsonNode newVal, List<PackDiffFinding> out) {
         boolean oldAbsent = isAbsent(oldVal);
@@ -244,6 +247,16 @@ public final class PackDiffEngine {
 
         if (DESCRIPTION_KEY.equals(key)) {
             out.add(new PackDiffFinding(section, path, PackChangeClassification.PATCH, path + " description changed"));
+            return;
+        }
+
+        // Presentation text (concept/field ui.label, shortLabel, help, placeholder, hint, title -- a plain
+        // string or a per-language map) is what a person reads, never what a consumer binds to: renaming or
+        // translating it cannot break anything, so it is PATCH whichever way it changes. (It was BREAKING by
+        // the generic rule below, which made translating a published pack's labels a MAJOR bump.)
+        if (PRESENTATION_TEXT.matcher(path).find()) {
+            out.add(new PackDiffFinding(section, path, PackChangeClassification.PATCH,
+                    path + " changed (presentation text only)"));
             return;
         }
 

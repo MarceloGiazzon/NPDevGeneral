@@ -243,6 +243,10 @@ window.__TAURI__ = {
         case "pack_why": return F.packs.why;
         case "pack_search": window.__packSearches = (window.__packSearches || []).concat([args.query]); return window.__packSearch || F.packs.search;
         case "pack_change": window.__packChanges = (window.__packChanges || []).concat([args]); return window.__packChangeAnswer || F.packs.done;
+        // Your own parts + Publish to the public catalog (REG-334/348/351): a check sets window.__myParts and window.__packPushAnswer.
+        case "packs_workspace": return window.__myParts ? "D:\\Parts" : "";
+        case "my_parts": return window.__myParts || [];
+        case "pack_push": window.__packPushes = (window.__packPushes || []).concat([args]); return window.__packPushAnswer || { ok: false, problems: [] };
         default: return {};
       }
     },
@@ -1066,7 +1070,7 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
 
   // the other ways in (T2.3): Ctrl+V with nothing focused, the file dialog, a file dropped on the window. Each one
   // reaches the CLI as the SAME check as a typed paste, told apart only by how it arrived.
-  const NEEDS_FIX_SENTENCE = "The AI made a mistake. Copy this message and paste it in the same conversation.";
+  const NEEDS_FIX_SENTENCE = "The AI made a mistake. Press Copy message, paste it in the same conversation, then bring the AI's new answer back here.";
   const TRUNCATED_SENTENCE = "The answer was cut off. Copy this message so the AI sends it complete.";
   const fireDrag = (name, paths) => page.evaluate(([n, p]) => { (window.__listeners[n] || []).forEach((f) => f({ payload: { paths: p, position: { x: 4, y: 4 } } })); }, [name, paths]);
   check("browser AI: step 3 offers a drop place, a Choose-a-file button and says Ctrl+V works",
@@ -1136,7 +1140,7 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   await page.click("#browserai-check");
   await page.waitForTimeout(200);
   check("browser AI: mistakes the AI made are one sentence and the message to send back",
-    (await text("#browserai-outcome")) === "The AI made a mistake. Copy this message and paste it in the same conversation." && (await text("#browserai-outcome-button")) === "Copy message", String(await text("#browserai-outcome")));
+    (await text("#browserai-outcome")) === "The AI made a mistake. Press Copy message, paste it in the same conversation, then bring the AI's new answer back here." && (await text("#browserai-outcome-button")) === "Copy message", String(await text("#browserai-outcome")));
   await page.fill("#browserai-paste", "");
   await page.click("#browserai-check");
   check("browser AI: checking an empty box says to paste first", (await text("#browserai-outcome")) === "Paste the AI's answer first.", "");
@@ -1707,7 +1711,7 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   await page.waitForTimeout(250);
   const ptOutcome = await text("#browserai-outcome");
   check("browser AI: in Portuguese the outcome is one Portuguese sentence with a Portuguese button",
-    ptOutcome === "A IA cometeu um erro. Copie esta mensagem e cole na mesma conversa." && (await text("#browserai-outcome-button")) === "Copiar mensagem", String(ptOutcome));
+    ptOutcome === "A IA cometeu um erro. Clique em Copiar mensagem, cole na mesma conversa e traga a nova resposta da IA de volta aqui." && (await text("#browserai-outcome-button")) === "Copiar mensagem", String(ptOutcome));
   check("browser AI: in Portuguese the drop place, its button and the Ctrl+V hint read in Portuguese",
     (await text("#browserai-drop-label")) === "Ou solte aqui o arquivo que a IA criou" && (await text("#browserai-pick-file")) === "Escolher arquivo" &&
     (await text("#browserai-paste-hint")) === "Você também pode apertar Ctrl+V em qualquer lugar desta etapa.", String(await text("#browserai-drop-label")));
@@ -2548,6 +2552,77 @@ if (process.env.NPDEV_A11Y_WRITE === "1") {
   });
   check("parts (pt): nothing on the screen is left in English", ptParts.missing.length === 0 && ptParts.title === "Pacotes prontos", JSON.stringify(ptParts));
   await page.evaluate(() => NPDevI18n.setLang("en"));
+}
+
+// ---- REG-334 / 348 / 351: Publish to the public catalog, as the owner met it on 2026-11-20 -----------------------------
+// The owner could not tell WHAT to type (the name appeared after the sentence, which read like a leftover), a remembered scratch
+// folder was refused with an English path sentence, and the summary was English on a Portuguese screen.
+{
+  const KEY = "npdev.manager.nprCheckout";
+  const reopen = async () => {
+    await page.evaluate(async () => { await window.__npdevShowScreen("packs"); document.getElementById("packs-mine").innerHTML = ""; });
+    await page.evaluate(async () => { await window.__npdevShowScreen("home"); await window.__npdevShowScreen("packs"); });
+    await page.waitForSelector("#packs-mine [data-publish]", { timeout: 4000 });
+  };
+  const publishText = () => page.evaluate(() => document.getElementById("packs-publish").textContent.replace(/\s+/g, " ").trim());
+  await page.evaluate((k) => {
+    window.__myParts = [{ id: "ratings", version: "1.0.0", dir: "D:\\Parts\\ratings" }];
+    window.__packPushes = [];
+    window.localStorage.removeItem(k);
+  }, KEY);
+  await reopen();
+  await page.click('#packs-mine [data-publish="0"]');
+  check("publish: with no catalog folder remembered it asks for one in words, before any check",
+    /Choose the folder where your copy of the public catalog lives/.test(await publishText()) && (await page.evaluate(() => window.__packPushes.length)) === 0, await publishText());
+  // a remembered folder that is not a clone (a scratch folder left by something else)
+  await page.evaluate((k) => {
+    window.localStorage.setItem(k, "D:\\scratch\\shots");
+    window.__packPushAnswer = { ok: false, pushed: false, error: "not-a-catalog-clone", problems: ["D:\\scratch\\shots is not a copy (git clone) of the public catalog."] };
+  }, KEY);
+  await page.click('#packs-mine [data-publish="0"]');
+  await page.waitForFunction(() => /not a copy \(git clone\)/.test(document.getElementById("packs-publish").textContent), null, { timeout: 4000 });
+  const stale = await page.evaluate((k) => ({ stored: window.localStorage.getItem(k), choose: !!document.getElementById("packs-pub-choose"),
+    asked: window.__packPushes.at(-1) }), KEY);
+  check("publish: a remembered folder that is not a copy of the catalog is forgotten and the person is asked again",
+    !stale.stored && stale.choose && /^The folder chosen before is not a copy/.test(await publishText()), JSON.stringify(stale));
+  check("publish: the check is asked for in the Manager's language", stale.asked.language === "en" && stale.asked.dryRun === true, JSON.stringify(stale.asked));
+  // a part that cannot be published yet: one sentence, the AI-oriented lines under See details
+  await page.evaluate((k) => {
+    window.localStorage.setItem(k, "D:\\NPR");
+    window.__packPushAnswer = { ok: false, pushed: false, error: "checks-failed", problems: ["pack.json roles - a pack cannot grant its own concept \"Rating\" to a role by name"] };
+  }, KEY);
+  await page.click('#packs-mine [data-publish="0"]');
+  await page.waitForFunction(() => /cannot be published yet/.test(document.getElementById("packs-publish").textContent), null, { timeout: 4000 });
+  const failed = await page.evaluate(() => ({ text: document.getElementById("packs-publish").textContent.replace(/\s+/g, " "),
+    details: !!document.querySelector("#packs-publish details pre") }));
+  check("publish: a part that fails the checks says one plain sentence and folds the technical lines under See details",
+    /problems an AI can fix/.test(failed.text) && failed.details, JSON.stringify(failed));
+  // a part that can be published: it says which name to type, shows it as a hint, and Publish opens only on that exact name
+  await page.evaluate(() => {
+    window.__packPushAnswer = { ok: true, dryRun: true, pushed: false, confirmWith: "ratings@1.0.0",
+      summary: { description: "Star ratings.", sentences: ['A reusable part "ratings" (version 1.0.0) with 1 kind of record, 5 fields and 3 searches.'], changes: [] } };
+  });
+  await page.click('#packs-mine [data-publish="0"]');
+  await page.waitForSelector("#packs-pub-confirm", { timeout: 4000 });
+  const ask = await page.evaluate(() => ({ text: document.getElementById("packs-publish").textContent.replace(/\s+/g, " "),
+    name: document.querySelector("#packs-publish .packs-pub-name").textContent, hint: document.getElementById("packs-pub-confirm").placeholder,
+    off: document.getElementById("packs-pub-go").disabled }));
+  check("publish: it says which name to type, shows the name, and the box carries it as a hint",
+    /To publish, type this name exactly:/.test(ask.text) && ask.name === "ratings" && ask.hint === "ratings" && ask.off, JSON.stringify(ask));
+  await page.fill("#packs-pub-confirm", "rating");
+  const near = await page.evaluate(() => document.getElementById("packs-pub-go").disabled);
+  await page.fill("#packs-pub-confirm", "ratings");
+  const exact = await page.evaluate(() => document.getElementById("packs-pub-go").disabled);
+  check("publish: the button opens only on the exact name (never on a near miss)", near === true && exact === false, `near=${near} exact=${exact}`);
+  // Portuguese: the sentence is translated and the CLI is asked for a Portuguese summary
+  await page.evaluate(() => NPDevI18n.setLang("pt"));
+  await page.waitForTimeout(200);
+  await page.click('#packs-mine [data-publish="0"]');
+  await page.waitForSelector("#packs-pub-confirm", { timeout: 4000 });
+  const pt = await page.evaluate(() => ({ text: document.getElementById("packs-publish").textContent.replace(/\s+/g, " "), asked: window.__packPushes.at(-1) }));
+  check("publish (pt): the instruction is in Portuguese and the CLI is asked for Portuguese",
+    /Para publicar, digite este nome exatamente:/.test(pt.text) && pt.asked.language === "pt", JSON.stringify({ text: pt.text.slice(0, 160), asked: pt.asked }));
+  await page.evaluate(() => { NPDevI18n.setLang("en"); window.__myParts = null; window.__packPushAnswer = null; });
 }
 
 check("no console or page errors while rendering either screen", consoleErrors.length === 0,

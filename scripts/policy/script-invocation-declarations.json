@@ -518,6 +518,9 @@
     "scripts/quality/check-schema-mirror-consistency.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-ui-i18n.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-semantic-inventory.py": {
       "invocation": "ci-gate"
     },

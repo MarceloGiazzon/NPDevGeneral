@@ -72,12 +72,12 @@
     var wait = body.humanWait || {};
     var resumed = wait.resumedWaits || {};
     [
-      ["Executions", body.executionCount],
-      ["OK", outcomes.OK || 0],
-      ["Failed", outcomes.FAILED || 0],
-      ["Waiting now", wait.currentlyWaitingExecutions || 0],
-      ["Median wait", ms(resumed.medianMs)],
-      ["Total wait", ms(resumed.totalMs)]
+      [NPDevI18n.t("shell.nav.executions", "Executions"), body.executionCount],
+      [NPDevI18n.t("shell.ops.summaryOk", "OK"), outcomes.OK || 0],
+      [NPDevI18n.t("shell.ops.summaryFailed", "Failed"), outcomes.FAILED || 0],
+      [NPDevI18n.t("shell.ops.summaryWaiting", "Waiting now"), wait.currentlyWaitingExecutions || 0],
+      [NPDevI18n.t("shell.ops.medianWait", "Median wait"), ms(resumed.medianMs)],
+      [NPDevI18n.t("shell.ops.totalWait", "Total wait"), ms(resumed.totalMs)]
     ].forEach(function (pair) {
       var box = el("div");
       box.appendChild(el("div", null, pair[0]));
@@ -85,7 +85,7 @@
       summaryBox.appendChild(box);
     });
     if (body.truncated) {
-      summaryBox.appendChild(el("div", null, "Showing the newest " + body.scanLimit + " executions only."));
+      summaryBox.appendChild(el("div", null, NPDevI18n.t("shell.ops.truncated", "Showing the newest {count} executions only.", { count: body.scanLimit })));
     }
   }
 
@@ -93,7 +93,7 @@
     bottleneckBody.innerHTML = "";
     if (!rows.length) {
       var tr = el("tr");
-      var td = cell("No completed steps in this window.");
+      var td = cell(NPDevI18n.t("shell.ops.noSteps", "No completed steps in this window."));
       td.colSpan = 8;
       tr.appendChild(td);
       bottleneckBody.appendChild(tr);
@@ -122,13 +122,19 @@
     var box = el("div", "step-box" + (step.stepName === slowest ? " slowest" : ""));
     box.appendChild(el("div", "name", step.stepName));
     box.appendChild(el("div", "counts", step.stepType));
-    box.appendChild(el("div", "counts",
-      step.reached + " reached - " + step.ok + " ok - " + step.failed + " failed" +
-      (step.waiting ? " - " + step.waiting + " waiting" : "") +
-      (step.retried ? " - " + step.retried + " retried" : "")));
-    box.appendChild(el("div", "counts", "median " + ms(step.elapsedMs.medianMs) + " / p95 " + ms(step.elapsedMs.p95Ms)));
+    // A list of counts joined by " - "; each count is its own phrase in the catalogue.
+    var counts = [
+      NPDevI18n.t("shell.ops.stepReached", "{count} reached", { count: step.reached }),
+      NPDevI18n.t("shell.ops.stepOk", "{count} ok", { count: step.ok }),
+      NPDevI18n.t("shell.ops.stepFailed", "{count} failed", { count: step.failed })
+    ];
+    if (step.waiting) counts.push(NPDevI18n.t("shell.ops.stepWaiting", "{count} waiting", { count: step.waiting }));
+    if (step.retried) counts.push(NPDevI18n.t("shell.ops.stepRetried", "{count} retried", { count: step.retried }));
+    box.appendChild(el("div", "counts", counts.join(" - ")));
+    box.appendChild(el("div", "counts", NPDevI18n.t("shell.ops.stepTiming", "median {median} / p95 {p95}",
+      { median: ms(step.elapsedMs.medianMs), p95: ms(step.elapsedMs.p95Ms) })));
     if (step.waitMs && step.waitMs.count) {
-      box.appendChild(el("div", "counts", "waited " + ms(step.waitMs.medianMs) + " median"));
+      box.appendChild(el("div", "counts", NPDevI18n.t("shell.ops.stepWaited", "waited {median} median", { median: ms(step.waitMs.medianMs) })));
     }
     return box;
   }
@@ -137,7 +143,7 @@
     flowsBox.innerHTML = "";
     flowList.innerHTML = "";
     if (!flows.length) {
-      flowsBox.appendChild(el("p", "hint", "No executions with a trace in this window."));
+      flowsBox.appendChild(el("p", "hint", NPDevI18n.t("shell.ops.noFlows", "No executions with a trace in this window.")));
       return;
     }
     flows.forEach(function (flow) {
@@ -149,9 +155,10 @@
       var outcomes = flow.byOutcome || {};
       card.appendChild(el("h2", null, flow.flowName));
       card.appendChild(el("div", "counts",
-        flow.executions + " executions - " + (outcomes.OK || 0) + " ok - " + (outcomes.FAILED || 0) + " failed - " +
-        (outcomes.WAITING || 0) + " waiting - duration median " + ms(flow.durationMs.medianMs) +
-        " / p95 " + ms(flow.durationMs.p95Ms) + (flow.slowestStep ? " - slowest step: " + flow.slowestStep : "")));
+        NPDevI18n.t("shell.ops.flowSummary", "{executions} executions - {ok} ok - {failed} failed - {waiting} waiting - duration median {median} / p95 {p95}", {
+          executions: flow.executions, ok: outcomes.OK || 0, failed: outcomes.FAILED || 0, waiting: outcomes.WAITING || 0,
+          median: ms(flow.durationMs.medianMs), p95: ms(flow.durationMs.p95Ms)
+        }) + (flow.slowestStep ? " - " + NPDevI18n.t("shell.ops.flowSlowest", "slowest step: {step}", { step: flow.slowestStep }) : "")));
       var diagram = el("div", "diagram");
       (flow.steps || []).forEach(function (step, index) {
         if (index > 0) diagram.appendChild(el("span", "arrow", "→"));
@@ -164,9 +171,11 @@
 
   function load() {
     loadedOnce = true;
-    setMessage("Loading ...", false);
+    setMessage(NPDevI18n.t("shell.ops.loading", "Loading ..."), false);
     window.NPDevShell.api.get("/api/executions/analytics" + query()).then(function (body) {
-      setMessage("Tenant " + body.tenant + (body.flow ? ", flow " + body.flow : "") + ".", false);
+      setMessage(body.flow
+        ? NPDevI18n.t("shell.ops.scopeFlow", "Tenant {tenant}, flow {flow}.", { tenant: body.tenant, flow: body.flow })
+        : NPDevI18n.t("shell.ops.scope", "Tenant {tenant}.", { tenant: body.tenant }), false);
       renderSummary(body);
       renderBottlenecks(body.bottlenecks || []);
       renderFlows(body.flows || []);
@@ -175,8 +184,8 @@
       bottleneckBody.innerHTML = "";
       flowsBox.innerHTML = "";
       setMessage(error && error.status === 403
-        ? "Only the Super User can read another tenant's analytics."
-        : "Could not load analytics: " + (error && error.message), true);
+        ? NPDevI18n.t("shell.ops.analyticsSuperUserOnly", "Only the Super User can read another tenant's analytics.")
+        : NPDevI18n.t("shell.ops.analyticsLoadFailed", "Could not load analytics: {message}", { message: error && error.message }), true);
     });
   }
 
@@ -184,5 +193,6 @@
   tabAnalytics.addEventListener("click", function () { select("analytics"); });
   loadButton.addEventListener("click", load);
   flowInput.addEventListener("keydown", function (event) { if (event.key === "Enter") load(); });
-  if (window.location.hash === "#analytics") select("analytics");
+  // Wait for the shell (it hands the language catalogue to NPDevI18n before ready() resolves) before the first load.
+  if (window.location.hash === "#analytics") window.NPDevShell.api.ready().then(function () { select("analytics"); });
 })();

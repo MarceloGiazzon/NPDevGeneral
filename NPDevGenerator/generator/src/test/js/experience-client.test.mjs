@@ -32,6 +32,7 @@ class El {
   fire(type) { return Promise.all((this.on[type] || []).map((f) => f({ preventDefault() {} }))); }
   click() { return this.fire("click"); }
 }
+globalThis.NPDevI18n = { t: (k, f, v) => String(f).replace(/\{(\w+)\}/g, (m, n) => (v && v[n] != null ? v[n] : m)), apply() {}, language: () => "en", use() {} };
 globalThis.document = { createElement: (t) => new El(t), createTextNode: (t) => new Text(t), documentElement: new El("html"), title: "", hidden: false };
 
 const walk = (n, out = []) => { if (n instanceof El) { out.push(n); n.children.forEach((c) => walk(c, out)); } return out; };

@@ -90,6 +90,14 @@
       "minor": 0,
       "ruleCount": 0,
       "measuredOn": "2026-11-03T06:47:50.6277845Z"
+    },
+    "i18n-pt-verify-routine": {
+      "critical": 0,
+      "serious": 0,
+      "moderate": 1,
+      "minor": 0,
+      "ruleCount": 1,
+      "measuredOn": "2026-11-20T23:23:57.9465236Z"
     }
   }
 }

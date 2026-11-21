@@ -402,11 +402,28 @@ async function publishStart(part) {
   box.innerHTML = `<p class="status-line">${packsEsc(T("Checking {name}…", { name: part.id }))}</p>`;
   let r;
   try {
-    r = await kInvoke("pack_push", { packDir: part.dir, nprCheckout: checkout, dryRun: true, confirmPublic: null });
+    r = await kInvoke("pack_push", { packDir: part.dir, nprCheckout: checkout, dryRun: true, confirmPublic: null, language: packsLang() });
   } catch (e) {
     r = { ok: false, problems: [T("The part could not be checked. Nothing was published.")] };
   }
+  if (r && r.error === "not-a-catalog-clone") {
+    // The folder remembered from an earlier time is not a copy of the catalog (a scratch folder, a moved one): forget it and ask again,
+    // in words, instead of showing a path and an English sentence (REG-351).
+    nprSet("");
+    box.innerHTML = `<p class="status-line err"><b>${packsEsc(T("The folder chosen before is not a copy (git clone) of the public catalog."))}</b></p>
+      <p translate="no"><small>${packsEsc(checkout)}</small></p>
+      <p>${packsEsc(T("Choose the folder where your copy of the public catalog lives."))}</p>
+      <p><button class="btn" id="packs-pub-choose">${packsEsc(T("Choose folder"))}</button>
+      <button class="btn ghost" id="packs-pub-cancel">${packsEsc(T("Cancel"))}</button></p>`;
+    document.getElementById("packs-pub-choose").addEventListener("click", () => publishChooseFolder(part));
+    document.getElementById("packs-pub-cancel").addEventListener("click", publishClose);
+    return;
+  }
   publishShow(part, checkout, r);
+}
+
+function packsLang() {
+  return (window.NPDevI18n && window.NPDevI18n.lang) || "en";
 }
 
 function publishShow(part, checkout, r) {
@@ -417,7 +434,13 @@ function publishShow(part, checkout, r) {
   let body;
   if (!r || r.ok === false) {
     const problems = (r && r.problems && r.problems.length ? r.problems : [T("The part could not be checked. Nothing was published.")]);
-    body = `<h3>${packsEsc(T("{name} cannot be published yet", { name: part.id }))}</h3>${list(problems)}${footer}`;
+    // The CLI's lines are written for an AI to fix (technical, English): the person gets one plain sentence and the lines under
+    // "See details", where they can copy them to the AI that made the part.
+    const detail = r && r.error === "checks-failed"
+      ? `<p>${packsEsc(T("This part has problems an AI can fix. Press Make a part with a browser AI, choose a new version of this part, and paste the details below to the AI."))}</p>
+         <details><summary>${packsEsc(T("See details"))}</summary><pre translate="no">${packsEsc(problems.join("\n"))}</pre></details>`
+      : list(problems);
+    body = `<h3>${packsEsc(T("{name} cannot be published yet", { name: part.id }))}</h3>${detail}${footer}`;
   } else {
     const s = r.summary || {};
     body = `<h3>${packsEsc(T("What becomes public: {name} {version}", { name: part.id, version: part.version }))}</h3>
@@ -425,8 +448,9 @@ function publishShow(part, checkout, r) {
       ${list(s.sentences || [])}
       ${(s.changes || []).length ? `<p><b>${packsEsc(T("What changed since the last version"))}</b></p>${list(s.changes)}` : ""}
       <p class="status-line err"><b>${packsEsc(T("Anyone on the internet will be able to see and use it."))}</b></p>
-      <label>${packsEsc(T("Type the part's name to publish: {name}", { name: part.id }))}
-        <input type="text" id="packs-pub-confirm" autocomplete="off" spellcheck="false"></label>
+      <p>${packsEsc(T("To publish, type this name exactly:"))} <b class="packs-pub-name" translate="no">${packsEsc(part.id)}</b></p>
+      <label>${packsEsc(T("Part name"))}
+        <input type="text" id="packs-pub-confirm" autocomplete="off" spellcheck="false" translate="no" placeholder="${packsEsc(part.id)}"></label>
       <p><button class="btn" id="packs-pub-go" disabled>${packsEsc(T("Publish"))}</button></p>${footer}`;
   }
   box.innerHTML = body;
@@ -447,7 +471,7 @@ function publishShow(part, checkout, r) {
     box.insertAdjacentHTML("beforeend", `<p class="status-line" id="packs-pub-busy">${packsEsc(T("Publishing…"))}</p>`);
     let done;
     try {
-      done = await kInvoke("pack_push", { packDir: part.dir, nprCheckout: checkout, dryRun: false, confirmPublic: `${part.id}@${part.version}` });
+      done = await kInvoke("pack_push", { packDir: part.dir, nprCheckout: checkout, dryRun: false, confirmPublic: `${part.id}@${part.version}`, language: packsLang() });
     } catch (e) {
       done = { ok: false, problems: [] };
     }

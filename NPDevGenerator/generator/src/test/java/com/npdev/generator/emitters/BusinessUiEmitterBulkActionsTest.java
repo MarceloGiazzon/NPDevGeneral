@@ -117,11 +117,11 @@ public class BusinessUiEmitterBulkActionsTest {
     @Test
     void confirmDialogAndPerRowResultsAreWired() throws Exception {
         String appJs = readAppJs(emit());
-        assertTrue(appJs.contains("window.confirm(\"Delete \" + ids.length"),
+        assertTrue(appJs.contains("window.confirm(NPDevI18n.t(\"panels.bulk.confirmDelete\""),
                 "bulk delete must be confirmed before it executes");
-        assertTrue(appJs.contains("function showBatchResultsModal(concept, operationLabel, response)"),
+        assertTrue(appJs.contains("function showBatchResultsModal(concept, operationKind, response)"),
                 "a results view reporting per-row outcomes must be emitted");
-        assertTrue(appJs.contains("row.ok ? \"OK\" : (row.code || \"Error\")"),
+        assertTrue(appJs.contains("row.ok ? NPDevI18n.t(\"panels.bulk.resultOk\", \"OK\") : (row.code || NPDevI18n.t(\"panels.bulk.resultError\", \"Error\"))"),
                 "the results view must report each row's own outcome, not one aggregate boolean");
     }
 

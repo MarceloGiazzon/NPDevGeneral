@@ -54,7 +54,8 @@
       // Required payload: let the existing edit form collect it, pre-set to the target column.
       var draft = Object.assign({}, record);
       draft[board.groupBy] = target.to;
-      ctx.helpers.notify("Moving to " + target.label + " needs: " + target.requires.join(", ") + ". Fill them in and save.", false);
+      ctx.helpers.notify(NPDevI18n.t("views.board.needsFields", "Moving to {target} needs: {fields}. Fill them in and save.",
+        { target: target.label, fields: target.requires.join(", ") }), false);
       ctx.helpers.openForm("edit", draft);
       return;
     }
@@ -91,10 +92,10 @@
     if (targets.length) {
       var select = document.createElement("select");
       select.className = "board-card-move";
-      select.setAttribute("aria-label", "Move to");
+      select.setAttribute("aria-label", NPDevI18n.t("views.board.moveTo", "Move to"));
       var placeholder = document.createElement("option");
       placeholder.value = "";
-      placeholder.textContent = "Move to…";
+      placeholder.textContent = NPDevI18n.t("views.board.movePlaceholder", "Move to…");
       select.appendChild(placeholder);
       targets.forEach(function (t, i) {
         var option = document.createElement("option");
@@ -169,14 +170,16 @@
     if (ctx.totalElements > (ctx.records || []).length) {
       var more = document.createElement("div");
       more.className = "board-truncated";
-      more.textContent = "Showing " + ctx.records.length + " of " + ctx.totalElements + " — filter the list to see the rest.";
+      more.textContent = NPDevI18n.t("views.board.truncated", "Showing {shown} of {total} — filter the list to see the rest.",
+        { shown: ctx.records.length, total: ctx.totalElements });
       root.appendChild(more);
     }
     return root;
   }
 
   window.NPDevViews.register("board", {
-    label: "Board",
+    // getter: the catalogue may be installed after this script runs
+    get label() { return NPDevI18n.t("views.board.label", "Board"); },
     pageSize: 100,
     render: render,
     // exposed for the node unit test only

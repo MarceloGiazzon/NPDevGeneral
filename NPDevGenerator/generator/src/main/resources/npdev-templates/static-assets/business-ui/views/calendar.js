@@ -76,12 +76,12 @@
       return b;
     }
     bar.appendChild(navButton("‹", -1));
-    bar.appendChild(navButton("Today", 0));
+    bar.appendChild(navButton(NPDevI18n.t("views.calendar.today", "Today"), 0));
     bar.appendChild(navButton("›", 1));
     bar.appendChild(title);
     if (dateFields.length > 1) {
       var pick = document.createElement("select");
-      pick.setAttribute("aria-label", "Date field");
+      pick.setAttribute("aria-label", NPDevI18n.t("views.calendar.dateField", "Date field"));
       dateFields.forEach(function (f) {
         var o = document.createElement("option");
         o.value = f.name; o.textContent = f.label || f.name; o.selected = f === field;
@@ -100,7 +100,7 @@
 
     async function load() {
       var days = monthGrid(month);
-      title.textContent = month.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+      title.textContent = month.toLocaleDateString(NPDevI18n.language(), { month: "long", year: "numeric" });
       var params = ctx.helpers.listParams();
       var where = (params.get("where") || "").split(",").filter(Boolean).concat(rangeClauses(field, days));
       params.set("where", where.join(","));
@@ -114,12 +114,12 @@
       if (hit && Date.now() - hit.at < 5000) {
         payload = hit.payload;
       } else {
-        grid.textContent = "Loading…";
+        grid.textContent = NPDevI18n.t("views.calendar.loading", "Loading…");
         try {
           payload = await ctx.helpers.fetchJson(url, { method: "GET", headers: ctx.helpers.headers() });
           cache[url] = { at: Date.now(), payload: payload };
         } catch (error) {
-          grid.textContent = "Could not load: " + error.message;
+          grid.textContent = NPDevI18n.t("views.calendar.loadFailed", "Could not load: {message}", { message: error.message });
           return;
         }
       }
@@ -129,9 +129,11 @@
         if (k) { (byDay[k] = byDay[k] || []).push(r); }
       });
       grid.innerHTML = "";
-      ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].forEach(function (d) {
-        var h = document.createElement("div"); h.className = "calendar-dow"; h.textContent = d; grid.appendChild(h);
-      });
+      var weekdayFormat = new Intl.DateTimeFormat(NPDevI18n.language(), { weekday: "short" });
+      for (var wd = 0; wd < 7; wd++) { // 2024-01-01 was a Monday: Monday-first, like monthGrid()
+        var h = document.createElement("div"); h.className = "calendar-dow";
+        h.textContent = weekdayFormat.format(new Date(2024, 0, 1 + wd)); grid.appendChild(h);
+      }
       var today = isoDate(new Date());
       days.forEach(function (day) {
         var key = isoDate(day);
@@ -147,13 +149,15 @@
           cell.appendChild(chip);
         });
         if (items.length > 3) {
-          var more = document.createElement("div"); more.className = "calendar-more"; more.textContent = "+" + (items.length - 3) + " more";
+          var more = document.createElement("div"); more.className = "calendar-more"; more.textContent = NPDevI18n.t("views.calendar.more", "+{count} more", { count: items.length - 3 });
           cell.appendChild(more);
         }
         grid.appendChild(cell);
       });
       var total = Number(payload.totalElements || 0);
-      note.textContent = total > (payload.content || []).length ? "Showing " + payload.content.length + " of " + total + " in this range — filter to narrow." : "";
+      note.textContent = total > (payload.content || []).length
+        ? NPDevI18n.t("views.calendar.truncated", "Showing {shown} of {total} in this range — filter to narrow.", { shown: payload.content.length, total: total })
+        : "";
     }
 
     load();
@@ -161,7 +165,8 @@
   }
 
   window.NPDevViews.register("calendar", {
-    label: "Calendar",
+    // getter: the catalogue may be installed after this script runs
+    get label() { return NPDevI18n.t("views.calendar.label", "Calendar"); },
     // The view fetches its own month window, so the grid's own page fetch can stay minimal.
     pageSize: 1,
     render: render,

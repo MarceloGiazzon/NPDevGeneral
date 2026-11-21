@@ -1,0 +1,28 @@
+id: REG-352
+title: >-
+  The online validator (REG-335) validates only a model.json: an online AI or a browser agent that writes a PACK cannot iterate on a verdict the way it does for an app
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-11-20
+source: >-
+  Owner's request 2026-11-20 ("make the outside AI have less difficulty designing systems or packs") after the real ratings round: every
+  correction a pack needed (roles[], $user.isSystem blocking aggregates, English labels) came from the relay, one round at a time, and an
+  AI that reaches NPDev through the validator or the MCP connector has no equivalent.
+surface: mcp/validation-service, cli/relay-pack
+files:
+  - NPDevMcp/validation_service.py
+  - NPDevMcp/server.py
+  - NPDevCli/npdev_relay_pack.py
+detail: |
+  validation_service.py serves POST /api/validate (body = the model.json) and GET /api/schema/model; NPDevMcp/server.py has npdev_pack_search
+  and npdev_pack_card but nothing that checks a pack.json. The relay already has the whole check as pure functions (npdev_relay_pack.static_errors
+  -- since 2026-11-20 it also refuses roles[] that name the pack's own concepts and non-English texts -- then stage_probe + the model
+  validator on a probe application). Design: a body with a top-level string `pack` is a pack, not a model; run static_errors, then the probe
+  through the same validate_fn, and answer in the service's existing report shape (diagnostics with where / what / how to fix), plus a
+  `GET /api/schema/pack`. Do not restart the running service for this without the owner (the tunnel and token must stay up).
+done_when: >-
+  POSTing a ratings pack.json that declares roles[] or Portuguese labels to /api/validate answers with the same lines the relay gives, and a
+  good pack answers passed; an MCP tool or the service page names the pack route; one online AI or browser agent writes a pack to passed.
+resolution: >-
+  Done when the defect described is fixed and covered by a test; see detail.

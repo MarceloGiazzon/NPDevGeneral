@@ -42,6 +42,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import sys
 import time
@@ -59,7 +60,9 @@ import npdev_relay_prompts as relay_prompts  # noqa: E402
 
 ARM_ID = "relay"
 REPAIR_MODE = "same-chat"
-LANGUAGE = "English"          # the bench prompts are English; the product passes the person's language
+# The bench prompts are English; the product passes the person's language. NPDEV_BENCH_RELAY_LANGUAGE="Portuguese (Brazil)" plays a
+# Portuguese Manager -- the only way this arm can catch a prompt that makes an AI write the wrong language into a published pack.
+LANGUAGE = os.environ.get("NPDEV_BENCH_RELAY_LANGUAGE", "").strip() or "English"
 KNOWLEDGE_SOURCE = "core-context compact bundle (build_core_context.build_bundle(compact=True))"
 COPY_MUTATIONS = ("copy-button", "markers", "smart-quotes", "fences")   # also the order they are applied in
 

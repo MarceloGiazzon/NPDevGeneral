@@ -1,0 +1,51 @@
+id: REG-348
+title: >-
+  The Portuguese Manager shows English sentences in the publish dialog, in its refusals and in the AI's own lines of the proposal
+type: GAP
+severity: LOW
+status: PARTIAL
+opened: 2026-11-20
+source: >-
+  Owner's real round 2026-11-20 (REG-334), screenshots of "Publish to the public catalog" and of "What the AI proposes", plus the owner's
+  request to look for language mixing.
+surface: cli/pack-push, manager/packs, cli/relay-preview
+files:
+  - NPDevCli/npdev_pack_push.py
+  - NPDevCli/npdev_pack_sheet.py
+  - NPDevCli/npdev_relay_preview_pt.py
+  - NPDevManager/ui/packs.js
+detail: |
+  1. Publish dialog: the title, the buttons and the typed-name label are translated, but the "What becomes public" bullets and the
+     description come from npdev_pack_push.py (line 82, npdev_pack_sheet.plain_preview) in English with no language parameter, and the
+     refusal text ("... is not a copy (git clone) of the public catalog.") is English too. The bullet "Avaliacao: 6 fields (...)" shows the
+     two languages in one line when the pack's own labels are Portuguese (REG-347).
+  2. "What the AI proposes": the frame is Portuguese (npdev_relay_preview_pt.py) but "A IA presumiu:" and "A IA diz sobre acesso:" carry the
+     AI's own sentences in English, because relay-prompts.json asks only for the one-or-two-sentence explanation in the person's language.
+  3. Readability, owner's question "is the preview readable": it names the part, its record kinds and searches and says nothing is
+     replaced, but "7 fields" against "6 fields" (the internal id is counted once and not the other), "changed by only the people a rule
+     allows" and raw query names (AllRatings, RatingsOfAuthor) are not for a non-technical reader. Manager audience rule: a non-expert
+     must understand every operation.
+  Not checked: the other English sentences the CLI returns that other Manager screens show as they are (needs the render checker on a
+  running window); text in Portuguese without accents.
+  DONE 2026-11-20 (Manager 0.13.41 + CLI): (1) `pack push --language` -> npdev_pack_push.summary_of runs the same localize_preview the proposal uses, so
+  the "What becomes public" sentences and the public warning follow the Manager's language (Rust passes relay_language_name; Rust argv test updated);
+  a remembered catalog folder that is not a git clone is forgotten with one sentence (error code not-a-catalog-clone); a part that fails the checks
+  says one plain sentence and keeps the AI-oriented lines under See details. (2) npdev_pack_sheet: the field total no longer counts the internal id
+  (1 kind of record, 5 fields = the line below it) and an access rule `field == $user.id` is worded "whoever owns each record" (pt: "quem é dono de
+  cada registro"), with roles joined ("Manager and whoever owns each record") instead of hiding the owner. (3) relay-prompts.json `languageSubmission`: for
+  any language but English the AI is asked to write the sentences of npdev-submission.json in that language (English prompts byte-identical, hash pins
+  green); bench-903 in Portuguese: the assumptions came back in Portuguese. NOT done: the raw search names (AllRatings...) and the validator's own
+  refusal lines stay English (they are identifiers / written for an AI); not seen on the real window yet -- needs the owner's rerun.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_relay_pack_ingest.py#IngestPackTests
+  asserts: >-
+    a pack preview says "1 kind of record, 5 fields" with the same count as the line below it, words an owner rule as "seen by whoever owns each
+    record" (pt "visto por quem é dono de cada registro"); the Manager's argv carries --language (npdev.rs only_an_exact_part_and_version...).
+  provenRed: false
+verification: UNIT_TESTED
+done_when: >-
+  The publish dialog's sentences and refusals appear in the Manager's language (through npdev_relay_preview_pt or a catalogue), the
+  proposal's AI lines are asked for in the person's language or clearly marked, and the pack summary counts fields the same way in both lines.
+resolution: >-
+  Done when the defect described is fixed and covered by a test; see detail.

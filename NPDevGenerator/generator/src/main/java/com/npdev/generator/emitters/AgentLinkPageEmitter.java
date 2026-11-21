@@ -29,7 +29,9 @@ public final class AgentLinkPageEmitter extends AbstractEmitter {
         }
         String appName = model.getNamespace() == null || model.getNamespace().isBlank()
                 ? "NPDev Generated App" : model.getNamespace().trim();
-        writer.writeRelative(RELATIVE_PATH, render(Map.of("appName", appName)));
+        writer.writeRelative(RELATIVE_PATH, render(Map.of(
+                "appName", appName,
+                "i18nJson", PageI18n.inlineJson(model))));
     }
 
     private String render(Map<String, Object> view) {

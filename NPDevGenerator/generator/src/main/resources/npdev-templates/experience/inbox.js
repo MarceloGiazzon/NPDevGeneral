@@ -11,7 +11,7 @@ const pad = (n) => (n < 10 ? "0" : "") + n;
 /** Seconds left -> "mm:ss" (under an hour), "1 h 05 min", "2 d 3 h"; zero or less -> "Expired". */
 export function formatCountdown(seconds) {
   const s = Math.ceil(seconds);
-  if (!(s > 0)) return "Expired";
+  if (!(s > 0)) return NPDevI18n.t("experience.inbox.expired", "Expired");
   if (s < 3600) return pad(Math.floor(s / 60)) + ":" + pad(s % 60);
   if (s < 86400) return Math.floor(s / 3600) + " h " + pad(Math.floor((s % 3600) / 60)) + " min";
   return Math.floor(s / 86400) + " d " + Math.floor((s % 86400) / 3600) + " h";
@@ -70,5 +70,5 @@ export async function render(ctx) {
     list.appendChild(h("li", { class: "row-item" }, h("div", { class: "row inbox-row" }, children)));
   }
   root.appendChild(list);
-  if (truncated) root.appendChild(h("p", { class: "muted note", text: "Showing the first " + rows.length + " items." }));
+  if (truncated) root.appendChild(h("p", { class: "muted note", text: NPDevI18n.t("experience.inbox.firstItems", "Showing the first {count} items.", { count: rows.length }) }));
 }

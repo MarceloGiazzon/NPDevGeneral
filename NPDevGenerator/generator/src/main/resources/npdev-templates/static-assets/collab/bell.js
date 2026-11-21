@@ -27,14 +27,14 @@
 
   var button = el("button", "npdev-shell-bell", "🔔");
   button.type = "button";
-  button.title = "Notifications";
-  button.setAttribute("aria-label", "Notifications");
+  button.title = NPDevI18n.t("shell.bell.title", "Notifications");
+  button.setAttribute("aria-label", NPDevI18n.t("shell.bell.title", "Notifications"));
   var badge = el("span", "npdev-shell-bell-count");
   badge.hidden = true;
   button.appendChild(badge);
   var panel = el("div", "npdev-shell-bell-panel");
   panel.setAttribute("role", "region");
-  panel.setAttribute("aria-label", "Notifications");
+  panel.setAttribute("aria-label", NPDevI18n.t("shell.bell.title", "Notifications"));
   panel.hidden = true;
 
   function setCount(n) {
@@ -61,14 +61,14 @@
   }
 
   function renderPanel() {
-    shell.renderLoading(panel, { message: "Loading..." });
+    shell.renderLoading(panel, { message: NPDevI18n.t("shell.common.loading", "Loading...") });
     shell.api.get("/api/notifications?limit=20").then(function (b) {
       panel.innerHTML = "";
       var items = (b && b.items) || [];
       setCount(b && b.unreadCount);
       var head = el("div", "npdev-shell-bell-head");
-      head.appendChild(el("strong", "", "Notifications"));
-      var all = el("button", "", "Mark all read");
+      head.appendChild(el("strong", "", NPDevI18n.t("shell.bell.title", "Notifications")));
+      var all = el("button", "", NPDevI18n.t("shell.bell.markAllRead", "Mark all read"));
       all.type = "button";
       all.addEventListener("click", function () {
         shell.api.post("/api/notifications/read-all", {}).then(renderPanel, function () { /* silent */ });
@@ -76,7 +76,7 @@
       head.appendChild(all);
       panel.appendChild(head);
       if (!items.length) {
-        panel.appendChild(el("div", "npdev-shell-bell-empty", "No notifications."));
+        panel.appendChild(el("div", "npdev-shell-bell-empty", NPDevI18n.t("shell.bell.empty", "No notifications.")));
         return;
       }
       items.forEach(function (n) {
@@ -90,7 +90,7 @@
       });
     }).catch(function () {
       panel.innerHTML = "";
-      panel.appendChild(el("div", "npdev-shell-bell-empty", "Notifications are unavailable."));
+      panel.appendChild(el("div", "npdev-shell-bell-empty", NPDevI18n.t("shell.bell.unavailable", "Notifications are unavailable.")));
     });
   }
 

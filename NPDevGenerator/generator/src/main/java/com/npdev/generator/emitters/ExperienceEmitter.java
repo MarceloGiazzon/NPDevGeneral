@@ -17,6 +17,8 @@ import com.npdev.generator.templates.TemplateEngine;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -114,7 +116,7 @@ public final class ExperienceEmitter extends AbstractEmitter {
         } catch (IOException e) {
             throw new IllegalStateException("Failed serialising " + OUTPUT, e);
         }
-        copyClientFiles();
+        copyClientFiles(model);
     }
 
     // ------------------------------------------------------------------ resolution
@@ -344,7 +346,42 @@ public final class ExperienceEmitter extends AbstractEmitter {
 
     // ------------------------------------------------------------------ client files
 
-    private void copyClientFiles() {
+    /**
+     * REG-349: {@code static/x/strings.js}, a classic script index.html loads right after {@code /npdev-i18n.js}: it hands
+     * the client its text catalogue ({@code experience.*} ids only, every shipped language, the model's own overrides
+     * applied, plus the app's default language) to {@code NPDevI18n.use}. A static file, so the client needs no extra
+     * request and no sign-in to read it. ASCII only (non-ASCII characters are written as JSON unicode escapes).
+     */
+    private void writeClientStrings(CompiledModel model) {
+        ObjectNode catalogue = MAPPER.createObjectNode();
+        catalogue.set("strings", MAPPER.valueToTree(onlyExperienceIds(UiStrings.appStrings(model))));
+        ObjectNode byLocale = catalogue.putObject("stringsByLocale");
+        UiStrings.byLocale(model).forEach((language, strings) -> byLocale.set(language, MAPPER.valueToTree(onlyExperienceIds(strings))));
+        catalogue.put("defaultLanguage", UiStrings.appLanguage(model));
+        String json = UiStrings.json(catalogue);
+        StringBuilder ascii = new StringBuilder(json.length() + 64);
+        for (int i = 0; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (c < 0x80) {
+                ascii.append(c);
+            } else {
+                ascii.append(String.format("\\u%04x", (int) c));
+            }
+        }
+        writer.writeRelative(STATIC_PREFIX + "strings.js", "NPDevI18n.use(" + ascii + ");\n");
+    }
+
+    private static Map<String, String> onlyExperienceIds(Map<String, String> all) {
+        Map<String, String> out = new LinkedHashMap<>();
+        all.forEach((id, text) -> {
+            if (id.startsWith("experience.")) {
+                out.put(id, text);
+            }
+        });
+        return out;
+    }
+
+    private void copyClientFiles(CompiledModel model) {
         String manifest = readClasspath(clientBase + CLIENT_MANIFEST);
         if (manifest == null) {
             return;
@@ -373,6 +410,7 @@ public final class ExperienceEmitter extends AbstractEmitter {
             }
             writer.writeRelativeBytes(STATIC_PREFIX + relative, bytes);
         }
+        writeClientStrings(model);
     }
 
     private static String readClasspath(String path) {

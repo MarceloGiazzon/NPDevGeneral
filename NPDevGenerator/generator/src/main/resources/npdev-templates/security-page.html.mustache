@@ -58,110 +58,111 @@
   a { color: var(--accent); }
   .hidden { display: none; }
 </style>
+<script src="/npdev-i18n.js"></script>
+<script>NPDevI18n.use({{{i18nJson}}});</script>
 <script src="/npdev-display.js"></script>
 <script>if (window.NPDevDisplay) { NPDevDisplay.boot(); }</script>
 </head>
-<body>
+<body data-app-name="{{appName}}">
 <main class="card">
-  <h1>Account security</h1>
-  <p class="note">Two-step sign-in with an authenticator app protects your account even if your password leaks.</p>
+  <h1 data-i18n="pages.security.heading">Account security</h1>
+  <p class="note" data-i18n="pages.security.note">Two-step sign-in with an authenticator app protects your account even if your password leaks.</p>
 
-  <p id="loading" class="note">Loading…</p>
-  <p id="unavailable" class="note hidden">Two-step sign-in is not available in this app.</p>
-  <p id="signedOut" class="note hidden">Your session expired. <a href="/login.html">Sign in again</a>.</p>
+  <p id="loading" class="note" data-i18n="pages.security.loading">Loading…</p>
+  <p id="unavailable" class="note hidden" data-i18n="pages.security.unavailable">Two-step sign-in is not available in this app.</p>
+  <p id="signedOut" class="note hidden"><span data-i18n="pages.security.sessionExpired">Your session expired.</span> <a href="/login.html" data-i18n="pages.security.signInAgain">Sign in again</a>.</p>
 
   <section id="offView" class="hidden">
-    <p>Two-step sign-in is <span class="status">off</span>.</p>
-    <div class="row"><button class="primary" id="turnOnBtn" type="button">Turn on</button></div>
+    <p data-i18n="pages.security.statusOff">Two-step sign-in is off.</p>
+    <div class="row"><button class="primary" id="turnOnBtn" type="button" data-i18n="pages.security.turnOn">Turn on</button></div>
   </section>
 
   <section id="passwordStep" class="hidden">
-    <h2>Confirm it is you</h2>
+    <h2 data-i18n="pages.security.confirmItsYou">Confirm it is you</h2>
     <form id="startForm" autocomplete="off">
-      <label>Current password
+      <label><span data-i18n="pages.security.currentPassword">Current password</span>
         <input id="startPassword" type="password" autocomplete="current-password" required>
       </label>
       <div class="row">
-        <button class="primary" id="startBtn" type="submit">Continue</button>
-        <button id="startCancelBtn" type="button">Cancel</button>
+        <button class="primary" id="startBtn" type="submit" data-i18n="pages.security.continue">Continue</button>
+        <button id="startCancelBtn" type="button" data-i18n="pages.security.cancel">Cancel</button>
       </div>
     </form>
   </section>
 
   <section id="enrollStep" class="hidden">
-    <h2>Add it to your authenticator app</h2>
-    <p class="note">In Google Authenticator, Microsoft Authenticator, 1Password or any similar app, add an account
-      with this key (time-based, 6 digits). On a phone you can also tap the link.</p>
+    <h2 data-i18n="pages.security.addToApp">Add it to your authenticator app</h2>
+    <p class="note" data-i18n="pages.security.enrollNote">In Google Authenticator, Microsoft Authenticator, 1Password or any similar app, add an account with this key (time-based, 6 digits). On a phone you can also tap the link.</p>
     <div class="secret" id="secretText"></div>
-    <p class="note"><a id="otpauthLink" href="#">Open in authenticator app</a></p>
+    <p class="note"><a id="otpauthLink" href="#" data-i18n="pages.security.openInApp">Open in authenticator app</a></p>
     <form id="confirmForm" autocomplete="off">
-      <label>6-digit code from the app
+      <label><span data-i18n="pages.security.codeFromApp">6-digit code from the app</span>
         <input id="confirmCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required>
       </label>
       <div class="row">
-        <button class="primary" id="confirmBtn" type="submit">Turn on</button>
-        <button id="confirmCancelBtn" type="button">Cancel</button>
+        <button class="primary" id="confirmBtn" type="submit" data-i18n="pages.security.turnOn">Turn on</button>
+        <button id="confirmCancelBtn" type="button" data-i18n="pages.security.cancel">Cancel</button>
       </div>
     </form>
   </section>
 
   <section id="codesStep" class="hidden">
-    <h2>Save your recovery codes</h2>
-    <p class="note">Each code works once if you lose your phone. They are shown only now.</p>
+    <h2 data-i18n="pages.security.saveCodes">Save your recovery codes</h2>
+    <p class="note" data-i18n="pages.security.codesNote">Each code works once if you lose your phone. They are shown only now.</p>
     <pre class="codes" id="codesText"></pre>
     <div class="row">
-      <button id="copyBtn" type="button">Copy</button>
-      <button id="downloadBtn" type="button">Download .txt</button>
+      <button id="copyBtn" type="button" data-i18n="pages.security.copy">Copy</button>
+      <button id="downloadBtn" type="button" data-i18n="pages.security.downloadTxt">Download .txt</button>
     </div>
-    <label style="margin-top:.8rem"><input id="savedBox" type="checkbox"> I saved them</label>
-    <div class="row"><button class="primary" id="doneBtn" type="button" disabled>Done</button></div>
+    <label style="margin-top:.8rem"><input id="savedBox" type="checkbox"> <span data-i18n="pages.security.savedThem">I saved them</span></label>
+    <div class="row"><button class="primary" id="doneBtn" type="button" disabled data-i18n="pages.security.done">Done</button></div>
   </section>
 
   <section id="onView" class="hidden">
-    <p>Two-step sign-in is <span class="status">on</span>. <span id="codesLeft"></span></p>
+    <p><span data-i18n="pages.security.statusOn">Two-step sign-in is on.</span> <span id="codesLeft"></span></p>
     <div class="row">
-      <button id="newCodesBtn" type="button">New recovery codes</button>
-      <button class="danger" id="turnOffBtn" type="button">Turn off</button>
+      <button id="newCodesBtn" type="button" data-i18n="pages.security.newCodes">New recovery codes</button>
+      <button class="danger" id="turnOffBtn" type="button" data-i18n="pages.security.turnOff">Turn off</button>
     </div>
   </section>
 
   <section id="newCodesStep" class="hidden">
-    <h2>New recovery codes</h2>
-    <p class="note">The old codes stop working.</p>
+    <h2 data-i18n="pages.security.newCodes">New recovery codes</h2>
+    <p class="note" data-i18n="pages.security.oldCodesStop">The old codes stop working.</p>
     <form id="newCodesForm" autocomplete="off">
-      <label>6-digit code from the app
+      <label><span data-i18n="pages.security.codeFromApp">6-digit code from the app</span>
         <input id="newCodesCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required>
       </label>
       <div class="row">
-        <button class="primary" type="submit">Generate</button>
-        <button id="newCodesCancelBtn" type="button">Cancel</button>
+        <button class="primary" type="submit" data-i18n="pages.security.generate">Generate</button>
+        <button id="newCodesCancelBtn" type="button" data-i18n="pages.security.cancel">Cancel</button>
       </div>
     </form>
   </section>
 
   <section id="offStep" class="hidden">
-    <h2>Turn off two-step sign-in</h2>
+    <h2 data-i18n="pages.security.turnOffHeading">Turn off two-step sign-in</h2>
     <form id="offForm" autocomplete="off">
-      <label>Current password
+      <label><span data-i18n="pages.security.currentPassword">Current password</span>
         <input id="offPassword" type="password" autocomplete="current-password" required>
       </label>
-      <label>6-digit code from the app, or a recovery code
+      <label><span data-i18n="pages.security.codeOrRecovery">6-digit code from the app, or a recovery code</span>
         <input id="offCode" type="text" autocomplete="one-time-code" required>
       </label>
       <div class="row">
-        <button class="danger" type="submit">Turn off</button>
-        <button id="offCancelBtn" type="button">Cancel</button>
+        <button class="danger" type="submit" data-i18n="pages.security.turnOff">Turn off</button>
+        <button id="offCancelBtn" type="button" data-i18n="pages.security.cancel">Cancel</button>
       </div>
     </form>
   </section>
 
   <section id="sessionsCard" class="hidden">
-    <h2>Sessions</h2>
-    <p class="note">Lost a phone or used a shared computer? Sign out everywhere else. You stay signed in here.</p>
-    <h3>Where you're signed in</h3>
-    <p class="note" id="deviceListNote">Each browser or device you signed in on. End one to sign out just that device.</p>
+    <h2 data-i18n="pages.security.sessions">Sessions</h2>
+    <p class="note" data-i18n="pages.security.sessionsNote">Lost a phone or used a shared computer? Sign out everywhere else. You stay signed in here.</p>
+    <h3 data-i18n="pages.security.whereSignedIn">Where you're signed in</h3>
+    <p class="note" id="deviceListNote" data-i18n="pages.security.deviceListNote">Each browser or device you signed in on. End one to sign out just that device.</p>
     <ul id="deviceList" class="devices"></ul>
-    <div class="row"><button class="danger" id="revokeOthersBtn" type="button">Sign out of all other devices</button></div>
+    <div class="row"><button class="danger" id="revokeOthersBtn" type="button" data-i18n="pages.security.signOutOthers">Sign out of all other devices</button></div>
   </section>
 
   <p id="errorBanner" class="banner error hidden"></p>
@@ -171,20 +172,23 @@
 <script>
 (function () {
   "use strict";
+  // REG-349: the page's static text is translated once the DOM is ready; dynamic messages call NPDevI18n.t directly.
+  document.addEventListener("DOMContentLoaded", function () { NPDevI18n.apply(document); });
+  document.title = NPDevI18n.t("pages.security.title", "Account security — {appName}", { appName: document.body.getAttribute("data-app-name") });
   var TOKEN_KEYS = ["npdev.shell.token", "npdev.businessUi.apiKey"];
   var SECTIONS = ["loading", "unavailable", "signedOut", "offView", "passwordStep", "enrollStep",
                   "codesStep", "onView", "newCodesStep", "offStep"];
   var MESSAGES = {
-    unauthenticated: "Your session expired. Sign in again.",
-    invalid_password: "That password is not correct.",
-    invalid_code: "That code is not valid. Check the app and try again.",
-    mfa_already_enabled: "Two-step sign-in is already on.",
-    mfa_enroll_not_started: "Start again: the setup was not started.",
-    mfa_not_enabled: "Two-step sign-in is not on.",
-    too_many_attempts: "Too many attempts. Wait a few minutes and try again.",
-    mfa_not_available: "Two-step sign-in is not available in this app.",
-    token_issuance_unavailable: "This app cannot sign other devices out.",
-    revoke_sessions_failed: "Could not sign out the other devices. Try again."
+    unauthenticated: NPDevI18n.t("pages.security.errUnauthenticated", "Your session expired. Sign in again."),
+    invalid_password: NPDevI18n.t("pages.security.errInvalidPassword", "That password is not correct."),
+    invalid_code: NPDevI18n.t("pages.security.errInvalidCode", "That code is not valid. Check the app and try again."),
+    mfa_already_enabled: NPDevI18n.t("pages.security.errMfaAlreadyEnabled", "Two-step sign-in is already on."),
+    mfa_enroll_not_started: NPDevI18n.t("pages.security.errMfaEnrollNotStarted", "Start again: the setup was not started."),
+    mfa_not_enabled: NPDevI18n.t("pages.security.errMfaNotEnabled", "Two-step sign-in is not on."),
+    too_many_attempts: NPDevI18n.t("pages.security.errTooManyAttempts", "Too many attempts. Wait a few minutes and try again."),
+    mfa_not_available: NPDevI18n.t("pages.security.unavailable", "Two-step sign-in is not available in this app."),
+    token_issuance_unavailable: NPDevI18n.t("pages.security.errTokenIssuanceUnavailable", "This app cannot sign other devices out."),
+    revoke_sessions_failed: NPDevI18n.t("pages.security.errRevokeSessionsFailed", "Could not sign out the other devices. Try again.")
   };
 
   function $(id) { return document.getElementById(id); }
@@ -205,7 +209,7 @@
   }
   function clearBanners() { $("errorBanner").classList.add("hidden"); $("okBanner").classList.add("hidden"); }
   function showError(code) {
-    $("errorBanner").textContent = MESSAGES[code] || ("Something went wrong (" + code + ").");
+    $("errorBanner").textContent = MESSAGES[code] || NPDevI18n.t("pages.security.errSomethingWrong", "Something went wrong ({code}).", { code: code });
     $("errorBanner").classList.remove("hidden");
     $("okBanner").classList.add("hidden");
   }
@@ -236,12 +240,12 @@
 
   // SESS-2: "Where you're signed in" -- every live session of this user, this device marked, one Revoke each.
   function deviceName(agent) {
-    if (!agent) { return "Unknown device"; }
+    if (!agent) { return NPDevI18n.t("pages.security.unknownDevice", "Unknown device"); }
     var browser = /Edg\//.test(agent) ? "Edge" : /Firefox\//.test(agent) ? "Firefox"
-      : /Chrome\//.test(agent) ? "Chrome" : /Safari\//.test(agent) ? "Safari" : "Browser";
+      : /Chrome\//.test(agent) ? "Chrome" : /Safari\//.test(agent) ? "Safari" : NPDevI18n.t("pages.security.browserGeneric", "Browser");
     var os = /Windows/.test(agent) ? "Windows" : /Android/.test(agent) ? "Android"
       : /iPhone|iPad/.test(agent) ? "iOS" : /Mac OS X/.test(agent) ? "macOS" : /Linux/.test(agent) ? "Linux" : "";
-    return os ? browser + " on " + os : browser;
+    return os ? NPDevI18n.t("pages.security.browserOnOs", "{browser} on {os}", { browser: browser, os: os }) : browser;
   }
   function renderDevices(sessions) {
     var list = $("deviceList");
@@ -252,10 +256,15 @@
       var info = document.createElement("div");
       var what = document.createElement("div");
       what.className = "what";
-      what.textContent = deviceName(s.userAgent) + (s.current ? " (this device)" : "");
+      what.textContent = s.current
+        ? NPDevI18n.t("pages.security.deviceThisDevice", "{name} (this device)", { name: deviceName(s.userAgent) })
+        : deviceName(s.userAgent);
       var meta = document.createElement("div");
       meta.className = "meta";
-      meta.textContent = (s.ipAddress || "unknown address") + " \u00b7 last active " + (s.lastSeenAt || s.createdAt || "unknown");
+      meta.textContent = NPDevI18n.t("pages.security.deviceMeta", "{address} \u00b7 last active {when}", {
+        address: s.ipAddress || NPDevI18n.t("pages.security.unknownAddress", "unknown address"),
+        when: s.lastSeenAt || s.createdAt || NPDevI18n.t("pages.security.unknownTime", "unknown")
+      });
       info.appendChild(what);
       info.appendChild(meta);
       li.appendChild(info);
@@ -263,14 +272,14 @@
         var button = document.createElement("button");
         button.type = "button";
         button.className = "danger";
-        button.textContent = "Revoke";
+        button.textContent = NPDevI18n.t("pages.security.revoke", "Revoke");
         button.addEventListener("click", function () {
           clearBanners();
           button.disabled = true;
           api("DELETE", "/api/auth/sessions/" + encodeURIComponent(s.id)).then(function (res) {
             if (res.status === 401) { show("signedOut"); return; }
             if (res.status !== 200 && res.status !== 404) { button.disabled = false; showError(errorCode(res)); return; }
-            showOk("That device was signed out.");
+            showOk(NPDevI18n.t("pages.security.deviceSignedOut", "That device was signed out."));
             loadDevices();
           }).catch(function () { button.disabled = false; showError("request_failed"); });
         });
@@ -296,7 +305,7 @@
       if (res.status === 503) { show("unavailable"); return; }
       if (res.status !== 200) { show("offView"); showError(errorCode(res)); return; }
       if (res.body.enabled) {
-        $("codesLeft").textContent = res.body.recoveryCodesLeft + " recovery codes left.";
+        $("codesLeft").textContent = NPDevI18n.t("pages.security.codesLeft", "{count} recovery codes left.", { count: res.body.recoveryCodesLeft });
         show("onView");
       } else {
         show("offView");
@@ -351,7 +360,7 @@
   $("copyBtn").addEventListener("click", function () {
     var text = $("codesText").textContent;
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(function () { showOk("Copied."); },
+      navigator.clipboard.writeText(text).then(function () { showOk(NPDevI18n.t("pages.security.copied", "Copied.")); },
         function () { showError("request_failed"); });
     }
   });
@@ -395,7 +404,7 @@
         if (res.status !== 200) { showError(errorCode(res)); return; }
         $("offForm").reset();
         loadStatus();
-        showOk("Two-step sign-in is off.");
+        showOk(NPDevI18n.t("pages.security.statusOff", "Two-step sign-in is off."));
       }).catch(function () { showError("request_failed"); });
   });
 
@@ -409,7 +418,7 @@
       if (res.status === 401) { show("signedOut"); return; }
       if (res.status !== 200 || !res.body.token) { showError(errorCode(res)); return; }
       storeToken(res.body.token);
-      showOk("Other sessions were signed out.");
+      showOk(NPDevI18n.t("pages.security.othersSignedOut", "Other sessions were signed out."));
       loadDevices();
     }).catch(function () { $("revokeOthersBtn").disabled = false; showError("request_failed"); });
   });

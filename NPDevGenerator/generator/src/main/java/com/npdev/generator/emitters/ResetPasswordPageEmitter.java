@@ -1,5 +1,6 @@
 package com.npdev.generator.emitters;
 
+import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.templates.TemplateEngine;
 
@@ -23,11 +24,17 @@ public final class ResetPasswordPageEmitter extends AbstractEmitter {
 
     /** Emit the page. {@code jwtMode == false} is a no-op (apiKey apps have no user credentials to reset). */
     public void emit(String appName, boolean jwtMode) {
+        emit(appName, jwtMode, null);
+    }
+
+    /** REG-349: {@code model} supplies the app's default language and text overrides (null = English). */
+    public void emit(String appName, boolean jwtMode, CompiledModel model) {
         if (!jwtMode) {
             return;
         }
         writer.writeRelative(RELATIVE_PATH, render(Map.of(
-                "appName", appName == null || appName.isBlank() ? "NPDev Generated App" : appName.trim()
+                "appName", appName == null || appName.isBlank() ? "NPDev Generated App" : appName.trim(),
+                "i18nJson", PageI18n.inlineJson(model)
         )));
     }
 

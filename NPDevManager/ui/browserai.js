@@ -69,7 +69,7 @@
     ELIDED: "The AI left parts out. Copy this message so it sends everything.",
     BAD_JSON: "The AI's answer has writing mistakes NPDev cannot read. Copy this message so it fixes them.",
     PARTIAL: "Part of the answer cannot be used. Copy this message so the AI sends only what is needed.",
-    NEEDS_FIX: "The AI made a mistake. Copy this message and paste it in the same conversation.",
+    NEEDS_FIX: "The AI made a mistake. Press Copy message, paste it in the same conversation, then bring the AI's new answer back here.",
     GOING_IN_CIRCLES: "This AI is going in circles. Start a new conversation or try another AI — the text is ready.",
     JAVA_MISSING: "NPDev cannot check the answer yet because Java is missing on this computer. Install it in Settings, then paste the answer again.",
     GENERAL: "The answer could not be used. Copy the AI's answer again, or ask it to send the files again.",
@@ -198,6 +198,8 @@
     $(`browserai-intent-${intent}`).checked = true;
     $("browserai-newname-label").hidden = intent !== "create";
     $("browserai-pack-fields").hidden = intent !== "pack";
+    $("browserai-help-app").hidden = intent === "pack";
+    $("browserai-help-pack").hidden = intent !== "pack";
     $("browserai-apply").textContent = tr(intent === "pack" ? "Save to My parts" : "Apply");
     if (intent === "pack") refreshMyParts();
   }

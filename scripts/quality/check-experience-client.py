@@ -43,7 +43,8 @@ TABLE_MARKER = "/*@stdlib-table*/[]/*@end*/"
 # 108 KB -> 112 KB (FORM P5, the keyword-admission audit): custom.js (2.9 KB, the `custom` archetype -- the screens[].component
 # keyword had a validator and no renderer) plus the `params` query-string hook in core.js/api.js (a query screen's params were
 # validated and never sent). The budget rises by 4 KB, about what was added.
-MAX_TOTAL_BYTES = 112 * 1024
+# REG-349: every platform text now carries its id and English text (NPDevI18n.t(id, english)), ~80 ids, about +5 KB.
+MAX_TOTAL_BYTES = 120 * 1024
 # Vendored third-party code (Leaflet, FORM P5-T6, owner decision D12) is pinned and hash-verified, not reviewed line by
 # line, so it has its OWN budget and the budget above keeps meaning "our code". Leaflet 1.9.4 needs 170,256 bytes
 # (leaflet.js 147,552 + leaflet.css 14,806 + 5 marker/layer PNGs 6,503 + LICENSE 1,395) plus VENDOR.json (< 1 KB): 172 KB.

@@ -32,20 +32,20 @@ export function renderActions(ctx, actions, opts) {
     buttons.forEach((b) => { b.disabled = true; });
     try {
       const result = await ctx.api.post(action.startUrl, buildInput(action, scope()));
-      ctx.toast("Done.");
+      ctx.toast(NPDevI18n.t("experience.actions.done", "Done."));
       await ctx.afterAction(action, result);
     } catch (error) {
       buttons.forEach((b) => { b.disabled = locked; });
       showButtons();
       const list = fieldErrors(error && error.payload, (ctx.screen && ctx.screen.fieldMeta) ? Object.keys(ctx.screen.fieldMeta) : []);
       if (o.onFieldErrors && list.length) o.onFieldErrors(list);
-      ctx.reportError((error && error.message) || "That did not work.");
+      ctx.reportError((error && error.message) || NPDevI18n.t("experience.actions.failed", "That did not work."));
     }
   }
 
   function askConfirm(action) {
-    const yes = h("button", { type: "button", class: "btn " + (action.style === "danger" ? "danger" : "primary"), text: "Confirm", onclick: () => run(action) });
-    const no = h("button", { type: "button", class: "btn secondary", text: "Back", onclick: showButtons });
+    const yes = h("button", { type: "button", class: "btn " + (action.style === "danger" ? "danger" : "primary"), text: NPDevI18n.t("experience.actions.confirm", "Confirm"), onclick: () => run(action) });
+    const no = h("button", { type: "button", class: "btn secondary", text: NPDevI18n.t("experience.actions.back", "Back"), onclick: showButtons });
     box.replaceChildren(card("notice", null, action.confirm), h("div", { class: "actions" }, yes, no));
     yes.focus();
   }

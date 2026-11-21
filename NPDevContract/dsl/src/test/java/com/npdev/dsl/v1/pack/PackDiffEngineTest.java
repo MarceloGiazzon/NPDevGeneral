@@ -447,4 +447,37 @@ class PackDiffEngineTest {
         org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
                 () -> PackDiffEngine.diff(validPack, notAnObject));
     }
+
+    @Test
+    void translatingLabelsIsOnlyAPatch() {
+        // REG-349/REG-334: ui.label (and its siblings) is presentation text, never a binding.
+        JsonNode oldPack = pack("""
+                {
+                  "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.0",
+                  "concepts": [
+                    { "name": "Widget", "ui": { "label": "Widget" }, "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true },
+                      { "name": "size", "type": "string", "ui": { "label": "Tamanho", "help": "Em cm" } }
+                    ] }
+                  ]
+                }
+                """);
+        JsonNode newPack = pack("""
+                {
+                  "dslVersion": "3.0.0", "pack": "widgets", "version": "1.0.1",
+                  "concepts": [
+                    { "name": "Widget", "ui": { "label": { "default": "Widget", "pt-BR": "Item" } }, "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true },
+                      { "name": "size", "type": "string", "ui": { "label": "Size" } }
+                    ] }
+                  ]
+                }
+                """);
+
+        PackDiffResult result = PackDiffEngine.diff(oldPack, newPack);
+
+        assertEquals(Optional.of(PackChangeClassification.PATCH), result.worstClassification());
+        assertEquals(PackChangeClassification.PATCH,
+                classificationOf(result.findings(), "concepts.Widget.fields.size.ui.label"));
+    }
 }

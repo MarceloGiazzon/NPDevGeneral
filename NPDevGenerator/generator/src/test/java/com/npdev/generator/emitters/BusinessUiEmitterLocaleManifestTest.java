@@ -119,13 +119,41 @@ public class BusinessUiEmitterLocaleManifestTest {
         assertEquals("Data", manifest.path("stringsByLocale").path("en").path("shell.navData").asText());
         assertEquals("Panels", manifest.path("stringsByLocale").path("en").path("shell.navPanels").asText());
         assertEquals("Dados", manifest.path("stringsByLocale").path("pt").path("shell.navData").asText());
-        assertEquals("Paineis", manifest.path("stringsByLocale").path("pt").path("shell.navPanels").asText());
+        assertEquals("Painéis", manifest.path("stringsByLocale").path("pt").path("shell.navPanels").asText());
 
         com.fasterxml.jackson.databind.JsonNode pt =
                 json.readTree(emit(PORTUGUESE_APP).resolve(STATIC + "generated-ui-manifest.json").toFile());
         assertEquals("Dados", pt.path("strings").path("shell.navData").asText(),
                 "a pt app's own catalogue (what the Auto language uses) keeps the old words");
-        assertEquals("Paineis", pt.path("strings").path("shell.navPanels").asText());
+        assertEquals("Painéis", pt.path("strings").path("shell.navPanels").asText());
+    }
+
+    private static final String PORTUGUESE_PANEL_APP = """
+            {
+              "namespace": "locale.ptpanel", "dslVersion": "3.0.0", "version": "1.0",
+              "backOffice": { "locale": "pt-BR" },
+              "concepts": [
+                { "name": "Note", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true },
+                                              { "name": "title", "type": "string" } ] }
+              ],
+              "autoPanels": [ { "concept": "Note" } ]
+            }
+            """;
+
+    @Test
+    void bakedPanelActionLabelsCarryTheirCatalogueId() throws Exception {
+        // REG-349: the compiler bakes action.new/save/delete into panel actions in the app's language; the
+        // manifest also names the id so the browser can show them in the visitor's language.
+        com.fasterxml.jackson.databind.JsonNode pt =
+                new com.fasterxml.jackson.databind.ObjectMapper().readTree(emit(PORTUGUESE_PANEL_APP).resolve(STATIC + "generated-ui-manifest.json").toFile());
+        boolean found = false;
+        for (com.fasterxml.jackson.databind.JsonNode action : pt.findParents("labelKey")) {
+            if ("action.new".equals(action.path("labelKey").asText())) {
+                assertEquals("Novo", action.path("label").asText(), "a pt app bakes the Portuguese label");
+                found = true;
+            }
+        }
+        assertTrue(found, "a panel's New action names its catalogue id");
     }
 
     @Test

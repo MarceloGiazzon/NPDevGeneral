@@ -85,7 +85,7 @@ class LoginPageEmitterTest {
         assertTrue(Files.isRegularFile(page));
         String html = Files.readString(page);
         assertTrue(html.contains("Login Demo"), "the page must carry the app name");
-        assertTrue(html.contains("Continue with \" + p.label"),
+        assertTrue(html.contains("\"Continue with {provider}\", { provider: p.label }"),
                 "one button per server-reported provider, built from its label, not a hardcoded provider name");
         assertTrue(html.contains("google:") && html.contains("github:"),
                 "both providers this platform ships an adapter for get an icon, regardless of which are configured");

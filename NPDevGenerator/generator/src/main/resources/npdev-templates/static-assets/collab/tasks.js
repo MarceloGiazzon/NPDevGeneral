@@ -22,19 +22,22 @@
   function fmtDate(ms) { return ms ? new Date(ms).toLocaleString() : ""; }
 
   function load() {
-    shell.renderLoading(root, { message: "Loading your tasks..." });
+    shell.renderLoading(root, { message: NPDevI18n.t("shell.tasks.loading", "Loading your tasks...") });
     shell.api.get("/api/tasks").then(function (body) {
       var items = (body && body.items) || [];
       root.innerHTML = "";
       if (!items.length) {
-        shell.renderEmpty(root, { message: "Nothing is waiting for you." });
+        shell.renderEmpty(root, { message: NPDevI18n.t("shell.tasks.empty", "Nothing is waiting for you.") });
         return;
       }
       var list = el("ul", "npdev-task-list");
       items.forEach(function (task) { list.appendChild(row(task)); });
       root.appendChild(list);
     }).catch(function (err) {
-      shell.renderError(root, { message: err.message || "Could not load tasks.", action: { label: "Retry", onClick: load } });
+      shell.renderError(root, {
+        message: err.message || NPDevI18n.t("shell.tasks.loadFailed", "Could not load tasks."),
+        action: { label: NPDevI18n.t("shell.common.retry", "Retry"), onClick: load }
+      });
     });
   }
 
@@ -43,10 +46,13 @@
     var head = el("button", "npdev-task-head");
     head.type = "button";
     head.appendChild(el("span", "npdev-task-title", task.title));
-    head.appendChild(el("span", "npdev-task-meta",
-      (task.startedBy ? "from " + task.startedBy + " - " : "") + "waiting since " + fmtDate(task.waitingSinceEpochMs) +
-      (task.dueAtEpochMs ? " - due " + fmtDate(task.dueAtEpochMs) : "")));
-    if (task.overdue) head.appendChild(el("span", "npdev-task-badge", "Overdue"));
+    // A list of facts joined by " - "; each fact is its own sentence in the catalogue.
+    var facts = [];
+    if (task.startedBy) facts.push(NPDevI18n.t("shell.tasks.from", "from {name}", { name: task.startedBy }));
+    facts.push(NPDevI18n.t("shell.tasks.waitingSince", "waiting since {date}", { date: fmtDate(task.waitingSinceEpochMs) }));
+    if (task.dueAtEpochMs) facts.push(NPDevI18n.t("shell.tasks.due", "due {date}", { date: fmtDate(task.dueAtEpochMs) }));
+    head.appendChild(el("span", "npdev-task-meta", facts.join(" - ")));
+    if (task.overdue) head.appendChild(el("span", "npdev-task-badge", NPDevI18n.t("shell.tasks.overdue", "Overdue")));
     var body = el("div", "npdev-task-body");
     body.hidden = true;
     head.addEventListener("click", function () {
@@ -91,7 +97,7 @@
   }
 
   function show(value) {
-    if (value === null || value === undefined) return "(empty)";
+    if (value === null || value === undefined) return NPDevI18n.t("shell.tasks.emptyValue", "(empty)");
     return typeof value === "string" ? value : JSON.stringify(value);
   }
 
@@ -99,10 +105,11 @@
   function proposalTable(proposal) {
     var wrap = el("div", "npdev-task-proposal");
     wrap.appendChild(el("p", "npdev-task-proposal-note",
-      "Proposed change - nothing is applied until you approve."));
+      NPDevI18n.t("shell.tasks.proposalNote", "Proposed change - nothing is applied until you approve.")));
     var table = el("table", "npdev-task-diff");
     var head = el("tr");
-    ["Field", "Current", "Proposed"].forEach(function (h) { head.appendChild(el("th", "", h)); });
+    [NPDevI18n.t("shell.tasks.colField", "Field"), NPDevI18n.t("shell.tasks.colCurrent", "Current"),
+      NPDevI18n.t("shell.tasks.colProposed", "Proposed")].forEach(function (h) { head.appendChild(el("th", "", h)); });
     table.appendChild(head);
     (proposal.diff || []).forEach(function (d) {
       var tr = el("tr", d.changed ? "npdev-task-diff-changed" : "npdev-task-diff-same");
@@ -117,7 +124,7 @@
 
   function openTask(task, body) {
     body.dataset.loaded = "1";
-    shell.renderLoading(body, { message: "Loading..." });
+    shell.renderLoading(body, { message: NPDevI18n.t("shell.common.loading", "Loading...") });
     shell.api.get("/api/tasks/" + encodeURIComponent(task.executionId)).then(function (detail) {
       body.innerHTML = "";
       if (detail.description) body.appendChild(el("p", "npdev-task-description", detail.description));
@@ -131,7 +138,7 @@
         b.type = "button";
         b.addEventListener("click", function () {
           Array.prototype.forEach.call(buttons.children, function (x) { x.disabled = true; });
-          status.textContent = "Sending...";
+          status.textContent = NPDevI18n.t("shell.tasks.sending", "Sending...");
           shell.api.post("/api/tasks/" + encodeURIComponent(task.executionId) + "/complete", {
             stepName: detail.stepName, outcome: o.value, values: collect(form, detail.fields || [])
           }).then(function () {

@@ -52,7 +52,7 @@ class PasswordPageUxTest {
     void loginPage() throws Exception {
         String html = Files.readString(out().resolve(LOGIN));
         assertCommonUx(html, "login");
-        assertTrue(html.contains("Signing in\\u2026"));
+        assertTrue(html.contains("\"Signing in"));
         assertTrue(html.contains("autocomplete=\"current-password\""), "autocomplete is kept");
         assertTrue(html.contains("params.get(\"next\")") && html.contains("value.charAt(0) !== \"/\"")
                 && html.contains("value.charAt(1) === \"/\""), "?next= only honours same-origin relative paths");
@@ -64,7 +64,7 @@ class PasswordPageUxTest {
     void resetPage() throws Exception {
         String html = Files.readString(out().resolve(RESET));
         assertCommonUx(html, "reset");
-        assertTrue(html.contains("Saving\\u2026"));
+        assertTrue(html.contains("\"Saving"));
         assertTrue(html.contains("autocomplete=\"new-password\""));
     }
 
@@ -72,7 +72,7 @@ class PasswordPageUxTest {
     void changePage() throws Exception {
         String html = Files.readString(out().resolve(CHANGE));
         assertCommonUx(html, "change");
-        assertTrue(html.contains("Salvando\\u2026"));
+        assertTrue(html.contains("\"Saving"));
         assertTrue(html.contains("autocomplete=\"current-password\""));
     }
 }

@@ -1,0 +1,29 @@
+id: REG-353
+title: >-
+  A generated app is now translatable end to end, but five edges still show English in a Portuguese session: the language switch, model and pack labels, server text, the developer pages and the picker label
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-11-20
+source: >-
+  REG-349 closing notes (owner decision 2026-11-20: a supported language is supported integrally, except field names, commands and docs).
+surface: generator/business-ui, contract/dsl, runtimehost
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/static-assets/business-ui/views/locale.js
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/AutoPanelExpander.java
+  - scripts/policy/ui-i18n-policy.json
+detail: |
+  1. The language switch (views/locale.js) only appears when the model declares labels in two or more languages (manifest.locales). An English-only
+     app gives a visitor no way to choose Portuguese for the platform text, although the catalogue has it. Decide: always offer the shipped
+     languages (en, pt), which makes labels from the model the only mixed part.
+  2. Model labels (concept, field, enum option, panel, menu) and pack labels come from the model/pack: an English pack (sales, ratings) shows English
+     names inside a Portuguese chrome. Packs need label maps per language (the label-map mechanism exists) or the relay briefing must ask for them.
+  3. Text the server sends (validation messages, error bodies, batch row messages, kernel/flow messages) is English; the client only wraps it.
+  4. Developer pages stay English by decision (info page, model surface, model authoring, operator console npdev-ui-*, widget catalog): the
+     `englishOnlyDeveloperTools` list in scripts/policy/ui-i18n-policy.json. Revisit if the operator console is meant for non-developers.
+  5. Typed pickers default to action.select baked at compile (AutoPanelExpander) like New/Save/Delete did; only the action buttons carry labelKey
+     today. Dates and numbers follow the browser locale, not NPDevI18n.language().
+done_when: >-
+  The owner decides each of the five (translate, or declare English-only); the translated ones are covered by check-ui-i18n.py or the
+  i18n-pt-verify-routine browser routine.

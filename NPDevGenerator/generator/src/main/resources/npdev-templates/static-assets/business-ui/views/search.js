@@ -65,11 +65,14 @@
     var overlay = document.createElement("div");
     overlay.className = "global-search-overlay";
     overlay.hidden = true;
-    overlay.innerHTML = '<div class="global-search" role="dialog" aria-label="Search">'
-      + '<input type="search" class="global-search-input" placeholder="Search all records…" aria-label="Search all records">'
+    overlay.innerHTML = '<div class="global-search" role="dialog">'
+      + '<input type="search" class="global-search-input">'
       + '<div class="global-search-results" role="listbox"></div></div>';
+    overlay.firstChild.setAttribute("aria-label", NPDevI18n.t("views.search.dialog", "Search"));
     document.body.appendChild(overlay);
     var input = overlay.querySelector(".global-search-input");
+    input.setAttribute("placeholder", NPDevI18n.t("views.search.placeholder", "Search all records…"));
+    input.setAttribute("aria-label", NPDevI18n.t("views.search.allRecords", "Search all records"));
     var results = overlay.querySelector(".global-search-results");
     var timer = null, generation = 0;
 
@@ -79,7 +82,7 @@
     async function search(q) {
       var mine = ++generation;
       if (q.length < MIN_CHARS) { results.textContent = ""; return; }
-      results.textContent = "Searching…";
+      results.textContent = NPDevI18n.t("views.search.searching", "Searching…");
       var groups = null;
       try {
         var payload = await app.fetchJson("/api/search?" + new URLSearchParams({ q: q, limit: String(PER_CONCEPT) }).toString(),
@@ -135,7 +138,7 @@
           results.appendChild(item);
         });
       });
-      if (!any) { results.textContent = "No matches."; }
+      if (!any) { results.textContent = NPDevI18n.t("views.search.noMatches", "No matches."); }
     }
 
     input.addEventListener("input", function () {
@@ -155,8 +158,8 @@
     var trigger = document.createElement("button");
     trigger.type = "button";
     trigger.className = "global-search-trigger";
-    trigger.title = "Search (Ctrl+K)";
-    trigger.setAttribute("aria-label", "Search all records");
+    trigger.title = NPDevI18n.t("views.search.shortcutTip", "Search (Ctrl+K)");
+    trigger.setAttribute("aria-label", NPDevI18n.t("views.search.allRecords", "Search all records"));
     trigger.textContent = "🔍";
     trigger.addEventListener("click", open);
     var topbar = document.querySelector(".npdev-shell-topbar");

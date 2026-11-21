@@ -1,0 +1,44 @@
+id: REG-350
+title: >-
+  A pack that declares roles[] naming its own concepts cannot validate: the briefing allows it, the concept names are only known inside an app, and the relay's message sends the AI guessing
+type: BUG
+severity: MEDIUM
+status: PARTIAL
+opened: 2026-11-20
+source: >-
+  Owner's real round 2026-11-20 (REG-334): two conversations in a row answered a ratings pack with roles[] (Rater, Manager, later rater and
+  ratingManager) and were refused "Role probe::rater: concepts names unknown concept Rating (declared concepts: Probe, probe::Rating)".
+surface: cli/relay, docs/authoring-for-ai, contract/dsl
+files:
+  - docs/content/authoring-for-ai.yml
+  - NPDevCli/relay-prompts.json
+  - NPDevCli/npdev_relay_pack.py
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/RoleValidation.java
+detail: |
+  The "Writing a pack" section says a pack may hold roles but never how a role names the pack's own concepts; inside the probe application
+  they are `probe::Rating` (the alias the AI cannot know), and none of the 14 catalog packs declares roles[] (they use role('x') in access
+  rules and the consumer binds it). The relay's failure text only says "use the name of a concept declared in this model", so the AI guessed
+  again. The same round also showed a relay defect, FIXED 2026-11-20 in npdev_relay_pack.probe_model: the probe's own concept `Probe` had no
+  access rule, so any pack with roles got "Concept Probe has no read/write rule and roles exist" -- a problem no AI could fix (test
+  NPDevCli/tests/test_pack_push.py ProbeStagingTests). The round ended READY only after the owner told the AI to delete roles[].
+  Decide: forbid roles[] in packs (static_errors says so with the way out: check the role inside access with $user.roles.contains('Name'))
+  or make roles[] concept names resolve inside a pack; then write the rule into the briefing. A pack read rule with `|| $user.isSystem`
+  also blocks groupBy/aggregates (the first message of that round); the briefing's skeleton uses that form.
+  DONE 2026-11-20: npdev_relay_pack.static_errors refuses a roles[] entry that names the pack's own concept BEFORE the validator, saying: remove "roles"
+  and write who may read or write inside each concept's "access", for example $user.roles.contains('Manager'); docs/content/authoring-for-ai.yml "Writing
+  a pack" gained three rules (language, who may see what without roles[], totals need an access.read without || $user.isSystem) and its skeleton no
+  longer puts isSystem in access.read. Bench, owner's ask (bench-902) and a Portuguese one with an average (bench-903), gemini-3.6-flash, one run each:
+  READY in round 1, no roles[], the aggregate query accepted. The real chat AI that failed three times has NOT been run again: the owner redoes it.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_relay_pack_static.py#RolesInAPackTests
+  asserts: >-
+    a roles[] entry naming the pack's own concept is refused with the way out; a role with only platform grants or another pack's concept is left to the
+    validator. The probe's own concept is opened (test_pack_push.ProbeStagingTests).
+  provenRed: false
+verification: UNIT_TESTED
+done_when: >-
+  A browser AI asked for a pack with manager visibility reaches READY in one round without the owner's hint, or is told in the first
+  refusal exactly what to remove; the briefing states the rule and the aggregate/isSystem limit.
+resolution: >-
+  Done when the defect described is fixed and covered by a test; see detail.

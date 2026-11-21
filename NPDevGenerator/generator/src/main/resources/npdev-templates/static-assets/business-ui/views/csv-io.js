@@ -34,7 +34,7 @@
       const columns = fields.map(function (field) { return { name: field.name, label: field.label || field.name }; });
       const rows = [];
       let page = 0;
-      setStatus("Preparing " + concept.displayName + " export…", false);
+      setStatus(NPDevI18n.t("panels.csv.preparingExport", "Preparing {concept} export…", { concept: concept.displayName }), false);
       while (rows.length < EXPORT_ROW_CAP) {
         const params = baseQueryParams(concept, panel);
         params.set("page", String(page));
@@ -58,7 +58,7 @@
       try {
         const collected = await collectExportRows(concept);
         downloadCsv(buildCsv(collected.columns, collected.rows), csvFilenameFor(concept));
-        setStatus(concept.displayName + " export ready: " + collected.rows.length + " row(s).", false);
+        setStatus(NPDevI18n.t("panels.csv.exportReady", "{concept} export ready: {count} row(s).", { concept: concept.displayName, count: collected.rows.length }), false);
       } catch (error) {
         notify(error.message, true);
       }
@@ -70,12 +70,12 @@
     async function exportPanelXlsx(concept) {
       try {
         if (!window.NpdevXlsx) {
-          throw new Error("Excel export is unavailable (npdev-xlsx.js did not load).");
+          throw new Error(NPDevI18n.t("panels.csv.xlsxUnavailable", "Excel export is unavailable (npdev-xlsx.js did not load)."));
         }
         const collected = await collectExportRows(concept);
         const blob = window.NpdevXlsx.writeXlsx(collected.columns, collected.rows, concept.displayName);
         downloadBlob(blob, csvFilenameFor(concept).replace(/\.csv$/, ".xlsx"));
-        setStatus(concept.displayName + " Excel export ready: " + collected.rows.length + " row(s).", false);
+        setStatus(NPDevI18n.t("panels.csv.excelExportReady", "{concept} Excel export ready: {count} row(s).", { concept: concept.displayName, count: collected.rows.length }), false);
       } catch (error) {
         notify(error.message, true);
       }
@@ -312,13 +312,13 @@
       fields.forEach(function (field) {
         const raw = text(values[field.name]).trim();
         if (field.required && raw === "") {
-          errors.push({ field: field.name, message: (field.label || field.name) + " is required." });
+          errors.push({ field: field.name, message: NPDevI18n.t("panels.csv.fieldRequired", "{field} is required.", { field: field.label || field.name }) });
           return;
         }
         if (raw !== "" && field.enumValues && field.enumValues.length && field.enumValues.indexOf(raw) === -1) {
           errors.push({
             field: field.name,
-            message: (field.label || field.name) + ": \"" + raw + "\" is not one of " + field.enumValues.join(", ") + "."
+            message: NPDevI18n.t("panels.csv.notOneOf", "{field}: \"{value}\" is not one of {allowed}.", { field: field.label || field.name, value: raw, allowed: field.enumValues.join(", ") })
           });
         }
       });
@@ -330,7 +330,7 @@
       const fields = importableFields(concept);
       const table = parseCsvText(csvText);
       if (!table.length) {
-        return { error: "No rows found -- upload a CSV file or paste CSV text first.", fields: fields, rows: [] };
+        return { error: NPDevI18n.t("panels.csv.noRows", "No rows found -- upload a CSV file or paste CSV text first."), fields: fields, rows: [] };
       }
       const headerRow = table[0];
       const columnFields = headerRow.map(function (cell) { return matchImportField(fields, cell); });
@@ -339,8 +339,7 @@
       });
       if (missingRequired.length) {
         return {
-          error: "Missing required column(s): "
-              + missingRequired.map(function (field) { return field.label || field.name; }).join(", ") + ".",
+          error: NPDevI18n.t("panels.csv.missingColumns", "Missing required column(s): {columns}.", { columns: missingRequired.map(function (field) { return field.label || field.name; }).join(", ") }),
           fields: fields,
           rows: []
         };
@@ -401,11 +400,11 @@
 
     function importRowStatusLabel(status) {
       switch (status) {
-        case "invalid": return "Error";
-        case "pending": return "Ready";
-        case "skipped": return "Skipped";
-        case "created": return "Created";
-        case "rejected": return "Rejected";
+        case "invalid": return NPDevI18n.t("panels.csv.statusInvalid", "Error");
+        case "pending": return NPDevI18n.t("panels.csv.statusPending", "Ready");
+        case "skipped": return NPDevI18n.t("panels.csv.statusSkipped", "Skipped");
+        case "created": return NPDevI18n.t("panels.csv.statusCreated", "Created");
+        case "rejected": return NPDevI18n.t("panels.csv.statusRejected", "Rejected");
         default: return status;
       }
     }
@@ -428,14 +427,14 @@
       intro.className = "import-intro";
       const requiredLabels = fields.filter(function (field) { return field.required; })
           .map(function (field) { return field.label || field.name; });
-      intro.textContent = "Upload CSV or Excel (.xlsx, first sheet), or paste CSV, whose header row matches "
-          + concept.displayName + "'s Export CSV / Export Excel." + (requiredLabels.length ? " Required columns: " + requiredLabels.join(", ") + "." : "");
+      intro.textContent = NPDevI18n.t("panels.csv.introBase", "Upload CSV or Excel (.xlsx, first sheet), or paste CSV, whose header row matches {concept}'s Export CSV / Export Excel.", { concept: concept.displayName })
+          + (requiredLabels.length ? " " + NPDevI18n.t("panels.csv.introRequired", "Required columns: {columns}.", { columns: requiredLabels.join(", ") }) : "");
       body.appendChild(intro);
 
       const fileLabel = document.createElement("label");
       fileLabel.className = "import-file-label";
       const fileLabelText = document.createElement("span");
-      fileLabelText.textContent = "CSV or Excel file";
+      fileLabelText.textContent = NPDevI18n.t("panels.csv.fileLabel", "CSV or Excel file");
       fileLabel.appendChild(fileLabelText);
       const fileInput = document.createElement("input");
       fileInput.type = "file";
@@ -446,7 +445,7 @@
       const pasteLabel = document.createElement("label");
       pasteLabel.className = "import-paste-label";
       const pasteLabelText = document.createElement("span");
-      pasteLabelText.textContent = "…or paste CSV text";
+      pasteLabelText.textContent = NPDevI18n.t("panels.csv.pasteLabel", "…or paste CSV text");
       pasteLabel.appendChild(pasteLabelText);
       const textarea = document.createElement("textarea");
       textarea.className = "import-paste-area";
@@ -465,7 +464,7 @@
           // upload stay the single existing pipeline. Dates arrive as Excel serial numbers: format date
           // columns as Text in Excel (or use CSV).
           if (!window.NpdevXlsx) {
-            summary.textContent = "Excel import is unavailable (npdev-xlsx.js did not load).";
+            summary.textContent = NPDevI18n.t("panels.csv.xlsxImportUnavailable", "Excel import is unavailable (npdev-xlsx.js did not load).");
             return;
           }
           window.NpdevXlsx.readFirstSheet(chosen).then(function (sheetRows) {
@@ -475,7 +474,7 @@
             summary.textContent = "";
           }).catch(function (error) {
             textarea.value = "";
-            summary.textContent = "Could not read " + chosen.name + ": " + (error && error.message ? error.message : error);
+            summary.textContent = NPDevI18n.t("panels.csv.readFailed", "Could not read {name}: {reason}", { name: chosen.name, reason: error && error.message ? error.message : error });
           });
           return;
         }
@@ -496,22 +495,21 @@
 
       const actions = document.createElement("div");
       actions.className = "modal-actions form-actions";
-      const commitButton = button("Import accepted rows", "primary", async function () {
+      const commitButton = button(NPDevI18n.t("panels.csv.importAccepted", "Import accepted rows"), "primary", async function () {
         if (!preview || preview.error || !preview.rows.length) {
           return;
         }
         commitButton.disabled = true;
         const result = await commitImportRows(concept, preview, renderImportPreview);
         commitButton.disabled = false;
-        summary.textContent = "Import complete: " + result.created + " created, " + result.skipped
-            + " skipped (failed validation, never sent), " + result.rejected + " rejected by the server.";
+        summary.textContent = NPDevI18n.t("panels.csv.importComplete", "Import complete: {created} created, {skipped} skipped (failed validation, never sent), {rejected} rejected by the server.", { created: result.created, skipped: result.skipped, rejected: result.rejected });
         notify(summary.textContent, result.rejected > 0);
         if (result.created > 0) {
           await reloadAfterMutation(concept);
         }
       });
       commitButton.disabled = true;
-      const previewButton = button("Preview", "", function () {
+      const previewButton = button(NPDevI18n.t("panels.csv.preview", "Preview"), "", function () {
         preview = buildImportPreview(concept, textarea.value);
         renderImportPreview();
       });
@@ -535,15 +533,14 @@
           return;
         }
         const acceptedCount = preview.rows.filter(function (row) { return row.status !== "invalid"; }).length;
-        summary.textContent = preview.rows.length + " row(s) parsed -- " + acceptedCount + " will be committed, "
-            + (preview.rows.length - acceptedCount) + " have validation errors and will be skipped.";
+        summary.textContent = NPDevI18n.t("panels.csv.previewSummary", "{count} row(s) parsed -- {accepted} will be committed, {invalid} have validation errors and will be skipped.", { count: preview.rows.length, accepted: acceptedCount, invalid: preview.rows.length - acceptedCount });
         commitButton.disabled = acceptedCount === 0;
         const table = document.createElement("table");
         table.className = "import-preview-table";
         const thead = document.createElement("thead");
         const headRow = document.createElement("tr");
         const rowTh = document.createElement("th");
-        rowTh.textContent = "Row";
+        rowTh.textContent = NPDevI18n.t("panels.csv.headerRow", "Row");
         headRow.appendChild(rowTh);
         preview.fields.forEach(function (field) {
           const th = document.createElement("th");
@@ -559,7 +556,7 @@
           tr.dataset.importRow = String(row.index);
           tr.dataset.importStatus = row.status;
           const rowTd = document.createElement("td");
-          rowTd.textContent = (row.index + 1) + " (" + importRowStatusLabel(row.status) + ")";
+          rowTd.textContent = NPDevI18n.t("panels.csv.rowStatus", "{number} ({status})", { number: row.index + 1, status: importRowStatusLabel(row.status) });
           tr.appendChild(rowTd);
           preview.fields.forEach(function (field) {
             const td = document.createElement("td");
@@ -586,7 +583,7 @@
         previewWrap.appendChild(table);
       }
 
-      openModal("Import " + concept.displayName, body);
+      openModal(NPDevI18n.t("panels.csv.importTitle", "Import {concept}", { concept: concept.displayName }), body);
     }
     return { exportPanelCsv, exportPanelXlsx, importCellToPayloadValue, openImportDialog, buildCsv, csvFilenameFor, downloadCsv, neutralizeCsvFormula };
   });

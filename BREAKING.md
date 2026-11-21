@@ -6,6 +6,10 @@ one-line entry here, in the same commit that makes the change. While NPDev has n
 (owner, 2026-11-12) a change ships without an `npdev migrate` codemod; this repo's own models are
 migrated directly in the same commit. Earlier entries name the codemods written before that.
 
+## 2026-11-20 — a Portuguese app is Portuguese everywhere, and every platform text has an id (REG-349)
+
+`backOffice.locale: pt*` (or the visitor's choice in the language switch) now translates the whole generated UI, not 11 shell strings: ~940 platform texts are catalogue ids in `NPDevGenerator/generator/src/main/resources/npdev-i18n/` (English default, Portuguese with accents); pages call `NPDevI18n.t(id, english, vars)` from the new `static/npdev-i18n.js`. `PlatformStrings` Portuguese texts were corrected ("Conectado como", "Não autenticado", "Segurança", "Painéis"); the change-password page that was in accent-less Portuguese is English by default; `experience/board.js` `NO_VALUE` is now `noValue()`. English text is unchanged except plurals ("1 row") and the workbench default action label ("Recalculate"). No migration needed.
+
 ## 2026-11-20 — a generated app's `/` opens the Business UI, not the Operator UI (REG-344)
 
 With `UI_GENERATE_BUSINESS_UI` on (the default), `/` redirects to `/npdev-business-ui/`; the Operator UI stays at `/npdev-ui/`. The Business UI also accepts its API key from a `#npdev-key=<key>` fragment (stored like the API Key field, then wiped from the address bar), which is how the Manager now opens an app already signed in. Regenerate an app to get it.

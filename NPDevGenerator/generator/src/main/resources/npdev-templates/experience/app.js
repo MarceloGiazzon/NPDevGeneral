@@ -25,7 +25,8 @@ const MORE = "__more";
 
 function fatal(root, message) {
   root.replaceChildren(h("div", { class: "shell dev-both" }, h("main", { class: "screen" },
-    card("error", "This page could not load", message), h("a", { class: "btn secondary", href: "/", text: "Open the back office" }))));
+    card("error", NPDevI18n.t("experience.app.loadFailedTitle", "This page could not load"), message),
+    h("a", { class: "btn secondary", href: "/", text: NPDevI18n.t("experience.app.openBackOffice", "Open the back office") }))));
 }
 
 function navLink(entry, className) {
@@ -46,7 +47,7 @@ export async function start(root, api, env) {
   try { me = await api.get("/api/x/me"); } catch (e) { fatal(root, e.message); return; }
   const exp = me && me.experience;
   if (!exp) {
-    fatal(root, "There is no experience set up for your role.");
+    fatal(root, NPDevI18n.t("experience.app.noExperience", "There is no experience set up for your role."));
     return;
   }
   const user = me.user || {};
@@ -62,14 +63,14 @@ export async function start(root, api, env) {
   const { tabs, more } = tabLayout(entries);
   const topLinks = entries.map((e) => navLink(e, "navlink"));
   const tabLinks = tabs.map((e) => navLink(e, "tab"));
-  if (more.length) tabLinks.push(navLink({ screen: MORE, label: "More", icon: "list" }, "tab"));
+  if (more.length) tabLinks.push(navLink({ screen: MORE, label: NPDevI18n.t("experience.nav.more", "More"), icon: "list" }, "tab"));
   const heading = h("h1", { class: "screen-title" });
   const banner = h("div", { class: "banner", role: "status", "aria-live": "polite" });
   const main = h("main", { class: "screen", id: "screen", tabindex: "-1" });
   const header = h("header", { class: "topbar" }, h("div", { class: "brand", text: exp.title || exp.name }),
-    entries.length > 1 ? h("nav", { class: "topnav", "aria-label": "Main" }, topLinks.map((l) => l.el)) : null,
-    exp.backOffice ? h("a", { class: "backoffice", href: "/", text: "Back office" }) : null);
-  const tabbar = entries.length > 1 ? h("nav", { class: "tabbar", "aria-label": "Main" }, tabLinks.map((l) => l.el)) : null;
+    entries.length > 1 ? h("nav", { class: "topnav", "aria-label": NPDevI18n.t("experience.nav.main", "Main") }, topLinks.map((l) => l.el)) : null,
+    exp.backOffice ? h("a", { class: "backoffice", href: "/", text: NPDevI18n.t("experience.nav.backOffice", "Back office") }) : null);
+  const tabbar = entries.length > 1 ? h("nav", { class: "tabbar", "aria-label": NPDevI18n.t("experience.nav.main", "Main") }, tabLinks.map((l) => l.el)) : null;
   root.replaceChildren(h("div", { class: "shell dev-" + device }, header, h("div", { class: "content" }, heading, banner, main), tabbar));
 
   // bannerSeq: a toast's 3 s timer may only clear ITS OWN banner, never a newer error; keepBanner: the toast of an action
@@ -115,26 +116,26 @@ export async function start(root, api, env) {
     if (initial && !keepBanner) say("");
     keepBanner = false;
     if (parseHash(hash).screen === MORE) {
-      heading.textContent = "More";
+      heading.textContent = NPDevI18n.t("experience.nav.more", "More");
       mark(tabLinks, MORE);
       main.replaceChildren(h("ul", { class: "rows" }, more.map((e) => h("li", { class: "row-item" },
         h("a", { class: "row", href: buildHash(e.screen) }, h("div", { class: "cell title", text: e.label }))))));
       return;
     }
     const route = resolveRoute(hash, exp, byName);
-    if (route.error) { heading.textContent = ""; main.replaceChildren(card("error", "Not found", route.error)); return; }
+    if (route.error) { heading.textContent = ""; main.replaceChildren(card("error", NPDevI18n.t("experience.app.notFoundTitle", "Not found"), route.error)); return; }
     const screen = route.screen;
     heading.textContent = screen.title || screen.name;
     mark(topLinks, screen.name);
     mark(tabLinks, tabs.some((e) => e.screen === screen.name) ? screen.name : (more.some((e) => e.screen === screen.name) ? MORE : screen.name));
     updateBadges();
     if (!isVisible(screen.visibleWhen, scopeVars(null, null, user), "show")) {
-      main.replaceChildren(card("notice", null, "This screen is not available right now."));
+      main.replaceChildren(card("notice", null, NPDevI18n.t("experience.app.screenUnavailable", "This screen is not available right now.")));
       return;
     }
     const renderer = SUPPORTED_KINDS.includes(screen.kind) ? RENDERERS[screen.kind] : null;
     if (!renderer) { main.replaceChildren(notSupportedCard(screen)); return; }
-    if (initial) main.replaceChildren(card("loading", null, "Loading..."));
+    if (initial) main.replaceChildren(card("loading", null, NPDevI18n.t("experience.app.loading", "Loading...")));
     const fresh = h("div", { class: "screen-body" });
     const mineCleanups = [];
     const ctx = {
@@ -148,7 +149,7 @@ export async function start(root, api, env) {
     catch (error) {
       runCleanups(mineCleanups);
       if (mine !== seq) return;
-      if (initial) main.replaceChildren(card("error", "This screen could not load", error.message));
+      if (initial) main.replaceChildren(card("error", NPDevI18n.t("experience.app.screenLoadFailed", "This screen could not load"), error.message));
       else say(error.message, "error");
       return;
     }
@@ -165,6 +166,7 @@ export async function start(root, api, env) {
 }
 
 if (typeof document !== "undefined" && typeof document.getElementById === "function" && document.getElementById("app")) {
+  NPDevI18n.apply(document); // the static boot text and <html lang> of index.html
   const api = createApi();
   api.adoptCookieSession().then(() => start(document.getElementById("app"), api));
 }

@@ -117,6 +117,7 @@
   dialog.npdev-review th,dialog.npdev-review td{border:1px solid #ddd;padding:4px 8px;text-align:left;vertical-align:top}
   dialog.npdev-review .npdev-review-actions{text-align:right;margin:12px 0 0}
 </style>
+<script src="/npdev-i18n.js"></script>
 <script src="/npdev-review.js"></script>
 <script src="/npdev-expr.js"></script>
 <!-- App-owned theme (404-harmless); last, so it overrides shell and workbench tokens alike. -->
@@ -125,7 +126,7 @@
 <script>if (window.NPDevDisplay) { NPDevDisplay.boot(); }</script>
 </head>
 <body>
-<main class="app" id="app"><p class="sub">Loading workbench…</p></main>
+<main class="app" id="app"><p class="sub" data-i18n="workbench.page.loading">Loading workbench…</p></main>
 
 <script>
 /* Generated Aggregate Workbench page for panel "{{panelName}}" (aggregate {{aggregateName}}).
@@ -138,6 +139,12 @@
   // Move 6 Move A: the app's full resolved string catalogue (platform English defaults merged with
   // any settings.strings overrides at generation time) -- see CompiledSettings/PlatformStrings.
   var STRINGS = {{{stringsJson}}};
+  // REG-349: the catalogue ({strings, stringsByLocale, defaultLanguage}) so every text follows the visitor's
+  // language; without it the app-default STRINGS above still answer.
+  NPDevI18n.use({{{i18nJson}}}{{^i18nJson}}{ strings: STRINGS }{{/i18nJson}});
+  // The contract-level strings (workbench.header, action.save, ...) in the visitor's language, falling
+  // back to the app-default value generated into STRINGS.
+  function S(key) { return NPDevI18n.t(key, STRINGS[key]); }
   var TOKEN_KEYS = ["npdev.shell.token", "npdev.businessUi.apiKey"];
 
   function token() { for (var i = 0; i < TOKEN_KEYS.length; i++) { var t = localStorage.getItem(TOKEN_KEYS[i]); if (t) return t; } return null; }
@@ -360,12 +367,12 @@
   // into an innerHTML string (`'<p>Failed to load: ' + e + '</p>'`) -- an XSS sink, since a fetch
   // error can carry server-echoed request data. renderLoadError() puts the message through
   // textContent instead, same fix as business-ui-app.mustache's REG-16-resid.
-  function renderLoadError(container, label, error) {
+  function renderLoadError(container, message) {
     container.innerHTML = "";
     var p = document.createElement("p");
     p.className = "sub";
     p.style.color = "var(--np-danger)";
-    p.textContent = label + ": " + error;
+    p.textContent = message;
     container.appendChild(p);
   }
   var EDITABLE = true;
@@ -482,7 +489,7 @@
     i.value = val == null ? "" : String(val);
     // a11y: the grid/header cell has no <label>; name it by its column/field (the last segment of
     // the key: "h:<field>" or "s:<collection>:<rowId>:<column>").
-    i.setAttribute("aria-label", key ? String(key).split(":").pop() : "value");
+    i.setAttribute("aria-label", key ? String(key).split(":").pop() : NPDevI18n.t("workbench.grid.cellValue", "value"));
     if (key) { i.setAttribute("data-fkey", key); i.addEventListener("focus", function () { activeFocusKey = key; }); }
     i.oninput = function (e) { on(e.target.value); updateLiveComputed(); scheduleRecompute(); };
     i.addEventListener("keydown", cellKeydown);
@@ -864,8 +871,7 @@
     }
     var impl = window.npdev.regions.get(region.component);
     if (!impl) {
-      entry.el.innerHTML = '<p class="sub">Component "' + region.component + '" is not registered — '
-        + 'check that web/regions/' + region.component + '.js is loaded and calls window.npdev.regions.register.</p>';
+      entry.el.innerHTML = '<p class="sub">' + NPDevI18n.t("workbench.region.notRegistered", 'Component "{component}" is not registered — check that web/regions/{component}.js is loaded and calls window.npdev.regions.register.', { component: region.component }) + '</p>';
       entry.name = null;
       return entry.el;
     }
@@ -909,7 +915,7 @@
     }
     st.sec = sec;
     if (st.palette) buildCellGrid(sec, st);
-    else st.el.innerHTML = '<p class="sub">Loading palette…</p>';
+    else st.el.innerHTML = '<p class="sub">' + NPDevI18n.t("workbench.cellGrid.loadingPalette", "Loading palette…") + '</p>';
     return st.el;
   }
 
@@ -945,7 +951,7 @@
           { method: "POST", headers: authHeaders(), body: form })
           .then(function (r) { return r.ok ? r.json() : r.text().then(function (t) { throw new Error(t || r.status); }); })
           .then(function (uploaded) { store.editHeader(fld, uploaded); render(); })
-          .catch(function (e) { wrap.lastChild.textContent = "Upload failed: " + (e && e.message ? e.message : e); });
+          .catch(function (e) { wrap.lastChild.textContent = NPDevI18n.t("workbench.header.uploadFailed", "Upload failed: {error}", { error: e && e.message ? e.message : e }); });
       };
       wrap.append(input);
     }
@@ -1038,12 +1044,13 @@
     root.innerHTML = "";
     var bar = el('<div class="cg-bar"></div>');
     if (EDITABLE) {
+      var toolLabels = { paint: NPDevI18n.t("workbench.cellGrid.paint", "Paint"), fill: NPDevI18n.t("workbench.cellGrid.fill", "Fill"), erase: NPDevI18n.t("workbench.cellGrid.erase", "Erase") };
       ["paint", "fill", "erase"].forEach(function (t) {
-        var b = el('<button type="button" class="btn ghost" aria-pressed="' + (st.tool === t) + '">' + t.charAt(0).toUpperCase() + t.slice(1) + '</button>');
+        var b = el('<button type="button" class="btn ghost" aria-pressed="' + (st.tool === t) + '">' + toolLabels[t] + '</button>');
         b.onclick = function () { st.tool = t; buildCellGrid(st.sec, st); };
         bar.append(b);
       });
-      var undo = el('<button type="button" class="btn ghost">Undo</button>');
+      var undo = el('<button type="button" class="btn ghost">' + NPDevI18n.t("workbench.cellGrid.undo", "Undo") + '</button>');
       undo.onclick = function () {
         var snap = st.undo.pop();
         if (!snap) return;
@@ -1053,18 +1060,18 @@
       };
       bar.append(undo);
     }
-    var zOut = el('<button type="button" class="btn ghost" aria-label="Zoom out">−</button>');
-    var zIn = el('<button type="button" class="btn ghost" aria-label="Zoom in">+</button>');
+    var zOut = el('<button type="button" class="btn ghost" aria-label="' + NPDevI18n.t("workbench.cellGrid.zoomOut", "Zoom out") + '">−</button>');
+    var zIn = el('<button type="button" class="btn ghost" aria-label="' + NPDevI18n.t("workbench.cellGrid.zoomIn", "Zoom in") + '">+</button>');
     zOut.onclick = function () { st.zoom = Math.max(0, st.zoom - 1); buildCellGrid(st.sec, st); };
     zIn.onclick = function () { st.zoom = Math.min(CELL_ZOOMS.length - 1, st.zoom + 1); buildCellGrid(st.sec, st); };
     bar.append(zOut);
     bar.append(el('<span class="cg-zoom">' + Math.round(CELL_ZOOMS[st.zoom] * 100) + '%</span>'));
     bar.append(zIn);
-    bar.append(el('<span class="sub cg-count" style="margin:0">' + Object.keys(index).length + ' of ' + (ROWS * COLS) + ' cells painted</span>'));
+    bar.append(el('<span class="sub cg-count" style="margin:0">' + NPDevI18n.t("workbench.cellGrid.cellsPainted", "{count} of {total} cells painted", { count: Object.keys(index).length, total: ROWS * COLS }) + '</span>'));
     root.append(bar);
 
     if (EDITABLE) {
-      var palEl = el('<div class="cg-palette" aria-label="Palette"></div>');
+      var palEl = el('<div class="cg-palette" aria-label="' + NPDevI18n.t("workbench.cellGrid.palette", "Palette") + '"></div>');
       st.palette.forEach(function (item) {
         var sw = document.createElement("span");
         styleGridCell(sw, item, cfg);
@@ -1072,7 +1079,7 @@
         sw.onclick = function () { st.selected = item.id; if (st.tool === "erase") st.tool = "paint"; buildCellGrid(st.sec, st); };
         palEl.append(sw);
       });
-      if (!st.palette.length) palEl.append(el('<span class="sub">Palette query ' + ((cfg.palette && cfg.palette.query) || "") + ' returned no rows.</span>'));
+      if (!st.palette.length) palEl.append(el('<span class="sub">' + NPDevI18n.t("workbench.cellGrid.paletteEmpty", "Palette query {query} returned no rows.", { query: (cfg.palette && cfg.palette.query) || "" }) + '</span>'));
       root.append(palEl);
     }
 
@@ -1186,14 +1193,14 @@
   // F6-4 third nesting level: the grids of one band row's sub-bands (editable cells, add and remove row).
   function renderSubBandRegion(sec, selRow, bd, bandRow) {
     var region = el('<div class="region r-subband"></div>');
-    region.append(el('<div class="bar band"><span>' + bd.collection + ' \u2192 sub-bands (row ' + bandRow.id + ')</span></div>'));
+    region.append(el('<div class="bar band"><span>' + NPDevI18n.t("workbench.grid.subBandsTitle", "{collection} → sub-bands (row {row})", { collection: bd.collection, row: bandRow.id }) + '</span></div>'));
     var body = el('<div class="body"></div>');
     var grids = el('<div class="grids"></div>');
     bd.subBandDefs.forEach(function (sd) {
       var g = el('<div class="gwrap"></div>');
       g.append(el("<h2>" + sd.collection + "</h2>"));
       var gt = el("<table></table>");
-      gt.append(el("<tr>" + sd.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + computedHeaderCells(sd.computed) + '<th><span class="sr-only">Actions</span></th></tr>'));
+      gt.append(el("<tr>" + sd.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + computedHeaderCells(sd.computed) + '<th><span class="sr-only">' + NPDevI18n.t("workbench.grid.actions", "Actions") + '</span></th></tr>'));
       (bandRow.bands[sd.collection] || []).forEach(function (sr) {
         var tr = el("<tr></tr>");
         sd.columns.forEach(function (c) {
@@ -1205,7 +1212,7 @@
         appendComputedCells(tr, sd.computed, [sec.collection, selRow.id, bd.collection, bandRow.id, sd.collection, sr.id]);
         var del = el("<td></td>");
         if (EDITABLE) {
-          var x = el('<button type="button" class="rowbtn" aria-label="Remove row">\u2715</button>');
+          var x = el('<button type="button" class="rowbtn" aria-label="' + NPDevI18n.t("workbench.grid.removeRow", "Remove row") + '">\u2715</button>');
           x.onclick = function () { store.deleteSubBandRow(sec.collection, selRow.id, bd.collection, bandRow.id, sd.collection, sr.id); render(); };
           del.append(x);
         }
@@ -1223,7 +1230,7 @@
           render();
         };
         gt._npdevAddRow = addRowFn;
-        var add = el('<button type="button" class="addrow">+ add row</button>');
+        var add = el('<button type="button" class="addrow">' + NPDevI18n.t("workbench.grid.addRow", "+ add row") + '</button>');
         add.onclick = addRowFn;
         g.append(add);
       }
@@ -1241,12 +1248,12 @@
     if (selected == null && v.sections[0] && v.sections[0].rows[0]) selected = v.sections[0].rows[0].id;
     var app = document.getElementById("app"); app.innerHTML = "";
     var stateChip = si.label ? ' <span class="chip">' + si.label + '</span>' : '';
-    var roChip = EDITABLE ? '' : ' <span class="chip" style="background:var(--np-danger)">read-only</span>';
-    app.append(el('<h1>' + v.title + ' <span class="chip ' + (v.dirty ? 'dirty' : '') + '">' + (v.dirty ? 'unsaved' : 'workbench') + '</span>' + stateChip + roChip + '</h1>'));
-    app.append(el('<p class="sub">Aggregate: <b>' + v.aggregate + '</b></p>'));
+    var roChip = EDITABLE ? '' : ' <span class="chip" style="background:var(--np-danger)">' + NPDevI18n.t("workbench.status.readOnly", "read-only") + '</span>';
+    app.append(el('<h1>' + v.title + ' <span class="chip ' + (v.dirty ? 'dirty' : '') + '">' + (v.dirty ? NPDevI18n.t("workbench.status.unsaved", "unsaved") : NPDevI18n.t("workbench.status.workbench", "workbench")) + '</span>' + stateChip + roChip + '</h1>'));
+    app.append(el('<p class="sub">' + NPDevI18n.t("workbench.page.aggregate", "Aggregate: <b>{aggregate}</b>", { aggregate: v.aggregate }) + '</p>'));
 
     var head = el('<div class="region r-head"></div>');
-    var headBar = el('<div class="bar head"><span>' + STRINGS['workbench.header'] + '</span><span class="grow"></span></div>');
+    var headBar = el('<div class="bar head"><span>' + S('workbench.header') + '</span><span class="grow"></span></div>');
     if (EDITABLE && store.regionDirty("header")) headBar.append(regionRevert("header", null));
     head.append(headBar);
     var hb = el('<div class="body"></div>');
@@ -1305,7 +1312,7 @@
       // never filtered, so hidden rows still commit exactly like visible ones.
       if (!evaluateVisibleWhen(draftNow, sec.visibleWhen)) return;
       var items = el('<div class="region r-items"></div>');
-      var itemsBar = el('<div class="bar items"><span>' + sec.collection + '</span><span class="grow"></span><span class="chip">' + sec.rows.length + ' rows</span></div>');
+      var itemsBar = el('<div class="bar items"><span>' + sec.collection + '</span><span class="grow"></span><span class="chip">' + (sec.rows.length === 1 ? NPDevI18n.t("workbench.grid.rowCountOne", "{count} row", { count: sec.rows.length }) : NPDevI18n.t("workbench.grid.rowCountMany", "{count} rows", { count: sec.rows.length })) + '</span></div>');
       if (EDITABLE && store.regionDirty("section", sec.collection)) itemsBar.append(regionRevert("section", sec.collection));
       items.append(itemsBar);
       var ib = el('<div class="body"></div>');
@@ -1321,14 +1328,14 @@
         })));
       } else {
         var tbl = el("<table></table>");
-        tbl.append(el("<tr>" + sec.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + computedHeaderCells(sec.computed) + '<th><span class="sr-only">Actions</span></th></tr>'));
+        tbl.append(el("<tr>" + sec.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + computedHeaderCells(sec.computed) + '<th><span class="sr-only">' + NPDevI18n.t("workbench.grid.actions", "Actions") + '</span></th></tr>'));
         sec.rows.forEach(function (r) {
           var tr = el('<tr class="master ' + (r.id === selected ? "sel" : "") + '"></tr>');
           sec.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(r.values[c], function (val) { store.editRow(sec.collection, r.id, c, val); }, "s:" + sec.collection + ":" + r.id + ":" + c, isReadOnlyColumn(sec, c))); tr.append(td); });
           appendComputedCells(tr, sec.computed, [sec.collection, r.id]);
           var del = el('<td></td>');
           // R7.9: a real <button>, not a <span onclick> -- was completely unreachable by keyboard.
-          if (EDITABLE) { var x = el('<button type="button" class="rowbtn" aria-label="Remove row">✕</button>'); x.onclick = function (e) { e.stopPropagation(); store.deleteRow(sec.collection, r.id); if (selected === r.id) selected = null; render(); }; del.append(x); }
+          if (EDITABLE) { var x = el('<button type="button" class="rowbtn" aria-label="' + NPDevI18n.t("workbench.grid.removeRow", "Remove row") + '">✕</button>'); x.onclick = function (e) { e.stopPropagation(); store.deleteRow(sec.collection, r.id); if (selected === r.id) selected = null; render(); }; del.append(x); }
           tr.append(del); tr.onclick = function () { selected = r.id; render(); }; tbl.append(tr);
         });
         ib.append(tbl);
@@ -1347,7 +1354,7 @@
             render();
           };
           tbl._npdevAddRow = addRowFn;
-          var add = el('<button type="button" class="addrow">+ add row</button>'); add.onclick = addRowFn; ib.append(add);
+          var add = el('<button type="button" class="addrow">' + NPDevI18n.t("workbench.grid.addRow", "+ add row") + '</button>'); add.onclick = addRowFn; ib.append(add);
         }
       }
       items.append(ib); app.append(items);
@@ -1355,7 +1362,7 @@
       var selRow = sec.rows.filter(function (r) { return r.id === selected; })[0];
       if (sec.bandDefs.length && selRow) {
         var band = el('<div class="region r-band"></div>');
-        band.append(el('<div class="bar band"><span>' + sec.collection + ' → bands (row ' + selRow.id + ')</span></div>'));
+        band.append(el('<div class="bar band"><span>' + NPDevI18n.t("workbench.grid.bandsTitle", "{collection} → bands (row {row})", { collection: sec.collection, row: selRow.id }) + '</span></div>'));
         var bb = el('<div class="body"></div>'); var grids = el('<div class="grids"></div>');
         sec.bandDefs.forEach(function (bd) {
           if (!evaluateVisibleWhen(draftNow, bd.visibleWhen)) return;
@@ -1370,7 +1377,7 @@
               revert: function () { store.revertRegion("section", sec.collection); render(); }
             })));
           } else {
-            var gt = el("<table></table>"); gt.append(el("<tr>" + bd.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + computedHeaderCells(bd.computed) + '<th><span class="sr-only">Actions</span></th></tr>'));
+            var gt = el("<table></table>"); gt.append(el("<tr>" + bd.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + computedHeaderCells(bd.computed) + '<th><span class="sr-only">' + NPDevI18n.t("workbench.grid.actions", "Actions") + '</span></th></tr>'));
             (selRow.bands[bd.collection] || []).forEach(function (br) {
               var tr = el('<tr class="' + (bd.subBandDefs.length ? "bandrow " : "") + (bd.subBandDefs.length && selectedBand && selectedBand.collection === bd.collection && selectedBand.id === br.id ? "sel" : "") + '"></tr>');
               if (bd.subBandDefs.length) {
@@ -1379,7 +1386,7 @@
               bd.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(br.values[c], function (val) { store.editBandRow(sec.collection, selRow.id, bd.collection, br.id, c, val); }, "b:" + sec.collection + ":" + selRow.id + ":" + bd.collection + ":" + br.id + ":" + c, isReadOnlyColumn(bd, c))); tr.append(td); });
               appendComputedCells(tr, bd.computed, [sec.collection, selRow.id, bd.collection, br.id]);
               var del = el('<td></td>');
-              if (EDITABLE) { var bx = el('<button type="button" class="rowbtn" aria-label="Remove row">✕</button>'); bx.onclick = function () { store.deleteBandRow(sec.collection, selRow.id, bd.collection, br.id); render(); }; del.append(bx); }
+              if (EDITABLE) { var bx = el('<button type="button" class="rowbtn" aria-label="' + NPDevI18n.t("workbench.grid.removeRow", "Remove row") + '">✕</button>'); bx.onclick = function () { store.deleteBandRow(sec.collection, selRow.id, bd.collection, br.id); render(); }; del.append(bx); }
               tr.append(del); gt.append(tr);
             });
             // R7.10: the table sits inside its own scroll box (.gwrap-scroll) rather than under
@@ -1394,9 +1401,9 @@
                 render();
               };
               gt._npdevAddRow = addRowFn;
-              var add2 = el('<button type="button" class="addrow">+ add row</button>'); add2.onclick = addRowFn; g.append(add2);
+              var add2 = el('<button type="button" class="addrow">' + NPDevI18n.t("workbench.grid.addRow", "+ add row") + '</button>'); add2.onclick = addRowFn; g.append(add2);
               // C6 "Seleciona …": pick band rows from a source Selection panel via a modal, instead of blank add.
-              if (bd.picker) { var pk = el('<button type="button" class="pick">＋ ' + (bd.picker.label || STRINGS['action.select']) + '</button>'); pk.onclick = (function (secC, rowId, band) { return function () { openBandPicker(secC, rowId, band); }; })(sec.collection, selRow.id, bd); g.append(pk); }
+              if (bd.picker) { var pk = el('<button type="button" class="pick">＋ ' + (bd.picker.label || S('action.select')) + '</button>'); pk.onclick = (function (secC, rowId, band) { return function () { openBandPicker(secC, rowId, band); }; })(sec.collection, selRow.id, bd); g.append(pk); }
             }
           }
           grids.append(g);
@@ -1417,7 +1424,7 @@
 
     var barDiv = el('<div style="margin:8px 0"></div>');
     if (!EDITABLE) {
-      barDiv.append(el('<span class="sub">' + STRINGS['workbench.readOnly'] + (si.label ? ' — ' + STRINGS['state.phase'] + ': ' + si.label : '') + '. ' + STRINGS['workbench.editingDisabled'] + '</span>'));
+      barDiv.append(el('<span class="sub">' + S('workbench.readOnly') + (si.label ? ' — ' + S('state.phase') + ': ' + si.label : '') + '. ' + S('workbench.editingDisabled') + '</span>'));
       app.append(barDiv);
       return;
     }
@@ -1426,19 +1433,19 @@
     // progressLabel is shown while the commit is in flight, label once it succeeded -- Save used to
     // pass its success word as the only label, so "Saved…" appeared before the server had answered.
     function commitDraft(label, progressLabel) {
-      msg.className = "msg"; msg.textContent = (progressLabel || label || STRINGS['workbench.saving']) + "…";
+      msg.className = "msg"; msg.textContent = (progressLabel || label || S('workbench.saving')) + "…";
       var payload = store.toDraft();
       stripClientTempIds(payload);
       fetch("/api/runtime/aggregate/" + encodeURIComponent(store.aggregate),
         { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify(payload) })
         .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, status: r.status, b: b }; }); })
         .then(function (res) {
-          if (res.ok) { pendingMsg = { className: "msg ok", text: (label || STRINGS['workbench.saved']) + "." }; store = createStore({ workbench: store.descriptor, title: store.title, aggregate: store.aggregate, data: res.b }); render(); refreshServerDerivedFields(); }
-          else { msg.className = "msg err"; msg.textContent = "Failed: " + (res.b && res.b.message || res.status); }
+          if (res.ok) { pendingMsg = { className: "msg ok", text: (label || S('workbench.saved')) + "." }; store = createStore({ workbench: store.descriptor, title: store.title, aggregate: store.aggregate, data: res.b }); render(); refreshServerDerivedFields(); }
+          else { msg.className = "msg err"; msg.textContent = NPDevI18n.t("workbench.message.failed", "Failed: {message}", { message: res.b && res.b.message || res.status }); }
         })
-        .catch(function (e) { msg.className = "msg err"; msg.textContent = "Error: " + e; });
+        .catch(function (e) { msg.className = "msg err"; msg.textContent = NPDevI18n.t("workbench.message.error", "Error: {error}", { error: e }); });
     }
-    var save = el('<button class="btn">' + STRINGS['action.save'] + '</button>'); save.onclick = function () { commitDraft(STRINGS['workbench.saved'], STRINGS['workbench.saving']); };
+    var save = el('<button class="btn">' + S('action.save') + '</button>'); save.onclick = function () { commitDraft(S('workbench.saved'), S('workbench.saving')); };
     barDiv.append(save);
     // Lifecycle transition actions available from the current state (e.g. "Confirmar Saída"): set the
     // status field to the target state and commit; the persistence adapter enforces the legal transition.
@@ -1523,22 +1530,22 @@
         .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, b: b }; }); })
         .then(function (res) {
           if (res.ok) { onPass(); }
-          else { msg.className = "msg err"; msg.textContent = "Failed: " + (res.b && res.b.message || "beforeAction rejected this action"); }
+          else { msg.className = "msg err"; msg.textContent = NPDevI18n.t("workbench.message.failed", "Failed: {message}", { message: res.b && res.b.message || NPDevI18n.t("workbench.message.beforeActionRejected", "beforeAction rejected this action") }); }
         })
-        .catch(function (e) { msg.className = "msg err"; msg.textContent = "Error: " + e; });
+        .catch(function (e) { msg.className = "msg err"; msg.textContent = NPDevI18n.t("workbench.message.error", "Error: {error}", { error: e }); });
     }
     function invokeAction(action, extraInput) {
       runBeforeActionGuard(function () { invokeActionAfterGuard(action, extraInput); });
     }
     function invokeActionAfterGuard(action, extraInput) {
-      msg.className = "msg"; msg.textContent = (action.label || "Running") + "…";
+      msg.className = "msg"; msg.textContent = (action.label || NPDevI18n.t("workbench.message.running", "Running")) + "…";
       var body = Object.assign({}, store.toDraft(), extraInput || {});
       fetch("/api/runtime/aggregate/" + encodeURIComponent(store.aggregate) + "/invoke/" + encodeURIComponent(action.procedure),
         { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify(body) })
         .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, b: b }; }); })
         .then(function (res) {
           if (res.ok) {
-            pendingMsg = { className: "msg ok", text: (action.label || "Done") + " — review and Save." };
+            pendingMsg = { className: "msg ok", text: NPDevI18n.t("workbench.message.reviewAndSave", "{label} — review and Save.", { label: action.label || NPDevI18n.t("workbench.message.done", "Done") }) };
             // Move 6 Move B §B.4: afterAction subsumes applyTo -- a procedure receiving {draft,
             // result} and returning a patched draft is strictly more general than a static field
             // mapping, and needs no mode enum ever. Falls back to the retired applyTo/full-patch
@@ -1556,15 +1563,15 @@
               // folded into the draft, and nothing is saved until the user clicks Save.
               pendingMsg = null;
               NPDevReview.open({
-                title: (action.label || "Proposed changes") + " — review",
+                title: NPDevI18n.t("workbench.review.title", "{label} — review", { label: action.label || NPDevI18n.t("workbench.review.proposedChanges", "Proposed changes") }),
                 current: store.toDraft(),
                 proposed: res.b,
                 onApply: function (accepted) {
-                  pendingMsg = { className: "msg ok", text: (action.label || "Done") + " — review and Save." };
+                  pendingMsg = { className: "msg ok", text: NPDevI18n.t("workbench.message.reviewAndSave", "{label} — review and Save.", { label: action.label || NPDevI18n.t("workbench.message.done", "Done") }) };
                   store.patch(accepted); render(); refreshServerDerivedFields();
                 },
-                onDiscard: function () { msg.className = "msg"; msg.textContent = "Discarded."; },
-                onEmpty: function () { msg.className = "msg"; msg.textContent = "No changes proposed."; }
+                onDiscard: function () { msg.className = "msg"; msg.textContent = NPDevI18n.t("workbench.review.discarded", "Discarded."); },
+                onEmpty: function () { msg.className = "msg"; msg.textContent = NPDevI18n.t("workbench.review.noChanges", "No changes proposed."); }
               });
             } else {
               // A procedure ending in a `return` step is answered with just that value (AggregateRuntime
@@ -1576,16 +1583,16 @@
               refreshServerDerivedFields();
             }
           }
-          else { msg.className = "msg err"; msg.textContent = "Failed: " + (res.b && res.b.message || "error"); }
+          else { msg.className = "msg err"; msg.textContent = NPDevI18n.t("workbench.message.failed", "Failed: {message}", { message: res.b && res.b.message || NPDevI18n.t("workbench.message.genericError", "error") }); }
         })
-        .catch(function (e) { msg.className = "msg err"; msg.textContent = "Error: " + e; });
+        .catch(function (e) { msg.className = "msg err"; msg.textContent = NPDevI18n.t("workbench.message.error", "Error: {error}", { error: e }); });
     }
     // Session 1: the on-demand "Recalcular Saldos" affordance -- POSTs the current unsaved draft
     // to /check-balances/{names} and renders the returned per-group report, WITHOUT ever merging
     // the response into store's draft (a checkBalances action never patches the draft the way a
     // procedure action's result can -- see the render()-time balance-banner block below instead).
     function checkBalancesAction(action) {
-      msg.className = "msg"; msg.textContent = (action.label || "Recalculando") + "…";
+      msg.className = "msg"; msg.textContent = (action.label || NPDevI18n.t("workbench.message.recalculating", "Recalculating")) + "…";
       var names = (action.checkBalances || []).join(",");
       fetch("/api/runtime/aggregate/" + encodeURIComponent(store.aggregate) + "/check-balances/" + encodeURIComponent(names),
         { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify(store.toDraft()) })
@@ -1596,10 +1603,10 @@
             msg.textContent = "";
             render();
           } else {
-            msg.className = "msg err"; msg.textContent = "Failed: " + (res.b && res.b.message || "error");
+            msg.className = "msg err"; msg.textContent = NPDevI18n.t("workbench.message.failed", "Failed: {message}", { message: res.b && res.b.message || NPDevI18n.t("workbench.message.genericError", "error") });
           }
         })
-        .catch(function (e) { msg.className = "msg err"; msg.textContent = "Error: " + e; });
+        .catch(function (e) { msg.className = "msg err"; msg.textContent = NPDevI18n.t("workbench.message.error", "Error: {error}", { error: e }); });
     }
     if (EDITABLE) {
       (store.descriptor.actions || [])
@@ -1620,13 +1627,13 @@
               // docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md: a pasted CSV became one line, so the parser's
               // own header-row skip consumed the entire payload and returned zero data rows). A
               // <textarea> preserves newlines and degrades fine for a short single-line value too.
-              var input = el('<textarea placeholder="' + field + '" rows="1" style="margin-right:4px;vertical-align:middle;font-family:inherit;resize:vertical"></textarea>');
+              var input = el('<textarea placeholder="' + field + '" rows="1" style="margin-right:4px;vertical-align:middle;font-family:inherit;resize:vertical"></textarea>'); /* i18n-ignore: attribute is the field name */
               inputsByField[field] = input;
               inlineForm.append(input);
             });
             barDiv.append(inlineForm);
           }
-          var b = el('<button class="btn" style="background:var(--np-accent);margin-left:6px">' + (a.label || a.procedure || "Recalcular") + '</button>');
+          var b = el('<button class="btn" style="background:var(--np-accent);margin-left:6px">' + (a.label || a.procedure || NPDevI18n.t("workbench.action.defaultLabel", "Recalculate")) + '</button>');
           b.onclick = function () {
             if (a.checkBalances) { checkBalancesAction(a); return; }
             var extraInput = {};
@@ -1649,11 +1656,11 @@
         (rule.groups || []).forEach(function (g) {
           if (g.balanced) return;
           anyUnbalanced = true;
-          balanceBanner.append(el('<div class="msg err">' + (g.message || (ruleName + " is out of balance")) + '</div>'));
+          balanceBanner.append(el('<div class="msg err">' + (g.message || NPDevI18n.t("workbench.balance.outOfBalance", "{rule} is out of balance", { rule: ruleName })) + '</div>'));
         });
       });
       if (!anyUnbalanced) {
-        balanceBanner.append(el('<div class="msg ok">Balanced.</div>'));
+        balanceBanner.append(el('<div class="msg ok">' + NPDevI18n.t("workbench.balance.balanced", "Balanced.") + '</div>'));
       }
       app.append(balanceBanner);
     }
@@ -1668,7 +1675,7 @@
 
   // A per-region revert control (C8): discards that region's staged edits back to the baseline.
   function regionRevert(scope, c) {
-    var b = el('<button class="rev" title="' + STRINGS['workbench.revertTitle'] + '">⟲ ' + STRINGS['workbench.revert'] + '</button>');
+    var b = el('<button class="rev" title="' + S('workbench.revertTitle') + '">⟲ ' + S('workbench.revert') + '</button>'); /* i18n-ignore: ids already routed */
     b.onclick = function (e) { e.stopPropagation(); store.revertRegion(scope, c); render(); };
     return b;
   }
@@ -1740,10 +1747,10 @@
     var card = el('<div class="modal-card"></div>');
     card.setAttribute("role", "dialog");
     card.setAttribute("aria-modal", "true");
-    card.setAttribute("aria-label", picker.label || STRINGS['action.select']);
+    card.setAttribute("aria-label", picker.label || S('action.select'));
     card.tabIndex = -1;
-    card.append(el('<div class="modal-hd"><span>' + (picker.label || STRINGS['action.select']) + '</span></div>'));
-    var body = el('<div class="modal-bd"><p class="sub">Loading…</p></div>');
+    card.append(el('<div class="modal-hd"><span>' + (picker.label || S('action.select')) + '</span></div>'));
+    var body = el('<div class="modal-bd"><p class="sub">' + NPDevI18n.t("workbench.picker.loading", "Loading…") + '</p></div>');
     card.append(body);
     var ft = el('<div class="modal-ft"></div>');
     function closeOverlay() {
@@ -1751,8 +1758,8 @@
       overlay.remove();
       if (opener && typeof opener.focus === "function" && document.contains(opener)) { opener.focus(); }
     }
-    var cancel = el('<button class="btn ghost">' + STRINGS['action.cancel'] + '</button>'); cancel.onclick = closeOverlay;
-    var add = el('<button class="btn">' + STRINGS['action.add'] + '</button>');
+    var cancel = el('<button class="btn ghost">' + S('action.cancel') + '</button>'); cancel.onclick = closeOverlay;
+    var add = el('<button class="btn">' + S('action.add') + '</button>');
     add.onclick = function () {
       Object.keys(chosen).forEach(function (k) {
         var src = chosen[k]; var values = {};
@@ -1787,9 +1794,9 @@
     // .then() branch below calls this.
     function renderRows(rows) {
       body.innerHTML = "";
-      if (!rows.length) { body.append(el('<p class="sub">No records available.</p>')); return; }
+      if (!rows.length) { body.append(el('<p class="sub">' + NPDevI18n.t("workbench.picker.empty", "No records available.") + '</p>')); return; }
       var tbl = el("<table></table>");
-      tbl.append(el('<tr><th><span class="sr-only">Row</span></th>' + cols.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "</tr>"));
+      tbl.append(el('<tr><th><span class="sr-only">' + NPDevI18n.t("workbench.picker.row", "Row") + '</span></th>' + cols.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "</tr>"));
       rows.forEach(function (row) {
         var id = row.id, d = row.data;
         var tr = el('<tr class="master"></tr>');
@@ -1814,7 +1821,7 @@
           Object.keys(data).forEach(function (kk) { if (Array.isArray(data[kk]) && rows === null) rows = data[kk]; });
           renderRows((rows || []).map(function (r) { return { id: r.id, data: r.data || {} }; }));
         })
-        .catch(function (e) { renderLoadError(body, "Failed to load", e); });
+        .catch(function (e) { renderLoadError(body, NPDevI18n.t("workbench.error.loadFailed", "Failed to load: {error}", { error: e })); });
     } else {
       // B19: no panel -- the band's own collection concept, fetched through the SAME generic
       // reference-lookup endpoint an FK field's picker dialog already uses (GET .../api/concepts/<table>,
@@ -1835,7 +1842,7 @@
           var rows = Array.isArray(p.content) ? p.content : [];
           renderRows(rows.map(function (r) { return { id: r.id, data: r }; }));
         })
-        .catch(function (e) { renderLoadError(body, "Failed to load", e); });
+        .catch(function (e) { renderLoadError(body, NPDevI18n.t("workbench.error.loadFailed", "Failed to load: {error}", { error: e })); });
     }
   }
 
@@ -1854,8 +1861,8 @@
   }
   function renderList() {
     var app = document.getElementById("app"); app.innerHTML = "";
-    app.append(el('<h1>{{title}} <span class="chip">' + listState.rows.length + ' records</span></h1>'));
-    app.append(el('<p class="sub">Select a record to open its workbench, or create a new one.</p>'));
+    app.append(el('<h1>{{title}} <span class="chip">' + (listState.rows.length === 1 ? NPDevI18n.t("workbench.list.recordCountOne", "{count} record", { count: listState.rows.length }) : NPDevI18n.t("workbench.list.recordCountMany", "{count} records", { count: listState.rows.length })) + '</span></h1>'));
+    app.append(el('<p class="sub">' + NPDevI18n.t("workbench.list.hint", "Select a record to open its workbench, or create a new one.") + '</p>'));
     if (FILTERS.length) {
       var fbar = el('<form class="grid2"></form>');
       FILTERS.forEach(function (f) {
@@ -1871,7 +1878,7 @@
     app.append(el('<div id="listtable"></div>'));
     renderTableOnly();
     var barDiv = el('<div style="margin:8px 0"></div>');
-    var neu = el('<button class="btn">' + STRINGS['action.new'] + '</button>'); neu.onclick = function () { openRow("new"); };
+    var neu = el('<button class="btn">' + S('action.new') + '</button>'); neu.onclick = function () { openRow("new"); };
     barDiv.append(neu); app.append(barDiv);
   }
   // One selection-list cell, table or grid: a reference shows its target's label, an enum its option
@@ -1972,7 +1979,7 @@
     host.append(tbl);
   }
   function loadList() {
-    if (!SELECTION_PANEL) { document.getElementById("app").innerHTML = '<p class="sub">No selection panel configured.</p>'; return; }
+    if (!SELECTION_PANEL) { document.getElementById("app").innerHTML = '<p class="sub">' + NPDevI18n.t("workbench.list.noSelectionPanel", "No selection panel configured.") + '</p>'; return; }
     var manifest = fetch("/npdev-business-ui/generated-ui-manifest.json")
       .then(function (r) { return r.ok ? r.json() : null; })
       .catch(function () { return null; });
@@ -1996,10 +2003,13 @@
         listState.layoutType = (p.layout && p.layout.type) || "";
         renderList();
       })
-      .catch(function (e) { renderLoadError(document.getElementById("app"), "Failed to load list", e); });
+      .catch(function (e) { renderLoadError(document.getElementById("app"), NPDevI18n.t("workbench.error.loadListFailed", "Failed to load list: {error}", { error: e })); });
   }
 
   function boot() {
+    // REG-349: translate the static markup and the page title for the visitor's language.
+    NPDevI18n.apply(document);
+    document.title = document.title.replace(/ — Workbench$/, " — " + NPDevI18n.t("workbench.page.titleSuffix", "Workbench"));
     var id = new URLSearchParams(location.search).get("id") || "";
     if (!id) { loadList(); return; }
     // "new" loads the workbench descriptor with an empty tree (server returns descriptor + data:{}).
@@ -2029,7 +2039,7 @@
           refreshServerDerivedFields();
         }
       })
-      .catch(function (e) { renderLoadError(document.getElementById("app"), "Failed to load workbench", e); });
+      .catch(function (e) { renderLoadError(document.getElementById("app"), NPDevI18n.t("workbench.error.loadWorkbenchFailed", "Failed to load workbench: {error}", { error: e })); });
   }
   // Unsaved-changes guard: closing/reloading the tab with staged, uncommitted edits asks first.
   window.addEventListener("beforeunload", function (event) {

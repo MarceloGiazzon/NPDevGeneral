@@ -1,0 +1,36 @@
+id: REG-351
+title: >-
+  A scripted tour left its scratch folder as the real Manager's "catalog folder", so the owner's first publish was refused for it
+type: BUG
+severity: LOW
+status: PARTIAL
+opened: 2026-11-20
+source: >-
+  Owner's real round 2026-11-20 (REG-334): "ratings ainda nao pode ser publicado ... D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\p5-tour\shots
+  is not a copy (git clone) of the public catalog."
+surface: manager/packs, tours
+files:
+  - NPDevManager/ui/packs.js
+detail: |
+  packs.js keeps the catalog folder in the webview's localStorage (key npdev.manager.nprCheckout). The 2026-11-11 real-window tour (p5-tour)
+  drove the same webview profile as the owner's Manager and its folder stayed behind. Two defects: (1) a tour must never write the real
+  profile's settings, or must put them back; (2) the dialog trusts a remembered folder it never checked until the dry run fails -- it could
+  verify that the folder is a git clone of the NPR before offering Publish, and say so first.
+  Workaround used: "Change the catalog folder" -> D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\NPR-clone (worked, ratings-1.0.0 published).
+  DONE 2026-11-20 (Manager 0.13.41): packs.js reads the CLI's error code `not-a-catalog-clone` from the dry run, forgets the remembered folder and asks again
+  with one plain sentence plus the path, instead of listing the English refusal. NOT done: the tour scripts still share the real webview profile (the
+  other half), and a person who is not a developer is still asked to pick "the folder where your copy of the public catalog lives": the Manager could clone
+  the public catalog itself into its own home and never ask.
+guard:
+  kind: manual
+  ref: NPDevManager/ui/packs.js
+  asserts: >-
+    with a remembered folder that has no .git, Publish shows "The folder chosen before is not a copy (git clone) of the public catalog." and a Choose folder
+    button, and the stored folder is cleared; not yet driven on the real window (owner's rerun).
+  provenRed: false
+verification: UNIT_TESTED
+done_when: >-
+  The tour scripts use a throw-away webview profile (or restore what they set), and a remembered folder that is not a clone of the NPR is
+  dropped with a plain sentence before the dry run.
+resolution: >-
+  Done when the defect described is fixed and covered by a test; see detail.
