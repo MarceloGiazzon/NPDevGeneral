@@ -3,7 +3,7 @@
 // read the rows of that screen (so its `where` and access rules apply). Tile/chart `value` expressions that need the
 // server (count(), sum()) go out together as one /api/x/eval request -- see serverval.js. Nothing here can fail the
 // whole dashboard: a widget that cannot load shows a short notice instead.
-import { buildHash, card, cellValue, formatValue, h, pathValue, selectColumns, valueNode } from "./core.js";
+import { buildHash, card, cellValue, enumText, formatValue, h, pathValue, selectColumns, valueNode } from "./core.js";
 import { loadRows } from "./api.js";
 import { mountMap, rowPoints } from "./map.js";
 
@@ -40,7 +40,7 @@ async function chartEntries(ctx, w, target) {
   if (!field) return [];
   const { rows } = await loadRows(ctx.api, target, { want: 200, user: ctx.user });
   const counts = new Map();
-  for (const row of rows) { const k = pathValue(row, field); const key = k == null || k === "" ? NPDevI18n.t("experience.board.noValue", "No value") : String(k); counts.set(key, (counts.get(key) || 0) + 1); }
+  for (const row of rows) { const k = pathValue(row, field); const key = k == null || k === "" ? NPDevI18n.t("experience.board.noValue", "No value") : enumText(k); counts.set(key, (counts.get(key) || 0) + 1); }
   return Array.from(counts, ([label, value]) => ({ label, value }));
 }
 

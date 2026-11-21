@@ -60,7 +60,7 @@ sections:
     ```jsonc
     {
       "name": "Product",                  // REQUIRED. Its name — also the table name.
-      "extends": "BaseEntity",            // optional — inherit fields from another concept
+      "specializes": "BaseEntity",        // optional — inherit fields from another concept
       "fields": [ /* at least 1, REQUIRED */ ],
       "invariants": [ /* optional validation rules */ ],
       "events": [ /* optional, concept-scoped events */ ],

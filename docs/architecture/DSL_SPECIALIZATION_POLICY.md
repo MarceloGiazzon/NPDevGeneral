@@ -82,8 +82,9 @@ element type — proven for concepts by
   every additive-list field, and every `ILLEGAL_OVERRIDE` guard on capability/event/flow that had no
   fixture before this pass.
 - `LabelLocaleSpecializationMergeTest` — the `ui` label/locale merge, pre-existing.
-- `DslSpecializationTest` — `extends`-alias parsing, unknown-base and cycle rejection (both
-  `extends`-only and `specializes`-only), duplicate-field rejection.
+- `DslSpecializationTest` — `specializes` parsing, unknown-base and cycle rejection,
+  duplicate-field rejection. `ExtendsRetiredTest` — the retired `extends` (concept alias, pack
+  keyword → `augments`) is refused with the replacement named (D-2, 2026-11-21).
 
 ## Lineage (P3.3)
 
@@ -108,7 +109,7 @@ now declares, with no signal that anything had changed. `PackDependencyGraphWalk
 .checkSpecializationPinning` (called from `run()`, same JSON-node layer as `checkLock`/
 `applyMigrationChains`) closes that gap:
 
-- For every model concept declaring `specializes`/`extends`, if the resolved base is pack-contributed
+- For every model concept declaring `specializes`, if the resolved base is pack-contributed
   (found in `state.originByQualifiedMemberName`), its owning pack's *current* declared `version` is
   compared against `npdev.lock`'s `migratedVersion` for that pack -- the exact value the pack's own
   migration-replay chain (`PackMigrationComposer`) already reads as its `fromVersion`.

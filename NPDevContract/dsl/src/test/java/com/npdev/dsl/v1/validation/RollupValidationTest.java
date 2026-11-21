@@ -113,7 +113,7 @@ class RollupValidationTest {
         String json = model("[ { \"field\": \"likeCount\", \"from\": \"Like\", \"via\": \"mosaicId\" } ]")
                 .replace("\"concepts\": [", """
                     "concepts": [
-                    { "name": "FeaturedMosaic", "extends": "Mosaic", "fields": [
+                    { "name": "FeaturedMosaic", "specializes": "Mosaic", "fields": [
                       { "name": "featuredUntil", "type": "date" } ] },""");
         assertEquals(List.of(), new SemanticValidator().validate(parse(json)));
 

@@ -176,7 +176,7 @@ public final class ModelResolver {
                     "Concept specialization cycle detected: " + concept.getName());
         }
 
-        String baseRef = firstNonBlank(concept.getSpecializesName(), concept.getExtendsName());
+        String baseRef = firstNonBlank(concept.getSpecializesName(), null);
         ConceptAst resolved;
         if (baseRef == null) {
             resolved = sanitizeConcept(concept);

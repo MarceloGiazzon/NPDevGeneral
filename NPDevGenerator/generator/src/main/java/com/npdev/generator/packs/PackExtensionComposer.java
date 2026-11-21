@@ -34,14 +34,9 @@ import java.util.Set;
  * (see {@link #sameShape}), but reuses the SAME conservative philosophy {@code PackDiffEngine}
  * established: a change this engine cannot prove safe is refused, never silently allowed through.
  *
- * <p><b>Declaring an extension target requires no schema change.</b> {@code pack.schema.json}'s
- * {@code metadata} key is (deliberately, already) an untyped {@code {"type":"object"}} with no
- * {@code additionalProperties:false} restriction -- see {@code NPDevContract/schemas/pack.schema.json}
- * -- so an extension pack declares its target with {@code "metadata": {"extends": {"pack": "...",
- * "concept": "..."}}}, which validates against the EXISTING schema unmodified. Introducing a proper
- * first-class {@code extends} keyword on {@code pack.json} (both schema mirrors) is real, but
- * separately-scoped follow-up work -- flagged in this slice's own report rather than done here,
- * since {@code pack.schema.json} is outside this composer's owned file surface.
+ * <p><b>Declaring an extension target.</b> An extension pack declares its target with the first-class
+ * {@code "augments": {"pack": "...", "concept": "..."}} keyword on {@code pack.json} (both
+ * {@code pack.schema.json} copies).
  *
  * <p><b>Sealedness gate.</b> A pack that {@link PackSealednessAnalyzer} certifies sealed is eligible
  * to ship as a precompiled jar (see {@link SealedPackBuilder}) -- once shipped that way, its concepts
@@ -81,7 +76,7 @@ public final class PackExtensionComposer {
 
     /**
      * One extension pack's contribution: its own alias, its raw {@code pack.json} (read for its
-     * {@code metadata.extends} target), and its own compiled concept (the SAME bare concept name as
+     * {@code augments} target), and its own compiled concept (the SAME bare concept name as
      * the base's, compiled and prefixed with THIS pack's own alias by the normal compile pipeline --
      * e.g. an extension pack aliased {@code clinical} declaring a concept named {@code User} compiles
      * to {@code clinical::User}; only its fields beyond the base's own are actually merged in).
@@ -91,34 +86,21 @@ public final class PackExtensionComposer {
 
     /**
      * Reads this pack's own declared extension target, or {@code null} if this pack declares none
-     * (an ordinary, non-extending pack). Checks the first-class {@code extends} property first
-     * (PACK-10/R8.11), falling back to the legacy {@code metadata.extends} convention for backward
-     * compatibility.
+     * (an ordinary, non-extending pack). Reads the first-class {@code augments} property
+     * ({@code {"pack": "...", "concept": "..."}}). The old first-class {@code extends} (PACK-10/R8.11)
+     * and the {@code metadata.extends} convention are gone (D-2, 2026-11-21): {@code extends} now means
+     * nothing anywhere in the DSL; {@code specializes} is "is-a", {@code augments} is "adds-to".
      */
     public ExtensionTarget readExtensionTarget(JsonNode packJson) {
         if (packJson == null || !packJson.isObject()) {
             return null;
         }
-        // First-class `extends` (PACK-10/R8.11)
-        JsonNode extends_ = packJson.get("extends");
-        if (extends_ != null && extends_.isObject()) {
-            String targetPack = textOrNull(extends_.get("pack"));
-            String targetConcept = textOrNull(extends_.get("concept"));
-            if (targetPack != null && targetConcept != null) {
-                return new ExtensionTarget(targetPack, targetConcept);
-            }
-        }
-        // Legacy fallback: metadata.extends
-        JsonNode metadata = packJson.get("metadata");
-        if (metadata == null || !metadata.isObject()) {
+        JsonNode augments = packJson.get("augments");
+        if (augments == null || !augments.isObject()) {
             return null;
         }
-        JsonNode metaExtends = metadata.get("extends");
-        if (metaExtends == null || !metaExtends.isObject()) {
-            return null;
-        }
-        String targetPack = textOrNull(metaExtends.get("pack"));
-        String targetConcept = textOrNull(metaExtends.get("concept"));
+        String targetPack = textOrNull(augments.get("pack"));
+        String targetConcept = textOrNull(augments.get("concept"));
         if (targetPack == null || targetConcept == null) {
             return null;
         }

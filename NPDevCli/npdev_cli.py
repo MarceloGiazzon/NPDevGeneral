@@ -12185,7 +12185,7 @@ def _add_scan_concept_references(member: dict, known: dict[str, set[str]]) -> li
         target = get_target()
         if isinstance(target, str) and target and _add_bare_name(target) not in known["concepts"]:
             missing.append(f"{label} -> {target!r} (concept not found)")
-    for extra_field in ("extends", "specializes"):
+    for extra_field in ("specializes",):
         target = member.get(extra_field)
         if isinstance(target, str) and target and _add_bare_name(target) not in known["concepts"]:
             missing.append(f"{member.get('name')}.{extra_field} -> {target!r} (concept not found)")
@@ -12275,7 +12275,7 @@ _ADD_PROCEDURE_CAPABILITY_STEP_TYPES = {"capabilitycall", "callcapability", "cal
 
 def _add_scan_member_references(kind: str, member: dict, resolved_model: dict) -> list[str]:
     """--from's safety net: an exemplar copied out of another sample can carry references (a
-    concept's own `reference`/`extends`/`specializes`, a panel's dataSource/action, a flow's
+    concept's own `reference`/`specializes`, a panel's dataSource/action, a flow's
     concept/procedure/event, a procedure's concept/procedure/capability) that simply do not exist
     in the model being added to. Writing such a member anyway would produce something
     `npdev validate model` immediately rejects -- exactly what R1.5's own Done-When forbids
@@ -13066,7 +13066,7 @@ def load_model_xref(model_path: Path) -> dict:
     """Build the model-wide reference index by running the :NPDevContract:dsl:modelXref Gradle task.
 
     Deliberately NOT a Python re-walk of the model. Pack/context composition, `qualifierId::Name`
-    qualification, `extends` field inheritance, the groupBy join grammar and the interaction
+    qualification, `specializes` field inheritance, the groupBy join grammar and the interaction
     expression grammar all live on the Java side; a second implementation here is REG-108's exact
     shape, and this index exists precisely because a reference that nothing checks is a reference
     that silently breaks. Same plumbing as `run_validate_semantic`.

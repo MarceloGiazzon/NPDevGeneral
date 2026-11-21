@@ -92,7 +92,7 @@ class ExperienceEmitterTest {
         assertEquals("list", tickets.path("kind").asText(), "the authored screen is kept as is");
         assertEquals("string", tickets.path("fieldMeta").path("title").path("type").asText());
         assertEquals("Headline", tickets.path("fieldMeta").path("title").path("label").asText(), "ui.label wins");
-        assertEquals("status", tickets.path("fieldMeta").path("status").path("label").asText(), "no ui.label -> the name");
+        assertFalse(tickets.path("fieldMeta").path("status").has("label"), "no ui.label -> none is sent, the browser humanizes the name");
         assertFalse(tickets.path("fieldMeta").has("title.length"), "an expression is not a field");
         assertEquals("id", tickets.path("idField").asText());
         assertFalse(tickets.path("fieldMeta").path("title").path("required").asBoolean());

@@ -356,7 +356,7 @@ class ReferenceIndexTest {
                       { "name": "id", "type": "uuid", "id": true, "required": true },
                       { "name": "createdAt", "type": "datetime", "ui": { "label": "Created" } }
                     ] },
-                    { "name": "Invoice", "extends": "BaseDoc", "ui": { "label": "Invoice" }, "fields": [
+                    { "name": "Invoice", "specializes": "BaseDoc", "ui": { "label": "Invoice" }, "fields": [
                       { "name": "amountCents", "type": "integer", "ui": { "label": "Amount" } }
                     ] }
                   ],

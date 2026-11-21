@@ -287,20 +287,20 @@
     "metadata": {
       "type": "object"
     },
-    "extends": {
+    "augments": {
       "type": "object",
-      "description": "PACK-10/R8.11: declares this pack is an additive extension of a concept owned by another pack. The extension pack contributes fields to the target concept via PackExtensionComposer (additive-only, sealedness/collision refusal). Equivalent to the legacy metadata.extends convention but first-class in the schema.",
+      "description": "PACK-10/R8.11 (renamed from `extends`, D-2): declares this pack AUGMENTS (adds to) a concept owned by another pack -- not a new kind of thing (that is `specializes`). The extension pack contributes fields to the target concept via PackExtensionComposer (additive-only, sealedness/collision refusal). The old `extends` key and the `metadata.extends` convention are gone.",
       "required": ["pack", "concept"],
       "properties": {
         "pack": {
           "type": "string",
           "minLength": 1,
-          "description": "The pack id of the base pack whose concept is being extended."
+          "description": "The pack id of the base pack whose concept is being augmented."
         },
         "concept": {
           "type": "string",
           "minLength": 1,
-          "description": "The bare concept name in the base pack that this extension adds fields to."
+          "description": "The bare concept name in the base pack that this pack adds fields to."
         }
       },
       "additionalProperties": false

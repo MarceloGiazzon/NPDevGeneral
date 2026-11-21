@@ -55,7 +55,9 @@ MANIFEST = "files.json"
 FORBIDDEN = [
     (re.compile(r"\binnerHTML\b|\bouterHTML\b|\binsertAdjacentHTML\b|\bdocument\.write\b"), "writes markup"),
     (re.compile(r"\beval\s*\(|\bnew\s+Function\b|\bsetTimeout\s*\(\s*['\"]"), "evaluates strings as code"),
-    (re.compile(r"https?://|(?<![:\w])//cdn\.|\bunpkg\.com\b|\bjsdelivr\b"), "references another origin"),
+    # The one exact URI allowed is the SVG namespace: document.createElementNS needs it as an identifier and
+    # nothing is ever fetched from it (the icons are drawn with it, see core.js iconNode).
+    (re.compile(r"https?://(?!www\.w3\.org/2000/svg[\"'])|(?<![:\w])//cdn\.|\bunpkg\.com\b|\bjsdelivr\b"), "references another origin"),
 ]
 IMPORT = re.compile(r"""(?:^|\s)import\s+(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]""")
 

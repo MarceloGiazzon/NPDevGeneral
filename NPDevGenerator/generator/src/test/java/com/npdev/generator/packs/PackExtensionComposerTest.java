@@ -72,7 +72,7 @@ class PackExtensionComposerTest {
               "dslVersion": "3.0.0",
               "pack": "clinicext",
               "version": "1.0.0",
-              "metadata": { "extends": { "pack": "clinicbase", "concept": "Patient" } },
+              "augments": { "pack": "clinicbase", "concept": "Patient" },
               "concepts": [
                 { "name": "Patient", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -82,10 +82,10 @@ class PackExtensionComposerTest {
             }
             """;
 
-    // ---- metadata.extends reading -------------------------------------------------------------
+    // ---- augments reading ----------------------------------------------------------------------
 
     @Test
-    void readsExtensionTargetFromPackMetadata() throws Exception {
+    void readsExtensionTargetFromAugmentsKeyword() throws Exception {
         JsonNode packJson = MAPPER.readTree(CLINICEXT_PACK_JSON);
         PackExtensionComposer.ExtensionTarget target = new PackExtensionComposer().readExtensionTarget(packJson);
 
@@ -95,32 +95,8 @@ class PackExtensionComposerTest {
     }
 
     @Test
-    void readsExtensionTargetFromFirstClassExtendsKeyword() throws Exception {
-        String firstClassExtends = """
-                {
-                  "dslVersion": "3.0.0",
-                  "pack": "clinicext",
-                  "version": "1.0.0",
-                  "extends": { "pack": "clinicbase", "concept": "Patient" },
-                  "concepts": [
-                    { "name": "Patient", "fields": [
-                      { "name": "id", "type": "uuid", "id": true, "required": true },
-                      { "name": "specialty", "type": "string", "required": false, "maxLength": 80 }
-                    ]}
-                  ]
-                }
-                """;
-        JsonNode packJson = MAPPER.readTree(firstClassExtends);
-        PackExtensionComposer.ExtensionTarget target = new PackExtensionComposer().readExtensionTarget(packJson);
-
-        assertEquals("clinicbase", target.packAlias());
-        assertEquals("Patient", target.conceptName());
-        assertEquals("clinicbase::Patient", target.qualifiedName());
-    }
-
-    @Test
-    void firstClassExtendsTakesPrecedenceOverMetadataExtends() throws Exception {
-        String bothExtends = """
+    void retiredExtendsAndMetadataExtendsAreNoLongerRead() throws Exception {
+        String retired = """
                 {
                   "dslVersion": "3.0.0",
                   "pack": "clinicext",
@@ -134,11 +110,9 @@ class PackExtensionComposerTest {
                   ]
                 }
                 """;
-        JsonNode packJson = MAPPER.readTree(bothExtends);
-        PackExtensionComposer.ExtensionTarget target = new PackExtensionComposer().readExtensionTarget(packJson);
+        JsonNode packJson = MAPPER.readTree(retired);
 
-        assertEquals("firstclass", target.packAlias());
-        assertEquals("Alpha", target.conceptName());
+        assertNull(new PackExtensionComposer().readExtensionTarget(packJson));
     }
 
     @Test
@@ -230,7 +204,7 @@ class PackExtensionComposerTest {
                   "dslVersion": "3.0.0",
                   "pack": "clinicext",
                   "version": "1.0.0",
-                  "metadata": { "extends": { "pack": "clinicbase", "concept": "Patient" } },
+                  "augments": { "pack": "clinicbase", "concept": "Patient" },
                   "concepts": [
                     { "name": "Patient", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -261,7 +235,7 @@ class PackExtensionComposerTest {
                   "dslVersion": "3.0.0",
                   "pack": "clinicext",
                   "version": "1.0.0",
-                  "metadata": { "extends": { "pack": "clinicbase", "concept": "Patient" } },
+                  "augments": { "pack": "clinicbase", "concept": "Patient" },
                   "concepts": [
                     { "name": "Patient", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true },

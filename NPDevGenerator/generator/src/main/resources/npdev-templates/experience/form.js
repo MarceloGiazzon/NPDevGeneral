@@ -1,6 +1,6 @@
 // Archetype "form": input for a flow. Controls come from fieldMeta types; the primary action starts the flow with the
 // typed values. Required/format problems show next to the field, as do the field errors of the server's 400/422 body.
-import { h, humanize, inputKind, selectFields, validateForm } from "./core.js";
+import { enumText, h, humanize, inputKind, selectFields, validateForm } from "./core.js";
 import { renderActions } from "./actions.js";
 import { pickMap } from "./map.js";
 
@@ -9,7 +9,7 @@ function control(field, meta) {
   const props = { id: "f-" + field.value, name: field.value, class: "control", required: meta.required && kind.type !== "checkbox" };
   if (kind.control === "select") {
     return h("select", props, h("option", { value: "", text: NPDevI18n.t("experience.form.choose", "Choose...") }),
-      kind.options.map((o) => h("option", { value: typeof o === "object" ? o.value : o, text: typeof o === "object" ? (o.label || o.value) : o })));
+      kind.options.map((o) => h("option", { value: typeof o === "object" ? o.value : o, text: typeof o === "object" ? (o.label || enumText(o.value)) : enumText(o) })));
   }
   if (kind.control === "textarea") return h("textarea", Object.assign(props, { rows: 3 }));
   return h("input", Object.assign(props, { type: kind.type, step: kind.step, inputmode: kind.inputmode, autocomplete: "off" }));

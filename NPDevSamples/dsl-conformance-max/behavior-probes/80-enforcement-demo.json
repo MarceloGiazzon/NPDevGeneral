@@ -364,7 +364,7 @@
         "invariant.specializes",
         "invariant.override"
       ],
-      "description": "PromotedWidgetCatalogEntry extends WidgetCatalogEntry and overrides the inherited invariant CatalogSkuRequired with an invariant of the same name (specializes + override=true) whose expression additionally forbids sku WID-BANNED. The same sku is accepted by the parent concept and refused by the child under that name, with the child's replacement expression (naming WID-BANNED) in the message rather than the parent's.",
+      "description": "PromotedWidgetCatalogEntry specializes WidgetCatalogEntry and overrides the inherited invariant CatalogSkuRequired with an invariant of the same name (specializes + override=true) whose expression additionally forbids sku WID-BANNED. The same sku is accepted by the parent concept and refused by the child under that name, with the child's replacement expression (naming WID-BANNED) in the message rather than the parent's.",
       "steps": [
         {
           "name": "parent accepts",

@@ -981,12 +981,12 @@
       ]
     },
     {
-      "id": "cf-concept-extends-inherits-fields-invariants-and-adds-own",
+      "id": "cf-concept-specializes-inherits-fields-invariants-and-adds-own",
       "keywords": [
-        "concept.extends",
+        "concept.specializes",
         "concept.invariants"
       ],
-      "description": "PromotedWidgetCatalogEntry extends WidgetCatalogEntry: it enforces the parent's invariant CatalogSkuRequired and required fields as well as its own required promotionLabel, stores inherited and own fields, and inherits the parent's field-level read access.",
+      "description": "PromotedWidgetCatalogEntry specializes WidgetCatalogEntry: it enforces the parent's invariant CatalogSkuRequired and required fields as well as its own required promotionLabel, stores inherited and own fields, and inherits the parent's field-level read access.",
       "steps": [
         {
           "name": "blank sku hits the inherited invariant",

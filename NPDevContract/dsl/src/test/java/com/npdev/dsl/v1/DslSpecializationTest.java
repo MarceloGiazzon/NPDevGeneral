@@ -40,7 +40,7 @@ class DslSpecializationTest {
                     },
                     {
                       "name": "MedicalInvoice",
-                      "extends": "Invoice",
+                      "specializes": "Invoice",
                       "fields": [
                         { "name": "doctorId", "type": "uuid", "required": true }
                       ]
@@ -76,7 +76,7 @@ class DslSpecializationTest {
                   "concepts": [
                     {
                       "name": "Child",
-                      "extends": "MissingParent",
+                      "specializes": "MissingParent",
                       "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true }
                       ]
@@ -87,7 +87,7 @@ class DslSpecializationTest {
 
         List<String> unknownParentErrors = new SemanticValidator().validate(parseJson(unknownParentJson));
         assertTrue(unknownParentErrors.stream().anyMatch(e ->
-                e.contains("extends unknown base MissingParent")
+                e.contains("specializes unknown base MissingParent")
                         || e.contains("BASE_NOT_FOUND")));
 
         String cycleJson = """
@@ -98,14 +98,14 @@ class DslSpecializationTest {
                   "concepts": [
                     {
                       "name": "A",
-                      "extends": "B",
+                      "specializes": "B",
                       "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true }
                       ]
                     },
                     {
                       "name": "B",
-                      "extends": "A",
+                      "specializes": "A",
                       "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true }
                       ]
@@ -176,7 +176,7 @@ class DslSpecializationTest {
                     },
                     {
                       "name": "Derived",
-                      "extends": "Base",
+                      "specializes": "Base",
                       "fields": [
                         { "name": "code", "type": "long", "required": true }
                       ]

@@ -1140,7 +1140,7 @@
         "read": "true",
         "write": "true"
       },
-      "extends": "WidgetCatalogEntry",
+      "specializes": "WidgetCatalogEntry",
       "truthLevel": "T2",
       "ui": {
         "label": "Promoted widget catalog entry"

@@ -18,7 +18,7 @@ from .detectors_model import (  # noqa: F401 - every name the table below refere
     _all_steps, _flows, _has_aggregate_balances, _has_aggregate_collection_lookup_fields,
     _has_aggregate_invariants, _has_aggregate_on_commit, _has_aggregate_on_validate,
     _has_arithmetic_derived_expression,
-    _has_capability_policy, _has_composite_index, _has_concept_access, _has_concept_extends,
+    _has_capability_policy, _has_composite_index, _has_concept_access,
     _has_concept_offline_write, _has_concept_selection_tools, _has_concept_rollups, _has_concept_soft_delete, _has_concept_temporal, _has_concept_uid, _has_field_access,
     _has_field_uid, _has_locale_label,
     _has_conversion_java_hook, _has_conversion_op, _has_date_field, _has_decimal_field, _has_file_field,
@@ -219,10 +219,6 @@ FEATURE_DETECTORS = {
     # explicit checkpoint), so "post" itself, and explicit declaration of either value, had zero
     # witnesses.
     "invariant.checkpoint.post": _has_post_checkpoint,
-    # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5): concept.extends (field-merge inheritance)
-    # -- already covered at the unit level by DslSpecializationTest (field merge, missing-parent
-    # error, cycle detection), just never declared in a real/fixture corpus model before this.
-    "concept.extends": _has_concept_extends,
     # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5): flow.inputSchema/outputSchema (the
     # external contract for a startEndpoint flow) -- already unit-tested (DslFlowModelTest), just
     # never declared in a real/fixture corpus model before this.

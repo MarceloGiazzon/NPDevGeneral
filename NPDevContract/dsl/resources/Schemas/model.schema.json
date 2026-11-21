@@ -2110,10 +2110,6 @@
           "type": "string",
           "minLength": 1
         },
-        "extends": {
-          "type": "string",
-          "minLength": 1
-        },
         "specializes": {
           "type": "string",
           "minLength": 1

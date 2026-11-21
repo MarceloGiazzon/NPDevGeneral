@@ -68,7 +68,7 @@ class PackExtensionComposerOrderingTest {
               "dslVersion": "3.0.0",
               "pack": "clinicext",
               "version": "1.0.0",
-              "metadata": { "extends": { "pack": "clinicbase", "concept": "Patient" } },
+              "augments": { "pack": "clinicbase", "concept": "Patient" },
               "concepts": [
                 { "name": "Patient", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -83,7 +83,7 @@ class PackExtensionComposerOrderingTest {
               "dslVersion": "3.0.0",
               "pack": "clinicext2",
               "version": "1.0.0",
-              "metadata": { "extends": { "pack": "clinicbase", "concept": "Patient" } },
+              "augments": { "pack": "clinicbase", "concept": "Patient" },
               "concepts": [
                 { "name": "Patient", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },

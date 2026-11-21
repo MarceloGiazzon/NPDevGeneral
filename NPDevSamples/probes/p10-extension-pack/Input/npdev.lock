@@ -3,7 +3,7 @@
   "packs" : {
     "clinicext" : {
       "resolvedVersion" : "1.0.0",
-      "digest" : "sha256:864017d3a56808133e4b712d9cc89c33e0af5232e78bd1cc8835b952229a4b0c",
+      "digest" : "sha256:d6f5539a1d315a36519aeb9d5291ab3a60a9d496f69365a91dfb8d3d7828e908",
       "sourcePath" : "packs/clinicext/pack.json"
     }
   }

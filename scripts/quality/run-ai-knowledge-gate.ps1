@@ -440,7 +440,7 @@ try {
         $failures += "the AI benchmark prompt set is malformed or incomplete: see scripts/quality/check-ai-bench-prompts.py output above and NPDevSamples/ai-bench/prompt.schema.json"
     }
 
-    Write-Host "Checking pack-composition surfaces (packs.from / satelliteOf / pack.extends) have corpus coverage..."
+    Write-Host "Checking pack-composition surfaces (packs.from / satelliteOf / pack.augments) have corpus coverage..."
     & $py "scripts/quality/check-pack-coverage.py" "--probes" "--strict"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a pack-composition surface has zero corpus coverage: see scripts/quality/check-pack-coverage.py output above"

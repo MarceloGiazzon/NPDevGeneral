@@ -36,7 +36,7 @@ processes, screens, permissions, and how it all changes over time.
 | **`domainTypes`** | define `MRN` or `Money` **once** — format, validation, widget, label — then reuse it everywhere. Change the rule in one place |
 | **`invariants`** | `unique` (single or compound) becomes a **real DB constraint**, and `expression` rules are enforced as **runtime validation with a clear error** (no SQL `CHECK` constraint is emitted) — not a comment nobody enforces |
 | **`reference` fields / bonds** | foreign keys, joins, cascade behaviour, and a **searchable picker in the UI** — from one declaration |
-| **`extends` / `specializes`** | concept inheritance. Shared fields declared once; specialized concepts add to them |
+| **`specializes`** | concept inheritance. Shared fields declared once; specialized concepts add to them |
 | **`indexes`** | declare the indexes your queries need; they are created and tracked |
 | **`derivedExpression` / `defaultExpression`** | computed and defaulted values evaluated **server-side**, so every client agrees |
 | **`sensitive`** | mark a field and its value is masked in trace, event and execution records, in audit-trail diffs (`*** -> ***`), and in external-AI review packs. The CSV/XLSX export does not mask it yet |

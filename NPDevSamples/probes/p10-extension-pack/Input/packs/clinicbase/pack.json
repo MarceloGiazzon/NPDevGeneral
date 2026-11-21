@@ -4,7 +4,7 @@
   "pack": "clinicbase",
   "version": "1.0.0",
   "namespace": "com.npdev.clinicbase",
-  "description": "PACK-10 probe (first-class extends): a base pack with a Patient concept that an extension pack will additively extend via the first-class `extends` keyword.",
+  "description": "PACK-10 probe (augments): a base pack with a Patient concept that an extension pack will additively augment via the `augments` keyword.",
   "category": "other",
   "author": "NPDev",
   "concepts": [

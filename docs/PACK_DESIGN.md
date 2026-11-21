@@ -113,12 +113,12 @@ three leave the base pack byte-for-byte reusable elsewhere:
 | Need | Mechanism | Where it lives |
 |---|---|---|
 | A new type that behaves like an existing one, with extra fields/behavior, wherever the base is legitimately open to it | **`specializes`** (element-level: concept, capability, event, …) | Consuming app or pack, gated by `extensionPoints` if the base member is `private` |
-| Add fields to an existing concept **in place** — every existing consumer of the base concept sees the new field on the same table, no second copy | **`extends`** (pack-level: `{"pack": "...", "concept": "..."}`) | A separate extension pack; composed additively by `PackExtensionComposer` |
+| Add fields to an existing concept **in place** — every existing consumer of the base concept sees the new field on the same table, no second copy | **`augments`** (pack-level: `{"pack": "...", "concept": "..."}`) | A separate extension pack; composed additively by `PackExtensionComposer` |
 | Attach new, optional data to an existing concept **without touching it at all** — a 1:1 FK-linked side table | **`satelliteOf`** (concept-level: a pack-qualified base reference) | A satellite concept in the consuming pack/app, enforced by `SemanticValidator` |
 
 Some specifics worth knowing before you pick one:
 
-- **`extends` is additive-only.** `PackExtensionComposer` patches new fields onto the base concept's
+- **`augments` is additive-only.** `PackExtensionComposer` patches new fields onto the base concept's
   own compiled shape (so every existing consumer sees the field on the same entity), but it refuses a
   field-shape collision rather than silently overwriting, and it refuses outright to extend any pack
   `PackSealednessAnalyzer` certifies sealed — a sealed pack ships as compiled bytecode with no JSON

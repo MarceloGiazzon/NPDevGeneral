@@ -325,6 +325,30 @@ public final class JsonModelParser {
                     "legacy-entities-root"
             ));
         }
+        // D-2 (2026-11-21): `extends` retired everywhere. On a concept it was an alias of `specializes`.
+        JsonNode rawConcepts = root.get("concepts");
+        if (rawConcepts != null && rawConcepts.isArray()) {
+            for (JsonNode rawConcept : rawConcepts) {
+                if (rawConcept != null && rawConcept.isObject() && rawConcept.has("extends")) {
+                    String conceptName = readText(rawConcept, "name");
+                    throw new DeprecationException(new ValidationDiagnostic(
+                            ValidationLayer.STRUCTURAL,
+                            ValidationSeverity.ERROR,
+                            "LEGACY_CONCEPT_EXTENDS",
+                            "Concept " + (conceptName == null ? "" : "'" + conceptName + "' ")
+                                    + "uses 'extends', which was removed (D-2): it was only ever an alias of 'specializes'.",
+                            "NPDevContract",
+                            "$.concepts[" + (conceptName == null ? "?" : conceptName) + "].extends",
+                            null,
+                            null,
+                            "specializes",
+                            null,
+                            "Rename the concept's 'extends' to 'specializes' (same value).",
+                            "legacy-concept-extends"
+                    ));
+                }
+            }
+        }
     }
 
     public ModelAst parse(JsonNode root, String sourceLabel) throws IOException {
@@ -421,7 +445,7 @@ public final class JsonModelParser {
 
         for (JsonNode ent : conceptsNode) {
             String name = requiredText(ent, "name");
-            String extendsName = readText(ent, "extends");
+            String extendsName = null; // `extends` retired (D-2); checkDeprecatedAuthoringShape refuses it first
             String specializesName = readText(ent, "specializes");
             PresentationMetadataAst conceptUi = parsePresentationMetadata(
                     ent.get("ui"),

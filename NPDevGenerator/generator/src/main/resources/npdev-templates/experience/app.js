@@ -1,7 +1,7 @@
 // Experience client: bootstrap, hash router (#/<screen>[/<id>]) and shell (top bar on web, bottom tab bar on mobile).
 // It renders only what GET /api/x/me returns and starts only the flows the server resolved as startable; the server
 // enforces access on every call. One renderer per archetype; kinds that are not built yet show a clear card.
-import { SUPPORTED_KINDS, badgeNumber, buildHash, card, h, iconFor, isVisible, localBadge, navEntries, notSupportedCard,
+import { SUPPORTED_KINDS, badgeNumber, buildHash, card, h, iconFor, iconNode, isVisible, localBadge, navEntries, notSupportedCard,
   parseHash, resolveRoute, scopeVars, tabLayout } from "./core.js";
 import { createApi } from "./api.js";
 import { BADGE_POLL_MS, createTicker, pollWhileVisible, watch } from "./live.js";
@@ -32,7 +32,7 @@ function fatal(root, message) {
 function navLink(entry, className) {
   const badge = h("span", { class: "badge-count", hidden: true });
   const el = h("a", { class: className, href: entry.screen === MORE ? buildHash(MORE) : buildHash(entry.screen) },
-    h("span", { class: "icon", "aria-hidden": "true", text: iconFor(entry.icon) || entry.label.charAt(0).toUpperCase() }),
+    h("span", { class: "icon", "aria-hidden": "true", text: iconNode(entry.icon) ? null : iconFor(entry.icon) || entry.label.charAt(0).toUpperCase() }, iconNode(entry.icon)),
     h("span", { class: "label", text: entry.label }), badge);
   return { el, badge, entry };
 }

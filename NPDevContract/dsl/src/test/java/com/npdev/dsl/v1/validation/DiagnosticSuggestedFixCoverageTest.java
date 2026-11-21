@@ -130,7 +130,7 @@ class DiagnosticSuggestedFixCoverageTest {
                     },
                     {
                       "name": "Audit",
-                      "extends": "NoSuchBase",
+                      "specializes": "NoSuchBase",
                       "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true },
                         { "name": "id2", "type": "uuid", "id": true, "required": true }

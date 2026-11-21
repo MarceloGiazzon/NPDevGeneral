@@ -994,7 +994,7 @@ public final class ModelSourceResolver {
         if (!privateNames.contains(refName)) {
             return; // Public (or refQualifier declares no visibility at all -- fully public default).
         }
-        if (("specializes".equals(fieldName) || "extends".equals(fieldName))
+        if ("specializes".equals(fieldName)
                 && state.extensionPointsByQualifier.getOrDefault(refQualifier, Set.of()).contains(refName)) {
             return; // Declared extension point -- specialization is the one exempted use.
         }
@@ -1239,7 +1239,7 @@ public final class ModelSourceResolver {
         rewriteTextField(object, "conceptRef", conceptRewriteMap, qualifiedReferenceValidator);
         rewriteTextField(object, "domainType", resolverFor(rewriteMaps, ambiguousNames, "domainTypes"), qualifiedReferenceValidator);
         if ("concepts".equals(rootKey) && parentKey.isBlank()) {
-            // P4.1: a concept's OWN specializes/extends -- by established convention (see
+            // P4.1: a concept's OWN specializes -- by established convention (see
             // SpecializationParentVersionDriftTest's fixtures) always authored already-qualified
             // when it crosses a pack boundary, never bare-resolved here (conceptRewriteMap only
             // matters for the theoretical bare-name case; it is a no-op for a same-pack or app-root
@@ -1247,7 +1247,6 @@ public final class ModelSourceResolver {
             // checkMemberVisibility (via qualifiedReferenceValidator) the one thing it needs: to see
             // the already-qualified value at all.
             rewriteTextField(object, "specializes", conceptRewriteMap, qualifiedReferenceValidator);
-            rewriteTextField(object, "extends", conceptRewriteMap, qualifiedReferenceValidator);
         }
         if ("queries".equals(rootKey)) {
             rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
@@ -1503,6 +1502,10 @@ public final class ModelSourceResolver {
         if (!node.isObject()) {
             throw error(packFile, "$", "Pack file must be a JSON object");
         }
+        if (node.has("extends")) {
+            throw error(packFile, "/extends", "Pack 'extends' was renamed 'augments' (D-2): 'extends' no longer exists in "
+                    + "the DSL ('specializes' is is-a, 'augments' is adds-to). Rename it, same value {\"pack\": ..., \"concept\": ...}.");
+        }
         PACK_SCHEMA_VALIDATOR.validate(node, packFile.toString());
         // REG-353: the platform's own translations of this pack's labels (the pack stays English on disk).
         PackLabelTranslations.apply((ObjectNode) node);
@@ -1565,14 +1568,14 @@ public final class ModelSourceResolver {
         if (rawPack.has("migrations")) {
             resolvedPack.set("migrations", rawPack.get("migrations").deepCopy());
         }
-        // PACK-10/R8.11: first-class `extends` keyword -- same "schema-validates then silently
-        // vanishes" hazard as packs[]/requires/migrations before them. PackExtensionComposer
-        // .readExtensionTarget() is the actual consumer, one layer up.
-        if (rawPack.has("extends")) {
-            resolvedPack.set("extends", rawPack.get("extends").deepCopy());
+        // PACK-10/R8.11 (renamed `extends` -> `augments`, D-2): first-class `augments` keyword -- same
+        // "schema-validates then silently vanishes" hazard as packs[]/requires/migrations before
+        // them. PackExtensionComposer.readExtensionTarget() is the actual consumer, one layer up.
+        if (rawPack.has("augments")) {
+            resolvedPack.set("augments", rawPack.get("augments").deepCopy());
         }
         // P4.1: same "schema-validates then silently vanishes" hazard as packs[]/requires/
-        // migrations/extends above -- neither `private` nor `extensionPoints` is a
+        // migrations/augments above -- neither `private` nor `extensionPoints` is a
         // PACK_ROOT_SCALAR_KEYS scalar or a MODEL_ARRAY_KEYS collection. recordVisibility (called
         // one layer up, from PackDependencyGraphWalker.run) is the actual consumer.
         if (rawPack.has("private")) {

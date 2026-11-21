@@ -208,7 +208,11 @@ public final class ExperienceEmitter extends AbstractEmitter {
                 ObjectNode meta = into.putObject(name);
                 meta.put("type", field.getDslType() == null ? "" : field.getDslType());
                 String label = field.getUi() == null ? null : field.getUi().getLabel();
-                meta.put("label", hasText(label) ? label : field.getName());
+                // No declared label: send none, so the browser humanizes the name ("riderAccount" -> "Rider account")
+                // instead of showing the raw field name.
+                if (hasText(label)) {
+                    meta.put("label", label);
+                }
                 meta.put("required", field.isRequired());
                 if (!field.getEnumValues().isEmpty()) {
                     ArrayNode values = meta.putArray("values");

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""PACK-10 live proof: first-class `extends` keyword end-to-end.
+"""PACK-10 live proof: `augments` keyword end-to-end.
 
 Generates, builds and boots `NPDevSamples/probes/p10-extension-pack` (clinicbase pack with Patient
-concept, composed with a throwaway extension pack 'clinicext' that uses the FIRST-CLASS `extends`
-keyword -- NOT metadata.extends -- to additively contribute a bloodType field onto clinicbase::Patient),
+concept, composed with a throwaway extension pack 'clinicext' that uses the `augments`
+keyword to additively contribute a bloodType field onto clinicbase::Patient),
 then exercises the real generated CRUD REST surface:
 
   1. POST a base Patient row through its generated endpoint (`/api/concepts/clinicbase_patients`).
      The Patient concept ends up with both name (from base) and bloodType (from extension) after
-     composition -- proving the first-class `extends` keyword was accepted and processed.
+     composition -- proving the `augments` keyword was accepted and processed.
   2. GET the Patient back and assert it carries BOTH the base field (name) AND the extension field
      (bloodType) -- the extension mechanism merged them additively at compile time, and the generated
      app exposes them as a single unified concept at runtime.
@@ -54,7 +54,7 @@ def assertions(app: "_engine_proof.App", results: list[dict]) -> None:
         results.append({"assertion": name, "ok": bool(ok), "detail": detail})
         log(f"{'PASS' if ok else 'FAIL'}  {name}: {detail}")
 
-    # 1. Base Patient endpoint works -- the first-class `extends` keyword was accepted by the schema
+    # 1. Base Patient endpoint works -- the `augments` keyword was accepted by the schema
     # and processed by PackExtensionComposer, producing a unified Patient concept with both base and
     # extension fields. A unique name per run: H2Local is file-based and persists across runs.
     marker = uuid.uuid4().hex[:10]

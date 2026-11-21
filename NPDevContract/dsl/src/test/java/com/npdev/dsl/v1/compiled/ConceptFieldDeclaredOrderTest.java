@@ -32,7 +32,7 @@ class ConceptFieldDeclaredOrderTest {
                   {"name":"status","type":"string"},
                   {"name":"theme","type":"string"}
                 ]},
-                {"name":"SponsoredChallenge","extends":"Challenge","fields":[
+                {"name":"SponsoredChallenge","specializes": "Challenge","fields":[
                   {"name":"sponsor","type":"string"},
                   {"name":"budget","type":"int"}
                 ]}

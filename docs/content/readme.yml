@@ -177,7 +177,7 @@ sections:
       | `{"type":"unique","fields":["isbn"]}` | a real DB constraint, server validation, and a clear error |
       | an `expression` invariant | business rules enforced where they cannot be bypassed |
       | a `reference` field | foreign key, joins, cascade rules, and a searchable picker in the UI |
-      | `extends` on a concept | inheritance — shared fields declared once |
+      | `specializes` on a concept | inheritance — shared fields declared once |
       | `derivedExpression` | computed values evaluated server-side, so every client agrees |
       | `indexes` | the indexes your queries need, created and tracked |
       | a `lifecycle` | a state machine on a status field: declared states and transitions, and a move the model does not allow is refused |

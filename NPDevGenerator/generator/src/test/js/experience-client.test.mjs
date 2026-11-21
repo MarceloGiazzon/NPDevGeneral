@@ -151,7 +151,9 @@ await test("formatValue: money/unitScale, stars, duration, distance, badge, empt
   assert.equal(f(3.6, { format: "stars" }).text, "★★★★☆");
   assert.equal(f(75, { format: "duration" }).text, "1 h 15 min");
   assert.equal(f(1.234, { format: "distance" }).text, "1.2 km");
-  assert.deepEqual(f("OFFERED", { format: "badge" }), { text: "OFFERED", kind: "badge" });
+  assert.deepEqual(f("OFFERED", { format: "badge" }), { text: "Offered", kind: "badge" });
+  assert.deepEqual(f("NO_DRIVER", { format: "badge" }), { text: "No driver", kind: "badge" });
+  assert.deepEqual(f("Gold member", { format: "badge" }), { text: "Gold member", kind: "badge" });
   assert.equal(f(null, {}).kind, "muted");
   assert.equal(f(true, {}).text, "Yes");
   assert.equal(f("2026-01-01T11:55:00Z", { format: "relative-time" }).text, "5 min ago");
@@ -548,7 +550,7 @@ await test("board: columns from fieldMeta enum order, unknown and missing values
   const ctx = makeCtx({ name: "b", kind: "board", dataUrl: "/b", groupBy: "status", fieldMeta: BMETA, columns: ["name", "status", "fareCents"], actions: [MOVE] }, { "GET /b": { body: { content: rows, totalElements: 5 } } });
   await boardMod.render(ctx);
   const cols = byClass(ctx.root, "board-col");
-  assert.deepEqual(cols.map((c) => c.attrs["aria-label"]), ["WAITING", "ACTIVE", "DONE", "WEIRD", "No value"]);
+  assert.deepEqual(cols.map((c) => c.attrs["aria-label"]), ["Waiting", "Active", "Done", "Weird", "No value"]);
   assert.deepEqual(cols.map((c) => byClass(c, "badge")[0].textContent), ["1", "2", "0", "1", "1"]);
   assert.equal(byClass(cols[1], "board-card").length, 2);
   assert.equal(byClass(cols[2], "board-card").length, 0);
@@ -643,7 +645,7 @@ await test("dashboard: tile/table/list/chart/map widgets, span classes, links, O
   assert.equal(bars.length, 2, "rows counted per enum value: ACTIVE and DONE");
   assert.equal(bars[0].attrs.style, "width:100%");
   assert.equal(bars[1].attrs.style, "width:50%");
-  assert.ok(byTag(ws[6], "div").find((d) => d.attrs.role === "img").attrs["aria-label"].includes("ACTIVE 2"));
+  assert.ok(byTag(ws[6], "div").find((d) => d.attrs.role === "img").attrs["aria-label"].includes("Active 2"));
   assert.equal(byClass(ws[7], "bar").length, 2);
   assert.equal(byTag(ctx.root, "img").length, 0, "hostile row text stays text");
   assert.ok(html(ctx.root).includes("&lt;img src=x onerror="));

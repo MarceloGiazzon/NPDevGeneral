@@ -186,7 +186,6 @@
   },
   "slots": {
     "concept.name": "The concept's name, unique within the model (PascalCase by convention). It names the table, the REST resource (`/api/<Concept>`) and every reference to the concept from queries, flows and screens.",
-    "concept.extends": "Alias of `specializes`: the name of a base concept this concept builds on.",
     "concept.specializes": "Name of a base concept (usually contributed by a pack, written `pack::Concept`) that this concept specializes: it starts from the base's fields, invariants and events and may add to them. The base is pinned to the pack version the app was generated against (see `specializesFloat`).",
     "concept.truthLevel": "The concept's declared verification maturity, `T0` (least) to `T6` (most). The release gate (`--releaseGate --targetTruthLevel=<T>`) refuses to promote a model whose concepts are below the target level.",
     "concept.module": "Name of the bounded context (`modules[]` entry) this concept belongs to. Other contexts refer to it as `context::Concept`.",

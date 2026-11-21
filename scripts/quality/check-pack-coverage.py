@@ -9,7 +9,7 @@ declarations exercise the three pack-composition surfaces:
 
   - packs[].from            remote pack import (OCI/git+ coordinate), PACK-8 / PK-5
   - concept.satelliteOf     satellite extension of a base concept, PACK-10 / PK-6
-  - (pack-level) extends    a pack inheriting another pack, pack-composition depth
+  - (pack-level) augments   a pack adding fields to another pack's concept, pack-composition depth
 
 Unlike check-dsl-coverage.py it can INCLUDE NPDevSamples/probes/ (--probes): those are the live
 pack-composition proofs (e.g. probes/p6-satellite-extension), kept out of DSL coverage only
@@ -89,7 +89,7 @@ def _scan_root(root: Path, include_probes: bool, from_use: set, sat_use: set, ex
             if isinstance(c, dict) and c.get("satelliteOf"):
                 sat_use.add(rel)
         if rel.endswith("pack.json"):
-            if data.get("extends"):
+            if data.get("augments"):
                 ext_use.add(rel)
             if data.get("satelliteOf"):
                 sat_use.add(rel)
@@ -134,7 +134,7 @@ def main(argv: list[str]) -> int:
     rows = [
         ("packs.from", from_use, False),
         ("concept.satelliteOf", sat_use, True),
-        ("pack.extends", ext_use, True),
+        ("pack.augments", ext_use, True),
     ]
     print(f"Pack-coverage check: roots={[str(r) for r in roots]}, probes={'on' if args.probes else 'off'}\n")
     fails = 0

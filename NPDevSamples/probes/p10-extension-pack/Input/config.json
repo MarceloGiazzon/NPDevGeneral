@@ -3,7 +3,7 @@
   "configVersion": "1.0",
   "scenario": {
     "name": "p10-extension-pack",
-    "description": "PACK-10 probe: clinicbase composed with a throwaway 'clinicext' extension pack using the first-class `extends` keyword to additively contribute a field onto clinicbase::Patient.",
+    "description": "PACK-10 probe: clinicbase composed with a throwaway 'clinicext' extension pack using the `augments` keyword to additively contribute a field onto clinicbase::Patient.",
     "outputRoot": "..\\Output"
   },
   "generator": {
@@ -45,7 +45,7 @@
     "runtimeUrl": "http://localhost:8176/",
     "databaseMode": "h2-local",
     "notes": [
-      "Storage/pack probe for PACK-10 (first-class extends). Do not add features."
+      "Storage/pack probe for PACK-10 (augments). Do not add features."
     ]
   }
 }

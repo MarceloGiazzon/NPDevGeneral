@@ -2,7 +2,7 @@
 // shows the label fields and the screen's actions as ordinary buttons -- a "move" to another column is just an action
 // that starts a flow, so it works with a tap and a keyboard. Drag and drop is an ADDITIONAL path, wired only for an
 // action that declares `style: "move"` and a `moveTo` column value; it triggers that same action (confirm included).
-import { cellValue, formatValue, h, emptyCard, card, pathValue, selectColumns, valueNode } from "./core.js";
+import { cellValue, enumText, formatValue, h, emptyCard, card, pathValue, selectColumns, valueNode } from "./core.js";
 import { renderActions } from "./actions.js";
 import { loadRows } from "./api.js";
 
@@ -37,7 +37,7 @@ export async function render(ctx) {
     const ul = h("ul", { class: "rows" });
     lists.set(key, ul);
     const count = h("span", { class: "badge", text: "0" });
-    const el = h("section", { class: "board-col", "aria-label": key === "" ? noValue() : key,
+    const el = h("section", { class: "board-col", "aria-label": key === "" ? noValue() : enumText(key),
       ondragover: (e) => { if (moveFor(dragging, key) && e && e.preventDefault) e.preventDefault(); },
       ondrop: (e) => {
         if (e && e.preventDefault) e.preventDefault();
@@ -45,7 +45,7 @@ export async function render(ctx) {
         if (action) dragging.box.activate(action);
         dragging = null;
       }
-    }, h("h3", { class: "board-col-title" }, h("span", { text: key === "" ? noValue() : key }), count), ul);
+    }, h("h3", { class: "board-col-title" }, h("span", { text: key === "" ? noValue() : enumText(key) }), count), ul);
     el.count = count;
     return el;
   };

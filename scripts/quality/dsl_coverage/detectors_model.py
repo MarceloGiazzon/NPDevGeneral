@@ -49,13 +49,6 @@ def _has_flow_io_schema(model: dict) -> bool:
     )
 
 
-def _has_concept_extends(model: dict) -> bool:
-    return any(
-        isinstance(c, dict) and c.get("extends")
-        for c in (model.get("concepts", None) or [])
-    )
-
-
 def _has_post_checkpoint(model: dict) -> bool:
     return any(
         str(s.get("type", "")).lower() == "invariantcheck"

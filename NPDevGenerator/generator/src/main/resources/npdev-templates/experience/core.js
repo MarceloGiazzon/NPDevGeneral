@@ -5,6 +5,23 @@ export const MAX_COLUMNS = 7;
 export const MAX_TABS = 5;
 export const SUPPORTED_KINDS = ["list", "detail", "form", "status", "inbox", "board", "dashboard", "map", "picker", "document", "custom"];
 
+// One icon set (24x24 outline paths), drawn as SVG so every platform shows the same glyphs. The text glyphs in ICONS
+// stay as the fallback where there is no SVG (iconNode returns null).
+const ICON_PATHS = {
+  car: "M5 16v-5l2-5h10l2 5v5M3 16h18M7.5 19.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3M16.5 19.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3",
+  clock: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 7v5l3 2",
+  list: "M4 6h16M4 12h16M4 18h16",
+  bell: "M6 16v-5a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0",
+  user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M4 20a8 8 0 0 1 16 0",
+  chart: "M5 20v-9M12 20V4M19 20v-6",
+  map: "M9 4 3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14",
+  home: "M4 11l8-7 8 7v9h-5v-6H9v6H4z",
+  plus: "M12 5v14M5 12h14",
+  star: "M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z",
+  search: "M11 5a6 6 0 1 0 0 12 6 6 0 0 0 0-12M16 16l4 4",
+  settings: "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1",
+  board: "M4 5h4v14H4zM10 5h4v9h-4zM16 5h4v12h-4z"
+};
 const ICONS = { car: "\u{1F697}", clock: "\u23F1", list: "\u2630", bell: "\u{1F514}", user: "\u{1F464}", chart: "\u{1F4CA}",
   map: "\u{1F5FA}", home: "\u2302", plus: "\u2795", star: "\u2605", search: "\u{1F50D}", settings: "\u2699" };
 
@@ -43,6 +60,24 @@ export function humanize(name) {
 }
 
 export const iconFor = (name) => ICONS[String(name || "").toLowerCase()] || "";
+
+/** The SVG for an icon name, or null (unknown name, or no SVG support in this DOM). */
+export function iconNode(name) {
+  const d = ICON_PATHS[String(name || "").toLowerCase()];
+  if (!d || typeof document === "undefined" || typeof document.createElementNS !== "function") return null;
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  const attrs = { viewBox: "0 0 24 24", width: "22", height: "22", fill: "none", stroke: "currentColor", "stroke-width": "1.8",
+    "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true", focusable: "false" };
+  for (const [k, v] of Object.entries(attrs)) svg.setAttribute(k, v);
+  const path = document.createElementNS(ns, "path");
+  path.setAttribute("d", d);
+  svg.appendChild(path);
+  return svg;
+}
+
+/** A stored enum value as a person reads it: NO_DRIVER -> "No driver". Anything not SHOUTING_SNAKE stays as it is. */
+export const enumText = (value) => (/^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$/.test(String(value)) ? humanize(value) : String(value));
 const PATH = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/;
 export const isPath = (text) => PATH.test(String(text));
 
@@ -207,7 +242,7 @@ export function formatValue(value, column, opts) {
     case "distance": return asText(Math.round(scaled * 10) / 10 + " km");
     case "duration": return asText(duration(scaled));
     case "stars": { const n = Math.max(0, Math.min(5, Math.round(scaled))); return asText("\u2605".repeat(n) + "\u2606".repeat(5 - n)); }
-    case "badge": return { text: String(value), kind: "badge" };
+    case "badge": return { text: enumText(value), kind: "badge" };
     case "relative-time": return asText(relativeTime(value, o.now == null ? Date.now() : o.now));
     case "date": case "datetime": {
       const d = new Date(value);

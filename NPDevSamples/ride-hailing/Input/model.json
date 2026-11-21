@@ -4049,21 +4049,32 @@
       "columns": [
         {
           "value": "createdAt",
+          "label": "When",
           "format": "relative-time"
         },
         {
           "value": "status",
           "format": "badge"
         },
-        "riderAccount",
-        "driverName",
+        {
+          "value": "riderAccount",
+          "label": "Rider"
+        },
+        {
+          "value": "driverName",
+          "label": "Driver"
+        },
         {
           "value": "fareCents",
+          "label": "Fare",
           "format": "money",
           "currency": "BRL",
           "unitScale": 0.01
         },
-        "zoneName",
+        {
+          "value": "zoneName",
+          "label": "Zone"
+        },
         {
           "value": "surgeMultiplier",
           "label": "Surge",

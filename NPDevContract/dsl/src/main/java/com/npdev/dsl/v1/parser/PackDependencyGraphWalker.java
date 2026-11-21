@@ -403,9 +403,6 @@ final class PackDependencyGraphWalker {
             ObjectNode concept = (ObjectNode) conceptNode;
             String specializesName = ModelSourceResolver.textOrBlank(concept.get("specializes"));
             if (specializesName.isBlank()) {
-                specializesName = ModelSourceResolver.textOrBlank(concept.get("extends"));
-            }
-            if (specializesName.isBlank()) {
                 continue;
             }
             boolean floats = concept.has("specializesFloat") && concept.get("specializesFloat").asBoolean(false);

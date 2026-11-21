@@ -4,10 +4,10 @@
   "pack": "clinicext",
   "version": "1.0.0",
   "namespace": "com.npdev.clinicext",
-  "description": "PACK-10 probe (first-class extends): an extension pack that additively adds a field to clinicbase::Patient using the first-class `extends` keyword (not the legacy metadata.extends convention).",
+  "description": "PACK-10 probe (augments): an extension pack that additively adds a field to clinicbase::Patient using the `augments` keyword.",
   "category": "other",
   "author": "NPDev",
-  "extends": { "pack": "clinicbase", "concept": "Patient" },
+  "augments": { "pack": "clinicbase", "concept": "Patient" },
   "packs": [
     { "$ref": "../clinicbase/pack.json" }
   ],
