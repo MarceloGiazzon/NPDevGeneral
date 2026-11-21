@@ -1055,15 +1055,9 @@
     focusStep();
   }
 
-  function openYourOwnParts() {
-    if (window.__npdevShowScreen) window.__npdevShowScreen("packs");
-    const heading = document.querySelector("#screen-packs .packs-h");
-    if (heading && heading.scrollIntoView) heading.scrollIntoView({ block: "start" });
-  }
-
   function onGoApps() {
     if (S.applied && S.applied.intent === "pack") {
-      openYourOwnParts();
+      if (window.__npdevShowScreen) window.__npdevShowScreen("myparts");
       return;
     }
     if (window.__npdevShowScreen) window.__npdevShowScreen("apps");
@@ -1513,8 +1507,6 @@
     $("browserai-open").addEventListener("click", onOpenApp);
     $("browserai-see-run").addEventListener("click", onSeeRun);
     $("browserai-go-apps").addEventListener("click", onGoApps);
-    // The reusable parts a person made live on the Ready-made parts screen, under "Your own parts": reachable from here at any time.
-    $("browserai-open-parts").addEventListener("click", openYourOwnParts);
     $("browserai-undo").addEventListener("click", onUndo);
     for (let n = 1; n <= 4; n++) {
       $(`browserai-toggle-${n}`).addEventListener("click", () => {

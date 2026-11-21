@@ -1123,6 +1123,7 @@
   "What each concept of your app turns into when NPDev builds it: the Java classes, the database change and the screen address it produces. Click a concept on the left to highlight what it produced on the right.": "No que cada conceito do seu app se transforma quando o NPDev o constrói: as classes Java, a mudança no banco de dados e o endereço de tela que ele produz. Clique em um conceito à esquerda para destacar à direita o que ele produziu.",
   "Packs": "Pacotes",
   "Packs are ready-made parts an app can include, such as user accounts and sign-in. This lists the ones this app uses and the exact version of each.": "Pacotes são partes prontas que um app pode incluir, como contas de usuário e login. Aqui estão os que este app usa e a versão exata de cada um.",
+  "My parts": "Meus pacotes",
   "Ready-made parts": "Pacotes prontos",
   "Add finished pieces (customers, stock, ratings...) to your app.": "Adicione partes prontas (clientes, estoque, avaliações...) ao seu app.",
   "In this app": "Neste app",

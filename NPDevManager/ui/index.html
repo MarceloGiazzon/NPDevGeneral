@@ -567,7 +567,6 @@
             <label><input type="radio" name="browserai-intent" id="browserai-intent-change" value="change"> Change this app</label>
             <label><input type="radio" name="browserai-intent" id="browserai-intent-pack" value="pack"> Make a reusable part</label>
           </div>
-          <p class="ba-note"><button type="button" class="btn ghost" id="browserai-open-parts">Your own parts</button></p>
           <div id="browserai-pack-fields" hidden>
             <label class="ba-field">Is it a new part, or a new version of one of yours?
               <select id="browserai-packbase"><option value="">A new part</option></select>
@@ -924,6 +923,19 @@
       <div class="verify-table-wrap" id="verify-table-wrap" hidden></div>
     </section>
 
+    <!-- My parts (REG-348 follow-up): the reusable parts a person made with a browser AI and kept on this computer, and
+         publishing one to the public catalog. Its own tab in My apps so it is found without making a new part first. -->
+    <section id="screen-myparts" class="screen" hidden>
+      <h1>My parts</h1>
+      <p class="subtitle">Parts you made with an AI are kept on this computer. Nothing is shared with anyone.</p>
+      <div class="packs-toolbar">
+        <button class="btn" id="packs-make-with-ai">Make a part with a browser AI</button>
+        <span id="myparts-status" class="status-line"></span>
+      </div>
+      <div id="packs-mine"></div>
+      <div id="packs-publish" class="packs-publish" hidden></div>
+    </section>
+
     <!-- Ready-made parts (W3.2, reshaped by P3): the parts one app uses, and a catalog to add more from. Thin pipe over
          `npdev pack list` / `pack why` / `pack search` / `pack add --json` / `pack update --json` -- nothing here decides
          what a signature, an update or a refusal means; the CLI already did, in plain codes this screen only words. -->
@@ -936,14 +948,6 @@
         <button class="btn" id="packs-refresh">⟳ REFRESH</button>
         <span id="packs-status" class="status-line"></span>
       </div>
-
-      <h2 class="packs-h">Your own parts</h2>
-      <p class="subtitle">Parts you made with an AI are kept on this computer. Nothing is shared with anyone.</p>
-      <div class="packs-toolbar">
-        <button class="btn" id="packs-make-with-ai">Make a part with a browser AI</button>
-      </div>
-      <div id="packs-mine"></div>
-      <div id="packs-publish" class="packs-publish" hidden></div>
 
       <h2 class="packs-h">In this app</h2>
       <p class="subtitle">The app picked at the top already uses these parts. Press Why is it here? to see which part needs which.</p>

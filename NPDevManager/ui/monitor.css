@@ -26,7 +26,7 @@ main:has(#screen-scrap:not([hidden])) {
    They used to get a black background only by accident, from an unscoped `.screen` rule that also
    blacked out the light form screens -- and never the tokens, so their text rendered dark on black. */
 #screen-monitor, #screen-scrap,
-#screen-dbio, #screen-evals, #screen-gpuchecks, #screen-packs, #screen-provenance,
+#screen-dbio, #screen-evals, #screen-gpuchecks, #screen-packs, #screen-myparts, #screen-provenance,
 #screen-providers, #screen-secrets, #screen-studio, #screen-verification {
 
   background:

@@ -1654,12 +1654,15 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   await page.waitForTimeout(300);
   check("browser AI: with an app selected in the workspace the screen opens on 'change that app'",
     (await page.$eval("#browserai-app", (e) => e.value)) === WS_APP && (await page.$eval("#browserai-intent-change", (e) => e.checked)), "");
-  check("browser AI: step 1 always offers 'Your own parts', and it opens the Ready-made parts screen where they are listed",
-    (await shown("#browserai-open-parts")) && (await text("#browserai-open-parts")) === "Your own parts", String(await text("#browserai-open-parts")));
-  await page.click("#browserai-open-parts");
+  check("My parts is a tab next to All apps and Use a browser AI (and the old Your own parts button is gone)",
+    (await page.evaluate(() => [...document.querySelectorAll('.tab[data-screen="myparts"]')].some((t) => t.textContent.trim() === "My parts")))
+      && !(await page.$("#browserai-open-parts")), "");
+  await page.evaluate(() => document.querySelector('.tab[data-screen="myparts"]').click());
   await page.waitForTimeout(200);
-  check("browser AI: 'Your own parts' shows the Ready-made parts screen",
-    (await page.evaluate(() => !document.getElementById("screen-packs").hidden)) && (await shown("#packs-mine")), "");
+  check("My parts: the tab shows the screen with Your own parts and no other screen's sections",
+    (await page.evaluate(() => !document.getElementById("screen-myparts").hidden)) && (await shown("#packs-mine")) && (await shown("#packs-make-with-ai"))
+      && !(await page.evaluate(() => document.getElementById("screen-packs").contains(document.getElementById("packs-mine"))))
+      && (await page.evaluate(() => document.querySelector("#screen-myparts h1").textContent)) === "My parts", "");
   await page.evaluate(() => window.__npdevShowScreen("browserai"));
   await page.waitForTimeout(200);
   await page.evaluate(() => document.getElementById("browserai-intent-create").click());
@@ -2568,8 +2571,8 @@ if (process.env.NPDEV_A11Y_WRITE === "1") {
 {
   const KEY = "npdev.manager.nprCheckout";
   const reopen = async () => {
-    await page.evaluate(async () => { await window.__npdevShowScreen("packs"); document.getElementById("packs-mine").innerHTML = ""; });
-    await page.evaluate(async () => { await window.__npdevShowScreen("home"); await window.__npdevShowScreen("packs"); });
+    await page.evaluate(async () => { await window.__npdevShowScreen("myparts"); document.getElementById("packs-mine").innerHTML = ""; });
+    await page.evaluate(async () => { await window.__npdevShowScreen("home"); await window.__npdevShowScreen("myparts"); });
     await page.waitForSelector("#packs-mine [data-publish]", { timeout: 4000 });
   };
   const publishText = () => page.evaluate(() => document.getElementById("packs-publish").textContent.replace(/\s+/g, " ").trim());

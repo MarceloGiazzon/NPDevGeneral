@@ -495,8 +495,8 @@ function initPacks() {
   });
   packsRefreshMine();
   // Coming back to this screen (after saving a part, say) re-reads the folder: nothing else would.
-  new MutationObserver(() => { if (!document.getElementById("screen-packs").hidden) packsRefreshMine(); })
-    .observe(document.getElementById("screen-packs"), { attributes: true, attributeFilter: ["hidden"] });
+  new MutationObserver(() => { if (!document.getElementById("screen-myparts").hidden) packsRefreshMine(); })
+    .observe(document.getElementById("screen-myparts"), { attributes: true, attributeFilter: ["hidden"] });
   document.getElementById("packs-refresh").addEventListener("click", async () => {
     await packsRefreshAppPicker();
     await refreshPacks();

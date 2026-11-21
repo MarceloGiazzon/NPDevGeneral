@@ -3,8 +3,9 @@ title: >-
   The Portuguese Manager shows English sentences in the publish dialog, in its refusals and in the AI's own lines of the proposal
 type: GAP
 severity: LOW
-status: PARTIAL
+status: DONE
 opened: 2026-11-20
+closed: 2026-11-21
 source: >-
   Owner's real round 2026-11-20 (REG-334), screenshots of "Publish to the public catalog" and of "What the AI proposes", plus the owner's
   request to look for language mixing.
@@ -39,7 +40,8 @@ detail: |
   CHECKED 2026-11-21 (CLI half, `pack push --dry-run --language "Portuguese (Brazil)"` on the real ratings 1.0.1 and the real NPR clone, nothing written):
   the sentences come back in Portuguese ("Um pacote reutilizável ...", "Rating: 6 campos (...)", "visto por Manager e quem é dono de cada registro", "Busca AllRatings: lê
   registros de Rating.") and the public warning too ("Qualquer pessoa na internet poderá ver e usar esta parte."); the field count is the same in both lines.
-  STILL OPEN: what the owner saw in the real Portuguese Manager window when publishing 1.0.1 (the dialog, not the CLI).
+  CLOSED 2026-11-21: the owner looked at the real Portuguese Manager window's publish dialog and said it was fine ("That was ok"). The raw search names (AllRatings...) and the
+  validator's own refusal lines stay English on purpose (identifiers / written for an AI).
 guard:
   kind: test
   ref: NPDevCli/tests/test_relay_pack_ingest.py#IngestPackTests
@@ -47,7 +49,7 @@ guard:
     a pack preview says "1 kind of record, 5 fields" with the same count as the line below it, words an owner rule as "seen by whoever owns each
     record" (pt "visto por quem é dono de cada registro"); the Manager's argv carries --language (npdev.rs only_an_exact_part_and_version...).
   provenRed: false
-verification: UNIT_TESTED
+verification: VERIFIED_LIVE
 done_when: >-
   The publish dialog's sentences and refusals appear in the Manager's language (through npdev_relay_preview_pt or a catalogue), the
   proposal's AI lines are asked for in the person's language or clearly marked, and the pack summary counts fields the same way in both lines.
