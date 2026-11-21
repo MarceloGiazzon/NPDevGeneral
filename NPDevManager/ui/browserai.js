@@ -150,6 +150,18 @@
     if (el) el.focus({ preventScroll: false });
   }
 
+  // REG-355: a Java class refused (or not readable) at generation. The generator throws
+  //   "Forbidden Java source use in extensions/X.java: forbidden method call Thread.sleep; forbidden identifier Thread"
+  //   "Trusted Java source syntax error in extensions/X.java: line 3: ';' expected"
+  // and the Manager shows the error text, stack trace included. Returns {file, reasons, syntax} or null for anything else.
+  function javaRefusal(error) {
+    const text = String(error);
+    const forbidden = /Forbidden (?:plugin )?Java source use in (\S+?): (.+?)(?=\s+at\s+[\w.$]+\(|\s+at\s+com\.|\r?\n|$)/.exec(text);
+    if (forbidden) return { file: forbidden[1], reasons: forbidden[2].trim(), syntax: false };
+    const syntax = /(?:Trusted|Plugin) Java source syntax error in (\S+?): (.+?)(?=\s+at\s+[\w.$]+\(|\s+at\s+com\.|\r?\n|$)/.exec(text);
+    return syntax ? { file: syntax[1], reasons: syntax[2].trim(), syntax: true } : null;
+  }
+
   function note(id, text, bad) {
     const el = $(id);
     el.textContent = text || "";
@@ -1200,6 +1212,17 @@
       try {
         await invoke("generate_app_from_model", { appDir });
       } catch (e) {
+        // REG-355: the platform refuses a Java class a browser AI wrote at generation, and the generator's log carries it inside a
+        // stack trace. Say the refusal as a sentence (the reasons are the generator's own words: identifiers, not prose).
+        const refusal = javaRefusal(e);
+        if (refusal) {
+          return stop(
+            refusal.syntax ? "The Java class the AI wrote has a writing mistake." : "The platform refused the Java class the AI wrote.",
+            refusal.syntax
+              ? `${refusal.file} could not be read as Java: ${refusal.reasons}. Press Undo to take the class out of your app, or ask the AI for a version without the mistake.`
+              : `${refusal.file} uses something a flow class may not use: ${refusal.reasons}. Press Undo to take the class out of your app, or ask the AI for a version without it.`
+          );
+        }
         return stop("The app could not be built.", String(e));
       }
       if (!current()) return;

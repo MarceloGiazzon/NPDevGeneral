@@ -90,7 +90,7 @@ window.__TAURI__ = {
         // The browser-AI launch (build, start, wait): every step is logged in order so a check can read the sequence.
         case "start_app": window.__started = args.appDir; (window.__launchLog = window.__launchLog || []).push("start:" + args.appDir); if (window.__startError) throw window.__startError; return null;
         case "stop_app": window.__stopped = args.appDir; (window.__launchLog = window.__launchLog || []).push("stop:" + args.appDir); return { ok: true, how: "stub" };
-        case "generate_app_from_model": (window.__launchLog = window.__launchLog || []).push("generate:" + args.appDir); return null;
+        case "generate_app_from_model": (window.__launchLog = window.__launchLog || []).push("generate:" + args.appDir); if (window.__generateError) throw window.__generateError; return null;
         case "run_ops_script":
           (window.__launchLog = window.__launchLog || []).push("run:" + args.script + ":" + args.appDir);
           // Like the real one: the call returns at once and the build's end arrives later as an ops-event. Only the
@@ -1395,6 +1395,21 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   await page.waitForTimeout(300);
   check("browser AI: a failed build with no log to send has no 'Ask the AI to fix this' and no sentence about it, and the rest of the failure is unchanged",
     !(await shown("#browserai-fix")) && !(await shown("#browserai-fix-note")) && (await text("#browserai-launch")) === "The app could not be built." && (await shown("#browserai-rebuild")), "");
+  // REG-355: the platform refuses a Java class the AI wrote while generating the app. The generator's error arrives inside its log with a
+  // stack trace; the window must say it as one sentence naming the file and what it used, and keep the trace out of sight.
+  await page.evaluate(() => {
+    window.__generateError = "npdev generate app failed: [2/4] compiling the model ... Exception in thread \"main\" java.lang.IllegalStateException: Forbidden Java source use in extensions/Greeter.java: forbidden method call Thread.sleep; forbidden identifier Thread at com.npdev.generator.emitters.TrustedJavaSourcePolicy.validate(TrustedJavaSourcePolicy.java:85) at x";
+    window.__launchLog = []; window.__probeQueue = ["stopped"];
+  });
+  await page.click("#browserai-rebuild");
+  await page.waitForTimeout(300);
+  check("browser AI: a Java class the platform refuses is explained in one sentence (file and reasons), with no stack trace, and Undo is the way out",
+    (await text("#browserai-launch")) === "The platform refused the Java class the AI wrote." &&
+    /^extensions\/Greeter\.java uses something a flow class may not use: forbidden method call Thread\.sleep; forbidden identifier Thread\. Press Undo/.test(await text("#browserai-launch-prose")) &&
+    !/Exception in thread|at com\.npdev|TrustedJavaSourcePolicy/.test(await text("#browserai-launch-prose")) &&
+    (await page.$eval("#browserai-launch", (e) => e.classList.contains("bad"))) && (await shown("#browserai-rebuild")) && !(await shown("#browserai-fix")) &&
+    (await page.evaluate(() => window.__launchLog.every((l) => !l.startsWith("run:") && !l.startsWith("start:")))), String(await text("#browserai-launch-prose")));
+  await page.evaluate(() => { window.__generateError = null; });
   await page.evaluate(() => { window.__fixAvailable = true; window.__launchLog = []; window.__buildExit = 2; window.__probeQueue = ["stopped"]; });
   await page.click("#browserai-rebuild");
   await page.waitForTimeout(300);
