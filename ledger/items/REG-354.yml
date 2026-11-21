@@ -1,0 +1,30 @@
+id: REG-354
+title: >-
+  Code a browser AI writes (a JS page, a Java capability, a conversion hook) is refused outright: there is no safe way yet to accept it, show it, mark where it came from, or remove it in one click
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-21
+source: >-
+  Split out of REG-323 by the owner's decision of 2026-11-21 ("follow your suggestions"): the F4 answers that are DATA (fragments, element upserts, themes, hand-made
+  HTML/CSS/SVG pages, menu, seeds, config proposals) are done and in the Manager; the part that is CODE is security-sensitive and was always meant to be designed WITH the owner, last.
+surface: cli/relay, manager/browserai, security
+files:
+  - NPDevCli/relay-ingest-policy.json
+  - NPDevCli/npdev_relay_pages.py
+  - NPDevCli/npdev_relay_files.py
+  - NPDevManager/ui/browserai.js
+detail: |
+  Today relay-ingest-policy.json (phase f4) lists as `quarantine`: capabilities/*, conversion-hooks/*, web/*.js|mjs. Quarantine means the file is NEVER written; the person is told why.
+  An html page with <script>/on*=/javascript: and an svg/css with script-like content are quarantined by `markupScan` too. Nothing else exists. What a real acceptance needs (the browser-AI
+  relay plan, section 8.1, six steps; each is a design decision for the owner):
+  1. a pattern scan of the code (block / warn lists) with the findings shown in words;
+  2. for Java: a bytecode inspector that refuses what it cannot prove harmless (the generator already has an untrusted-extension path: UntrustedExtensionEmitter);
+  3. a strong acceptance: a ticked box AND a separate button, never the same click as Apply;
+  4. provenance: every accepted program is marked `origin: browser-ai` where the app can show it;
+  5. one-click removal of an accepted program (nothing deletes files from a chat today);
+  6. a SECOND confirmation before a JS page becomes public (no sign-in needed to open it).
+  Decide first whether a browser AI should ever add code at all, or only point at a reviewed pack that already has it; if "never", close this as WONTFIX and keep the quarantine as is.
+done_when: >-
+  Either the owner decides code is never accepted from a browser AI (WONTFIX, the quarantine list stays), or the six steps are built and proven on the real window: a JS page with a `block`
+  pattern and Java the inspector refuses cannot be accepted; an accepted program is marked origin: browser-ai and removable in one click; a JS page never goes public without the second confirmation.

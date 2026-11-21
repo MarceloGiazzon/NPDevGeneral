@@ -4,8 +4,9 @@ title: >-
   pages, config proposals, quarantined code -- are accepted by the policy but not by apply, undo or the composer
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-11-10
+closed: 2026-11-21
 source: >-
   Browser-AI relay plan (D:/WorkSpace/NPDev/NPDev_General__OutsideRepo/BROWSER_AI_RELAY_PLAN_2026-11-09/impl/TASKS.md, F4) after F0-F3
   landed; nothing here was started except T4.6's CLI half (REG-322).
@@ -191,6 +192,19 @@ detail: |
   NOT measured: another model, a chat UI, a second run, a non-English ask. The Manager still never passes phase f4.
   Suggested order (each its own commit, each behind phase f4): T4.2 element upsert (DONE above), T4.1 fragments (DONE, incl. composer),
   T4.5 config proposals (DONE, allowlist empty by finding), T4.3 themes/pages/seed/translations, T4.4 code quarantine (with the owner).
+  CLOSED 2026-11-21 by the owner's decision ("follow your suggestions": close it, turn F4 on, split the code quarantine out). F4 is ON in the Manager: npdev.rs passes `--phase f4`
+  for every change or fix (commit 404f13d6, argv test in npdev.rs), so the line above saying the Manager never passes f4 is out of date. Real-window tour (OutsideRepo/reg323-f4-tour,
+  Manager 0.13.4x, CDP): the conversation is phase f4, the stored prompt teaches themes, a look answer shows ONE unticked box, Apply writes the theme and config.json, Undo restores it
+  (13 checks PASS; its last check, the tour's own conversation being closed again, failed -- cleanup, not the feature). THE CODE HALF IS NOW REG-354 (quarantined JS / Java / hooks).
+  RESIDUAL, accepted by the closing decision: the f4 prompt text was measured on ONE model with ONE run per cell (a smoke test), and no large real app has been changed through the
+  relay end to end; run relay_f4_arm.py on a second model before leaning on it.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_relay_prompts_f4.py
+  asserts: >-
+    every example the f4 prompt teaches (theme, config proposal, pages + menu, seed) passes the real checker; every path the f4 policy allows is named in the text; the generator
+    list and the row cap are read from the policy; an f4 change/fix gets the f4 text and every other phase stays byte-identical (the Manager's argv test pins `--phase f4`).
+  provenRed: false
 resolution: >-
   Done per impl/ACCEPTANCE.md section F4: fragment and upsert answers expand to the same model as the equivalent whole-file answer
   (test); a JS page with a `block` pattern and Java the bytecode inspector refuses cannot be accepted; an accepted program is marked

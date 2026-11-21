@@ -5,6 +5,7 @@ type: GAP
 severity: MEDIUM
 status: DONE
 opened: 2026-11-20
+closed: 2026-11-20
 source: >-
   Owner's real round 2026-11-20 (REG-332): the SalesTest1 business UI showed "logado como developer (ADMIN)", "Sair" and a Portuguese side
   menu next to New, Refresh, Clear, Export CSV, Import CSV, Print, Table/Board/Calendar, Filter, Search, English column headers and
@@ -23,6 +24,13 @@ detail: |
   Owner decision needed: either (a) a pt locale translates the whole business UI (a catalogue per locale for every platform string, the
   way the Manager's i18n works, with a checker like check-manager-i18n.py), or (b) it is documented and told to the AI that backOffice.locale
   translates the shell only, and the briefing stops asking for Portuguese menus on an app whose body stays English.
+guard:
+  kind: script
+  ref: scripts/quality/check-ui-i18n.py
+  asserts: >-
+    every platform text a generated app shows is a catalogue id with English AND Portuguese (accented), the English in the call equals the catalogue entry, and new literal English
+    drawn outside the catalogue fails (aiKnowledge gate step 57); the i18n-pt browser routine shows no English platform text in a Portuguese session.
+  provenRed: false
 done_when: >-
   Owner picks (a) or (b); with (a) a generated app with locale pt shows no English platform text on its list, detail and workbench screens
   (browser routine) and the Portuguese strings carry their accents.
