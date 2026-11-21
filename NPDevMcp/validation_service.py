@@ -476,6 +476,64 @@ def make_cli_validator(*, capture: bool = False, timeout: int = VALIDATE_TIMEOUT
 
 
 # ---------------------------------------------------------------------------
+# Packs (REG-352): a body whose top-level `pack` is a string is a pack.json, not a model
+# ---------------------------------------------------------------------------
+
+PACK_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")   # pack.schema.json's pattern; it also keeps the id safe to use as a folder name
+
+
+def _relay_pack() -> Any:
+    """NPDevCli/npdev_relay_pack: the checks a browser AI's pack answer gets in the Manager, as pure functions."""
+    cli_dir = str(_mcp_server.repo_root() / "NPDevCli")
+    if cli_dir not in sys.path:
+        sys.path.insert(0, cli_dir)
+    return importlib.import_module("npdev_relay_pack")
+
+
+def is_pack(body: Any) -> bool:
+    return isinstance(body, dict) and isinstance(body.get("pack"), str)
+
+
+def _pack_diagnostic(line: str) -> dict:
+    """`pack.json <where> - <what is wrong> - <how to fix>` (the relay's line) as one diagnostic."""
+    where, _, rest = line.partition(" - ")
+    message, _, hint = rest.partition(" - ")
+    path = where.removeprefix("pack.json").strip() or "/"
+    item = {"severity": "error", "code": "pack_check", "layer": "pack", "path": path, "message": message.strip() or where}
+    if hint.strip():
+        item["hint"] = hint.strip()
+    return item
+
+
+def _as_pack_payload(payload: dict) -> dict:
+    """Same contract, marked `kind: pack`, and the next step talks about the pack, not a model."""
+    payload["kind"] = "pack"
+    payload["nextStep"] = (payload["nextStep"].replace("The model is valid", "The pack is valid")
+                           .replace("Send the whole model.json", "Send the whole pack.json"))
+    if payload.get("status") == "failed":
+        payload["nextStep"] += " Send the whole pack.json again, with the same pack id."
+    return payload
+
+
+def stage_pack(pack: dict, folder: Path) -> "tuple[Path | None, list[dict]]":
+    """(the probe application to validate, []) or (None, the diagnostics that stop it before the validator).
+
+    The same two steps the Manager's relay runs on a pack a browser AI wrote: the static checks (shape, version, no
+    bindings, no secrets, no roles[] naming its own concepts, English texts), then a probe application importing the pack."""
+    pack_id = pack["pack"]
+    if not PACK_ID_RE.match(pack_id):
+        return None, [{"severity": "error", "code": "pack_check", "layer": "pack", "path": "/pack",
+                       "message": f'the pack id "{pack_id[:40]}" is not valid',
+                       "hint": 'use lowercase letters, digits, "-" or "_", starting with a letter, for example "ratings"'}]
+    relay = _relay_pack()
+    text = json.dumps(pack, indent=2, ensure_ascii=False, allow_nan=False)
+    lines = relay.static_errors(pack, pack_id, text)
+    if lines:
+        return None, [_pack_diagnostic(line) for line in lines]
+    return relay.stage_probe(folder, pack_id, text, relay.probe_model(pack_id, pack)), []
+
+
+# ---------------------------------------------------------------------------
 # The service core
 # ---------------------------------------------------------------------------
 
@@ -538,9 +596,20 @@ class ValidationService:
                 return text
 
             model_path = resolved / "model.json"
+            pack_mode = is_pack(model)
             try:
-                model_path.write_text(
-                    json.dumps(model, indent=2, ensure_ascii=False, allow_nan=False), encoding="utf-8")
+                if pack_mode:
+                    staged, stopped = stage_pack(model, resolved)
+                    if staged is None:
+                        payload = build_service_response(
+                            {"diagnostics": stopped}, max_diagnostics=max_diagnostics, severity=severity,
+                            temp_dir=resolved, extra_roots=(scratch, self.repo_root), elapsed_ms=elapsed(),
+                            validator=self.validator_name, full=False)
+                        return 200, _as_pack_payload(payload)
+                    model_path = staged
+                else:
+                    model_path.write_text(
+                        json.dumps(model, indent=2, ensure_ascii=False, allow_nan=False), encoding="utf-8")
             except (ValueError, RecursionError):
                 return 422, rejected_payload(
                     "invalid_json", "The model cannot be written as JSON (NaN, Infinity or too deep).",
@@ -561,12 +630,13 @@ class ValidationService:
                 return 503, rejected_payload(
                     "validator_unavailable", "The validator did not produce a report.",
                     validator=self.validator_name, elapsed_ms=elapsed(), detail=detail or None)
-            report = _pack_lint.merge_into_report(report, _pack_lint.lint_model(model))
+            if not pack_mode:
+                report = _pack_lint.merge_into_report(report, _pack_lint.lint_model(model))
             payload = build_service_response(
                 report, max_diagnostics=max_diagnostics, severity=severity, temp_dir=resolved,
                 extra_roots=(scratch, self.repo_root), elapsed_ms=elapsed(),
                 validator=self.validator_name, full=full)
-            return 200, payload
+            return 200, (_as_pack_payload(payload) if pack_mode else payload)
         finally:
             with self._busy_lock:
                 self._busy -= 1
@@ -679,7 +749,8 @@ REMOTE_TOOL_SPECS: "list[dict]" = [
             "Validate an NPDev model.json. Pass the WHOLE model as `model`. Returns status "
             "(passed / warning / failed), the errors first, and `nextStep`. Call it after every "
             "change; fix every error and call again until status is passed or warning. Warnings "
-            "are optional."),
+            "are optional. To check a reusable PACK instead, pass the whole pack.json as `model` "
+            "(it has a top-level \"pack\" id): it gets the same checks the Manager gives a pack."),
         "args": ("model", "maxDiagnostics", "severity"),
         "inputSchema": {
             "type": "object",
@@ -1056,8 +1127,8 @@ class ValidatorHandler(BaseHTTPRequestHandler):
         if route == "/api/health" and method == "GET":
             self._send_payload(200, self.service.health(), cors=True)
             return
-        if route == "/api/schema/model" and method == "GET":
-            schema = self.service.repo_root / "NPDevContract" / "schemas" / "model.schema.json"
+        if route in ("/api/schema/model", "/api/schema/pack") and method == "GET":
+            schema =self.service.repo_root / "NPDevContract" / "schemas" / f"{route.rsplit('/', 1)[1]}.schema.json"
             try:
                 body = schema.read_bytes()
             except OSError:
@@ -1071,7 +1142,7 @@ class ValidatorHandler(BaseHTTPRequestHandler):
                 return
             self._route_validate(query)
             return
-        if route in ("/", "/api/health", "/api/schema/model"):
+        if route in ("/", "/api/health", "/api/schema/model", "/api/schema/pack"):
             self._reject(405, "method_not_allowed", "Use GET.", cors=self._cors,
                          extra_headers={"Allow": "GET, OPTIONS"})
             return

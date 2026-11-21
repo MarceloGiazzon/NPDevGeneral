@@ -164,7 +164,7 @@ def probe_model(pack_id: str, pack: dict | None = None) -> dict:
              "packs": [{"$ref": f"packs/{pack_id}/pack.json", "as": PROBE_ALIAS}],
              # The probe's own concept is opened on purpose: a pack that declares roles makes every concept without an access
              # rule a validation problem, and `Probe` is the relay's, not the author's -- no chat AI can fix it.
-             "concepts": [{"name": "Probe", "access": {"read": "true", "write": "true"},
+             "concepts": [{"name": "Probe", "ui": {"label": "Probe"}, "access": {"read": "true", "write": "true"},
                            "fields": [{"name": "id", "type": "uuid", "id": True, "required": True}]}]}
     if isinstance(pack, dict):
         needed = (pack.get("requires") or {}).get("capabilities") or []

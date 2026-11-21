@@ -21,6 +21,22 @@ detail: |
   validator on a probe application). Design: a body with a top-level string `pack` is a pack, not a model; run static_errors, then the probe
   through the same validate_fn, and answer in the service's existing report shape (diagnostics with where / what / how to fix), plus a
   `GET /api/schema/pack`. Do not restart the running service for this without the owner (the tunnel and token must stay up).
+  BUILT 2026-11-21: ValidationService.validate_model treats a body with a top-level string `pack` as a pack (stage_pack): npdev_relay_pack.static_errors first (shape,
+  version, no bindings or secrets, no roles[] naming its own concepts, English texts; each line becomes one diagnostic with path/message/hint), then the relay's probe
+  application through the same validator; the answer is the service's own shape plus `kind: pack`. A pack id that is not [a-z][a-z0-9_-]* is refused (it names a folder).
+  GET /api/schema/pack added; the npdev_validate tool description names the pack route; the response schema gained `kind`. Real jar, 2026-11-21: the published ratings 1.0.1
+  -> passed (0 warnings, ~1 s), the same pack with roles[] -> failed with the relay's line, with a Portuguese label -> failed naming the text. The probe's own concept
+  `Probe` now carries a label so a good pack is not given a warning nobody can fix. Tests: PackValidationTest (6) in NPDevMcp/tests/test_validation_service.py.
+  NOT done: the RUNNING service (port 8780, the tunnel and the token) was not restarted, so the public address still answers the old way until the owner restarts it;
+  and no online AI or browser agent has written a pack to `passed` yet (the last clause of done_when).
+guard:
+  kind: test
+  ref: NPDevMcp/tests/test_validation_service.py#PackValidationTest
+  asserts: >-
+    a good pack is validated through a probe application that imports it and answers passed with kind pack; roles[] naming its own concept, a non-English label and an
+    unsafe pack id are refused with the relay's lines before the validator runs; a model answer has no kind; GET /api/schema/pack serves the schema.
+  provenRed: false
+verification: UNIT_TESTED
 done_when: >-
   POSTing a ratings pack.json that declares roles[] or Portuguese labels to /api/validate answers with the same lines the relay gives, and a
   good pack answers passed; an MCP tool or the service page names the pack route; one online AI or browser agent writes a pack to passed.

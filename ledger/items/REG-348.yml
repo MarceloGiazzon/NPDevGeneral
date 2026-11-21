@@ -36,6 +36,10 @@ detail: |
   any language but English the AI is asked to write the sentences of npdev-submission.json in that language (English prompts byte-identical, hash pins
   green); bench-903 in Portuguese: the assumptions came back in Portuguese. NOT done: the raw search names (AllRatings...) and the validator's own
   refusal lines stay English (they are identifiers / written for an AI); not seen on the real window yet -- needs the owner's rerun.
+  CHECKED 2026-11-21 (CLI half, `pack push --dry-run --language "Portuguese (Brazil)"` on the real ratings 1.0.1 and the real NPR clone, nothing written):
+  the sentences come back in Portuguese ("Um pacote reutilizável ...", "Rating: 6 campos (...)", "visto por Manager e quem é dono de cada registro", "Busca AllRatings: lê
+  registros de Rating.") and the public warning too ("Qualquer pessoa na internet poderá ver e usar esta parte."); the field count is the same in both lines.
+  STILL OPEN: what the owner saw in the real Portuguese Manager window when publishing 1.0.1 (the dialog, not the CLI).
 guard:
   kind: test
   ref: NPDevCli/tests/test_relay_pack_ingest.py#IngestPackTests

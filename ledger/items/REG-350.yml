@@ -3,8 +3,9 @@ title: >-
   A pack that declares roles[] naming its own concepts cannot validate: the briefing allows it, the concept names are only known inside an app, and the relay's message sends the AI guessing
 type: BUG
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-11-20
+closed: 2026-11-21
 source: >-
   Owner's real round 2026-11-20 (REG-334): two conversations in a row answered a ratings pack with roles[] (Rater, Manager, later rater and
   ratingManager) and were refused "Role probe::rater: concepts names unknown concept Rating (declared concepts: Probe, probe::Rating)".
@@ -29,6 +30,10 @@ detail: |
   a pack" gained three rules (language, who may see what without roles[], totals need an access.read without || $user.isSystem) and its skeleton no
   longer puts isSystem in access.read. Bench, owner's ask (bench-902) and a Portuguese one with an average (bench-903), gemini-3.6-flash, one run each:
   READY in round 1, no roles[], the aggregate query accepted. The real chat AI that failed three times has NOT been run again: the owner redoes it.
+  CLOSED 2026-11-21 on the second clause of done_when: the first refusal of a pack with roles[] naming its own concept now says exactly what to remove and
+  what to write instead (RolesInAPackTests), the briefing states the rule and the aggregate/isSystem limit, and ratings 1.0.1 (a real round) was accepted
+  and published. The same refusal now also reaches an online AI through the validator (REG-352; real jar, 2026-11-21). A rerun of the chat AI that failed three
+  times is optional.
 guard:
   kind: test
   ref: NPDevCli/tests/test_relay_pack_static.py#RolesInAPackTests

@@ -478,6 +478,78 @@ def _have_toolchain() -> bool:
 
 
 @unittest.skipUnless(_have_toolchain(), "needs the staged npdev-ai-tools.jar and Java")
+class PackValidationTest(unittest.TestCase):
+    """REG-352: a body with a top-level string `pack` is a pack.json: the relay's static checks, then a probe application."""
+
+    @staticmethod
+    def _pack(**changes) -> dict:
+        pack = {"dslVersion": "3.0.0", "pack": "ratings", "version": "1.0.0", "namespace": "com.example.ratings",
+                "description": "Star ratings with a comment.", "category": "other",
+                "concepts": [{"name": "Rating", "ui": {"label": "Rating"},
+                              "fields": [{"name": "id", "type": "uuid", "id": True, "required": True},
+                                         {"name": "stars", "type": "integer", "required": True, "ui": {"label": "Stars"}}],
+                              "access": {"read": "authorAccount == $user.id || $user.roles.contains('Manager')",
+                                         "write": "authorAccount == $user.id"}}]}
+        pack.update(changes)
+        return pack
+
+    def test_a_good_pack_is_checked_through_a_probe_application_that_imports_it(self):
+        seen = {}
+
+        def validator(path: Path):
+            seen["model"] = json.loads(path.read_text(encoding="utf-8"))
+            seen["pack_file"] = (path.parent / "packs" / "ratings" / "pack.json").is_file()
+            return 0, _report([]), ""
+
+        with _Served(_service(validator)) as srv:
+            status, _, body = srv.post_model(self._pack())
+        self.assertEqual((200, "passed", "pack"), (status, body["status"], body["kind"]))
+        self.assertEqual("packs/ratings/pack.json", seen["model"]["packs"][0]["$ref"])
+        self.assertTrue(seen["pack_file"])
+        self.assertIn("The pack is valid", body["nextStep"])
+        self.assertNotIn("model", body["nextStep"].lower())
+
+    def test_a_role_naming_the_packs_own_concept_is_refused_with_the_way_out_before_the_validator_runs(self):
+        fake = FakeValidator()
+        pack = self._pack(roles=[{"name": "Rater", "concepts": {"Rating": ["read", "create"]}}])
+        with _Served(_service(fake)) as srv:
+            status, _, body = srv.post_model(pack)
+        self.assertEqual((200, "failed", "pack"), (status, body["status"], body["kind"]))
+        self.assertEqual([], fake.calls)
+        first = body["diagnostics"][0]
+        self.assertEqual(("error", "roles"), (first["severity"], first["path"]))
+        self.assertIn('"Rating"', first["message"])
+        self.assertIn("$user.roles.contains('Manager')", first["hint"])
+        self.assertIn("pack.json", body["nextStep"])
+
+    def test_a_label_that_is_not_english_is_refused_and_named(self):
+        pack = self._pack()
+        pack["concepts"][0]["ui"]["label"] = "Avaliação"
+        with _Served(_service(FakeValidator())) as srv:
+            _, _, body = srv.post_model(pack)
+        self.assertEqual("failed", body["status"])
+        self.assertTrue(any("Avaliação" in d["message"] for d in body["diagnostics"]), body["diagnostics"])
+
+    def test_a_pack_id_that_could_walk_out_of_the_scratch_folder_is_refused(self):
+        fake = FakeValidator()
+        with _Served(_service(fake)) as srv:
+            _, _, body = srv.post_model(self._pack(pack="../evil"))
+        self.assertEqual("failed", body["status"])
+        self.assertEqual([], fake.calls)
+
+    def test_a_model_is_unchanged_and_has_no_kind(self):
+        with _Served(_service(FakeValidator())) as srv:
+            _, _, body = srv.post_model(_model())
+        self.assertNotIn("kind", body)
+
+    def test_the_pack_schema_is_served_and_the_tool_names_the_pack_route(self):
+        with _Served(_service()) as srv:
+            status, _, raw = srv.call("GET", "/api/schema/pack")
+        self.assertEqual(200, status)
+        self.assertIn("pack", json.loads(raw)["properties"])
+        self.assertIn("PACK", vs.REMOTE_TOOL_INDEX["npdev_validate"]["description"])
+
+
 class RealValidatorTest(unittest.TestCase):
     """The one end-to-end test: the real warm jar through the real CLI."""
 

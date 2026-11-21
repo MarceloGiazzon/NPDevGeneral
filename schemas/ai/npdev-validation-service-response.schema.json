@@ -9,6 +9,7 @@
   "properties": {
     "contractVersion": { "const": "npdev-validation-service.v1" },
     "status": { "enum": ["passed", "warning", "failed", "rejected"] },
+    "kind": { "const": "pack", "description": "Only when the body was a pack.json (a top-level string `pack`): it got the pack checks (static rules, then a probe application). Absent for a model." },
     "code": {
       "description": "Only on status=rejected: why.",
       "enum": ["invalid_json", "not_an_object", "too_large", "unsupported_media_type", "length_required", "bad_request",

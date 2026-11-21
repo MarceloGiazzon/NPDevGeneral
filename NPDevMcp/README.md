@@ -84,7 +84,7 @@ validator through the warm `npdev-ai-tools.jar` (it refuses to start without it;
 says why) and answers `npdev-validation-service.v1` (`schemas/ai/npdev-validation-service-response.schema.json`).
 
 - **Path A** (any AI that drives a browser, and you): `GET /` is a self-contained page,
-  `POST /api/validate` the REST call, `GET /api/health`, `GET /api/schema/model`. Binds `127.0.0.1`.
+  `POST /api/validate` the REST call, `GET /api/health`, `GET /api/schema/model`, `GET /api/schema/pack`. A body with a top-level string `pack` is a pack.json, not a model: it gets the checks the Manager gives a pack a browser AI writes (static rules, then a probe application that imports it) and the answer says `"kind": "pack"` (REG-352). Binds `127.0.0.1`.
 - **Path B** (`--mcp`): stateless Streamable HTTP at `/mcp/<secret>` with a six-tool **read-only allowlist**
   (`npdev_validate`, `npdev_core_context`, `npdev_search_examples`, `npdev_search_fix`,
   `npdev_check_support`, `npdev_get_schema`) -- never the stdio tool table. The secret is in

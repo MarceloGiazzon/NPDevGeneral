@@ -3,8 +3,9 @@ title: >-
   A pack asked for through a Portuguese Manager came back with Portuguese ui.labels and was published that way to the public catalog
 type: BUG
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-11-20
+closed: 2026-11-21
 source: >-
   Owner's real round 2026-11-20 (REG-334): ratings 1.0.0 was published to the public NPR with labels Avaliacao, Item avaliado, Tipo do
   item, Autor, Estrelas, Comentario, Criado em beside an English description and English queries. The owner asked for a deep search
@@ -33,6 +34,9 @@ detail: |
   "Writing a pack" gained a Language rule. Bench (NPDevSamples/ai-bench/pack-cases bench-902 = the owner's ask, bench-903 = the same in Portuguese,
   NPDEV_BENCH_RELAY_LANGUAGE="Portuguese (Brazil)", relay arm, gemini-3.6-flash, one run each): both PASSED in round 1 (8.7k tokens each), English
   description, no accents in the pack, the explanation in Portuguese. One model, one run: a smoke test, not a rate.
+  CLOSED 2026-11-21: ratings 1.0.1 is on the public NPR (tag ratings-1.0.1, commit 4d418561, published by the owner) and every human text in the
+  published pack.json is English and plain ASCII (checked with `gh api` on 2026-11-21: Rating, Rated Item, Item Type, Author, Stars, Comment, Created At,
+  and the English description). The pack prompt's language block had its bench run on 2026-11-20 (bench-902 and bench-903, both PASSED in round 1).
 guard:
   kind: test
   ref: NPDevCli/tests/test_relay_prompts.py#PackLanguageTests
@@ -41,7 +45,7 @@ guard:
     and no longer carries the app's "write every user-visible label" sentence; an app prompt still asks for labels in the person's language
     (PackLanguageTests); static_errors refuses accented letters in a pack's human texts (test_relay_pack_static.EnglishInAPackTests).
   provenRed: false
-verification: UNIT_TESTED
+verification: VERIFIED_LIVE
 done_when: >-
   ratings 1.0.1 with English labels is on the public NPR (published by the owner) and the pack prompt has had one bench run with the new
   language block.
