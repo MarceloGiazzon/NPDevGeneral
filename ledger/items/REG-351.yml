@@ -3,8 +3,9 @@ title: >-
   A scripted tour left its scratch folder as the real Manager's "catalog folder", so the owner's first publish was refused for it
 type: BUG
 severity: LOW
-status: PARTIAL
+status: DONE
 opened: 2026-11-20
+closed: 2026-11-21
 source: >-
   Owner's real round 2026-11-20 (REG-334): "ratings ainda nao pode ser publicado ... D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\p5-tour\shots
   is not a copy (git clone) of the public catalog."
@@ -21,14 +22,20 @@ detail: |
   with one plain sentence plus the path, instead of listing the English refusal. NOT done: the tour scripts still share the real webview profile (the
   other half), and a person who is not a developer is still asked to pick "the folder where your copy of the public catalog lives": the Manager could clone
   the public catalog itself into its own home and never ask.
+  CLOSED 2026-11-21 (the Manager was closed at the owner's word, so the real exe could be driven): WEBVIEW2_USER_DATA_FOLDER is honoured by the Tauri window -- a window
+  started with it saw NO remembered catalog folder (the owner's profile does hold `nprCheckout`) and the folder received its own EBWebView; the marker it wrote was not in the
+  owner's profile. OutsideRepo/tour-profile.mjs (`tourProfile()`) is the one helper and all 15 tour scripts that launch the exe now pass it. The p5 tour, rerun on a throw-away
+  profile against the real exe, is 12/12, and its step 2 was rewritten to the 0.13.41 behaviour and PASSES: a remembered folder that is not a clone is dropped with one plain
+  sentence ("The folder chosen before is not a copy (git clone) of the public catalog." + the path + Choose folder, no Publish button) and the stored value is cleared.
+  NOT done, and not part of done_when: the Manager cloning the public catalog itself so a person is never asked for a folder (a separate small feature).
 guard:
   kind: manual
   ref: NPDevManager/ui/packs.js
   asserts: >-
     with a remembered folder that has no .git, Publish shows "The folder chosen before is not a copy (git clone) of the public catalog." and a Choose folder
-    button, and the stored folder is cleared; not yet driven on the real window (owner's rerun).
+    button, and the stored folder is cleared; driven on the real window 2026-11-21 (OutsideRepo/p5-tour/tour.mjs step 2, RESULT 12/12).
   provenRed: false
-verification: UNIT_TESTED
+verification: VERIFIED_LIVE
 done_when: >-
   The tour scripts use a throw-away webview profile (or restore what they set), and a remembered folder that is not a clone of the NPR is
   dropped with a plain sentence before the dry run.
