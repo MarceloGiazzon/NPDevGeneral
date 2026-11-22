@@ -66,9 +66,14 @@ SKIP_PARTS = {"build", "node_modules", "target", ".git", "__pycache__", ".gradle
 CODE_EXT = {".java", ".py", ".js", ".mjs", ".mustache", ".html"}
 MAIN_ROOTS = [
     "NPDevContract/dsl/src/main", "NPDevGenerator/generator/src/main", "NPDevGenerator/tools",
+    # the DSL and generator unit tests are where most keywords are exercised; without them the page said "no test names it"
+    # for keywords whose test sits right beside the parser (found 2026-11-22: a test written for 8 keywords did not count)
+    "NPDevContract/dsl/src/test", "NPDevGenerator/generator/src/test",
     "NPDevKernel", "NPDevRuntimeHost", "NPDevCli", "NPDevManager/ui", "NPDevMcp",
 ]
-STR_TOKEN = re.compile(r"""(?<![A-Za-z0-9_])\\?["']([A-Za-z_][A-Za-z0-9_]*)\\?["']""")
+# a leading "$" is allowed: "$ref" and "$schema" are keywords too (before 2026-11-22 they could never be found, so the five
+# "$" slots always showed "no test names it")
+STR_TOKEN = re.compile(r"""(?<![A-Za-z0-9_])\\?["']([$A-Za-z_][$A-Za-z0-9_]*)\\?["']""")
 DOT_TOKEN = re.compile(r"\.([A-Za-z_][A-Za-z0-9_]*)")
 # Java reads most keywords through ACCESSORS, not through their quoted name: `flow.isStartEndpoint()`, `step.getOutput()`,
 # a record accessor `hooks.onLoad()`. A scan of quoted names alone (what this page did before 2026-11-22) calls every
@@ -233,6 +238,10 @@ def _resolve(node, defs: dict, depth: int = 0) -> list[tuple[str | None, dict]]:
         if target is None:
             return []
         out.append((name, target))
+        if isinstance(target, dict) and "$ref" in target:
+            # a definition that is only an alias of another one (uiField -> presentationMetadata): follow it,
+            # or every keyword used through the alias shows as unused
+            out.extend(_resolve(target, defs, depth + 1))
         for member in _members(target):
             out.extend(_resolve(member, defs, depth + 1))
         return out

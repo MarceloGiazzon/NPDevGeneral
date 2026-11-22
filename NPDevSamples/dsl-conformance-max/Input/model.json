@@ -430,6 +430,7 @@
           "required": false,
           "defaultExpression": "shelfTitle(name)",
           "ui": {
+            "deprecated": true,
             "label": "Display title"
           }
         },
@@ -6212,6 +6213,7 @@
       "name": "WidgetCatalogReviewPanel",
       "kind": "custom",
       "panel": {
+        "uid": "wcr00000000000001",
         "route": "/widget-catalog-review",
         "title": "Widget catalog review",
         "dataSources": [
@@ -6223,11 +6225,13 @@
         "fieldBindings": [
           {
             "field": "sku",
-            "source": "entries.sku"
+            "source": "entries.sku",
+            "readonlyWhen": "displayName != ''"
           },
           {
             "field": "displayName",
-            "source": "entries.displayName"
+            "source": "entries.displayName",
+            "enabledWhen": "sku != ''"
           }
         ],
         "actions": [

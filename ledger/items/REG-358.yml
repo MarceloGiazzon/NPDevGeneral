@@ -28,6 +28,11 @@ detail: |
      entrypoint replaced it. ai-beta-gate, expanded-beta0-evidence, normalization, generated-app-build/boot, rest/procedure/workflow/tenant-isolation/auth-role smoke and ui-panel-smoke are red because of it.
      Fix direction: decide whether "custom-procedures" stays a beta surface (re-express it as flows with metadata.untrustedExtensionEntrypoint in the three scenarios, the smoke plans and scripts/policy/beta-scope.json)
      or is retired from the beta scope; then re-run scripts/quality/run-ai-beta-gate.ps1 alone (about 15 min).
+     READ-ONLY FINDING 2026-11-22 (subagent, two claims re-checked by hand, the rest unverified): the premise above is too strong. The three scenarios use the AI contract ai-model.v1, which still has procedures[]
+     (schemas/ai/ai-model.schema.json:60), and scripts/ai/Normalize-AiContract.ps1:323-337 already turns each one into a flow (REG-342). The surface is listed in scripts/policy/beta0-scope.json:12 (REG-358 names beta-scope.json, which has no such
+     entry), scripts/quality/run-expanded-beta0-evidence.ps1:79, Normalize-AiContract.ps1:413 and schemas/ai/ai-verification-report.schema.json:117. Coverage counts a surface only when its check passes
+     (scripts/ai/Invoke-AiRestSmokeVerifier.ps1:301-324), so "missing" means the check custom-procedure-panel-action failed or did not run -- NOT that the surface cannot be declared. NEXT: read one scenario's rest-smoke report for that check
+     (suspect the placeholder flow Normalize-AiContract.ps1:328-334, unverified) and fix the cause; do not delete the surface first. Keywords that still say "declared procedure" resolve against flows (PanelValidation.java:181); their schema descriptions are stale.
   2. docker-linux-parity-report.json is missing: scripts/quality/run-docker-linux-proof.ps1 did not produce it (Docker client 29.9.2 is installed, the daemon or WSL backend was not usable on this machine).
   3. workspace-cleanliness fails while the evidence exists: generating about 60 reports under scripts/reports/out pushes scripts/ past its 500-file limit (485 files before the run). The 21 story files under
      scripts/policy/dsl-keyword-stories/ could be merged into a handful of files to leave room; reports are removed by clean-workspace-state.ps1 -CleanReportsOut.

@@ -1,20 +1,25 @@
 {
-  "closedAt": "2026-11-22T13:35:31.2071660Z",
+  "closedAt": "2026-11-22T17:40:55.1414324Z",
   "branch": "main",
-  "head": "5b6ed9be",
-  "headSubject": "fix(ci): packaged-proof test model, plus 20% of the remaining REG-357 cases",
-  "summary": "All 745 DSL keywords have an everyday story; REG-357 rest done at the owner's 20% (129 written reasons, 6 fixture usages, 1 unit-test class; 148 of 745 rows complete). Fixed and pushed: Pigmentampas sample lock (tracing 2.0.0), PanelRuntime tests (screens), WSL bash in portable-tooling, CRLF, dsl coverage floor, and the CI-only packaged-proof test (4 defects). Generator, runtimeHost, kernel, aiKnowledge and paperwork gates green; all 6 GitHub workflows green on 5b6ed9be. Beta release gate is RED for pre-existing reasons, recorded as REG-358.",
-  "nextStep": "1) Owner judges the tone of the 532 stories written after the Concept parts. 2) Continue REG-357 with the same 20% method: 508 written reasons, 131 tests, 81 official samples, 80 examples (see its STILL OPEN list). 3) REG-358: decide whether custom-procedures stays a beta surface, fix the 3 ai-scenarios tenant-*, rerun scripts/quality/run-ai-beta-gate.ps1. 4) REG-353..356 as listed in open-state.md.",
-  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General\\ledger\\items\\REG-357.yml and D:\\WorkSpace\\NPDev\\NPDev_General\\ledger\\items\\REG-358.yml",
+  "head": "56b7024a",
+  "headSubject": "chore(ledger): record the beta release gate findings (REG-358) and the session handoff",
+  "summary": "REG-357 batch 2 (20% method): 101 more written reasons (reasons-batch-2.json); two measurer defects in generate_dsl_capabilities.py fixed (uiField alias not followed; dsl/generator unit tests and the dollar-prefixed keys were never scanned) so missing samples 81->62, examples 80->61, tests 131->8; fixture gained panel.uid, panelFieldBinding enabledWhen/readonlyWhen, a deprecated field (validates 0 errors, 163/163 probes green); new FormSwitchesAndOverridesSurviveCompileTest; catalogue completeness 148->251 of 745. REG-358 read-only finding recorded: custom-procedures is not undeclarable, a smoke check fails (see ledger). Beta release gate still RED. Real-app suites (shell scenarios, journeys, ride-hailing) NOT run.",
+  "nextStep": "1) Owner judges the tone of the 532 stories written after the Concept parts. 2) REG-358: read one tenant-* scenario rest-smoke report for the check custom-procedure-panel-action (suspect Normalize-AiContract.ps1:328-334), fix the cause, rerun scripts/quality/run-ai-beta-gate.ps1; do not delete the surface first. 3) Continue REG-357 same 20% method: 407 reasons, 8 tests, 61 samples, 60 examples (pack-file keywords and autoPanel.name left out as complex). 4) Refresh stale 'declared procedure' schema descriptions (4 mirrors). 5) REG-353..356 per open-state.md.",
+  "plan": "",
   "blocked": "",
-  "verified": "T2 gates generator/runtimeHost/kernel/aiKnowledge + paperwork green locally; 6/6 GitHub Actions green on 5b6ed9be; 163/163 behaviour probes; packaged-proof test green locally. NOT green: beta release gate (REG-358). NOT run: real-app suites (shell scenarios, journeys, ride-hailing).",
-  "dirtyCount": 1,
+  "verified": "none",
+  "dirtyCount": 7,
   "dirtyFiles": [
-    "?? ledger/items/REG-358.yml"
+    " M NPDevSamples/dsl-conformance-max/Input/model.json",
+    " M docs/DSL_CAPABILITIES.html",
+    " M ledger/items/REG-357.yml",
+    " M ledger/items/REG-358.yml",
+    " M scripts/docs/generate_dsl_capabilities.py",
+    "?? NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/FormSwitchesAndOverridesSurviveCompileTest.java",
+    "?? scripts/policy/dsl-keyword-reasons/reasons-batch-2.json"
   ],
   "unpushed": 0,
   "landedCommits": [
-    "5b6ed9be fix(ci): packaged-proof test model, plus 20% of the remaining REG-357 cases",
-    "ea4b4af4 feat(dsl): shrink the language by 40 keywords, write an everyday story for all 745, fix the gates"
+    "56b7024a chore(ledger): record the beta release gate findings (REG-358) and the session handoff"
   ]
 }
