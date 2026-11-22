@@ -1,0 +1,41 @@
+id: REG-358
+title: >-
+  The beta release gate (run-beta-release-gate.ps1 -GenerateReports) is red: the AI beta scenario fleet predates the removal of procedures[], the Docker/Linux parity evidence is missing, and generating the evidence breaks the scripts/ file-count limit
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-22
+source: >-
+  Owner, 2026-11-22: "rode os gates, incluindo os demorados. Em caso de erro, corrija". The four T2 gates, the paperwork gate and every GitHub Actions workflow were made green in that session;
+  the release gate was run last with evidence generation (about 1 h) and could not be made green in the session. Findings below are measured, not guessed.
+surface: ai-beta-gate, release-gate, samples/ai-scenarios, scripts/hygiene
+files:
+  - scripts/quality/run-beta-release-gate.ps1
+  - scripts/quality/run-beta-release-evidence-orchestration.ps1
+  - scripts/quality/run-ai-beta-gate.ps1
+  - scripts/quality/invoke-ai-beta-app-smoke.ps1
+  - scripts/policy/beta-scope.json
+  - scripts/policy/beta-release-gate-policy.json
+  - NPDevSamples/ai-scenarios/tenant-workflow-ops
+  - NPDevSamples/ai-scenarios/tenant-service-desk
+  - NPDevSamples/ai-scenarios/tenant-approval-portal
+  - scripts/hygiene/Test-WorkspaceSlimness.ps1
+detail: |
+  Result of the run (17 check blockers, 1 missing report): gateOutcome check-failed, candidateReady false, releaseReady false.
+  1. ROOT CAUSE, most blockers cascade from it: three positive AI scenarios (tenant-workflow-ops, tenant-service-desk, tenant-approval-portal; 8 positive scenarios, 5 pass, 3 fail; the 23 expected-failure
+     scenarios all fail as designed) build and boot, then fail the REST smoke because the surface coverage reports "custom-procedures" as missing. Their scenario.manifest.json and
+     ai-verification-report.json still require the surface custom-procedures, and procedures[] left the DSL in REG-342 (commit 415edd6f, before this session); a flow with an untrusted extension
+     entrypoint replaced it. ai-beta-gate, expanded-beta0-evidence, normalization, generated-app-build/boot, rest/procedure/workflow/tenant-isolation/auth-role smoke and ui-panel-smoke are red because of it.
+     Fix direction: decide whether "custom-procedures" stays a beta surface (re-express it as flows with metadata.untrustedExtensionEntrypoint in the three scenarios, the smoke plans and scripts/policy/beta-scope.json)
+     or is retired from the beta scope; then re-run scripts/quality/run-ai-beta-gate.ps1 alone (about 15 min).
+  2. docker-linux-parity-report.json is missing: scripts/quality/run-docker-linux-proof.ps1 did not produce it (Docker client 29.9.2 is installed, the daemon or WSL backend was not usable on this machine).
+  3. workspace-cleanliness fails while the evidence exists: generating about 60 reports under scripts/reports/out pushes scripts/ past its 500-file limit (485 files before the run). The 21 story files under
+     scripts/policy/dsl-keyword-stories/ could be merged into a handful of files to leave room; reports are removed by clean-workspace-state.ps1 -CleanReportsOut.
+  4. trusted-source-beta0-proof, doc-entrypoint-validation, expanded-schema-validation and final-regression-coverage-audit are red too; none was diagnosed separately because the audit says it needs the
+     scenarios above to pass first. Re-check them after item 1.
+  5. Operational trap found: the sample-matrix producer finishes ("Sample matrix passed") but leaves a single-use Gradle daemon alive that holds the orchestrator's output pipe, so the orchestration waits for
+     its 90 minute producer timeout. Stopping the idle java daemon (Daemon in the command line) releases it. A launcher that disowns the daemon would remove the trap.
+  Not caused by the DSL shrink: the failing surface is procedures[], removed earlier; the shrink touched none of the three scenarios.
+done_when: >-
+  pwsh -NoProfile -File scripts/quality/run-beta-release-gate.ps1 -GenerateReports ends with gateOutcome passed (or the owner restates which surfaces the beta covers and the policy is updated), with the
+  workspace clean and Docker parity evidence either produced or explicitly waived in beta-release-gate-policy.json.
