@@ -121,7 +121,11 @@ try {
     # stderr pipes and keeps them open after the generation is done, so run-sample-matrix.ps1 / the app-upgrade gate /
     # the orchestration sat ~27 min until the idle daemon was killed by hand. A --no-daemon build forks a single-use
     # daemon that exits with the build.
-    & $gradlew ":generator:run" "--args=$generatorArgLine" "--no-daemon"
+    # --project-cache-dir: NPDevGenerator/gradle.properties has no org.gradle.projectcachedir (REG-136), so without it
+    # Gradle writes NPDevGenerator/.gradle inside the repo, which workspace-cleanliness then fails on. Same location
+    # npdev_cli.py's gradle_project_cache_args("generator") uses.
+    $generatorProjectCacheDir = Join-Path (Get-NPDevSampleBuildRoot $NPDevRoot) "gradle-project-caches\generator"
+    & $gradlew ":generator:run" "--args=$generatorArgLine" "--no-daemon" "--project-cache-dir" $generatorProjectCacheDir
     if ($LASTEXITCODE -ne 0) {
         Fail ("Generator failed with exit code " + $LASTEXITCODE)
     }

@@ -864,7 +864,18 @@ function Invoke-GeneratedRuntimeIntegrationProof {
         "--clean",
         "--cleanFinalApp"
     ) | ForEach-Object { Quote-Arg $_ }
-    $generatorCommand = Invoke-ProcessEvidence -FilePath $generatorWrapper -Arguments @(":generator:run", ('--args="' + ($generatorArgsLine -join ' ') + '"'), "--no-daemon", "--console=plain") -WorkingDirectory $generatorRoot -StdoutPath $generatorStdout -StderrPath $generatorStderr -TimeoutSeconds 180 -Name "generate-trusted-source-app"
+    # REG-358: NPDevGenerator/gradle.properties deliberately has no org.gradle.projectcachedir (REG-136), so a bare
+    # gradlew run there creates NPDevGenerator/.gradle INSIDE the repo -- a rebuildable directory the workspace-
+    # slimness check (workspace-cleanliness, the next stage-2 report) fails on. Pass --project-cache-dir per
+    # invocation like npdev_cli.py's gradle_project_cache_args("generator") does (Build root: NPDEV_BUILD_ROOT, else
+    # the sibling Build folder -- the same inline derivation as the runtimehost-libs dir below).
+    $generatorBuildRoot = if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_BUILD_ROOT)) {
+        [System.IO.Path]::GetFullPath($env:NPDEV_BUILD_ROOT)
+    } else {
+        [System.IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $workspaceRoot) "Build"))
+    }
+    $generatorProjectCacheDir = Join-Path $generatorBuildRoot "gradle-project-caches\generator"
+    $generatorCommand = Invoke-ProcessEvidence -FilePath $generatorWrapper -Arguments @(":generator:run", ('--args="' + ($generatorArgsLine -join ' ') + '"'), "--no-daemon", "--console=plain", "--project-cache-dir", $generatorProjectCacheDir) -WorkingDirectory $generatorRoot -StdoutPath $generatorStdout -StderrPath $generatorStderr -TimeoutSeconds 180 -Name "generate-trusted-source-app"
     $commands += $generatorCommand
     $artifacts += [pscustomobject]@{ path = $generatorStdout; kind = "generator-stdout-log" }
     $artifacts += [pscustomobject]@{ path = $generatorStderr; kind = "generator-stderr-log" }

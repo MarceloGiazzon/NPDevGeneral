@@ -59,6 +59,10 @@ detail: |
      run-ai-beta-gate.ps1 and the proof. Also: run-sample-matrix.ps1's Invoke-ProcessEvidence redirects to files and polls HasExited instead of pipe + ReadToEnd (A/B with a lingering grandchild: 40.7 s -> 0.7 s); and the
      orchestrator now splits comma-joined -OnlyProducers/-SkipProducers/-Stages (pwsh -File delivers ONE string, so run-beta-release-gate.ps1's own -SkipProducers was silently ignored). VERIFIED: one real sample
      verification through the changed helper (21 s, no daemon left); app-upgrade-contract through the orchestrator 41 s (was 465 s with the hang).
+  3b. SECOND workspace-cleanliness cause FOUND AND FIXED 2026-11-22 (item 3): a bare gradlew run in NPDevGenerator writes NPDevGenerator/.gradle inside the repo (its gradle.properties has no
+     org.gradle.projectcachedir, REG-136), and Test-WorkspaceSlimness fails on any rebuildable .gradle directory. run-ai-beta-gate.ps1, the untrusted-extension proof and generate-sample-app.ps1 (so also
+     sample-matrix and app-upgrade-contract) each left it. All three now pass --project-cache-dir <Build>/gradle-project-caches/generator, the location npdev_cli.py already uses. VERIFIED by deleting the directory,
+     running each, and checking it stays absent (ai-beta-gate on one scenario, which still passes: the controlled-command policy accepts the argument). Not changed: scripts/proofs/run-scale-proof.ps1 (nightly).
   Not caused by the DSL shrink: the failing surface is procedures[], removed earlier; the shrink touched none of the three scenarios.
 done_when: >-
   pwsh -NoProfile -File scripts/quality/run-beta-release-gate.ps1 -GenerateReports ends with gateOutcome passed (or the owner restates which surfaces the beta covers and the policy is updated), with the

@@ -267,7 +267,17 @@ function Invoke-ControlledGradleGenerator {
     $gradleArgLine = Join-ArgsForGradleRun $generatorArgs
     $generatorRoot = Join-Path $workspaceRoot "NPDevGenerator"
     $gradlew = Resolve-GradleWrapper $generatorRoot
-    $runnerArguments = @(":generator:run", ("--args=" + $gradleArgLine), "--no-daemon", "--console=plain")
+    # REG-358: NPDevGenerator/gradle.properties has no org.gradle.projectcachedir (REG-136), so without --project-cache-dir
+    # Gradle writes NPDevGenerator/.gradle inside the repo and workspace-cleanliness (the next stage-2 report) fails on
+    # that rebuildable directory. Same location npdev_cli.py's gradle_project_cache_args("generator") uses; the Build
+    # root is NPDEV_BUILD_ROOT, else the folder named Build next to the workspace (inline, like the untrusted-extension proof).
+    $generatorBuildRoot = if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_BUILD_ROOT)) {
+        [System.IO.Path]::GetFullPath($env:NPDEV_BUILD_ROOT)
+    } else {
+        [System.IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $workspaceRoot) "Build"))
+    }
+    $generatorProjectCacheDir = Join-Path $generatorBuildRoot "gradle-project-caches\generator"
+    $runnerArguments = @(":generator:run", ("--args=" + $gradleArgLine), "--no-daemon", "--console=plain", "--project-cache-dir", $generatorProjectCacheDir)
     $runnerArgumentsJson = @($runnerArguments) | ConvertTo-Json -Compress
     $ErrorActionPreference = "Continue"
     pwsh -NoProfile -File scripts/security/Invoke-ControlledCommand.ps1 `
