@@ -53,7 +53,7 @@ detail: |
   are). The 163 behaviour probes were then run against the shrunk model: 162 green on the first run, the one red (87-served-metadata asserting the deleted action.successMessage) was a stale probe,
   fixed. STORIES 2026-11-22: nouns Screen (stories-screen-1..4.json, 200 slots), Flow (stories-flow-1..2.json, 75), Capability (stories-capability-1..2.json, 53), Experience (stories-experience-1.json, 41), Pack file + Pack (stories-pack-1.json, 42), Query, Model root, Module, Role, Property, Event and Function
   (stories-query-1 / model-root-1 / module-1 / role-1 / property-1 / event-function-1.json, 121) written in full: ALL 745 keywords now have a story (min 15, mean 35, max 63 words, no code in them);
-  the owner has not yet judged the tone of the 532 stories written after the Concept parts (Screen, Flow, Capability, Experience, Pack, Query, Model root, Module, Role, Property, Event, Function).
+  the owner JUDGED the tone of the 532 stories written after the Concept parts (Screen, Flow, Capability, Experience, Pack, Query, Model root, Module, Role, Property, Event, Function) on 2026-11-22: OK, no rewrite.
   REST OF REG-357, 2026-11-22 (owner: do only 20% of the remaining cases, mixed complexity): every 5th keyword within each kind of value (boolean, text, number, choice, list, object, reference) was taken
   per missing piece. DONE: 129 written reasons (scripts/policy/dsl-keyword-reasons/reasons-batch-1.json, read by the generator, shown as "Written reason"); 6 keywords now used by the coverage fixture with
   an example (presentationMetadata.listColumnOrder/tab/enabledWhen, schemaObject.uniqueItems/duplicationPolicy, autoPanelSurface.fields), 163/163 behaviour probes green; 8 keywords named by a unit test

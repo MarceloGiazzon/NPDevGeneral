@@ -1,25 +1,21 @@
 {
-  "closedAt": "2026-11-22T17:40:55.1414324Z",
+  "closedAt": "2026-11-22T18:20:22.8270877Z",
   "branch": "main",
-  "head": "56b7024a",
-  "headSubject": "chore(ledger): record the beta release gate findings (REG-358) and the session handoff",
-  "summary": "REG-357 batch 2 (20% method): 101 more written reasons (reasons-batch-2.json); two measurer defects in generate_dsl_capabilities.py fixed (uiField alias not followed; dsl/generator unit tests and the dollar-prefixed keys were never scanned) so missing samples 81->62, examples 80->61, tests 131->8; fixture gained panel.uid, panelFieldBinding enabledWhen/readonlyWhen, a deprecated field (validates 0 errors, 163/163 probes green); new FormSwitchesAndOverridesSurviveCompileTest; catalogue completeness 148->251 of 745. REG-358 read-only finding recorded: custom-procedures is not undeclarable, a smoke check fails (see ledger). Beta release gate still RED. Real-app suites (shell scenarios, journeys, ride-hailing) NOT run.",
-  "nextStep": "1) Owner judges the tone of the 532 stories written after the Concept parts. 2) REG-358: read one tenant-* scenario rest-smoke report for the check custom-procedure-panel-action (suspect Normalize-AiContract.ps1:328-334), fix the cause, rerun scripts/quality/run-ai-beta-gate.ps1; do not delete the surface first. 3) Continue REG-357 same 20% method: 407 reasons, 8 tests, 61 samples, 60 examples (pack-file keywords and autoPanel.name left out as complex). 4) Refresh stale 'declared procedure' schema descriptions (4 mirrors). 5) REG-353..356 per open-state.md.",
+  "head": "ade0445d",
+  "headSubject": "feat(catalogue): REG-357 batch 2, 101 written reasons, and two measurer defects fixed",
+  "summary": "Owner judged the 532 stories: tone OK. REG-358 root cause found and fixed: the three tenant-* AI scenarios failed with 403 because Normalize-AiContract.ps1 never declared roles[] (kernel RC-B3 denies EXECUTE_FLOW to an undeclared role); not a procedures problem. Normalizer now declares roles[] (grants EXECUTE_FLOW, concept grants from entity:action permissions, open access for unlisted concepts). Verified: full run-ai-beta-gate.ps1 = 31 scenarios, 8/8 positive pass, 23/23 negative as designed. custom-procedures stays a beta surface. CI 6/6 green on ade0445d (REG-357 batch 2). Beta release gate NOT rerun yet; Docker parity report, scripts/ 500-file limit and the sample-matrix Gradle daemon are still open. Real-app suites NOT run.",
+  "nextStep": "1) Rerun scripts/quality/run-beta-release-gate.ps1 -GenerateReports in the background (digest runner + monitor on its real log) and see which of the REG-358 blockers remain: Docker/Linux parity report (daemon not usable), scripts/ 500-file limit when generating evidence, sample-matrix leaves a Gradle daemon. 2) Continue REG-357 same 20% method: 407 reasons, 8 tests, 61 samples, 60 examples. 3) Refresh the stale 'declared procedure' schema descriptions (4 mirrors, check-schema-mirror-consistency.py). 4) REG-353..356 per open-state.md.",
   "plan": "",
   "blocked": "",
   "verified": "none",
-  "dirtyCount": 7,
+  "dirtyCount": 3,
   "dirtyFiles": [
-    " M NPDevSamples/dsl-conformance-max/Input/model.json",
-    " M docs/DSL_CAPABILITIES.html",
     " M ledger/items/REG-357.yml",
     " M ledger/items/REG-358.yml",
-    " M scripts/docs/generate_dsl_capabilities.py",
-    "?? NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/FormSwitchesAndOverridesSurviveCompileTest.java",
-    "?? scripts/policy/dsl-keyword-reasons/reasons-batch-2.json"
+    " M scripts/ai/Normalize-AiContract.ps1"
   ],
   "unpushed": 0,
   "landedCommits": [
-    "56b7024a chore(ledger): record the beta release gate findings (REG-358) and the session handoff"
+    "ade0445d feat(catalogue): REG-357 batch 2, 101 written reasons, and two measurer defects fixed"
   ]
 }

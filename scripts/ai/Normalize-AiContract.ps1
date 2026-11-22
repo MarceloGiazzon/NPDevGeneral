@@ -150,6 +150,30 @@ function Add-UntrustedExtensionEntrypoint {
     }
 }
 
+# REG-358: every role id an ai-model.v1 names as a requiredRole, wherever it sits (panel, procedure, flow, workflow
+# transition). The kernel denies EXECUTE_FLOW to a role that is neither built-in nor declared in the model's roles[]
+# (RC-B3, commit 2ad4f338), so each of these has to become an official role -- otherwise a panel that runs a flow
+# answers 403 for the very role the contract names (found 2026-11-22 on tenant-service-desk: "role 'SUPPORT' is neither
+# a built-in role nor declared in the app model's roles[]").
+function Get-RequiredRoleIds {
+    param([object]$Node)
+    $found = New-Object System.Collections.Generic.List[string]
+    if ($null -eq $Node -or $Node -is [string] -or $Node.GetType().IsPrimitive) { return @() }
+    if ($Node -is [System.Collections.IEnumerable] -and $Node -isnot [System.Collections.IDictionary]) {
+        foreach ($item in $Node) { foreach ($id in @(Get-RequiredRoleIds $item)) { $found.Add($id) } }
+        return @($found)
+    }
+    foreach ($property in $Node.PSObject.Properties) {
+        if ($property.Name -eq "requiredRole" -and $property.Value -is [string] -and -not [string]::IsNullOrWhiteSpace($property.Value)) {
+            $found.Add([string]$property.Value)
+        }
+        else {
+            foreach ($id in @(Get-RequiredRoleIds $property.Value)) { $found.Add($id) }
+        }
+    }
+    return @($found)
+}
+
 function New-OfficialModel {
     param([object]$Model, [string]$ScenarioId)
     $concepts = @()
@@ -384,7 +408,38 @@ function New-OfficialModel {
         Add-UntrustedExtensionEntrypoint -Metadata $panels[-1].panel.metadata -Implementation $panel.implementation
     }
 
-    return [ordered]@{
+    $requiredRoleIds = @(Get-RequiredRoleIds $Model | Select-Object -Unique)
+    # an ai-model permission "<entity>:<read|create|update|delete>" is a per-concept grant of that role; any other
+    # permission ("workflow:transition") is not a concept operation and stays in metadata.roles only
+    $entityNameByLower = @{}
+    foreach ($entity in @($Model.entities)) { $entityNameByLower[([string]$entity.name).ToLowerInvariant()] = [string]$entity.name }
+    $grantedConceptNames = New-Object System.Collections.Generic.HashSet[string]
+    $officialRoles = @($Model.roles | Where-Object { $null -ne $_ -and $requiredRoleIds -contains [string]$_.roleId } | ForEach-Object {
+        $conceptGrants = [ordered]@{}
+        foreach ($permission in @($_.permissions)) {
+            $parts = ([string]$permission) -split ":"
+            if ($parts.Count -eq 2 -and $entityNameByLower.ContainsKey($parts[0].ToLowerInvariant()) -and $parts[1] -in @("read", "create", "update", "delete")) {
+                $conceptName = $entityNameByLower[$parts[0].ToLowerInvariant()]
+                if (-not $conceptGrants.Contains($conceptName)) { $conceptGrants[$conceptName] = @() }
+                $conceptGrants[$conceptName] = @($conceptGrants[$conceptName]) + $parts[1]
+                $grantedConceptNames.Add($conceptName) | Out-Null
+            }
+        }
+        $officialRole = [ordered]@{ name = [string]$_.roleId; grants = @("EXECUTE_FLOW") }
+        if ($conceptGrants.Count -gt 0) { $officialRole["concepts"] = $conceptGrants }
+        $officialRole
+    })
+    # secure by default: once roles[] exist every concept needs an access rule or a role grant. A concept no declared
+    # role lists keeps what it had before roles were declared -- open to every authenticated caller -- written out loud.
+    if ($officialRoles.Count -gt 0) {
+        foreach ($concept in $concepts) {
+            if (-not $grantedConceptNames.Contains([string]$concept["name"]) -and -not $concept.Contains("access")) {
+                $concept["access"] = [ordered]@{ read = "true"; write = "true" }
+            }
+        }
+    }
+
+    $officialModel = [ordered]@{
         '$schema' = "NPDevContract/schemas/model.schema.json"
         namespace = "npdev.ai.beta." + ($ScenarioId -replace "-", ".")
         dslVersion = "3.0.0"
@@ -418,6 +473,8 @@ function New-OfficialModel {
             )
         }
     }
+    if ($officialRoles.Count -gt 0) { $officialModel["roles"] = $officialRoles }
+    return $officialModel
 }
 
 function New-OfficialConfig {
