@@ -1,38 +1,19 @@
 {
-  "closedAt": "2026-11-22T00:31:00.1055543Z",
+  "closedAt": "2026-11-22T00:50:27.7897339Z",
   "branch": "main",
-  "head": "d075469d",
-  "headSubject": "chore(session): handoff 2026-11-21 close (D-1 complete)",
-  "summary": "Owner's D-1..D-8 answers were found in the 2026-11-21 transcript (D-3 validator WARNING, D-5 CLI + AI review only, D-8/D-4 accept): D-3 and D-8 were already implemented (ca2fd1fc). Done now: D-5 modes (npdev ai users mode, NPDEV_MODE, ai-modes.json, ai context focus); 162 unreferenced step names stripped from ride-hailing (acceptance 74 checks green, exit 0); P8 compact steps (CompactSteps.java: return/set/read/create/call/emit/cap strings lowered at parse, schema x4, guide, RecountOrderLines example, CompactStepsTest). Step name was already optional.",
-  "nextStep": "Measure the P8 gain on a migrated ride-hailing (bytes/tokens), then decide the declarative 'on' form (D-4 yes, only after measuring; it saves ~5% alone). Pending outward-facing: republish built-in packs to the remote NPR repo (owner ok needed); kernel gate never run this wave; WmsOfficePackTest needs the remote pack.",
+  "head": "9c251610",
+  "headSubject": "feat(dsl,cli): P8 compact steps, D-5 working modes, ride-hailing without step names",
+  "summary": "P8 measured and proven on ride-hailing: 89 of 228 steps compact; minified 61093 -> 57532 (names) -> 54538 (P8) = -10.7%; compiled canonical JSON byte-identical with and without P8; acceptance 141 PASS on rerun (one earlier run failed 'driver2 stayed OFFLINE', flaky, not P8: canonical model identical). Ride-hailing has 0 event-triggered flows, so the 'on' form has no witness shape in the corpus.",
+  "nextStep": "Recommendation to the owner: do NOT build the declarative 'on' now (no event-triggered flows in ride-hailing, ~5% claimed from read/branch/call shapes that 'on' does not obviously express); if wanted, first define its exact shape from a real event-triggered flow. Otherwise: republish built-in packs to remote NPR (owner ok), kernel gate, investigate the flaky 'driver2 stayed OFFLINE' check in NPDevSamples/ride-hailing/drive_s2.py line ~559.",
   "plan": "",
   "blocked": "",
-  "verified": "dsl tests 1522 (2 own-test errors fixed, rerun green); NPDevCli 112 neighbouring tests; run_selected: behavior probes, canary, dsl-conformance-max generate, twin-pair, dsl-coverage, keyword budget/reference (after regenerating docs); ride-hailing acceptance; doc-inventory, no-markdown-reads, record-surfaces, doc-references, schema-mirror. NOT run: kernel gate, full aiKnowledge/T2 gates, P8 in a booted app, browser routines.",
-  "dirtyCount": 20,
+  "verified": "ride-hailing acceptance 141 PASS (rerun); canonical compiled model identical before/after P8; validateModel 0 errors. NOT run: kernel gate, full T2.",
+  "dirtyCount": 1,
   "dirtyFiles": [
-    " M NPDevCli/npdev_ai.py",
-    " M NPDevCli/npdev_pack_sheet.py",
-    " M NPDevCli/npdev_user_profiles.py",
-    " M NPDevCli/tests/test_user_profiles.py",
-    " M NPDevContract/dsl/resources/Schemas/model.schema.json",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/pack/PackSealednessAnalyzer.java",
-    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
-    " M NPDevContract/dsl/src/main/resources/schema/model.schema.json",
-    " M NPDevContract/schemas/authoring/model.schema.json",
-    " M NPDevContract/schemas/model.schema.json",
-    " M NPDevSamples/dsl-conformance-max/Input/model.json",
-    " M NPDevSamples/ride-hailing/Input/model.json",
-    " M docs/DSL_KEYWORD_REFERENCE.md",
-    " M docs/ai/AUTHORING_FOR_AI.md",
-    " M docs/content/authoring-for-ai.json",
-    " M docs/content/authoring-for-ai.yml",
-    " M scripts/policy/dsl-keyword-reference-stamp.json",
-    "?? NPDevCli/ai-modes.json",
-    "?? NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/CompactSteps.java",
-    "?? NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/CompactStepsTest.java"
+    " M NPDevSamples/ride-hailing/Input/model.json"
   ],
   "unpushed": 0,
   "landedCommits": [
-    "d075469d chore(session): handoff 2026-11-21 close (D-1 complete)"
+    "9c251610 feat(dsl,cli): P8 compact steps, D-5 working modes, ride-hailing without step names"
   ]
 }

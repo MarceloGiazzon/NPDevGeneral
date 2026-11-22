@@ -1023,16 +1023,8 @@
           "itemKey": "me",
           "maxLoopIterations": 1,
           "steps": [
-            {
-              "type": "set",
-              "value": "$me.id",
-              "output": "riderId"
-            },
-            {
-              "type": "set",
-              "value": "$me.account",
-              "output": "riderAccount"
-            }
+            "set riderId = $me.id",
+            "set riderAccount = $me.account"
           ]
         },
         {
@@ -1126,36 +1118,21 @@
                     "record": "$created"
                   },
                   "onTimeout": [
-                    {
-                      "type": "callFlow",
-                      "flow": "ExpireOffer",
-                      "input": "$created",
-                      "output": "$x"
-                    }
+                    "call ExpireOffer with $created as $x"
                   ]
                 },
                 {
                   "type": "branch",
                   "condition": "$a.answer == 'ACCEPT'",
                   "then": [
-                    {
-                      "type": "callFlow",
-                      "flow": "AcceptOffer",
-                      "input": "$created",
-                      "output": "$accepted"
-                    }
+                    "call AcceptOffer with $created as $accepted"
                   ],
                   "else": [
                     {
                       "type": "branch",
                       "condition": "$a.answer == 'DECLINE'",
                       "then": [
-                        {
-                          "type": "callFlow",
-                          "flow": "DeclineOffer",
-                          "input": "$created",
-                          "output": "$d"
-                        }
+                        "call DeclineOffer with $created as $d"
                       ]
                     }
                   ]
@@ -1168,12 +1145,7 @@
           "type": "branch",
           "condition": "$accepted == null",
           "then": [
-            {
-              "type": "callFlow",
-              "flow": "GiveUp",
-              "input": "$created",
-              "output": "$gaveUp"
-            }
+            "call GiveUp with $created as $gaveUp"
           ]
         },
         {
@@ -1206,18 +1178,8 @@
           "input": "$input",
           "output": "$done"
         },
-        {
-          "type": "callFlow",
-          "flow": "CreatePayment",
-          "input": "$done",
-          "output": "$p"
-        },
-        {
-          "type": "callFlow",
-          "flow": "ChargePayment",
-          "input": "$p.data",
-          "output": "$c1"
-        },
+        "call CreatePayment with $done as $p",
+        "call ChargePayment with $p.data as $c1",
         {
           "type": "branch",
           "condition": "$c1.data.status == 'RETRYING'",
@@ -1238,12 +1200,7 @@
                 "correlation": true
               }
             },
-            {
-              "type": "callFlow",
-              "flow": "ChargePayment",
-              "input": "$p.data",
-              "output": "$c2"
-            },
+            "call ChargePayment with $p.data as $c2",
             {
               "type": "branch",
               "condition": "$c2.data.status == 'RETRYING'",
@@ -1264,12 +1221,7 @@
                     "correlation": true
                   }
                 },
-                {
-                  "type": "callFlow",
-                  "flow": "ChargePayment",
-                  "input": "$p.data",
-                  "output": "$c3"
-                }
+                "call ChargePayment with $p.data as $c3"
               ]
             }
           ]
@@ -1297,12 +1249,7 @@
               },
               "timeout": 120,
               "onTimeout": [
-                {
-                  "type": "callFlow",
-                  "flow": "MarkPaymentReview",
-                  "input": "$p.data",
-                  "output": "$rv"
-                }
+                "call MarkPaymentReview with $p.data as $rv"
               ]
             },
             {
@@ -1320,12 +1267,7 @@
             }
           ]
         },
-        {
-          "type": "callFlow",
-          "flow": "NotifyPaymentResult",
-          "input": "$p.data",
-          "output": "$told"
-        },
+        "call NotifyPaymentResult with $p.data as $told",
         {
           "type": "scheduleEvent",
           "event": "RateReminderDue",
@@ -1342,12 +1284,7 @@
             "correlation": true
           }
         },
-        {
-          "type": "callFlow",
-          "flow": "RemindToRate",
-          "input": "$done",
-          "output": "$reminded"
-        },
+        "call RemindToRate with $done as $reminded",
         {
           "name": "final",
           "type": "callFlow",
@@ -1481,12 +1418,7 @@
       "expose": "internal",
       "runAs": "system",
       "steps": [
-        {
-          "type": "readConcept",
-          "scope": "Ride",
-          "id": "$input.id",
-          "output": "ride"
-        },
+        "read Ride $input.id as ride",
         {
           "type": "branch",
           "condition": "$ride.status == 'REQUESTED'",
@@ -1527,21 +1459,9 @@
               },
               "output": "candidates"
             },
-            {
-              "type": "set",
-              "value": "100",
-              "output": "arg_pick_limit"
-            },
-            {
-              "type": "set",
-              "value": "15",
-              "output": "arg_pick_maxKm"
-            },
-            {
-              "type": "set",
-              "value": "30",
-              "output": "arg_pick_speedKmh"
-            },
+            "set arg_pick_limit = 100",
+            "set arg_pick_maxKm = 15",
+            "set arg_pick_speedKmh = 30",
             {
               "name": "pick",
               "type": "capabilityCall",
@@ -1563,12 +1483,7 @@
               "type": "branch",
               "condition": "$best.found",
               "then": [
-                {
-                  "type": "readConcept",
-                  "scope": "Driver",
-                  "id": "$best.id",
-                  "output": "chosen"
-                },
+                "read Driver $best.id as chosen",
                 {
                   "type": "updateConcept",
                   "scope": "RideOffer",
@@ -1628,10 +1543,7 @@
             }
           ]
         },
-        {
-          "type": "return",
-          "value": "$ride"
-        }
+        "return $ride"
       ]
     },
     {
@@ -1640,12 +1552,7 @@
       "expose": "internal",
       "runAs": "system",
       "steps": [
-        {
-          "type": "readConcept",
-          "scope": "Ride",
-          "id": "$input.id",
-          "output": "ride"
-        },
+        "read Ride $input.id as ride",
         {
           "type": "branch",
           "condition": "$ride.status == 'ASSIGNED'",
@@ -1674,10 +1581,7 @@
             }
           ]
         },
-        {
-          "type": "return",
-          "value": "$ride"
-        }
+        "return $ride"
       ]
     },
     {
@@ -1686,12 +1590,7 @@
       "expose": "internal",
       "runAs": "system",
       "steps": [
-        {
-          "type": "readConcept",
-          "scope": "Ride",
-          "id": "$input.id",
-          "output": "ride"
-        },
+        "read Ride $input.id as ride",
         {
           "type": "branch",
           "condition": "$ride.status == 'ASSIGNED'",
@@ -1716,10 +1615,7 @@
           "input": "$input",
           "output": "released"
         },
-        {
-          "type": "return",
-          "value": "$released"
-        }
+        "return $released"
       ]
     },
     {
@@ -1728,12 +1624,7 @@
       "expose": "internal",
       "runAs": "system",
       "steps": [
-        {
-          "type": "readConcept",
-          "scope": "Ride",
-          "id": "$input.id",
-          "output": "ride"
-        },
+        "read Ride $input.id as ride",
         {
           "type": "branch",
           "condition": "$ride.status == 'ASSIGNED'",
@@ -1757,10 +1648,7 @@
           "input": "$input",
           "output": "released"
         },
-        {
-          "type": "return",
-          "value": "$released"
-        }
+        "return $released"
       ]
     },
     {
@@ -1769,12 +1657,7 @@
       "expose": "internal",
       "runAs": "system",
       "steps": [
-        {
-          "type": "readConcept",
-          "scope": "Ride",
-          "id": "$input.id",
-          "output": "ride"
-        },
+        "read Ride $input.id as ride",
         {
           "type": "branch",
           "condition": "$ride.status == 'ASSIGNED'",
@@ -1811,10 +1694,7 @@
             }
           ]
         },
-        {
-          "type": "return",
-          "value": "$ride"
-        }
+        "return $ride"
       ]
     },
     {
@@ -1823,12 +1703,7 @@
       "expose": "internal",
       "runAs": "system",
       "steps": [
-        {
-          "type": "readConcept",
-          "scope": "Ride",
-          "id": "$input.id",
-          "output": "ride"
-        },
+        "read Ride $input.id as ride",
         {
           "type": "branch",
           "condition": "$ride.status == 'REQUESTED'",
@@ -1842,24 +1717,10 @@
               },
               "output": "ride"
             },
-            {
-              "type": "capabilityCall",
-              "capability": "notify",
-              "operation": "send",
-              "args": [
-                "$ride.riderAccount",
-                "No driver available",
-                "Nobody accepted your ride. Please try again in a few minutes.",
-                "$ride"
-              ],
-              "output": "notified"
-            }
+            "cap notify.send($ride.riderAccount, No driver available, Nobody accepted your ride. Please try again in a few minutes., $ride) as notified"
           ]
         },
-        {
-          "type": "return",
-          "value": "$ride"
-        }
+        "return $ride"
       ]
     },
     {
@@ -1867,16 +1728,8 @@
       "description": "Returns the ride as it is now (the flow's answer).",
       "expose": "internal",
       "steps": [
-        {
-          "type": "readConcept",
-          "scope": "Ride",
-          "id": "$input.id",
-          "output": "ride"
-        },
-        {
-          "type": "return",
-          "value": "$ride"
-        }
+        "read Ride $input.id as ride",
+        "return $ride"
       ]
     },
     {
@@ -1885,12 +1738,7 @@
       "expose": "internal",
       "runAs": "system",
       "steps": [
-        {
-          "type": "readConcept",
-          "scope": "Ride",
-          "id": "$input.id",
-          "output": "ride"
-        },
+        "read Ride $input.id as ride",
         {
           "name": "metres",
           "type": "capabilityCall",
@@ -1937,11 +1785,7 @@
               ],
               "output": "line"
             },
-            {
-              "type": "set",
-              "value": "$line.distanceKm * 1.3",
-              "output": "km"
-            },
+            "set km = $line.distanceKm * 1.3",
             {
               "name": "minutes",
               "type": "set",
@@ -1986,10 +1830,7 @@
             }
           ]
         },
-        {
-          "type": "return",
-          "value": "$ride"
-        }
+        "return $ride"
       ]
     },
     {
@@ -2004,10 +1845,7 @@
           "scope": "Driver",
           "output": "free"
         },
-        {
-          "type": "return",
-          "value": "$free"
-        }
+        "return $free"
       ]
     },
     {
@@ -2016,18 +1854,8 @@
       "expose": "internal",
       "runAs": "system",
       "steps": [
-        {
-          "type": "readConcept",
-          "scope": "Ride",
-          "id": "$input.id",
-          "output": "ride"
-        },
-        {
-          "type": "readConcept",
-          "scope": "Rider",
-          "id": "$ride.rider",
-          "output": "rider"
-        },
+        "read Ride $input.id as ride",
+        "read Rider $ride.rider as rider",
         {
           "type": "updateConcept",
           "scope": "Payment",
@@ -2053,10 +1881,7 @@
           },
           "output": "ride"
         },
-        {
-          "type": "return",
-          "value": "$payment"
-        }
+        "return $payment"
       ]
     },
     {
@@ -2065,17 +1890,8 @@
       "expose": "internal",
       "runAs": "system",
       "steps": [
-        {
-          "type": "readConcept",
-          "scope": "Payment",
-          "id": "$input.id",
-          "output": "pay"
-        },
-        {
-          "type": "set",
-          "value": "$pay.attempts + 1",
-          "output": "n"
-        },
+        "read Payment $input.id as pay",
+        "set n = $pay.attempts + 1",
         {
           "name": "charge",
           "type": "capabilityCall",
@@ -2184,10 +2000,7 @@
             }
           ]
         },
-        {
-          "type": "return",
-          "value": "$pay"
-        }
+        "return $pay"
       ]
     },
     {
@@ -2196,12 +2009,7 @@
       "expose": "internal",
       "runAs": "system",
       "steps": [
-        {
-          "type": "readConcept",
-          "scope": "Payment",
-          "id": "$input.paymentId",
-          "output": "pay"
-        },
+        "read Payment $input.paymentId as pay",
         {
           "type": "branch",
           "condition": "$pay.status == 'PROCESSING'",
@@ -2238,10 +2046,7 @@
             }
           ]
         },
-        {
-          "type": "return",
-          "value": "$pay"
-        }
+        "return $pay"
       ]
     },
     {
@@ -2250,12 +2055,7 @@
       "expose": "internal",
       "runAs": "system",
       "steps": [
-        {
-          "type": "readConcept",
-          "scope": "Payment",
-          "id": "$input.id",
-          "output": "pay"
-        },
+        "read Payment $input.id as pay",
         {
           "type": "branch",
           "condition": "$pay.status == 'PROCESSING'",
@@ -2273,10 +2073,7 @@
             }
           ]
         },
-        {
-          "type": "return",
-          "value": "$pay"
-        }
+        "return $pay"
       ]
     },
     {
@@ -2284,16 +2081,8 @@
       "expose": "internal",
       "runAs": "system",
       "steps": [
-        {
-          "type": "readConcept",
-          "scope": "Payment",
-          "id": "$input.id",
-          "output": "pay"
-        },
-        {
-          "type": "return",
-          "value": "$pay"
-        }
+        "read Payment $input.id as pay",
+        "return $pay"
       ]
     },
     {
@@ -2302,12 +2091,7 @@
       "expose": "internal",
       "runAs": "system",
       "steps": [
-        {
-          "type": "readConcept",
-          "scope": "Ride",
-          "id": "$input.id",
-          "output": "ride"
-        },
+        "read Ride $input.id as ride",
         {
           "name": "zones",
           "type": "runQuery",
@@ -2326,69 +2110,20 @@
           },
           "output": "zonePoints"
         },
-        {
-          "type": "set",
-          "value": "100",
-          "output": "arg_nearest_zone_limit"
-        },
-        {
-          "type": "set",
-          "value": "5",
-          "output": "arg_nearest_zone_maxKm"
-        },
-        {
-          "type": "capabilityCall",
-          "capability": "geo",
-          "operation": "closest",
-          "args": [
-            "$ride.pickupLat",
-            "$ride.pickupLng",
-            "$zonePoints",
-            "$arg_nearest_zone_limit",
-            "$arg_nearest_zone_maxKm"
-          ],
-          "output": "zoneHit"
-        },
-        {
-          "type": "set",
-          "value": "1",
-          "output": "zoneMult"
-        },
-        {
-          "type": "set",
-          "value": "1",
-          "output": "peakMult"
-        },
-        {
-          "type": "set",
-          "value": "'none'",
-          "output": "zoneLabel"
-        },
+        "set arg_nearest_zone_limit = 100",
+        "set arg_nearest_zone_maxKm = 5",
+        "cap geo.closest($ride.pickupLat, $ride.pickupLng, $zonePoints, $arg_nearest_zone_limit, $arg_nearest_zone_maxKm) as zoneHit",
+        "set zoneMult = 1",
+        "set peakMult = 1",
+        "set zoneLabel = 'none'",
         {
           "type": "branch",
           "condition": "$zoneHit.found",
           "then": [
-            {
-              "type": "readConcept",
-              "scope": "Zone",
-              "id": "$zoneHit.id",
-              "output": "zone"
-            },
-            {
-              "type": "set",
-              "value": "$zone.multiplier",
-              "output": "zoneMult"
-            },
-            {
-              "type": "set",
-              "value": "$zone.peakMultiplier",
-              "output": "peakMult"
-            },
-            {
-              "type": "set",
-              "value": "$zone.name",
-              "output": "zoneLabel"
-            }
+            "read Zone $zoneHit.id as zone",
+            "set zoneMult = $zone.multiplier",
+            "set peakMult = $zone.peakMultiplier",
+            "set zoneLabel = $zone.name"
           ]
         },
         {
@@ -2408,29 +2143,9 @@
           },
           "output": "openPoints"
         },
-        {
-          "type": "set",
-          "value": "100",
-          "output": "arg_open_near_limit"
-        },
-        {
-          "type": "set",
-          "value": "3",
-          "output": "arg_open_near_maxKm"
-        },
-        {
-          "type": "capabilityCall",
-          "capability": "geo",
-          "operation": "closest",
-          "args": [
-            "$ride.pickupLat",
-            "$ride.pickupLng",
-            "$openPoints",
-            "$arg_open_near_limit",
-            "$arg_open_near_maxKm"
-          ],
-          "output": "openHit"
-        },
+        "set arg_open_near_limit = 100",
+        "set arg_open_near_maxKm = 3",
+        "cap geo.closest($ride.pickupLat, $ride.pickupLng, $openPoints, $arg_open_near_limit, $arg_open_near_maxKm) as openHit",
         {
           "type": "runQuery",
           "query": "AvailableDrivers",
@@ -2448,29 +2163,9 @@
           },
           "output": "freePoints"
         },
-        {
-          "type": "set",
-          "value": "100",
-          "output": "arg_free_near_limit"
-        },
-        {
-          "type": "set",
-          "value": "3",
-          "output": "arg_free_near_maxKm"
-        },
-        {
-          "type": "capabilityCall",
-          "capability": "geo",
-          "operation": "closest",
-          "args": [
-            "$ride.pickupLat",
-            "$ride.pickupLng",
-            "$freePoints",
-            "$arg_free_near_limit",
-            "$arg_free_near_maxKm"
-          ],
-          "output": "freeHit"
-        },
+        "set arg_free_near_limit = 100",
+        "set arg_free_near_maxKm = 3",
+        "cap geo.closest($ride.pickupLat, $ride.pickupLng, $freePoints, $arg_free_near_limit, $arg_free_near_maxKm) as freeHit",
         {
           "name": "demand",
           "type": "set",
@@ -2498,10 +2193,7 @@
           },
           "output": "ride"
         },
-        {
-          "type": "return",
-          "value": "$ride"
-        }
+        "return $ride"
       ]
     },
     {
@@ -2580,12 +2272,7 @@
       "expose": "internal",
       "runAs": "system",
       "steps": [
-        {
-          "type": "readConcept",
-          "scope": "Ride",
-          "id": "$input.id",
-          "output": "ride"
-        },
+        "read Ride $input.id as ride",
         {
           "type": "branch",
           "condition": "$ride.status == 'CANCELLED'",
@@ -2616,17 +2303,8 @@
                 }
               ]
             },
-            {
-              "type": "readConcept",
-              "scope": "Rider",
-              "id": "$ride.rider",
-              "output": "rd"
-            },
-            {
-              "type": "set",
-              "value": "$rd.cancelsByRider / $rd.ridesRequested",
-              "output": "rate"
-            },
+            "read Rider $ride.rider as rd",
+            "set rate = $rd.cancelsByRider / $rd.ridesRequested",
             {
               "type": "updateConcept",
               "scope": "Rider",
@@ -2653,42 +2331,17 @@
                   "type": "branch",
                   "condition": "$ride.cancelledByRiderFlag == 1",
                   "then": [
-                    {
-                      "type": "capabilityCall",
-                      "capability": "notify",
-                      "operation": "send",
-                      "args": [
-                        "$ride.driverAccount",
-                        "Ride cancelled by the rider",
-                        "You are available again.",
-                        "$ride"
-                      ],
-                      "output": "n1"
-                    }
+                    "cap notify.send($ride.driverAccount, Ride cancelled by the rider, You are available again., $ride) as n1"
                   ],
                   "else": [
-                    {
-                      "type": "capabilityCall",
-                      "capability": "notify",
-                      "operation": "send",
-                      "args": [
-                        "$ride.riderAccount",
-                        "Your driver cancelled",
-                        "Please request a new ride.",
-                        "$ride"
-                      ],
-                      "output": "n2"
-                    }
+                    "cap notify.send($ride.riderAccount, Your driver cancelled, Please request a new ride., $ride) as n2"
                   ]
                 }
               ]
             }
           ]
         },
-        {
-          "type": "return",
-          "value": "$ride"
-        }
+        "return $ride"
       ]
     },
     {
@@ -2697,12 +2350,7 @@
       "expose": "internal",
       "runAs": "system",
       "steps": [
-        {
-          "type": "readConcept",
-          "scope": "Payment",
-          "id": "$input.id",
-          "output": "pay"
-        },
+        "read Payment $input.id as pay",
         {
           "name": "captured",
           "type": "branch",
@@ -2738,10 +2386,7 @@
             }
           ]
         },
-        {
-          "type": "return",
-          "value": "$pay"
-        }
+        "return $pay"
       ]
     },
     {
@@ -2750,12 +2395,7 @@
       "expose": "internal",
       "runAs": "system",
       "steps": [
-        {
-          "type": "readConcept",
-          "scope": "Ride",
-          "id": "$input.id",
-          "output": "ride"
-        },
+        "read Ride $input.id as ride",
         {
           "type": "branch",
           "condition": "!($ride.driverStars != null && $ride.driverStars != 0)",
@@ -2775,10 +2415,7 @@
             }
           ]
         },
-        {
-          "type": "return",
-          "value": "$ride"
-        }
+        "return $ride"
       ]
     },
     {
@@ -2790,22 +2427,12 @@
         "mode": "query"
       },
       "steps": [
-        {
-          "type": "readConcept",
-          "scope": "RideOffer",
-          "id": "$input.offerId",
-          "output": "offer"
-        },
+        "read RideOffer $input.offerId as offer",
         {
           "type": "branch",
           "condition": "$offer.status == 'OFFERED'",
           "then": [
-            {
-              "type": "readConcept",
-              "scope": "Ride",
-              "id": "$offer.ride",
-              "output": "ride"
-            },
+            "read Ride $offer.ride as ride",
             {
               "type": "branch",
               "condition": "$ride.currentOfferId == $offer.id",
@@ -2826,28 +2453,15 @@
                 }
               ],
               "else": [
-                {
-                  "type": "readConcept",
-                  "scope": "Ride",
-                  "id": "00000000-0000-0000-0000-000000000000",
-                  "output": "never"
-                }
+                "read Ride 00000000-0000-0000-0000-000000000000 as never"
               ]
             }
           ],
           "else": [
-            {
-              "type": "readConcept",
-              "scope": "Ride",
-              "id": "00000000-0000-0000-0000-000000000000",
-              "output": "never"
-            }
+            "read Ride 00000000-0000-0000-0000-000000000000 as never"
           ]
         },
-        {
-          "type": "return",
-          "value": "$offer"
-        }
+        "return $offer"
       ]
     },
     {
@@ -2859,22 +2473,12 @@
         "mode": "query"
       },
       "steps": [
-        {
-          "type": "readConcept",
-          "scope": "RideOffer",
-          "id": "$input.offerId",
-          "output": "offer"
-        },
+        "read RideOffer $input.offerId as offer",
         {
           "type": "branch",
           "condition": "$offer.status == 'OFFERED'",
           "then": [
-            {
-              "type": "readConcept",
-              "scope": "Ride",
-              "id": "$offer.ride",
-              "output": "ride"
-            },
+            "read Ride $offer.ride as ride",
             {
               "type": "branch",
               "condition": "$ride.currentOfferId == $offer.id",
@@ -2895,28 +2499,15 @@
                 }
               ],
               "else": [
-                {
-                  "type": "readConcept",
-                  "scope": "Ride",
-                  "id": "00000000-0000-0000-0000-000000000000",
-                  "output": "never"
-                }
+                "read Ride 00000000-0000-0000-0000-000000000000 as never"
               ]
             }
           ],
           "else": [
-            {
-              "type": "readConcept",
-              "scope": "Ride",
-              "id": "00000000-0000-0000-0000-000000000000",
-              "output": "never"
-            }
+            "read Ride 00000000-0000-0000-0000-000000000000 as never"
           ]
         },
-        {
-          "type": "return",
-          "value": "$offer"
-        }
+        "return $offer"
       ]
     },
     {
@@ -2938,10 +2529,7 @@
           },
           "output": "rated"
         },
-        {
-          "type": "return",
-          "value": "$rated"
-        }
+        "return $rated"
       ]
     },
     {
@@ -2962,10 +2550,7 @@
           },
           "output": "driver"
         },
-        {
-          "type": "return",
-          "value": "$driver"
-        }
+        "return $driver"
       ]
     },
     {
@@ -2987,10 +2572,7 @@
           },
           "output": "ride"
         },
-        {
-          "type": "return",
-          "value": "$ride"
-        }
+        "return $ride"
       ]
     }
   ],
