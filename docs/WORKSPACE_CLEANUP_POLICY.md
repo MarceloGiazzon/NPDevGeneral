@@ -86,7 +86,7 @@ Default limits:
   session (above) and it was retired, not raised.** The size limit is the one that has actually tracked
   bloat (28 of 75 MB through all six raises-then-retirement) and remains the enforced one.
 - maximum `scripts` size: `10 MB`
-- maximum `scripts` file count: `500`
+- maximum `scripts` file count: `500`, not counting `scripts\reports\out` (generated evidence, removed by `clean-workspace-state.ps1 -CleanReportsOut` and bounded by its own size limit below; counting it made the release gate fail on the reports it had just written, REG-358)
 - maximum `scripts\reports\out` size: `15 MB`
 - forbidden residue: `scripts\reports\tmp`, `scripts\reports\cache`, subproject `.gradle`, `build`, `bin`, `target`, `dist`, `coverage`, `node_modules`, `RunOutput`, sample `Output` (at any nesting depth), RuntimeHost generated assembly folders, and archives.
 - forbidden jars: all `*.jar` files except `gradle\wrapper\gradle-wrapper.jar`.

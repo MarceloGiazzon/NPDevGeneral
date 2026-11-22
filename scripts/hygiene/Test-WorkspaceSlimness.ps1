@@ -192,14 +192,19 @@ if ($totalSizeMB -gt $MaxSizeMB) {
 }
 
 $scriptsSummary = Get-FileSummary (Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts")
-if ($scriptsSummary.fileCount -gt $MaxScriptsFileCount) {
-    Add-Violation $violations "scripts-file-count-limit" ("scripts contains " + $scriptsSummary.fileCount + " files; limit is " + $MaxScriptsFileCount + ".") $scriptsSummary
+$reportsOutSummary = Get-FileSummary (Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out")
+# REG-358 (2026-11-22): the 500-file limit guards script sprawl. The evidence the release gate itself produces
+# (about 60 reports under scripts/reports/out) is generated output that clean-workspace-state.ps1 -CleanReportsOut
+# removes and that has its own size limit below, so it does not count here; counting it made the gate fail on the
+# evidence it had just written (485 files before the run, 545 after).
+$scriptsOwnFileCount = [int]$scriptsSummary.fileCount - [int]$reportsOutSummary.fileCount
+if ($scriptsOwnFileCount -gt $MaxScriptsFileCount) {
+    Add-Violation $violations "scripts-file-count-limit" ("scripts contains " + $scriptsOwnFileCount + " files (scripts/reports/out excluded); limit is " + $MaxScriptsFileCount + ".") $scriptsSummary
 }
 if ($scriptsSummary.sizeMB -gt $MaxScriptsSizeMB) {
     Add-Violation $violations "scripts-size-limit" ("scripts is " + $scriptsSummary.sizeMB + " MB; limit is " + $MaxScriptsSizeMB + " MB.") $scriptsSummary
 }
 
-$reportsOutSummary = Get-FileSummary (Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out")
 if ($reportsOutSummary.sizeMB -gt $MaxReportsOutSizeMB) {
     Add-Violation $violations "reports-out-size-limit" ("scripts/reports/out is " + $reportsOutSummary.sizeMB + " MB; limit is " + $MaxReportsOutSizeMB + " MB.") $reportsOutSummary
 }
