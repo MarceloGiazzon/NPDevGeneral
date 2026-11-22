@@ -110,6 +110,7 @@ sections:
       same `scope`/`input`/`output` as `createConcept`; the caller sends `{"id":...,"status":"CLOSED"}`):
       `"flows":[{"name":"CloseTicket","concept":"Ticket","input":{"concept":"Ticket","mode":"update"},"steps":[{"type":"updateConcept","scope":"Ticket","input":"$input","output":"$saved"},{"type":"return","value":"$saved"}]}]`.
       A step needs only its `type`: leave `name` out (the platform numbers the steps itself); give a step a `name` only when a hook's `targetStep` must point at it.
+      A simple step may be ONE STRING instead of an object (same meaning, far fewer tokens): `"return $saved"`, `"set riderId = $me.id"`, `"read Ride $input.id as ride"`, `"create Ride from $rideIn as created"`, `"call MeasureTrip with $created as m"`, `"emit RideDone from $saved"`, `"cap geo.closest($a, $b) as best"`. Anything with more keys (`policy`, `errorTarget`, `match`, `set` maps, `branch`, `awaitEvent`) stays an object; the two mix freely in one `steps[]`, also inside `then`/`else`/`steps` bodies.
       Flow `steps[].type` vocabulary: invariantCheck|capabilityCall|generatedAction|emitEvent|
       scheduleEvent|return|branch|awaitEvent|createConcept|updateConcept|map|forEach|set|readConcept|listConcepts|runQuery|deleteConcept|callFlow (full enum in the value reference).
     - **Lifecycle** (on the concept): `"lifecycle":{"statusField":"status","states":[{"value":"OPEN","initial":true},{"value":"CLOSED","terminal":true}],

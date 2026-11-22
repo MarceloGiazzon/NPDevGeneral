@@ -4877,11 +4877,7 @@
       "description": "Procedure-over-aggregate shape: recompute the order's line count.",
       "expose": "internal",
       "steps": [
-        {
-          "name": "return-count",
-          "type": "return",
-          "value": "$input.widgetOrderId"
-        }
+        "return $input.widgetOrderId"
       ]
     },
     {

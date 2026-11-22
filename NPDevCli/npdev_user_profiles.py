@@ -149,6 +149,57 @@ def unassign_role(document: dict, role: str) -> str | None:
     return holder
 
 
+MODES_PATH = Path(__file__).resolve().parent / "ai-modes.json"
+MODE_ENV = "NPDEV_MODE"
+
+
+def modes() -> dict:
+    """The mode catalogue (ai-modes.json): {"default": id, "modes": {id: {label, emphasis, reviewFocus}}}."""
+    try:
+        data = json.loads(MODES_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise UserProfileError(f"cannot read {MODES_PATH} ({type(exc).__name__})") from None
+    return data
+
+
+def check_mode(mode_id: str) -> str:
+    known = modes()["modes"]
+    mode_id = (mode_id or "").strip().lower()
+    if mode_id not in known:
+        raise UserProfileError(f"unknown mode {mode_id!r} (known: {', '.join(known)})")
+    return mode_id
+
+
+def set_mode(document: dict, profile_id: str, mode_id: str | None) -> None:
+    """Store a person's working mode; None clears it (back to the default)."""
+    entry = _profile(document, profile_id)
+    if mode_id is None:
+        entry.pop("mode", None)
+    else:
+        entry["mode"] = check_mode(mode_id)
+
+
+def active_mode(document: dict | None = None, environ=None) -> tuple[str, str]:
+    """(mode id, why): NPDEV_MODE, else the active person's `mode`, else the default. Emphasis only -- a mode never
+    allows or forbids anything (owner D-5, 2026-11-21)."""
+    environ = os.environ if environ is None else environ
+    catalogue = modes()
+    wanted = (environ.get(MODE_ENV) or "").strip()
+    if wanted:
+        return check_mode(wanted), f"{MODE_ENV}"
+    document = read(environ=environ) if document is None else document
+    name = active_name(document, environ)
+    stored = (document["profiles"].get(name) or {}).get("mode") if name else None
+    if stored:
+        return check_mode(stored), f"profile {name}"
+    return catalogue["default"], "default"
+
+
+def mode_focus(mode_id: str) -> str:
+    """The one-sentence thing an AI review checks in this mode."""
+    return modes()["modes"][mode_id]["reviewFocus"]
+
+
 def active_name(document: dict, environ=None) -> str | None:
     environ = os.environ if environ is None else environ
     name = (environ.get(ACTIVE_ENV) or "").strip().lower() or document.get("active")

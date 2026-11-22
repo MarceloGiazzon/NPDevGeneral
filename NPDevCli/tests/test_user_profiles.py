@@ -259,5 +259,51 @@ class ClientTests(Isolated):
             self.complete("bench", {}, [])
 
 
+class ModeTests(Isolated):
+    """D-5 (owner 2026-11-21): a working mode lives on the person; emphasis only, CLI and AI review, no Manager screen."""
+
+    run_cli = CliTests.run_cli
+
+    def setUp(self):
+        super().setUp()
+        os.environ.pop(users.MODE_ENV, None)
+
+    def test_the_default_mode_is_business_and_costs_nothing(self):
+        self.assertEqual(users.active_mode(doc(ana=[]), {}), ("business", "default"))
+        self.assertEqual(self.run_cli("users", "add", "ana")[0], 0)
+        listed = json.loads(self.run_cli("users")[1])
+        self.assertEqual((listed["activeMode"], listed["profiles"][0]["mode"]), ("business", "business"))
+
+    def test_a_mode_is_stored_on_the_person_and_followed_when_that_person_is_active(self):
+        self.assertEqual(self.run_cli("users", "add", "ana")[0], 0)
+        self.assertEqual(self.run_cli("users", "mode", "ana", "QA")[0], 0)
+        self.assertEqual(self.run_cli("users", "use", "ana")[0], 0)
+        listed = json.loads(self.run_cli("users")[1])
+        self.assertEqual((listed["activeMode"], listed["activeModeWhy"]), ("qa", "profile ana"))
+        self.assertEqual(self.run_cli("users", "mode", "ana", "--clear")[0], 0)
+        self.assertEqual(json.loads(self.run_cli("users")[1])["activeMode"], "business")
+
+    def test_the_environment_wins_and_a_typo_is_refused(self):
+        document = {**doc(ana=[]), "active": "ana"}
+        document["profiles"]["ana"]["mode"] = "qa"
+        self.assertEqual(users.active_mode(document, {users.MODE_ENV: "technical"}), ("technical", users.MODE_ENV))
+        with self.assertRaises(users.UserProfileError):
+            users.active_mode(document, {users.MODE_ENV: "wizard"})
+        code, text = self.run_cli("users", "mode", "ana", "wizard")
+        self.assertEqual(code, 2, text)
+
+    def test_every_mode_in_the_catalogue_has_a_label_emphasis_and_review_focus(self):
+        catalogue = users.modes()
+        self.assertIn(catalogue["default"], catalogue["modes"])
+        for mode_id, mode in catalogue["modes"].items():
+            self.assertTrue(mode["label"] and mode["emphasis"] and users.mode_focus(mode_id), mode_id)
+
+    def test_ai_context_adds_the_review_focus_only_for_a_non_default_mode(self):
+        import npdev_ai as ai
+        self.assertEqual(ai._context_mode(), ("business", "default"))
+        with mock.patch.dict(os.environ, {users.MODE_ENV: "commercial"}):
+            self.assertEqual(ai._context_mode()[0], "commercial")
+
+
 if __name__ == "__main__":
     unittest.main()

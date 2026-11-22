@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "npdev-ai-modes.v1",
+  "default": "business",
+  "note": "A mode is HOW a person works right now (owner D-5, 2026-11-21): it changes what comes first and what an AI review checks, never what is allowed. It lives on the user profile (npdev ai users mode), NPDEV_MODE overrides it for one shell, and no Manager screen changes.",
+  "modes": {
+    "business": {
+      "label": "Business",
+      "emphasis": ["create an app", "browser AI relay", "ready-made packs"],
+      "reviewFocus": "Check that the app does what the person asked for, in words a non-programmer would use."
+    },
+    "commercial": {
+      "label": "Commercial",
+      "emphasis": ["gallery", "demo data", "pack catalog", "export a presentation"],
+      "reviewFocus": "Check that the demo looks good and is complete: plausible example data, every screen reachable, no raw technical names on screen."
+    },
+    "qa": {
+      "label": "QA",
+      "emphasis": ["probes", "captures", "browser routines", "reports"],
+      "reviewFocus": "Check probe coverage, access by role, and visual regressions: every rule has a probe and every role sees only what it may."
+    },
+    "technical": {
+      "label": "Technical",
+      "emphasis": ["model", "logs", "quarantined code", "flows"],
+      "reviewFocus": "Check flow complexity, keyword count and security: unused steps, unbounded loops, secrets, extension code."
+    }
+  }
+}

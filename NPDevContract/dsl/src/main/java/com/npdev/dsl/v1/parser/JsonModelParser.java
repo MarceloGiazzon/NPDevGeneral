@@ -2959,8 +2959,10 @@ public final class JsonModelParser {
     private static List<StepAst> parseStepList(String flowName, JsonNode stepsNode) throws IOException {
         List<StepAst> steps = new ArrayList<>();
         int index = 0;
-        for (JsonNode stepNode : stepsNode) {
+        for (JsonNode rawStepNode : stepsNode) {
             index++;
+            // P8: a compact string step ("read Ride $input.id as ride") is lowered to the object it stands for.
+            JsonNode stepNode = CompactSteps.expandStep(rawStepNode, "Flow " + flowName + " step #" + index);
             if ("notify".equalsIgnoreCase(readText(stepNode, "type"))) {
                 steps.addAll(lowerNotifyStep(flowName, stepNode, index));
                 continue;

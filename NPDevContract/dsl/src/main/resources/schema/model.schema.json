@@ -3728,7 +3728,10 @@
           "type": "array",
           "minItems": 1,
           "items": {
-            "$ref": "#/$defs/flowStep"
+            "oneOf": [
+            { "$ref": "#/$defs/flowStep" },
+            { "type": "string", "minLength": 1, "description": "P8 compact step: one string for a simple step -- return <value> | set <out> = <value> | read <Scope> <id> [as <out>] | create <Scope> from <input> [as <out>] | call <Flow> [with <input>] [as <out>] | emit <Event> [from <ref>] | cap <capability>.<operation>(<args>) [as <out>]. Lowered to the object form at parse time." }
+            ]
           }
         }
       },
@@ -3806,7 +3809,10 @@
           "type": "array",
           "minItems": 1,
           "items": {
-            "$ref": "#/$defs/flowStep"
+            "oneOf": [
+            { "$ref": "#/$defs/flowStep" },
+            { "type": "string", "minLength": 1, "description": "P8 compact step: one string for a simple step -- return <value> | set <out> = <value> | read <Scope> <id> [as <out>] | create <Scope> from <input> [as <out>] | call <Flow> [with <input>] [as <out>] | emit <Event> [from <ref>] | cap <capability>.<operation>(<args>) [as <out>]. Lowered to the object form at parse time." }
+            ]
           }
         }
       },
@@ -3950,13 +3956,19 @@
         "then": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/flowStep"
+            "oneOf": [
+            { "$ref": "#/$defs/flowStep" },
+            { "type": "string", "minLength": 1, "description": "P8 compact step: one string for a simple step -- return <value> | set <out> = <value> | read <Scope> <id> [as <out>] | create <Scope> from <input> [as <out>] | call <Flow> [with <input>] [as <out>] | emit <Event> [from <ref>] | cap <capability>.<operation>(<args>) [as <out>]. Lowered to the object form at parse time." }
+            ]
           }
         },
         "else": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/flowStep"
+            "oneOf": [
+            { "$ref": "#/$defs/flowStep" },
+            { "type": "string", "minLength": 1, "description": "P8 compact step: one string for a simple step -- return <value> | set <out> = <value> | read <Scope> <id> [as <out>] | create <Scope> from <input> [as <out>] | call <Flow> [with <input>] [as <out>] | emit <Event> [from <ref>] | cap <capability>.<operation>(<args>) [as <out>]. Lowered to the object form at parse time." }
+            ]
           }
         },
         "awaitEvent": {
@@ -4034,7 +4046,10 @@
         "steps": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/flowStep"
+            "oneOf": [
+            { "$ref": "#/$defs/flowStep" },
+            { "type": "string", "minLength": 1, "description": "P8 compact step: one string for a simple step -- return <value> | set <out> = <value> | read <Scope> <id> [as <out>] | create <Scope> from <input> [as <out>] | call <Flow> [with <input>] [as <out>] | emit <Event> [from <ref>] | cap <capability>.<operation>(<args>) [as <out>]. Lowered to the object form at parse time." }
+            ]
           },
           "description": "LIFT-LOOP: the forEach loop body, executed once per item."
         },
@@ -4050,7 +4065,10 @@
         "onFailure": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/flowStep"
+            "oneOf": [
+            { "$ref": "#/$defs/flowStep" },
+            { "type": "string", "minLength": 1, "description": "P8 compact step: one string for a simple step -- return <value> | set <out> = <value> | read <Scope> <id> [as <out>] | create <Scope> from <input> [as <out>] | call <Flow> [with <input>] [as <out>] | emit <Event> [from <ref>] | cap <capability>.<operation>(<args>) [as <out>]. Lowered to the object form at parse time." }
+            ]
           },
           "description": "LNCH-17: compensation steps run in reverse completion order if a later step in the same flow terminally fails. Not a distributed transaction -- best-effort cleanup, per the saga pattern; see docs/architecture/FLOW_TRANSACTION_CONTRACT.md."
         },
@@ -4062,7 +4080,10 @@
         "onTimeout": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/flowStep"
+            "oneOf": [
+            { "$ref": "#/$defs/flowStep" },
+            { "type": "string", "minLength": 1, "description": "P8 compact step: one string for a simple step -- return <value> | set <out> = <value> | read <Scope> <id> [as <out>] | create <Scope> from <input> [as <out>] | call <Flow> [with <input>] [as <out>] | emit <Event> [from <ref>] | cap <capability>.<operation>(<args>) [as <out>]. Lowered to the object form at parse time." }
+            ]
           },
           "description": "R2.5: escalation steps run once timeout's deadline passes without the awaited event arriving -- e.g. notify a manager, then let the flow continue past the await. Requires timeout to be set."
         },

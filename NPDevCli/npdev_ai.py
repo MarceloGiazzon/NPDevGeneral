@@ -8,6 +8,7 @@ Keys are not handled here -- `npdev providers add|remove` owns them.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -378,6 +379,13 @@ def add_arguments(ai_sub) -> None:
     json_flag(p)
     p = usub.add_parser("anonymous", help="No active profile: the roles decide, otherwise the main key.")
     json_flag(p)
+    p = usub.add_parser("mode", help="Set how a person works now: business (default), commercial, qa or technical. "
+                                     "Emphasis only: it changes what an AI review checks, never what is allowed. "
+                                     "(NPDEV_MODE overrides it for one shell; `--clear` goes back to the default.)")
+    p.add_argument("id")
+    p.add_argument("mode", nargs="?", help="business, commercial, qa or technical.")
+    p.add_argument("--clear", action="store_true", help="Remove the stored mode.")
+    json_flag(p)
     p = usub.add_parser("assign", help="Give a role (a feature: bench, review, ...) to a profile: its keys pay for that work.")
     p.add_argument("id")
     p.add_argument("role")
@@ -652,6 +660,14 @@ def _run_context(args) -> int:
         bundle += catalog_section(args.with_catalog)
         payload["bytes"] = len(bundle.encode("utf-8"))
         payload["catalogArea"] = args.with_catalog.strip().lower()
+    mode, _why = _context_mode()
+    if mode != _default_mode():
+        # Only a non-default mode adds text (the default costs nothing): what a review of this app should check first.
+        import npdev_user_profiles as _profiles
+
+        bundle += f"\n\n## Working mode: {mode}\n{_profiles.mode_focus(mode)}\n"
+        payload["bytes"] = len(bundle.encode("utf-8"))
+        payload["mode"] = mode
     if args.output:
         target = Path(args.output)
         try:
@@ -751,6 +767,12 @@ def _run_users(args, action) -> int:
         elif action == "anonymous":
             users.use(document, None)
             subject = "no active profile: roles decide, otherwise the main key"
+        elif action == "mode":
+            if not args.clear and not args.mode:
+                raise users.UserProfileError("give a mode (" + ", ".join(users.modes()["modes"]) + ") or --clear")
+            users.set_mode(document, args.id, None if args.clear else args.mode)
+            subject = (f"{args.id} is back to the default mode" if args.clear
+                       else f"{args.id} now works in {args.mode.strip().lower()} mode")
         elif action == "assign":
             users.assign_role(document, args.id, args.role)
             subject = f"role {args.role} now uses the keys of {args.id}"
@@ -760,10 +782,14 @@ def _run_users(args, action) -> int:
         else:
             active = users.active_name(document)
             rows = [{"id": name, "displayName": entry.get("displayName"), "active": name == active,
+                     "mode": entry.get("mode") or users.modes()["default"],
                      "aiRoles": entry.get("aiRoles") or []} for name, entry in sorted(document["profiles"].items())]
-            payload = {"ok": True, "file": str(users.path()), "active": active, "profiles": rows}
-            text = _table(rows, ("id", "displayName", "active", "aiRoles")) + \
-                f"\nactive: {active or 'none (anonymous: roles decide, otherwise the main key)'}"
+            mode, mode_why = users.active_mode(document)
+            payload = {"ok": True, "file": str(users.path()), "active": active, "profiles": rows,
+                       "activeMode": mode, "activeModeWhy": mode_why}
+            text = _table(rows, ("id", "displayName", "active", "mode", "aiRoles")) + \
+                f"\nactive: {active or 'none (anonymous: roles decide, otherwise the main key)'}" + \
+                f"\nmode: {mode} ({mode_why})"
             return _answer(args, payload, text)
         file = users.write(document)
         return _answer(args, {"ok": True, "changed": True, "file": str(file)}, f"{subject} ({file})")
@@ -773,6 +799,24 @@ def _run_users(args, action) -> int:
         else:
             print(f"error: {exc}", file=sys.stderr)
         return 2
+
+
+def _default_mode() -> str:
+    import npdev_user_profiles as users
+
+    return users.modes()["default"]
+
+
+def _context_mode() -> tuple[str, str]:
+    """The working mode for `ai context`; a broken profiles file never blocks building the context."""
+    import npdev_user_profiles as users
+
+    try:
+        return users.active_mode()
+    except users.UserProfileError as exc:
+        if (os.environ.get(users.MODE_ENV) or "").strip():
+            raise AiConfigError(str(exc)) from None   # a typo in NPDEV_MODE must be seen
+        return _default_mode(), "default"
 
 
 def _key_provider(provider_id: str) -> dict:

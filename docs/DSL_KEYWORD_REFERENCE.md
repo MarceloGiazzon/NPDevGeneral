@@ -923,7 +923,7 @@ Something the app does: an ordered list of steps started by a trigger. A flow is
 | `crossAggregateReason` | `string` (min length 1) | optional | Why this flow may write concepts of more than one aggregate (the one-aggregate-one-transaction rule is waived for this flow only; the reason is mandatory). For a flow migrated from a multi-aggregate procedure. |
 | `metadata` | object | optional | Binds an author-supplied, hash-pinned Java class to the flow instead of its steps. Holds `untrustedExtensionEntrypoint`.<br>Keys written inside it:<br>`untrustedExtensionEntrypoint` (`string`; optional; min length 1): This flow's implementation is an author-supplied, hash-pinned untrusted extension (a relative path into the sibling untrusted-extension-manifest.json, entry kind `flow`) rather than its declared steps -- admitted through the same bytecode/AST safety gate as a mounted plugin. The steps stay as the schema-required placeholder. 'Untrusted' names the safety posture the platform treats it with, not a judgement on the author. |
 | `hooks` | array of [`flowHook`](#flowhook) | optional | Steps to run before or after named steps of the specialized base flow. |
-| `steps` | array of [`flowStep`](#flowstep) (min items 1) | optional | The ordered steps, at least one. Required unless the flow specializes another and only adds hooks. |
+| `steps` | array of [`flowStep`](#flowstep) or `string` (min items 1) | optional | The ordered steps, at least one. Required unless the flow specializes another and only adds hooks. |
 
 Example:
 
@@ -995,7 +995,7 @@ Extra steps inserted before or after a named step of the flow being specialized.
 |---|---|---|---|
 | `position` | one of `before`, `after` | required | `before` or `after` the target step. |
 | `targetStep` | `string` (min length 1) | required | Name of the step of the base flow the hook attaches to. |
-| `steps` | array of [`flowStep`](#flowstep) (min items 1) | required | The steps to insert, at least one. |
+| `steps` | array of [`flowStep`](#flowstep) or `string` (min items 1) | required | The steps to insert, at least one. |
 
 ### `flowStep`
 
@@ -1046,8 +1046,8 @@ One step of a flow. `type` decides what the step does and which other keywords i
 | `condition` | `string` (min length 1) | optional | On a `branch`: the expression that chooses `then` (true) or `else` (false). |
 | `action` | [`actionMetadata`](#actionmetadata) | optional | How the step is presented in traces and action histories (label, danger level). |
 | `actionName` | `string` (min length 1) | optional | On a `generatedAction`: the name of the generated action to run. |
-| `then` | array of [`flowStep`](#flowstep) | optional | On a `branch`: the steps run when the condition is true. |
-| `else` | array of [`flowStep`](#flowstep) | optional | On a `branch`: the steps run when the condition is false. |
+| `then` | array of [`flowStep`](#flowstep) or `string` | optional | On a `branch`: the steps run when the condition is true. |
+| `else` | array of [`flowStep`](#flowstep) or `string` | optional | On a `branch`: the steps run when the condition is false. |
 | `awaitEvent` | `string` (min length 1) | optional | On an `awaitEvent`: the name of the event the flow waits for. |
 | `awaitRef` | `string` (min length 1) | optional | On an `awaitEvent`: the flow-state key under which the arriving event's payload is stored. |
 | `match` | [`awaitMatch`](#awaitmatch) | optional | On an `awaitEvent`: how an arriving event is matched to this flow instance. |
@@ -1065,12 +1065,12 @@ One step of a flow. `type` decides what the step does and which other keywords i
 | `errorTarget` | `string` (min length 1) | optional | On a capabilityCall step, a failed call is stored under this state key as {code,message,kind,retryable} and the step succeeds, instead of failing the flow. Cleared on success. |
 | `ifExists` | one of `skip` | optional | On a createConcept step, skip silently when a row with the same unique field values already exists (the step output is then null) instead of failing. |
 | `dedupeKey` | `string` (min length 1) | optional | On a scheduleEvent step with a delay, an expression ($input.id, $order.id, a literal) that makes the schedule unique ACROSS executions: the same flow, step, event and dedupeKey value is scheduled once, however many times the flow runs (an orchestration scheduleEvent action had this per source event). Absent = unique per execution. |
-| `steps` | array of [`flowStep`](#flowstep) | optional | The forEach loop body, executed once per item. |
+| `steps` | array of [`flowStep`](#flowstep) or `string` | optional | The forEach loop body, executed once per item. |
 | `maxLoopIterations` | `integer` (min 1) | optional | Safety cap on forEach iterations, mirroring Procedures' forEach. |
 | `parallelAwait` | `boolean` | optional | On a `forEach`: waits for all iterations in parallel instead of one at a time. Every iteration's await is attempted up front and all outstanding ones stay durably parked at once. The body must contain exactly one `awaitEvent` step at its top level (not nested in a branch); any number of other non-`forEach` steps may come before or after it. Absent or false means sequential. |
-| `onFailure` | array of [`flowStep`](#flowstep) | optional | Compensation steps, run in reverse completion order if a later step of the same flow fails terminally. Best-effort cleanup in the saga style, not a distributed transaction. |
+| `onFailure` | array of [`flowStep`](#flowstep) or `string` | optional | Compensation steps, run in reverse completion order if a later step of the same flow fails terminally. Best-effort cleanup in the saga style, not a distributed transaction. |
 | `timeout` | `integer` (min 1) | optional | On an `awaitEvent`: the wait deadline in seconds, measured from when the step first parks (not from flow start). It survives a process restart; once it passes without the awaited event the flow resumes into `onTimeout`. Absent means wait forever. |
-| `onTimeout` | array of [`flowStep`](#flowstep) | optional | Escalation steps run once timeout's deadline passes without the awaited event arriving -- e.g. notify a manager, then let the flow continue past the await. Requires timeout to be set. |
+| `onTimeout` | array of [`flowStep`](#flowstep) or `string` | optional | Escalation steps run once timeout's deadline passes without the awaited event arriving -- e.g. notify a manager, then let the flow continue past the await. Requires timeout to be set. |
 | `task` | [`humanTask`](#humantask) | optional | Makes this awaitEvent a HUMAN task listed in the assignee's inbox (GET /api/tasks). Completing it publishes this step's awaitEvent with the form values, the chosen outcome (under outcomeField), completedBy and the step's match.payload values. Only valid on type awaitEvent. Due date = the step's own timeout. |
 
 Example:

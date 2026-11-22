@@ -157,7 +157,10 @@ def flow_section(flows: list[dict]) -> str:
     for flow in flows:
         out.append(f"<h3>{esc(flow['name'])}</h3><ol>")
         for step in flow.get("steps", []):
-            line = f"{esc(step.get('name'))} <small>({esc(step.get('type'))})</small>"
+            if isinstance(step, str):   # P8 compact step ("read Ride $input.id as ride"): show it as written
+                out.append(f"<li>{esc(step)}</li>")
+                continue
+            line = f"{esc(step.get('name') or step.get('type'))} <small>({esc(step.get('type'))})</small>"
             assignee = (step.get("assignee") or {}).get("roles")
             if assignee:
                 line += " &mdash; assigned to " + ", ".join(f"<b>{esc(r)}</b>" for r in sum((roles_in(a) or [a] for a in assignee), []))

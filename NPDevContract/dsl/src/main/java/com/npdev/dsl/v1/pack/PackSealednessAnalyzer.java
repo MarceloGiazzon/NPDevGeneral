@@ -262,6 +262,12 @@ public final class PackSealednessAnalyzer {
                 JsonNode flow = flows.get(f);
                 collectConceptRefs(refs, flow, "flows[" + f + "]");
                 JsonNode steps = flow == null ? null : flow.get("steps");
+                try {
+                    // P8: lower compact string steps first, so a `read Ride ...` still reports the concept it names.
+                    steps = com.npdev.dsl.v1.parser.CompactSteps.expandList(steps, "flows[" + f + "]");
+                } catch (java.io.IOException unreadableStep) {
+                    steps = null; // the parser refuses the step with its own message; sealedness has nothing to add
+                }
                 if (steps != null && steps.isArray()) {
                     for (int s = 0; s < steps.size(); s++) {
                         collectConceptRefs(refs, steps.get(s), "flows[" + f + "].steps[" + s + "]");
