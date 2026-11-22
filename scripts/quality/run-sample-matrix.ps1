@@ -188,15 +188,16 @@ function Invoke-ProcessEvidence {
     $exitCode = $null
     $commandError = $null
 
+    # REG-358: the child's output goes to FILES and completion is a HasExited poll -- never a pipe plus
+    # ReadToEnd()/WaitForExit(). verify-sample.ps1 runs Gradle, which forks a daemon that inherits the redirected
+    # pipe handles; ReadToEnd() then returns only when that daemon exits, so every gate run sat ~27 min after the
+    # real work had finished (until someone stopped the idle daemon by hand). A file handle held by the daemon
+    # blocks nothing. Same pattern as run-untrusted-extension-beta0-proof.ps1's Invoke-ProcessEvidence.
+    $stdoutTemp = $LogPath + ".stdout.tmp"
+    $stderrTemp = $LogPath + ".stderr.tmp"
     try {
-        $process = New-Object System.Diagnostics.Process
-        $process.StartInfo = New-Object System.Diagnostics.ProcessStartInfo
-        $process.StartInfo.FileName = $Executable
-        $process.StartInfo.WorkingDirectory = $WorkingDirectory
-        $process.StartInfo.UseShellExecute = $false
-        $process.StartInfo.RedirectStandardOutput = $true
-        $process.StartInfo.RedirectStandardError = $true
-        $process.StartInfo.Arguments = (@($Arguments) | ForEach-Object {
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $LogPath) | Out-Null
+        $argumentString = (@($Arguments) | ForEach-Object {
                 if ([string]$_ -match '[\s"]') {
                     '"' + ([string]$_ -replace '"', '\"') + '"'
                 }
@@ -205,19 +206,29 @@ function Invoke-ProcessEvidence {
                 }
             }) -join " "
 
-        [void]$process.Start()
-        $stdout = $process.StandardOutput.ReadToEnd()
-        $stderr = $process.StandardError.ReadToEnd()
-        $process.WaitForExit()
+        $process = Start-Process -FilePath $Executable -ArgumentList $argumentString -WorkingDirectory $WorkingDirectory `
+            -RedirectStandardOutput $stdoutTemp -RedirectStandardError $stderrTemp -PassThru -NoNewWindow
+        # Touching .Handle keeps the exit code readable after the process is gone (Start-Process -PassThru quirk).
+        $null = $process.Handle
+        while (-not $process.HasExited) {
+            Start-Sleep -Milliseconds 250
+            $process.Refresh()
+        }
         $exitCode = [int]$process.ExitCode
-        foreach ($chunk in @($stdout, $stderr)) {
-            if (-not [string]::IsNullOrWhiteSpace($chunk)) {
-                $captureOutput += @($chunk -split "(`r`n|`n|`r)" | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+        foreach ($tempPath in @($stdoutTemp, $stderrTemp)) {
+            if (Test-Path -LiteralPath $tempPath -PathType Leaf) {
+                $chunk = Get-Content -Raw -LiteralPath $tempPath
+                if (-not [string]::IsNullOrWhiteSpace($chunk)) {
+                    $captureOutput += @($chunk -split "(`r`n|`n|`r)" | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+                }
             }
         }
     }
     catch {
         $commandError = $_.Exception.Message
+    }
+    finally {
+        Remove-Item -LiteralPath $stdoutTemp, $stderrTemp -Force -ErrorAction SilentlyContinue
     }
 
     $endedAt = Get-Date

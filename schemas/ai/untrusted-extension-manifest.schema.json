@@ -50,8 +50,9 @@
           },
           "kind": {
             "enum": [
-              "procedure",
-              "panel"
+              "flow",
+              "panel",
+              "widget"
             ]
           },
           "relativePath": {
@@ -107,7 +108,7 @@
             }
           },
           "dependencies": {
-            "description": "Path A P5.1: other concepts, capabilities, or entryId values (e.g. a panel that calls a sibling procedure entry) this object relies on. Optional, same default as inputs.",
+            "description": "Path A P5.1: other concepts, capabilities, or entryId values (e.g. a panel that calls a sibling flow entry) this object relies on. Optional, same default as inputs.",
             "type": "array",
             "items": {
               "type": "string",

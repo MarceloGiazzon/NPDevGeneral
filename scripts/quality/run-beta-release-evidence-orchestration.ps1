@@ -38,6 +38,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# REG-358: `pwsh -File ... -OnlyProducers a,b` (and run-beta-release-gate.ps1's own `-SkipProducers (... -join ",")`)
+# delivers ONE comma-joined string, not an array -- a string[] parameter is only split when called in-process. Split
+# here so a list selects/skips what it names instead of silently matching nothing.
+$SkipProducers = @($SkipProducers | ForEach-Object { [string]$_ -split "," } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+$OnlyProducers = @($OnlyProducers | ForEach-Object { [string]$_ -split "," } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+$Stages = @($Stages | ForEach-Object { [string]$_ -split "," } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+
 $workspaceRoot = (Resolve-Path ".").Path
 
 if ([string]::IsNullOrWhiteSpace($RunId)) {
@@ -76,6 +83,29 @@ $producers = @(
         script = "scripts/quality/run-untrusted-extension-beta0-proof.ps1"
         reports = @("trusted-source-beta0-proof-report.json") }
 
+    # REG-358: the regression-coverage manifest (scripts/policy/final-regression-coverage-manifest.json) requires these
+    # reports, and the stage-3 final-regression-coverage-audit below fails 13 of its 18 items when they are absent.
+    # They used to be written only by run-beta0-final-release-check.ps1, so a -GenerateReports gate run could never
+    # satisfy the audit it runs itself. All are fast (2 s - 138 s); none builds or boots an app.
+    [pscustomobject]@{ name = "doc-entrypoint-validation-tests"; stage = 1
+        script = "scripts/quality/run-doc-entrypoint-validation-tests.ps1"
+        reports = @("doc-entrypoint-validation-tests-report.json") }
+    [pscustomobject]@{ name = "scope-policy-enforcement-tests"; stage = 1
+        script = "scripts/quality/run-scope-policy-enforcement-tests.ps1"
+        reports = @("scope-policy-enforcement-tests-report.json") }
+    [pscustomobject]@{ name = "runtimehost-staged-jar-preflight-tests"; stage = 1
+        script = "scripts/quality/run-runtimehost-staged-jar-preflight-tests.ps1"
+        reports = @("runtimehost-staged-jar-preflight-tests-report.json") }
+    [pscustomobject]@{ name = "runbook-workflow-alignment-tests"; stage = 1
+        script = "scripts/quality/run-runbook-workflow-alignment-tests.ps1"
+        reports = @("runbook-workflow-alignment-tests-report.json") }
+    [pscustomobject]@{ name = "trusted-source-beta0-proof-tests"; stage = 1
+        script = "scripts/quality/run-untrusted-extension-beta0-proof-tests.ps1"
+        reports = @("trusted-source-beta0-proof-tests-report.json") }
+    [pscustomobject]@{ name = "sample-matrix-tests"; stage = 1
+        script = "scripts/quality/run-sample-matrix-tests.ps1"
+        reports = @("sample-matrix-tests-report.json") }
+
     # ---- stage 2: build / boot / container -------------------------------------------------------
     [pscustomobject]@{ name = "runtimehost-staged-jar-preflight"; stage = 2
         script = "scripts/quality/run-runtimehost-staged-jar-preflight.ps1"
@@ -103,6 +133,16 @@ $producers = @(
         script = "scripts/quality/run-docker-linux-proof.ps1"
         requiresDocker = $true
         reports = @("docker-linux-parity-report.json") }
+    # REG-358: this test drives run-docker-linux-proof.ps1 itself, which skips (and writes nothing) when
+    # local-test-profile.json disables docker, so it needs docker exactly like docker-linux-parity above.
+    [pscustomobject]@{ name = "docker-linux-proof-tests"; stage = 2
+        script = "scripts/quality/run-docker-linux-proof-tests.ps1"
+        requiresDocker = $true
+        reports = @("docker-linux-proof-tests-report.json") }
+    # ~30 s: generates a sample, drifts it, regenerates over it (docs/architecture/APP_UPGRADE_CONTRACT.md DoD).
+    [pscustomobject]@{ name = "app-upgrade-contract"; stage = 2
+        script = "scripts/quality/run-app-upgrade-contract-gate.ps1"
+        reports = @("app-upgrade-contract-gate-report.json") }
 
     # ---- stage 3: derived - these READ the reports produced above --------------------------------
     [pscustomobject]@{ name = "ai-command-policy"; stage = 3

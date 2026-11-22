@@ -116,7 +116,12 @@ Push-Location $generatorRoot
 $previousGradleUserHome = $env:GRADLE_USER_HOME
 $env:GRADLE_USER_HOME = $workspaceGradleUserHome
 try {
-    & $gradlew ":generator:run" "--args=$generatorArgLine"
+    # REG-358: --no-daemon, like every other gate-reachable :generator:run caller (run-ai-beta-gate.ps1, the untrusted-
+    # extension proof). Without it this leaves a persistent Gradle daemon that inherits the caller's redirected stdout/
+    # stderr pipes and keeps them open after the generation is done, so run-sample-matrix.ps1 / the app-upgrade gate /
+    # the orchestration sat ~27 min until the idle daemon was killed by hand. A --no-daemon build forks a single-use
+    # daemon that exits with the build.
+    & $gradlew ":generator:run" "--args=$generatorArgLine" "--no-daemon"
     if ($LASTEXITCODE -ne 0) {
         Fail ("Generator failed with exit code " + $LASTEXITCODE)
     }

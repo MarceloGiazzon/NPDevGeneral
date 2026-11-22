@@ -596,40 +596,39 @@ function Write-GeneratedRuntimeModel {
                 steps = @(
                     [ordered]@{ name = "return-input"; type = "return"; value = '$input' }
                 )
-            }
-        )
-        procedures = @(
+            },
+            # REG-342: root procedures[] is gone -- a code procedure is a flow exposed to the UI whose
+            # metadata.untrustedExtensionEntrypoint names the hash-pinned Java class (its declared step is only the
+            # schema-required placeholder; the role comes from the manifest entry's requiredRole, "admin").
             [ordered]@{
                 name = "create-users"
                 description = "Trusted-source generated runtime proof procedure"
-                parameters = @(
-                    [ordered]@{ name = "requestedBy"; type = "string" },
-                    [ordered]@{ name = "source"; type = "string" }
-                )
+                expose = "ui"
                 steps = @(
                     [ordered]@{ name = "return-placeholder"; type = "return"; value = "trusted-source-runtime" }
                 )
-                returns = [ordered]@{ type = "object"; properties = [ordered]@{ createdCount = [ordered]@{ type = "integer" } } }
-                permissionRequirements = @("admin")
-                # R5.1/REG-301: auditPolicy and tracePolicy retired -- both schema-declared but consumed by nothing at runtime.
                 metadata = [ordered]@{ beta0Surface = "trusted-source"; untrustedExtensionEntrypoint = "procedure/CreateUsersProcedure.java" }
             }
         )
-        panels = @(
+        # D-1: root panels[] is gone -- a panel is a screens[] entry of kind "custom" with a `panel` block.
+        screens = @(
             [ordered]@{
                 name = "user-admin-panel"
-                route = "/users"
-                title = "User Admin Panel"
-                dataSources = @(
-                    [ordered]@{ name = "users"; concept = "User" },
-                    [ordered]@{ name = "creation"; procedure = "create-users" }
-                )
-                layout = [ordered]@{ type = "table"; fields = @("id", "name", "email", "active") }
-                visibility = "role:admin"
-                actions = @(
-                    [ordered]@{ name = "create-users"; label = "create users"; binding = "procedure"; procedure = "create-users"; permissionRequirements = @("admin") }
-                )
-                metadata = [ordered]@{ beta0Surface = "trusted-source-panel"; untrustedExtensionEntrypoint = "panel/user-admin-panel.html" }
+                kind = "custom"
+                panel = [ordered]@{
+                    route = "/users"
+                    title = "User Admin Panel"
+                    dataSources = @(
+                        [ordered]@{ name = "users"; concept = "User" },
+                        [ordered]@{ name = "creation"; procedure = "create-users" }
+                    )
+                    layout = [ordered]@{ type = "table"; fields = @("id", "name", "email", "active") }
+                    visibility = "role:admin"
+                    actions = @(
+                        [ordered]@{ name = "create-users"; label = "create users"; binding = "procedure"; procedure = "create-users"; permissionRequirements = @("admin") }
+                    )
+                    metadata = [ordered]@{ beta0Surface = "trusted-source-panel"; untrustedExtensionEntrypoint = "panel/user-admin-panel.html" }
+                }
             }
         )
         metadata = [ordered]@{

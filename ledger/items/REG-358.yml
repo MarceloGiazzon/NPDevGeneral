@@ -3,7 +3,7 @@ title: >-
   The beta release gate (run-beta-release-gate.ps1 -GenerateReports) is red: the AI beta scenario fleet predates the removal of procedures[], the Docker/Linux parity evidence is missing, and generating the evidence breaks the scripts/ file-count limit
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: PARTIAL
 opened: 2026-11-22
 source: >-
   Owner, 2026-11-22: "rode os gates, incluindo os demorados. Em caso de erro, corrija". The four T2 gates, the paperwork gate and every GitHub Actions workflow were made green in that session;
@@ -48,6 +48,17 @@ detail: |
      scenarios above to pass first. Re-check them after item 1.
   5. Operational trap found: the sample-matrix producer finishes ("Sample matrix passed") but leaves a single-use Gradle daemon alive that holds the orchestrator's output pipe, so the orchestration waits for
      its 90 minute producer timeout. Stopping the idle java daemon (Daemon in the command line) releases it. A launcher that disowns the daemon would remove the trap.
+  4b. FIXED 2026-11-22 (item 4): doc-entrypoint-validation -- docs/guides/**/*.md is classified in scripts/policy/doc-entrypoint-classification-policy.json (4 unclassified guide files); passes.
+     trusted-source-beta0-proof had TWO causes, not one: (a) schemas/ai/untrusted-extension-manifest.schema.json still listed kind [procedure, panel] after REG-342 moved the manifest and the Java parser to flow (now
+     [flow, panel, widget]); (b) the proof script's own generated model still declared the removed root procedures[] and panels[] keys (JsonModelParser refuses both: REG-342, D-1), hidden behind (a) -- now a flow with
+     expose ui plus a kind "custom" screen. VERIFIED: the proof passes, all five real-generated-* checks (about 90 s). final-regression-coverage-audit: VERIFIED that 13 of its 18 items failed because the producers of
+     eight *-tests reports and of app-upgrade-contract-gate-report.json were never in the orchestration (only run-beta0-final-release-check.ps1 ran them); they are in run-beta-release-evidence-orchestration.ps1 now
+     (2 s to 138 s each; docker-linux-proof-tests is requiresDocker because the proof skips under local-test-profile.json). After that 1 of 18 fails: docker-linux-proof-blocking-behavior, i.e. item 2.
+  5b. ROOT CAUSE FOUND AND FIXED 2026-11-22 (item 5): NPDevSamples/scripts/generate-sample-app.ps1 ran gradle :generator:run WITHOUT --no-daemon, leaving a persistent Gradle daemon that inherits the caller's redirected
+     stdout/stderr pipes and holds them open after the generation is done (live repro: an idle daemon kept a caller blocked 7 min after the work ended, released the moment it was killed). Now --no-daemon, like
+     run-ai-beta-gate.ps1 and the proof. Also: run-sample-matrix.ps1's Invoke-ProcessEvidence redirects to files and polls HasExited instead of pipe + ReadToEnd (A/B with a lingering grandchild: 40.7 s -> 0.7 s); and the
+     orchestrator now splits comma-joined -OnlyProducers/-SkipProducers/-Stages (pwsh -File delivers ONE string, so run-beta-release-gate.ps1's own -SkipProducers was silently ignored). VERIFIED: one real sample
+     verification through the changed helper (21 s, no daemon left); app-upgrade-contract through the orchestrator 41 s (was 465 s with the hang).
   Not caused by the DSL shrink: the failing surface is procedures[], removed earlier; the shrink touched none of the three scenarios.
 done_when: >-
   pwsh -NoProfile -File scripts/quality/run-beta-release-gate.ps1 -GenerateReports ends with gateOutcome passed (or the owner restates which surfaces the beta covers and the policy is updated), with the
