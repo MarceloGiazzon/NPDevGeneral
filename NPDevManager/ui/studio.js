@@ -277,7 +277,8 @@ async function studioApplyCandidate(candidate) {
   }
   if (validation && validation.status === "failed") {
     const messages = (validation.diagnostics || [])
-      .filter((d) => d.severity !== "warning")
+      // only real errors are problems: a diagnostic of severity "info" (FIELD_CONVENTION_APPLIED, IMPLICIT_ID_ADDED) is a note
+      .filter((d) => (d.severity || "error") === "error")
       .map((d) => d.message);
     studioStatus(`the change has a problem: ${messages.join("; ") || "see the details in Activity"}`, "err");
     return false;

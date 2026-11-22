@@ -102,6 +102,7 @@ window.__TAURI__ = {
         case "relay_fix_available": (window.__fixAsked = window.__fixAsked || []).push(args.failure); return window.__fixAvailable !== false;
         case "relay_start_fix": window.__relayFixStarts = (window.__relayFixStarts || []).concat([args]); return F.relay.prompt;
         case "studio_history_list": return [];
+        case "validate_prompter_model": return window.__studioValidation || { status: "passed", diagnostics: [] };
         case "jobs_list": window.__jobsListCalls = (window.__jobsListCalls || 0) + 1; return window.__jobsEmpty ? { ok: true, jobs: [], summary: {} } : F.jobs;
         case "jobs_action": window.__jobsActions = (window.__jobsActions || []).concat([args.action + ":" + args.jobId]); return { ok: true };
         case "recent_operations": return [{ operation: "install-java", intent: "install Java (JDK 17)", label: { en: "Install Java", pt: "Instalar o Java" }, startedAt: "2026-11-03T10:00:00Z", endedAt: "2026-11-03T10:01:00Z", running: false, ok: false }];
@@ -944,6 +945,22 @@ check("advanced screens carry the Advanced note and Edit, Data, Share and Ready-
   !advancedNotes.packs && !advancedNotes.studio && !advancedNotes.dbio && !advancedNotes.hosting, JSON.stringify(advancedNotes));
 check("Edit folds the JSON editor and hands a described change to Use a browser AI, words filled in and 'change this app' chosen",
   editHandoff.jsonFolded && editHandoff.screen === "browserai" && editHandoff.ask === "add a phone number to customers" && editHandoff.intentChange, JSON.stringify(editHandoff));
+// REG-356 B1 (Manager 0.13.45): when a change fails its check, Studio names only the real errors. An `info` diagnostic (a convention
+// applied, an implicit id added) is a note and a warning is not a failure; a diagnostic with no severity counts as an error.
+const studioFailed = await page.evaluate(async () => {
+  window.__studioValidation = { status: "failed", diagnostics: [
+    { severity: "info", message: "Field legacyCode declares no type; the model's convention typed it." },
+    { severity: "warning", message: "Concept Order is missing a label." },
+    { severity: "error", message: "Concept Order has no id." },
+    { message: "A diagnostic with no severity is an error." }] };
+  const applied = await studioApplyCandidate({ concepts: [] });
+  const text = document.getElementById("studio-status").textContent;
+  delete window.__studioValidation;
+  return { applied, text };
+});
+check("Studio: a failed check lists the errors, not the info notes or the warnings",
+  studioFailed.applied === false && /Concept Order has no id\./.test(studioFailed.text) && /no severity is an error/.test(studioFailed.text) &&
+  !/convention typed it/.test(studioFailed.text) && !/missing a label/.test(studioFailed.text), JSON.stringify(studioFailed));
 await page.click("#workspace-bar .ws-change");
 await page.waitForTimeout(150);
 check("Change app returns to the list", (await page.evaluate(() => window.__npdevCurrentScreen)) === "apps", "");

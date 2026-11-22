@@ -260,8 +260,13 @@ if (-not $overallFailed) {
     Push-Location $generatorRoot
     $previousGradleUserHome = $env:GRADLE_USER_HOME
     $env:GRADLE_USER_HOME = $gradleUserHome
+    # REG-358: --no-daemon, because a persistent Gradle daemon inherits the caller's redirected pipes and holds them after the
+    # work ends (a nightly caller that reads the output would hang); --project-cache-dir, because NPDevGenerator/gradle.properties
+    # has no org.gradle.projectcachedir (REG-136) and a bare run writes NPDevGenerator/.gradle inside the repo, which
+    # workspace-cleanliness fails on. Same flags and location as generate-sample-app.ps1 and npdev_cli.py.
+    $generatorProjectCacheDir = Join-Path (Get-NPDevBuildRoot $WorkspaceRoot) "gradle-project-caches\generator"
     try {
-        & $generatorGradlew ":generator:run" "--args=$generatorArgLine" "--console=plain"
+        & $generatorGradlew ":generator:run" "--args=$generatorArgLine" "--no-daemon" "--console=plain" "--project-cache-dir" $generatorProjectCacheDir
         $generateOk = $LASTEXITCODE -eq 0
     }
     finally {

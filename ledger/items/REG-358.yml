@@ -63,6 +63,9 @@ detail: |
      org.gradle.projectcachedir, REG-136), and Test-WorkspaceSlimness fails on any rebuildable .gradle directory. run-ai-beta-gate.ps1, the untrusted-extension proof and generate-sample-app.ps1 (so also
      sample-matrix and app-upgrade-contract) each left it. All three now pass --project-cache-dir <Build>/gradle-project-caches/generator, the location npdev_cli.py already uses. VERIFIED by deleting the directory,
      running each, and checking it stays absent (ai-beta-gate on one scenario, which still passes: the controlled-command policy accepts the argument). Not changed: scripts/proofs/run-scale-proof.ps1 (nightly).
+  3c. 2026-11-22: scripts/proofs/run-scale-proof.ps1 now passes --no-daemon and --project-cache-dir <Build>/gradle-project-caches/generator to its :generator:run too (PowerShell parse-checked, NOT run: a rung
+     generates, builds and boots an app). The proof's reads of `$json.procedures` / `$json.panels` (Get-TrustedReferencesFromJson) are NOT stale: they read the AI-authoring contract
+     (NPDevSamples/ai-scenarios/*/ai-model.json, schemaVersion/entities/panels/procedures), a separate format from the DSL model; only the model the proof GENERATES had used the removed keys (fixed in 8841cc37).
   Not caused by the DSL shrink: the failing surface is procedures[], removed earlier; the shrink touched none of the three scenarios.
 done_when: >-
   pwsh -NoProfile -File scripts/quality/run-beta-release-gate.ps1 -GenerateReports ends with gateOutcome passed (or the owner restates which surfaces the beta covers and the policy is updated), with the

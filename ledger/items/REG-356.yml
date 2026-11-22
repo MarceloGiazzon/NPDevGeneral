@@ -42,8 +42,9 @@ detail: |
      generated copies from git entirely -- an owner call, since IDEs and every Python reader then need the build to have run.
   FOUND 2026-11-22 (B1, the Manager and an info diagnostic): the Prompter pane (NPDevManager/ui/prompter.js ~725) lists every diagnostic with its severity chip, muted for `info`, so the convention
      notes are visible. But Studio (NPDevManager/ui/studio.js:279) builds its "the change has a problem" sentence with `severity !== "warning"`, so when a model FAILS validation the `info`
-     notes (FIELD_CONVENTION_APPLIED, IMPLICIT_ID_ADDED) are listed as problems. One-line fix (`(d.severity || "error") === "error"`) left undone: a Manager UI edit needs the version bump, a rebuild
-     and the render check. B2-B4 untouched.
+     notes (FIELD_CONVENTION_APPLIED, IMPLICIT_ID_ADDED) are listed as problems. FIXED 2026-11-22 in Manager 0.13.45 (`(d.severity || "error") === "error"`; version moved in Cargo.toml, Cargo.lock,
+     tauri.conf.json and main.rs); the render-check scenario "Studio: a failed check lists the errors, not the info notes or the warnings" fails on the old line (403/404) and passes on the new one
+     (404/404). The installed Manager still says 0.13.44 until it is rebuilt (not done). B2-B4 untouched.
   PAUSED BY THE OWNER until 2026-11-25: the kernel coverage-floor root cause (floor 73.4185 -> 73.4139) -- "ignore this problem completely for the next 3 days"; do not investigate or let that ratchet drive work before then.
 done_when: >-
   The four schema copies are one source and check-schema-mirror-consistency.py is gone or trivial; each of B-E is either done and verified or recorded in its own item with a reason; the paused kernel
