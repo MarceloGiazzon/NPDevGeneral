@@ -38,6 +38,7 @@ ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "docs" / "DSL_CAPABILITIES.html"
 ADMISSIONS = ROOT / "scripts" / "policy" / "dsl-keyword-admissions"
 STORIES = ROOT / "scripts" / "policy" / "dsl-keyword-stories"
+REASONS = ROOT / "scripts" / "policy" / "dsl-keyword-reasons"
 CORPUS_MODEL = "NPDevSamples/dsl-conformance-max"
 # A keyword the parser never reads is dropped silently (the REG-108 class). "Implemented" is judged by WHICH LAYERS name
 # the keyword (see LAYERS below), and only code that acts counts: a parser, an AST class or the compiled-model writer
@@ -426,6 +427,20 @@ def load_stories() -> dict[str, str]:
     return stories
 
 
+def load_reasons() -> dict[str, dict]:
+    """slot id -> {record, why} for the one-line written reasons (scripts/policy/dsl-keyword-reasons/reasons-*.json).
+
+    The lighter alternative to a five-question admission record for the keywords that predate the admission rule
+    (REG-357): one honest sentence on what need the keyword serves and why no lower rung can do it."""
+    reasons: dict[str, dict] = {}
+    for path in sorted(REASONS.glob("reasons-*.json")):
+        for slot, text in (json.loads(path.read_text(encoding="utf-8")).get("reasons") or {}).items():
+            if slot in reasons:
+                raise SystemExit(f"{path.name}: duplicate reason for {slot}")
+            reasons[slot] = {"record": path.name, "why": text.strip()}
+    return reasons
+
+
 def build_rows() -> tuple[list[dict], dict]:
     model, pack = REF.load_schemas()
     meanings = REF.load_meanings()
@@ -439,6 +454,7 @@ def build_rows() -> tuple[list[dict], dict]:
     main_tokens, test_tokens = scan_sources()
     admissions = load_admissions()
     stories = load_stories()
+    reasons = load_reasons()
     legacy = meanings["slots"]
     legacy_ids = set(json.loads((REF.MEANINGS_DIR / "meanings-legacy.json").read_text(encoding="utf-8")).get("slots", {}))
     prop_count: dict[str, int] = {}
@@ -457,6 +473,9 @@ def build_rows() -> tuple[list[dict], dict]:
     orphans = sorted(set(stories) - set(nodes))
     if orphans:
         raise SystemExit(f"stories for keywords the schema does not have: {orphans[:5]}")
+    orphan_reasons = sorted(set(reasons) - set(nodes))
+    if orphan_reasons:
+        raise SystemExit(f"reasons for keywords the schema does not have: {orphan_reasons[:5]}")
     rows = []
     for slot in sorted(nodes):
         node, noun = nodes[slot]
@@ -481,7 +500,9 @@ def build_rows() -> tuple[list[dict], dict]:
             ref_example = (meanings["defs"].get(def_name) or {}).get("example")
             if ref_example is not None and _has_key(ref_example, prop):
                 example = {"from": "reference example", "at": def_name, "json": json.dumps(ref_example, indent=2, ensure_ascii=False)[:900]}
-        just = admissions.get(slot, [])
+        just = list(admissions.get(slot, []))
+        if slot in reasons:
+            just.append({"record": reasons[slot]["record"], "keyword": slot, "why": {"reason": reasons[slot]["why"]}, "note": ""})
         shared = prop_count.get(prop, 1)
         row = {
             "id": slot,
@@ -680,7 +701,7 @@ function tail(r,parent){
  if(r.shared>1)c.appendChild(el('div','w','The name "'+r.prop+'" is shared by '+r.shared+' keywords, so code and test evidence is only indicative.'));
  g.appendChild(c);
  var d=el('div');d.appendChild(el('h3',null,'Why it exists'));
- if(r.just.length){r.just.forEach(function(j){d.appendChild(el('div',null,'Admission record '+j.record+' ('+j.keyword+')'));Object.keys(j.why).forEach(function(q){var x=el('div');x.appendChild(el('b',null,q+': '));x.appendChild(document.createTextNode(j.why[q]));d.appendChild(x)})})}
+ if(r.just.length){r.just.forEach(function(j){d.appendChild(el('div',null,j.record.indexOf('reasons-')===0?'Written reason':'Admission record '+j.record+' ('+j.keyword+')'));Object.keys(j.why).forEach(function(q){var x=el('div');x.appendChild(el('b',null,q+': '));x.appendChild(document.createTextNode(j.why[q]));d.appendChild(x)})})}
  else d.appendChild(el('div','w','No written justification yet.'));
  g.appendChild(d);td.appendChild(g);
  if(r.gaps.length){var u=el('ul','gaps');r.gaps.forEach(function(x){u.appendChild(el('li',null,x))});td.appendChild(el('h3',null,'Missing'));td.appendChild(u)}

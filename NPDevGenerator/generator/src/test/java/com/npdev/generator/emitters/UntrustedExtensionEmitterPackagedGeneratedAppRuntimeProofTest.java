@@ -425,7 +425,7 @@ final class UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest {
                         new CompiledField("name", "string", "String", false, true, false)
                 )
         );
-        CompiledFlow procedure = new CompiledFlow("CreateItem12User", null, null, List.of(), null, null, null, false, null, null, null, "ui", null, "Creates one Item 12 proof user through trusted source", Map.of("untrustedExtensionEntrypoint", "trusted/CreateItem12UserProcedure.java"));
+        CompiledFlow procedure = new CompiledFlow("CreateItem12User", null, null, List.of(new CompiledFlowStep("done", "return", "", "", List.of(), null, null, "$input", null)), null, null, null, false, null, null, null, "ui", null, "Creates one Item 12 proof user through trusted source", Map.of("untrustedExtensionEntrypoint", "trusted/CreateItem12UserProcedure.java"));
         CompiledPanel panel = new CompiledPanel(
                 "item12-panel",
                 "/item12-panel",
@@ -615,7 +615,7 @@ final class UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest {
                 List.of(),
                 List.of(),
                 List.of(),
-                List.of(flow, waitingFlow),
+                List.of(procedure, flow, waitingFlow),
                 List.of(),
                 List.of(panel)
         );
@@ -708,7 +708,7 @@ final class UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest {
                       ]
                     }
                   ],
-                  "flows": [ {"name": "CreateItem12User", "expose": "ui", "steps": [{"name": "done", "type": "return", "value": "$input"}]}, {
+                  "flows": [ {"name": "CreateItem12User", "expose": "ui", "metadata": {"untrustedExtensionEntrypoint": "trusted/CreateItem12UserProcedure.java"}, "steps": [{"name": "done", "type": "return", "value": "$input"}]}, {
                       "name": "CreateItem12UserFlow",
                       "concept": "Item12User",
                       "startEndpoint": true,
@@ -728,7 +728,7 @@ final class UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest {
                           "name": "emitFlowCompleted",
                           "type": "emitEvent",
                           "event": "generated.flow.CreateItem12UserFlow.completed",
-                          "payload": "actionResult"
+                          "from": "actionResult"
                         }
                       ]
                     },
@@ -758,7 +758,7 @@ final class UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest {
                           "name": "emitWaitingFlowCompleted",
                           "type": "emitEvent",
                           "event": "generated.flow.AwaitThenCreateItem12UserFlow.completed",
-                          "payload": "actionResult"
+                          "from": "actionResult"
                         }
                       ]
                     },
@@ -778,7 +778,7 @@ final class UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest {
                               "name": "emitNameSeen",
                               "type": "emitEvent",
                               "event": "generated.flow.SumItem12NamesForEachFlow.nameSeen",
-                              "payload": "name"
+                              "from": "name"
                             }
                           ]
                         },

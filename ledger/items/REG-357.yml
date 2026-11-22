@@ -54,6 +54,13 @@ detail: |
   fixed. STORIES 2026-11-22: nouns Screen (stories-screen-1..4.json, 200 slots), Flow (stories-flow-1..2.json, 75), Capability (stories-capability-1..2.json, 53), Experience (stories-experience-1.json, 41), Pack file + Pack (stories-pack-1.json, 42), Query, Model root, Module, Role, Property, Event and Function
   (stories-query-1 / model-root-1 / module-1 / role-1 / property-1 / event-function-1.json, 121) written in full: ALL 745 keywords now have a story (min 15, mean 35, max 63 words, no code in them);
   the owner has not yet judged the tone of the 532 stories written after the Concept parts (Screen, Flow, Capability, Experience, Pack, Query, Model root, Module, Role, Property, Event, Function).
+  REST OF REG-357, 2026-11-22 (owner: do only 20% of the remaining cases, mixed complexity): every 5th keyword within each kind of value (boolean, text, number, choice, list, object, reference) was taken
+  per missing piece. DONE: 129 written reasons (scripts/policy/dsl-keyword-reasons/reasons-batch-1.json, read by the generator, shown as "Written reason"); 6 keywords now used by the coverage fixture with
+  an example (presentationMetadata.listColumnOrder/tab/enabledWhen, schemaObject.uniqueItems/duplicationPolicy, autoPanelSurface.fields), 163/163 behaviour probes green; 8 keywords named by a unit test
+  (FieldHintsAndArrayRulesSurviveCompileTest: width, summaryCard, searchFields, displayMode, field uniqueItems/itemIdentityField, duplicationPolicy, domainType.baseType). Completeness 76 -> 148 of 745 rows.
+  STILL OPEN (next sessions, same 20% method): 508 written reasons, 131 tests (the scanner counts tracked files only, so the new test shows after the commit), 81 official samples, 80 examples, 5 validator-only
+  keywords, 140 used only by the coverage fixture (no real model). Left out on purpose as complex: concept.renamedFrom (needs the restart-revision probe), pack:signature, pack:fieldConventions/propertyScopes
+  (pack files), transactionHooks.onValidate, queryParameter.schema, panel bindings/layout children (they change served panel metadata that probes assert), autoPanel.name (admin may not repeat the name).
   The catalogue's Implemented column was rebuilt (layers: parser / plumbing / validated / build / runtime / tooling, accessor calls counted, a Real models
   column that leaves out the coverage fixture): the old "parser only" label was wrong for keywords the code reads through accessors (9 of the first 14 "unsupported" keywords were live).
 done_when: >-

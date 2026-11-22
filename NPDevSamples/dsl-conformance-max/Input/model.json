@@ -407,7 +407,9 @@
           "required": true,
           "min": 1,
           "ui": {
-            "label": "Rows"
+            "label": "Rows",
+            "listColumnOrder": 2,
+            "tab": "Dimensions"
           }
         },
         {
@@ -416,7 +418,10 @@
           "required": true,
           "min": 1,
           "ui": {
-            "label": "Columns"
+            "label": "Columns",
+            "listColumnOrder": 3,
+            "tab": "Dimensions",
+            "enabledWhen": "rows > 0"
           }
         },
         {
@@ -4002,6 +4007,14 @@
           },
           "lineCount": {
             "type": "integer"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true,
+            "duplicationPolicy": "deny"
           }
         }
       },
@@ -5739,6 +5752,13 @@
         },
         "selection": {
           "panel": "WidgetCatalogReviewPanel"
+        },
+        "detail": {
+          "fields": [
+            "sku",
+            "displayName",
+            "unitPrice"
+          ]
         }
       }
     },
