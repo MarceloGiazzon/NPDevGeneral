@@ -118,13 +118,12 @@ Reading any one whole burns 40–100k tokens. The authoritative list is `scripts
 line) to the Build root; grep that, then `Read(offset, limit)`. `SemanticValidator.java` and
 `UntrustedExtensionEmitter.java` are no longer large — orchestrators over sibling classes; grep the package.
 
-**`model.schema.json` is duplicated in 4 places** — edits must mirror to all four:
-`NPDevContract/schemas/model.schema.json`, `NPDevContract/schemas/authoring/model.schema.json`,
-`NPDevContract/dsl/src/main/resources/schema/model.schema.json`,
-`NPDevContract/dsl/resources/Schemas/model.schema.json` (NOT `schemas/archive/`). Verify with
-`python scripts/quality/check-schema-mirror-consistency.py` — the copies are **semantically** identical, not
-byte-identical (the `dsl/resources/Schemas/` copy carries `canonicalSchema`/`deprecated` keys the checker excuses);
-never compare by file hash.
+**`model.schema.json` has ONE source: `NPDevContract/schemas/model.schema.json` — edit only that file** (same for
+`pack.schema.json` and `config.schema.json`: the first path of each group in the checker). The other copies
+(`schemas/authoring/`, `dsl/src/main/resources/schema/` — the one the jar loads —, `dsl/resources/Schemas/`; NOT
+`schemas/archive/`) exist only because readers load fixed paths and are GENERATED: after any schema edit run
+`python scripts/quality/check-schema-mirror-consistency.py --fix` (rewrites them, then checks). The `dsl/resources/Schemas/`
+copy keeps its `canonicalSchema`/`deprecated` provenance lines; compare semantically, never by file hash.
 
 ## Build / run / test (recipes: SUBSYSTEM_CONTRACTS.md → "Verification and tooling recipes")
 

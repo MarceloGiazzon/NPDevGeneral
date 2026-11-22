@@ -25,10 +25,7 @@
     "scenario": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "name",
-        "outputRoot"
-      ],
+      "required": ["name", "outputRoot"],
       "properties": {
         "name": {
           "type": "string",
@@ -55,33 +52,18 @@
         "emitUiAssets"
       ],
       "properties": {
-        "failIfModelMissing": {
-          "type": "boolean"
-        },
-        "failIfConfigMissing": {
-          "type": "boolean"
-        },
-        "cleanOutputBeforeGenerate": {
-          "type": "boolean"
-        },
-        "emitPluginAssets": {
-          "type": "boolean"
-        },
-        "emitRuntimeAssets": {
-          "type": "boolean"
-        },
-        "emitUiAssets": {
-          "type": "boolean"
-        }
+        "failIfModelMissing": { "type": "boolean" },
+        "failIfConfigMissing": { "type": "boolean" },
+        "cleanOutputBeforeGenerate": { "type": "boolean" },
+        "emitPluginAssets": { "type": "boolean" },
+        "emitRuntimeAssets": { "type": "boolean" },
+        "emitUiAssets": { "type": "boolean" }
       }
     },
     "bootstrap": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "root",
-        "mergeStrategy"
-      ],
+      "required": ["root", "mergeStrategy"],
       "properties": {
         "root": {
           "type": "string",
@@ -89,22 +71,14 @@
         },
         "mergeStrategy": {
           "type": "string",
-          "enum": [
-            "clean-copy",
-            "robocopy-merge"
-          ]
+          "enum": ["clean-copy", "robocopy-merge"]
         }
       }
     },
     "artifact": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "root",
-        "generatedFolderName",
-        "libsFolderName",
-        "metaFolderName"
-      ],
+      "required": ["root", "generatedFolderName", "libsFolderName", "metaFolderName"],
       "properties": {
         "root": {
           "type": "string",
@@ -127,10 +101,7 @@
     "finalExec": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "root",
-        "deleteBeforeMount"
-      ],
+      "required": ["root", "deleteBeforeMount"],
       "properties": {
         "root": {
           "type": "string",
@@ -156,28 +127,13 @@
           "if": {
             "properties": {
               "provider": {
-                "enum": [
-                  "docker-postgres",
-                  "docker-mysql",
-                  "docker-sqlserver",
-                  "postgres",
-                  "mysql",
-                  "sqlserver",
-                  "h2-server"
-                ]
+                "enum": ["docker-postgres", "docker-mysql", "docker-sqlserver", "postgres", "mysql", "sqlserver", "h2-server"]
               }
             },
-            "required": [
-              "provider"
-            ]
+            "required": ["provider"]
           },
           "then": {
-            "required": [
-              "host",
-              "port",
-              "username",
-              "password"
-            ]
+            "required": ["host", "port", "username", "password"]
           }
         }
       ],
@@ -223,10 +179,7 @@
         },
         "resetMode": {
           "type": "string",
-          "enum": [
-            "reset",
-            "preserve"
-          ]
+          "enum": ["reset", "preserve"]
         },
         "containerName": {
           "type": "string"
@@ -236,17 +189,12 @@
     "runtime": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "serverPort",
-        "javaArgs"
-      ],
+      "required": ["serverPort", "javaArgs"],
       "properties": {
         "binder": {
           "type": "string",
           "description": "P0.6 (Path A realignment): the runtime binder that mounts the generated projection. Optional -- absent means 'spring', the only implemented value today. Exists so springProfile/gradleTask can be scoped to the binder that needs them instead of required unconditionally, which is what made the config contract itself claim Spring was the identity rather than a binder.",
-          "enum": [
-            "spring"
-          ]
+          "enum": ["spring"]
         },
         "springProfile": {
           "type": "string",
@@ -259,29 +207,18 @@
         },
         "javaArgs": {
           "type": "array",
-          "items": {
-            "type": "string"
-          }
+          "items": { "type": "string" }
         },
         "gradleTask": {
           "type": "string",
-          "enum": [
-            "bootRun"
-          ]
+          "enum": ["bootRun"]
         }
       },
       "if": {
-        "properties": {
-          "binder": {
-            "const": "spring"
-          }
-        }
+        "properties": { "binder": { "const": "spring" } }
       },
       "then": {
-        "required": [
-          "springProfile",
-          "gradleTask"
-        ]
+        "required": ["springProfile", "gradleTask"]
       }
     },
     "build": {
@@ -301,19 +238,10 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": [
-              "url"
-            ],
+            "required": ["url"],
             "properties": {
-              "name": {
-                "type": "string",
-                "minLength": 1
-              },
-              "url": {
-                "type": "string",
-                "minLength": 1,
-                "pattern": "^https?://"
-              }
+              "name": { "type": "string", "minLength": 1 },
+              "url": { "type": "string", "minLength": 1, "pattern": "^https?://" }
             }
           }
         },
@@ -331,62 +259,29 @@
               {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "coordinate"
-                ],
+                "required": ["coordinate"],
                 "properties": {
-                  "coordinate": {
-                    "type": "string",
-                    "minLength": 1,
-                    "pattern": "^[^:\\s]+:[^:\\s]+:[^:\\s]+$"
-                  },
-                  "scope": {
-                    "type": "string",
-                    "enum": [
-                      "implementation",
-                      "runtimeOnly",
-                      "compileOnly",
-                      "testImplementation"
-                    ]
-                  }
+                  "coordinate": { "type": "string", "minLength": 1, "pattern": "^[^:\\s]+:[^:\\s]+:[^:\\s]+$" },
+                  "scope": { "type": "string", "enum": ["implementation", "runtimeOnly", "compileOnly", "testImplementation"] }
                 }
               },
               {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "jar"
-                ],
+                "required": ["jar"],
                 "description": "A local jar, resolved relative to <model.json's own directory>/libs/ at generation time.",
                 "properties": {
-                  "jar": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "scope": {
-                    "type": "string",
-                    "enum": [
-                      "implementation",
-                      "runtimeOnly",
-                      "compileOnly",
-                      "testImplementation"
-                    ]
-                  }
+                  "jar": { "type": "string", "minLength": 1 },
+                  "scope": { "type": "string", "enum": ["implementation", "runtimeOnly", "compileOnly", "testImplementation"] }
                 }
               },
               {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "platform"
-                ],
+                "required": ["platform"],
                 "description": "A Maven BOM, imported via Gradle's platform(...) so it constrains versions without itself becoming a direct dependency.",
                 "properties": {
-                  "platform": {
-                    "type": "string",
-                    "minLength": 1,
-                    "pattern": "^[^:\\s]+:[^:\\s]+:[^:\\s]+$"
-                  }
+                  "platform": { "type": "string", "minLength": 1, "pattern": "^[^:\\s]+:[^:\\s]+:[^:\\s]+$" }
                 }
               }
             ]
@@ -435,10 +330,7 @@
         },
         "pluginDiscoveryMode": {
           "type": "string",
-          "enum": [
-            "classpath",
-            "filesystem-folder"
-          ]
+          "enum": ["classpath", "filesystem-folder"]
         },
         "pluginPackageDirectory": {
           "type": "string",
@@ -456,12 +348,7 @@
       "type": "object",
       "description": "Behaviour-setting defaults for the whole app, as settingId -> value (NPDev resolution-pipeline envelope).",
       "additionalProperties": {
-        "type": [
-          "boolean",
-          "string",
-          "integer",
-          "number"
-        ]
+        "type": ["boolean", "string", "integer", "number"]
       }
     },
     "overrides": {
@@ -470,12 +357,7 @@
       "additionalProperties": {
         "type": "object",
         "additionalProperties": {
-          "type": [
-            "boolean",
-            "string",
-            "integer",
-            "number"
-          ]
+          "type": ["boolean", "string", "integer", "number"]
         }
       }
     },
@@ -486,10 +368,7 @@
       "properties": {
         "included": {
           "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
+          "items": { "type": "string", "minLength": 1 }
         }
       }
     },
@@ -503,10 +382,7 @@
       "description": "The generated app's admin console posture (scripts/appgen/New-AppConsole.ps1). Four official apps have carried this for months and run-app-upgrade-contract-gate.ps1 already branches on whether an app definition declares it -- so it is real, used, and was rejected by this schema purely because nothing had ever validated a config.json. additionalProperties stays open: this is an AppGen-layer section whose shape is owned by the console generator, and pinning a shape here from a single example is how a schema starts refusing valid input again.",
       "additionalProperties": true,
       "properties": {
-        "mode": {
-          "type": "string",
-          "minLength": 1
-        }
+        "mode": { "type": "string", "minLength": 1 }
       }
     },
     "metadata": {

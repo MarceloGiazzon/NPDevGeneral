@@ -33,7 +33,7 @@
     "composition.collections": "A purchase order is one thing to the buyer, but in the database it is a header and many lines. Collections list the lines that travel with the header: they are opened together, edited together and saved together, so no one ever sees half an order.",
     "composition.invariants": "Some rules involve the whole document, not one box: the sum of the line amounts must equal the invoice total. Invariants are those rules. They run just before saving, and if one fails the error names it and nothing at all is written.",
     "composition.metadata": "Sometimes the author wants to leave a note on the document's structure for colleagues or tools, such as 'owned by the billing team'. Metadata is a free notebook. The app carries it along untouched and does not act on it.",
-    "composition.onCommit": "Once an order and all its lines are saved, someone has to reserve the stock. This keyword names the procedure that runs right after the saving, in the same breath. If it fails, everything is undone, so the order is never saved half-done.",
-    "composition.onValidate": "Before an order is written, a clerk would check that the customer is not blocked. This keyword names a procedure that runs first, inside the same saving. If it says no, nothing at all is written, not even the header."
+    "composition.onCommit": "Once an order and all its lines are saved, someone has to reserve the stock. This keyword names the flow that runs right after the saving, in the same breath. If it fails, everything is undone, so the order is never saved half-done.",
+    "composition.onValidate": "Before an order is written, a clerk would check that the customer is not blocked. This keyword names a flow that runs first, inside the same saving. If it says no, nothing at all is written, not even the header."
   }
 }

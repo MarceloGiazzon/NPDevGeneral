@@ -1,6 +1,17 @@
 #!/usr/bin/env python3
 """Schema mirror consistency: are all copies of model.schema.json / pack.schema.json still the same contract?
 
+SINGLE SOURCE (REG-356 A, 2026-11-22) -- READ THIS FIRST
+---------------------------------------------------------
+Each group below has ONE file edited by hand: the FIRST path listed (`NPDevContract/schemas/<name>.schema.json`). The
+other copies exist only because Gradle, the jar, the authoring UI and the legacy readers each load a fixed path; they are
+GENERATED from the source by `--fix` and never edited. After any schema edit:
+
+    python scripts/quality/check-schema-mirror-consistency.py --fix
+
+A legacy-location copy keeps only its provenance lines (`deprecated`, `canonicalSchema`, and for config `version`); the
+rest is the source, byte for byte. Without `--fix` the script only checks (semantically) and fails on drift.
+
 WHY THIS EXISTS -- 2.A.2 (docs/DSL2_AND_DECOMPOSITION_PLAN.md)
 ------------------------------------------------------------------
 `model.schema.json` is duplicated in four places (CLAUDE.md names this explicitly as a hazard):
@@ -50,6 +61,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -83,6 +95,61 @@ CONFIG_SCHEMA_PATHS = (
 )
 CONFIG_SCHEMA_LEGACY_COPY_INDEX = 2
 CONFIG_SCHEMA_EXCUSED_KEYS_ON_LEGACY_COPY = ("deprecated", "canonicalSchema", "version")
+
+
+def _with_legacy_header(source: str, current: str | None, excused: tuple[str, ...], label: str) -> str:
+    """The source text plus the provenance lines the legacy-location copy carries (the excused top-level keys).
+
+    The lines are taken from the existing legacy copy, each re-inserted after the same predecessor line, so a regenerated
+    legacy copy differs from the source only by those lines (no formatting churn in a 5 000-line file)."""
+    if current is None:
+        raise SystemExit(f"cannot regenerate the legacy {label} copy: it does not exist, so there is no provenance header to keep")
+    extra_line = re.compile(r'^  "(?:%s)": ' % "|".join(re.escape(k) for k in excused))
+    after: dict[str, list[str]] = {}
+    previous = None
+    for line in current.splitlines(keepends=True):
+        if extra_line.match(line):
+            if previous is None:
+                raise SystemExit(f"legacy {label} copy starts with a provenance key; cannot place it")
+            after.setdefault(previous, []).append(line)
+        else:
+            previous = line
+    if not after:
+        raise SystemExit(f"legacy {label} copy carries none of {excused}; refusing to guess where they go")
+    out = source.splitlines(keepends=True)
+    for anchor, lines in after.items():
+        if anchor in out:
+            pos = out.index(anchor) + 1
+        else:
+            # keys appended at the END of the object: the line before them ends in a comma in the legacy copy but is the
+            # last member (no comma) in the source -- find the last such line and give it its comma
+            body = anchor.rstrip("\r\n")
+            bare = body[:-1] + anchor[len(body):] if body.endswith(",") else None
+            if bare is None or bare not in out:
+                raise SystemExit(f"legacy {label} copy: the line before its provenance keys ({anchor.strip()!r}) is not in the source")
+            last = len(out) - 1 - out[::-1].index(bare)
+            out[last] = anchor
+            pos = last + 1
+        out[pos:pos] = lines
+    return "".join(out)
+
+
+def regenerate(root: Path, relative_paths: tuple[str, ...], excused_keys_by_index: dict[int, tuple[str, ...]], label: str) -> list[str]:
+    """Write every copy after the first from the first (the one source edited by hand). Returns the files that changed."""
+    source_path = root / relative_paths[0]
+    source = source_path.read_bytes().decode("utf-8")
+    json.loads(source)  # a source that is not JSON must never be spread
+    changed: list[str] = []
+    for index, rel in enumerate(relative_paths[1:], 1):
+        path = root / rel
+        current = path.read_bytes().decode("utf-8") if path.is_file() else None
+        excused = excused_keys_by_index.get(index, ())
+        text = _with_legacy_header(source, current, excused, label) if excused else source
+        if text != current:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(text.encode("utf-8"))
+            changed.append(rel)
+    return changed
 
 
 def load_normalized(path: Path, excuse_keys: tuple[str, ...]) -> dict:
@@ -132,9 +199,9 @@ def check_group(
             print(f"  [OK]    {resolved[i].relative_to(root).as_posix()}")
 
     if drift_found:
-        print(f"\nFAIL: the {label} copies are not semantically identical. Every edit to "
-              f"{label} must be mirrored to all {len(relative_paths)} (CLAUDE.md's own standing rule).",
-              file=sys.stderr)
+        print(f"\nFAIL: the {label} copies are not semantically identical. Edit only {relative_paths[0]}, "
+              f"then run `python scripts/quality/check-schema-mirror-consistency.py --fix` to write the other "
+              f"{len(relative_paths) - 1}.", file=sys.stderr)
         return False, False
 
     excused_note = ""
@@ -148,8 +215,20 @@ def check_group(
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--root", default=".", help="repo root (default: cwd)")
+    parser.add_argument("--fix", action="store_true",
+                        help="first write every copy from its source (the first path of each group), then check")
     args = parser.parse_args(argv)
     root = Path(args.root).resolve()
+
+    if args.fix:
+        for label, paths, excused in (
+            ("model.schema.json", MODEL_SCHEMA_PATHS, {MODEL_SCHEMA_LEGACY_COPY_INDEX: MODEL_SCHEMA_EXCUSED_KEYS_ON_LEGACY_COPY}),
+            ("pack.schema.json", PACK_SCHEMA_PATHS, {}),
+            ("config.schema.json", CONFIG_SCHEMA_PATHS, {CONFIG_SCHEMA_LEGACY_COPY_INDEX: CONFIG_SCHEMA_EXCUSED_KEYS_ON_LEGACY_COPY}),
+        ):
+            changed = regenerate(root, paths, excused, label)
+            print(f"{label}: " + (f"rewrote {len(changed)} copies from {paths[0]}: {', '.join(changed)}" if changed else "all copies already match their source"))
+        print()
 
     model_ok, model_hard_error = check_group(
         root, MODEL_SCHEMA_PATHS,

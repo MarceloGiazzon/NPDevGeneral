@@ -35,6 +35,15 @@ detail: |
      packs only, under 2k output tokens" has no record of being run and depends on wave 2 and on provider quota (bench-023 on Gemini is blocked by quota).
   E. Verification owed to the freshness ledger before the single commit: the twelve checks the T1 gate listed as overdue on 2026-11-22 (budget, reference, concept-map, ui-i18n, doc-references, adr,
      experience-client, manager-version-bump, dsl-test-touched-area, model-validate-touched, f6-showcase-browser, jrn-journeys) run through the ledger-recording path, plus run-shell-scenarios and the i18n-pt browser routine.
+  DONE 2026-11-22 (A, single source): `NPDevContract/schemas/{model,pack,config}.schema.json` is the ONE hand-edited file of each group; `python scripts/quality/check-schema-mirror-consistency.py --fix`
+     writes the other copies from it (three of the four model copies were already byte-identical; the legacy copy keeps only its `deprecated`/`canonicalSchema` provenance lines; two config copies
+     that differed only in formatting were normalised). Without --fix the script still checks and now tells the author what to run. CLAUDE.md paragraph, the AI-knowledge gate's failure text and
+     a concept-map note were rewritten to match. NOT done: Gradle building the jar resource from the source (the on-disk copies stay because 57 files name their paths); that would remove the
+     generated copies from git entirely -- an owner call, since IDEs and every Python reader then need the build to have run.
+  FOUND 2026-11-22 (B1, the Manager and an info diagnostic): the Prompter pane (NPDevManager/ui/prompter.js ~725) lists every diagnostic with its severity chip, muted for `info`, so the convention
+     notes are visible. But Studio (NPDevManager/ui/studio.js:279) builds its "the change has a problem" sentence with `severity !== "warning"`, so when a model FAILS validation the `info`
+     notes (FIELD_CONVENTION_APPLIED, IMPLICIT_ID_ADDED) are listed as problems. One-line fix (`(d.severity || "error") === "error"`) left undone: a Manager UI edit needs the version bump, a rebuild
+     and the render check. B2-B4 untouched.
   PAUSED BY THE OWNER until 2026-11-25: the kernel coverage-floor root cause (floor 73.4185 -> 73.4139) -- "ignore this problem completely for the next 3 days"; do not investigate or let that ratchet drive work before then.
 done_when: >-
   The four schema copies are one source and check-schema-mirror-consistency.py is gone or trivial; each of B-E is either done and verified or recorded in its own item with a reason; the paused kernel

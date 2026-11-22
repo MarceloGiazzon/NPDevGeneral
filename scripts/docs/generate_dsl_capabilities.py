@@ -75,6 +75,7 @@ MAIN_ROOTS = [
 # "$" slots always showed "no test names it")
 STR_TOKEN = re.compile(r"""(?<![A-Za-z0-9_])\\?["']([$A-Za-z_][$A-Za-z0-9_]*)\\?["']""")
 DOT_TOKEN = re.compile(r"\.([A-Za-z_][A-Za-z0-9_]*)")
+JS_KEY_TOKEN = re.compile(r"(?:[{,]|^)[ \t]*([A-Za-z_$][A-Za-z0-9_$]*)[ \t]*:", re.M)
 # Java reads most keywords through ACCESSORS, not through their quoted name: `flow.isStartEndpoint()`, `step.getOutput()`,
 # a record accessor `hooks.onLoad()`. A scan of quoted names alone (what this page did before 2026-11-22) calls every
 # such keyword "only named by the parser" or "named by nothing" even when the kernel acts on it, so accessors count too.
@@ -130,6 +131,10 @@ def _tokens_of(text: str, suffix: str) -> set[str]:
         tokens |= {name[0].lower() + name[1:] for name in GETTER_TOKEN.findall(text)}
     if suffix in (".js", ".mjs", ".mustache", ".html"):
         tokens |= set(DOT_TOKEN.findall(text))
+    if suffix in (".js", ".mjs"):
+        # a JS test or template writes a keyword as an unquoted object key: `{ center: "me" }` (found 2026-11-22: the
+        # map tests for mapSpec.center were invisible because only a quoted "center" counted)
+        tokens |= set(JS_KEY_TOKEN.findall(text))
     if suffix in (".mustache", ".html"):
         for tag in MUSTACHE_TOKEN.findall(text):
             tokens |= set(tag.split("."))

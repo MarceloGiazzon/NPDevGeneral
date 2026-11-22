@@ -1306,12 +1306,12 @@
         },
         "photoIntake": {
           "type": "object",
-          "description": "P8 (G5): what a photo sent to the bot (Telegram/WhatsApp) becomes. The image is uploaded into imageField of a new concept row; the optional procedure runs over that draft first (through an aggregate rooted at the concept, e.g. AI identification) and its answer pre-fills the row; captionField receives the photo caption; defaults fill the rest (\"$user.username\" = the linked user). The user confirms before the row is created; every step runs through the app REST API as that user.",
+          "description": "P8 (G5): what a photo sent to the bot (Telegram/WhatsApp) becomes. The image is uploaded into imageField of a new concept row; the optional flow named by `procedure` runs over that draft first (through an aggregate rooted at the concept, e.g. AI identification) and its answer pre-fills the row; captionField receives the photo caption; defaults fill the rest (\"$user.username\" = the linked user). The user confirms before the row is created; every step runs through the app REST API as that user.",
           "properties": {
             "concept": { "type": "string", "minLength": 1 },
             "imageField": { "type": "string", "minLength": 1, "description": "A type:file field of concept." },
             "captionField": { "type": "string", "minLength": 1, "description": "A string field that receives the photo caption. Optional." },
-            "procedure": { "type": "string", "minLength": 1, "description": "A procedure run over the draft {captionField, imageField} before confirmation; returned keys naming concept fields pre-fill the row. Optional." },
+            "procedure": { "type": "string", "minLength": 1, "description": "A flow run over the draft {captionField, imageField} before confirmation; returned keys naming concept fields pre-fill the row. Optional." },
             "defaults": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean"] }, "description": "field -> value for the new row; \"$user.username\" is the linked user." },
             "description": { "type": "string" }
           },
@@ -1476,7 +1476,7 @@
               "review": {
                 "type": "string",
                 "enum": ["required", "optional", "none"],
-                "description": "AI7-1: whether a human reviews this prompt's answer before anything applies it. 'none' (default) keeps today's behaviour. 'required' makes the validator demand that every flow calling the prompt parks the answer on an awaitEvent step whose task.proposal.value is the call's output, directly after the call (and bars procedures from calling it). 'optional' is recorded and audited but not enforced."
+                "description": "AI7-1: whether a human reviews this prompt's answer before anything applies it. 'none' (default) keeps today's behaviour. 'required' makes the validator demand that every flow calling the prompt parks the answer on an awaitEvent step whose task.proposal.value is the call's output, directly after the call. 'optional' is recorded and audited but not enforced."
               }
             }
           }
@@ -1502,7 +1502,7 @@
     },
     "composition": {
       "type": "object",
-      "description": "FORM P5-T9e: the concept's composition. The concept is the ROOT of an aggregate whose owned child collections are read and saved WHOLE in one transaction (this is the old top-level aggregates[]; its name is the concept's name, so the runtime address is /api/v1/runtime/aggregate/<Concept>). collections[] are the owned children, invariants[] and balances[] run across the whole draft tree before commit, onValidate / onCommit name procedures run inside that transaction.",
+      "description": "FORM P5-T9e: the concept's composition. The concept is the ROOT of an aggregate whose owned child collections are read and saved WHOLE in one transaction (this is the old top-level aggregates[]; its name is the concept's name, so the runtime address is /api/v1/runtime/aggregate/<Concept>). collections[] are the owned children, invariants[] and balances[] run across the whole draft tree before commit, onValidate / onCommit name flows run inside that transaction.",
       "properties": {
         "collections": {
           "type": "array",
@@ -1520,7 +1520,7 @@
         "onValidate": {
           "type": "string",
           "minLength": 1,
-          "description": "Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md): names a procedure run BEFORE the root upsert, inside the same transaction as commit() -- a non-ok result aborts the whole commit with NO writes at all. A sibling of onCommit (which runs AFTER the tree is written, rolling back on failure), not a flag on it: different timing, different contract."
+          "description": "Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md): names a flow run BEFORE the root upsert, inside the same transaction as commit() -- a non-ok result aborts the whole commit with NO writes at all. A sibling of onCommit (which runs AFTER the tree is written, rolling back on failure), not a flag on it: different timing, different contract."
         },
         "invariants": {
           "type": "array",
@@ -1534,7 +1534,7 @@
           "items": {
             "$ref": "#/$defs/aggregateBalance"
           },
-          "description": "Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): declarative, grouped cross-collection balance rules -- a role-partitioned collection's quantities must sum equal per group (e.g. Origem vs Destino per product/validity). Evaluated as a commit-time gate (alongside invariants) and, on demand without persisting, by a workbenchAction declaring checkBalances instead of procedure."
+          "description": "Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): declarative, grouped cross-collection balance rules -- a role-partitioned collection's quantities must sum equal per group (e.g. Origem vs Destino per product/validity). Evaluated as a commit-time gate (alongside invariants) and, on demand without persisting, by a workbenchAction declaring checkBalances instead of `procedure`."
         }
       },
       "additionalProperties": false
@@ -1876,12 +1876,12 @@
       "required": [
         "procedure"
       ],
-      "description": "Move 8 D3 (item G6, docs/MOVE8_CLOSE_TABLE_SPEC.md / Move 6 \u00a7B.7): on the Selection surface, REPLACES the generated row source with a procedure's output instead of the bound concept's table -- the `produce` disposition PanelRuntime already executes for hand-authored panels. Distinct from a data source's onRowLoad (Move 6 Move C), which ENRICHES rows the gateway already produced rather than replacing the row source.",
+      "description": "Move 8 D3 (item G6, docs/MOVE8_CLOSE_TABLE_SPEC.md / Move 6 \u00a7B.7): on the Selection surface, REPLACES the generated row source with a flow's output instead of the bound concept's table -- the `produce` disposition PanelRuntime already executes for hand-authored panels. Distinct from a data source's onRowLoad (Move 6 Move C), which ENRICHES rows the gateway already produced rather than replacing the row source.",
       "properties": {
         "procedure": {
           "type": "string",
           "minLength": 1,
-          "description": "A declared procedure whose return value becomes this surface's rows."
+          "description": "A declared flow whose return value becomes this surface's rows."
         }
       }
     },
@@ -1903,26 +1903,26 @@
           "enum": [
             "appendRow"
           ],
-          "description": "Only 'appendRow' is implemented. Prefer the action's `afterAction` procedure for anything else."
+          "description": "Only 'appendRow' is implemented. Prefer the action's `afterAction` flow for anything else."
         },
         "map": {
           "type": "object",
           "additionalProperties": {
             "type": "string"
           },
-          "description": "Target field name -> source path in the procedure result (e.g. \"localArmazenagemId\": \"$resultado.localArmazenagemId\")."
+          "description": "Target field name -> source path in the flow result (e.g. \"localArmazenagemId\": \"$resultado.localArmazenagemId\")."
         }
       }
     },
     "workbenchAction": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): exactly one of procedure or checkBalances must be declared -- enforced semantically (PanelValidation#validateWorkbenchActions), not by JSON Schema, matching the platform's existing pattern for this class of either/or rule (see workbenchBandPicker's panel-or-filter/multiSelect, B19).",
+      "description": "Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): exactly one of `procedure` (the name of a flow) or `checkBalances` must be declared -- enforced semantically (PanelValidation#validateWorkbenchActions), not by JSON Schema, matching the platform's existing pattern for this class of either/or rule (see workbenchBandPicker's panel-or-filter/multiSelect, B19).",
       "properties": {
         "procedure": {
           "type": "string",
           "minLength": 1,
-          "description": "Declared procedure this action invokes over the draft. Mutually exclusive with checkBalances."
+          "description": "Declared flow this action invokes over the draft. Mutually exclusive with checkBalances."
         },
         "checkBalances": {
           "type": "array",
@@ -1930,11 +1930,11 @@
             "type": "string",
             "minLength": 1
           },
-          "description": "Session 1: names declared aggregate.balances[] rules to evaluate against the current draft and return as a report, WITHOUT invoking a procedure or persisting anything -- an on-demand \"Recalcular Saldos\" affordance. Mutually exclusive with procedure."
+          "description": "Session 1: names declared aggregate.balances[] rules to evaluate against the current draft and return as a report, WITHOUT invoking a flow or persisting anything -- an on-demand \"Recalcular Saldos\" affordance. Mutually exclusive with `procedure`."
         },
         "label": {
           "$ref": "#/$defs/localizableLabel",
-          "description": "Button caption. Defaults to the procedure name when omitted."
+          "description": "Button caption. Defaults to the flow name when omitted."
         },
         "inputFields": {
           "type": "array",
@@ -1950,7 +1950,7 @@
         "afterAction": {
           "type": "string",
           "minLength": 1,
-          "description": "Procedure receiving {draft, result} and returning a patched draft. More general than applyTo; prefer it."
+          "description": "A flow receiving {draft, result} and returning a patched draft. More general than applyTo; prefer it."
         },
         "visibleWhen": {
           "type": "string",
@@ -1960,7 +1960,7 @@
         "review": {
           "type": "boolean",
           "default": false,
-          "description": "When true the procedure's result is shown as a field-by-field \"proposed changes\" dialog; only the ticked fields are folded into the draft (nothing is saved until Save). Not combinable with applyTo, afterAction or checkBalances."
+          "description": "When true the flow's result is shown as a field-by-field \"proposed changes\" dialog; only the ticked fields are folded into the draft (nothing is saved until Save). Not combinable with applyTo, afterAction or checkBalances."
         }
       }
     },
@@ -2077,7 +2077,7 @@
         "beforeAction": {
           "type": "string",
           "minLength": 1,
-          "description": "A guard invoked before any declared workbench action's procedure runs; a non-ok result aborts the action with no invoke."
+          "description": "A guard invoked before any declared workbench action's flow runs; a non-ok result aborts the action with no invoke."
         },
         "onValidate": {
           "type": "string",
@@ -2103,7 +2103,7 @@
             "server"
           ],
           "default": "client",
-          "description": "client (default): `expression` is evaluated locally by the browser (the same narrow expression language the retired `derived` key used). server: `procedure` is invoked over the draft."
+          "description": "client (default): `expression` is evaluated locally by the browser (the same narrow expression language the retired `derived` key used). server: the flow named by `procedure` is invoked over the draft."
         },
         "expression": {
           "type": "string",
@@ -3569,7 +3569,7 @@
         "crossAggregateReason": {
           "type": "string",
           "minLength": 1,
-          "description": "FORM P3-T5c: why this flow may write concepts of more than one aggregate (the one-aggregate-one-transaction rule is waived for this flow only; the reason is mandatory). For a flow migrated from a multi-aggregate procedure."
+          "description": "FORM P3-T5c: why this flow may write concepts of more than one aggregate (the one-aggregate-one-transaction rule is waived for this flow only; the reason is mandatory)."
         },
         "metadata": {
           "type": "object",
@@ -3900,7 +3900,7 @@
         "maxLoopIterations": {
           "type": "integer",
           "minimum": 1,
-          "description": "LIFT-LOOP: safety cap on forEach iterations, mirroring Procedures' forEach."
+          "description": "LIFT-LOOP: safety cap on forEach iterations."
         },
         "parallelAwait": {
           "type": "boolean",
@@ -4828,7 +4828,7 @@
         "defaultExpression": {
           "type": "string",
           "minLength": 1,
-          "description": "REG-313 (b): QUERY parameters only. An expression -- literals and the registered value functions (addDays, daysBetween, today, concat, coalesce, trim, uppercase, lowercase), no field references -- the runtime evaluates when the caller does not supply this parameter, e.g. addDays(today(), -7). Refused on a procedure parameter."
+          "description": "REG-313 (b): QUERY parameters only. An expression -- literals and the registered value functions (addDays, daysBetween, today, concat, coalesce, trim, uppercase, lowercase), no field references -- the runtime evaluates when the caller does not supply this parameter, e.g. addDays(today(), -7). Refused on a flow parameter."
         }
       },
       "additionalProperties": false
@@ -4958,7 +4958,7 @@
         "onRowLoad": {
           "type": "string",
           "minLength": 1,
-          "description": "Move 6 Move C (docs/MOVE6_TYPED_SURFACE_PLAN.md \u00a74): a procedure that ENRICHES the rows this data source produced -- adds fields, never reorders/adds/drops rows (a count or id mismatch is a hard runtime failure, not silent truncation). Distinct from `procedure` above, which REPLACES the row source entirely."
+          "description": "Move 6 Move C (docs/MOVE6_TYPED_SURFACE_PLAN.md \u00a74): a flow that ENRICHES the rows this data source produced -- adds fields, never reorders/adds/drops rows (a count or id mismatch is a hard runtime failure, not silent truncation). Distinct from `procedure` above, which REPLACES the row source entirely."
         },
         "totalField": {
           "type": "string",
@@ -5249,14 +5249,14 @@
             "type": "string",
             "minLength": 1
           },
-          "description": "Field names collected from the user before invoking this action, then passed as the flow/procedure input. Same declaration shape as panelDataSource.addFormFields."
+          "description": "Field names collected from the user before invoking this action, then passed as the flow input. Same declaration shape as panelDataSource.addFormFields."
         },
         "resultAs": {
           "type": "string",
           "enum": [
             "download"
           ],
-          "description": "Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md): only valid on a procedure-binding action. When 'download', PanelRuntime.executeAction returns the procedure's return value as a real file download (Content-Disposition: attachment) instead of a JSON result -- requires filename and contentType."
+          "description": "Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md): only valid on a `procedure`-binding action. When 'download', PanelRuntime.executeAction returns the flow's return value as a real file download (Content-Disposition: attachment) instead of a JSON result -- requires filename and contentType."
         },
         "filename": {
           "type": "string",

@@ -3,7 +3,7 @@
   "schemaVersion": "npdev-keyword-reasons.v1",
   "reasons": {
     "actionMetadata.visibleWhen": "A button that makes no sense for the current row, such as cancelling a shipped order, must disappear; a per-row condition on the action's presentation does that without a flow or hand-written UI code.",
-    "agentAccess.photoIntake": "Chat bots receive photos, and turning one into a record needs the upload, the target box and an optional pre-fill procedure; without a declared mapping each app would hand-write the bot's intake.",
+    "agentAccess.photoIntake": "Chat bots receive photos, and turning one into a record needs the upload, the target box and an optional pre-fill flow; without a declared mapping each app would hand-write the bot's intake.",
     "agentAccessExposure.operations": "An agent should be offered read-only tools by default and writes only when named; a closed list of operations per exposure is the narrowest way to say that, and permissions still check every call.",
     "aggregateBalance.collection": "A balance rule has to name which collection of the aggregate it partitions, including nested ones; a path into the composition tree is the only way to say it without code. Only the coverage fixture uses it.",
     "aggregateBalance.quantityField": "A balance rule sums one numeric box per side and group and must be told which one; it runs inside the commit, so no expression can pick it. Only the coverage fixture uses it, and no test names it.",
@@ -88,7 +88,7 @@
     "panelAction.filename": "A downloaded file should get a meaningful name; the filename is required with download results because the browser needs it.",
     "panelAction.resultAs": "An export button should hand over a real file, not a page of JSON; the download setting on a procedure action does that, with a filename and a content type.",
     "panelDataSource.childField": "A nested list such as order lines must know which of its boxes points at the parent; the child field is half of that link.",
-    "panelDataSource.params": "A panel's query or procedure needs its blanks filled from the page; params bind them with literals or expressions. No official sample sets it.",
+    "panelDataSource.params": "A panel's query or flow needs its blanks filled from the page; params bind them with literals or expressions. No official sample sets it.",
     "panelDataSource.parentField": "The other half of the master-detail link is the parent box the child points to; naming it lets the nested list be generated.",
     "panelDataSource.rowOps": "A nested list may allow adding lines, deleting them or both; a closed list states which, and the panel enforces it.",
     "panelFieldBinding.field": "A panel binds boxes of its data sources one by one; each binding must name the box it is about.",
@@ -125,10 +125,10 @@
     "seed.repeatOver": "Bulk starting data such as a grid of seats is a product of ranges; repeat over generates one row per combination instead of writing each out. Only the coverage fixture uses it.",
     "sequence.name": "A default expression asks for the next number by name; the name is deliberately not pack-qualified so counters stay stable across composition.",
     "sequence.scope": "Some counters are shared by everyone and some must run per customer account; the scope says which.",
-    "transactionHooks.onCommit": "Something must happen right after a save, such as a message; naming a procedure or flow runs it after the commit. No official sample uses it yet.",
-    "workbenchAction.afterAction": "After a helper procedure runs, the draft has to take in its result in ways no fixed rule covers; an after-action procedure returning a patched draft is the general form. Only the coverage fixture uses it.",
+    "transactionHooks.onCommit": "Something must happen right after a save, such as a message; naming a flow runs it after the commit. No official sample uses it yet.",
+    "workbenchAction.afterAction": "After a helper flow runs, the draft has to take in its result in ways no fixed rule covers; an after-action flow returning a patched draft is the general form. Only the coverage fixture uses it.",
     "workbenchAction.inputFields": "Some workbench actions need a value from the person before running, such as a quantity; listing the inputs makes NPDev ask for them.",
-    "workbenchAction.label": "A button should say what it does in the user's words; the label defaults to the procedure's name when omitted.",
+    "workbenchAction.label": "A button should say what it does in the user's words; the label defaults to the flow's name when omitted.",
     "workbenchAction.review": "When a helper proposes many changes the person should accept only some; review shows them field by field and folds in only the ticked ones, with nothing saved until Save.",
     "workbenchBandPicker.panel": "The workbench's row picker needs a list to show; naming a selection panel reuses an existing one. Only the coverage fixture uses it."
   }

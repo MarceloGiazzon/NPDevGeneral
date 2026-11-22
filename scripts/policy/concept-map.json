@@ -31,7 +31,7 @@
       "evidence": [
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java:156-159 - namespace = firstNonBlank(readText(root,\"namespace\"), readText(root,\"model\")); error text 'namespace (or alias: model)'. This is the only reader of the top-level `model` key in the DSL and it is not kept as its own field in ModelAst/CompiledModel",
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java:121-128 - `model` is only listed in ROOT_SCALAR_KEYS so pack/fragment composition passes it through",
-        "NPDevContract/schemas/model.schema.json:12-23,48-51 - allOf/oneOf requires namespace OR model; property `model` is a bare string (edit all 4 schema mirrors)",
+        "NPDevContract/schemas/model.schema.json:12-23,48-51 - allOf/oneOf requires namespace OR model; property `model` is a bare string (edit the source schema, then run check-schema-mirror-consistency.py --fix)",
         "Other `model` hits in src/main are unrelated: CLI --model path arg (NPDevGenerator/tools/npdev-cli/src/main/java/com/npdev/cli/NPDevCliMain.java:120), external-ai prompt.model, ReferenceIndexJson.java:38 output field",
         "Corpus: only AppGen/apps/pack-sample/definition/model.json:4 (\"model\": \"StoreManagement\", no `namespace`); other JSON files that match are reports/fixtures, not models"
       ],

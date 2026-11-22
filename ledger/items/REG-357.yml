@@ -63,9 +63,17 @@ detail: |
   presentationMetadata.* keyword used through field.ui showed "no official sample" (81 -> 62 missing samples, 80 -> 61 examples); (b) the test scan did not read NPDevContract/dsl/src/test or NPDevGenerator/generator/src/test and its
   string pattern could not match "$ref"/"$schema" (131 -> 8 keywords with no test; the batch-1 note blaming "tracked files only" was a wrong diagnosis). Fixture: panel.uid, panelFieldBinding.enabledWhen/readonlyWhen and
   a deprecated field added to dsl-conformance-max (validates with 0 errors); FormSwitchesAndOverridesSurviveCompileTest names formPresentation, showInDefaultWebUi, invariant.override, property.securityRelevant. Completeness 148 -> 251 of 745 rows.
-  NOTE: keywords that say "declared procedure" (autoPanelDataSource.procedure, transactionHooks.onLoad, workbenchAction.procedure ...) are NOT dangling: since REG-342 the name resolves against flows (PanelValidation.java:181); only their schema descriptions are stale (a follow-up, with REG-358).
-  STILL OPEN (next sessions, same 20% method): 407 written reasons, 8 tests, 61 official samples, 60 examples, 5 validator-only
-  keywords, 145 used only by the coverage fixture (no real model). Left out on purpose as complex: concept.renamedFrom (needs the restart-revision probe), pack:signature, pack:fieldConventions/propertyScopes
+  NOTE: keywords that say "declared procedure" (autoPanelDataSource.procedure, transactionHooks.onLoad, workbenchAction.procedure ...) are NOT dangling: since REG-342 the name resolves against flows (PanelValidation.java:181); only their schema descriptions were stale (refreshed 2026-11-22, see batch 3).
+  BATCH 3, 2026-11-22 (same 20% method, seven kinds of value): 84 more written reasons (reasons-batch-3.json); 12 keywords gained an official sample and an example in dsl-conformance-max
+  (agentAccessExposure.fields, autoPanel.prompt + autoPanelSurface.labelField, capabilityContractSchemaRef.schemaRef, event.version, inboundDoor.path on the shopify door only -- probes post to the other
+  doors by capability name --, panelDataSource.params via a new nearbyPlaces query source, presentationMetadata.formPresentation, schemaObject.derivedExpression/scale/precision on PlaceWidgetOrder.inputSchema,
+  workbenchBandPicker.selectorRef through a new WidgetOrderLineNotePicker); 2 keywords gained a test (AgentExposureConfirmWritesTest for confirmWrites; mapSpec.center was ALREADY tested by the
+  map tests in experience-client.test.mjs -- a third measurer defect: JS tests write keys unquoted (`{ center: "me" }`) and only quoted names counted, fixed with JS_KEY_TOKEN in generate_dsl_capabilities.py).
+  Model validates with 0 errors; 163/163 behaviour probes green (2026-11-22, log 20261122T225231Z). Completeness 251 -> 311 of 745. Also: the stale "declared procedure" prose (25 schema descriptions
+  in the four mirrors, 33 story/reason sentences) now says flow; the keys and the binding value `procedure` stay. NOTE found while doing it: capabilityContractSchemaRef.schemaRef is only an alias of
+  conceptRef (JsonModelParser resolves "#/concepts/X" or "X" to a concept) -- a candidate for the owner's next shrink round.
+  STILL OPEN (next sessions, same 20% method): 323 written reasons, 6 tests, 49 official samples, 49 examples, 5 validator-only
+  keywords, 157 used only by the coverage fixture (no real model). Left out on purpose as complex: concept.renamedFrom (needs the restart-revision probe), pack:signature, pack:fieldConventions/propertyScopes
   (pack files), transactionHooks.onValidate, queryParameter.schema, panel bindings/layout children (they change served panel metadata that probes assert), autoPanel.name (admin may not repeat the name).
   The catalogue's Implemented column was rebuilt (layers: parser / plumbing / validated / build / runtime / tooling, accessor calls counted, a Real models
   column that leaves out the coverage fixture): the old "parser only" label was wrong for keywords the code reads through accessors (9 of the first 14 "unsupported" keywords were live).

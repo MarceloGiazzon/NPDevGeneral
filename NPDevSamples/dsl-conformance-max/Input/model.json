@@ -155,6 +155,11 @@
           "list",
           "get"
         ],
+        "fields": [
+          "orderNumber",
+          "status",
+          "lineCount"
+        ],
         "description": "Widget orders placed by customers."
       },
       {
@@ -1021,7 +1026,8 @@
       "name": "WidgetCatalogEntry",
       "truthLevel": "T4",
       "ui": {
-        "label": "Widget catalog entry"
+        "label": "Widget catalog entry",
+        "formPresentation": "modal"
       },
       "rollups": [
         {
@@ -2676,6 +2682,12 @@
       "operations": [
         {
           "name": "post"
+        },
+        {
+          "name": "describe",
+          "output": {
+            "schemaRef": "#/concepts/WidgetOrder"
+          }
         }
       ]
     },
@@ -2758,6 +2770,7 @@
     {
       "name": "shopify",
       "inbound": {
+        "path": "shopify-orders",
         "idempotencyKey": "$header.X-Shopify-Webhook-Id",
         "signature": {
           "scheme": "hmac-sha256-base64",
@@ -2769,6 +2782,7 @@
   "events": [
     {
       "name": "WidgetReviewSubmitted",
+      "version": "1.0.0",
       "payload": [
         {
           "name": "id",
@@ -4016,6 +4030,16 @@
             },
             "uniqueItems": true,
             "duplicationPolicy": "deny"
+          },
+          "discount": {
+            "type": "decimal",
+            "precision": 10,
+            "scale": 2,
+            "min": 0
+          },
+          "lineCountDoubled": {
+            "type": "integer",
+            "derivedExpression": "lineCount * 2"
           }
         }
       },
@@ -5567,6 +5591,24 @@
       "where": "discontinued == false"
     },
     {
+      "name": "WidgetOrderLineNotePicker",
+      "kind": "picker",
+      "title": "Line notes",
+      "concept": "WidgetOrderLineNote",
+      "filters": [
+        "text"
+      ],
+      "columns": [
+        "text"
+      ],
+      "returnMapping": {
+        "id": "id"
+      },
+      "orderBy": [
+        "text"
+      ]
+    },
+    {
       "name": "WidgetOrderSummary",
       "kind": "document",
       "concept": "WidgetOrder",
@@ -5735,6 +5777,9 @@
           "dataSource": {
             "procedure": "ListActiveWidgetCatalogEntriesProcedure"
           }
+        },
+        "prompt": {
+          "labelField": "displayName"
         }
       }
     },
@@ -5946,7 +5991,8 @@
                 "id",
                 "text"
               ],
-              "filter": "text == 'Reviewed' && widgetOrderLineId == $root.id"
+              "filter": "text == 'Reviewed' && widgetOrderLineId == $root.id",
+              "selectorRef": "WidgetOrderLineNotePicker"
             }
           }
         }
@@ -6220,6 +6266,15 @@
           {
             "name": "entries",
             "concept": "WidgetCatalogEntry"
+          },
+          {
+            "name": "nearbyPlaces",
+            "query": "GeoPlacesWithinKm",
+            "params": {
+              "lat": "-23.55",
+              "lng": "-46.63",
+              "km": "10"
+            }
           }
         ],
         "fieldBindings": [

@@ -301,7 +301,7 @@ try {
     Write-Host "[8/39] Checking the four model.schema.json copies are still semantically identical..."
     & $py "scripts/quality/check-schema-mirror-consistency.py"
     if ($LASTEXITCODE -ne 0) {
-        $failures += "the four model.schema.json copies have drifted: see scripts/quality/check-schema-mirror-consistency.py output above for which key differs, then mirror the edit to all four (CLAUDE.md's own standing rule)"
+        $failures += "the four model.schema.json copies have drifted: see scripts/quality/check-schema-mirror-consistency.py output above for which key differs, then edit only the source (NPDevContract/schemas/model.schema.json) and run python scripts/quality/check-schema-mirror-consistency.py --fix (CLAUDE.md's own standing rule)"
     }
 
     # [8/35] R-G1 static half (docs/REMEDIATION_PLAN.md): the panel-provenance impact gate (F4)
