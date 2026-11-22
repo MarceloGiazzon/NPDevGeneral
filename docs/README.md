@@ -23,6 +23,7 @@ release-governance material (still live, just not what a newcomer needs) lives i
 
 `DSL_REFERENCE.md` (generated, see below) ·
 [DSL_KEYWORD_REFERENCE.md](DSL_KEYWORD_REFERENCE.md) (every DSL keyword: meaning, where it may be used, values; generated) ·
+[DSL_CAPABILITIES.html](DSL_CAPABILITIES.html) (the same keywords as an evidence table you can filter and sort: implemented, used by the official samples, tested, a real example, why it exists; generated) ·
 [FEATURES.md](FEATURES.md) ·
 [CONFIGURATION.md](CONFIGURATION.md) ·
 [DEPLOYMENT.md](DEPLOYMENT.md) ·
@@ -93,6 +94,7 @@ repo (md-zero-2026-08-11 PLAN.md Phase 6) — build output, per `BUILD_OUTPUT_LO
 run the commands below to render a local copy into the external Build root.
 
 [DSL_KEYWORD_REFERENCE.md](DSL_KEYWORD_REFERENCE.md) (`NPDevContract/schemas/model.schema.json` + `scripts/policy/dsl-keyword-meanings/` → `python scripts/docs/generate_dsl_keyword_reference.py`; unlike the registers below it IS committed, and `scripts/quality/check-dsl-keyword-reference.py` fails the AI knowledge gate when it is stale or a keyword has no meaning) ·
+[DSL_CAPABILITIES.html](DSL_CAPABILITIES.html) (schemas + keyword meanings + admission records + the official samples + the platform sources → `python scripts/docs/generate_dsl_capabilities.py`; committed, and `scripts/quality/check-dsl-keyword-reference.py` fails when it lists a different keyword set than the schema) ·
 `OPEN_ITEMS.md` (`ledger/items/*.yml` → `python scripts/quality/generate_open_items.py`) ·
 `OPEN_GAPS_AND_ROADMAP.md` (`ledger/gaps.yml` → `python scripts/docs/generate_gaps_roadmap.py`) ·
 [SECURITY_PATTERN_SWEEP_2026-07.md](archive/SECURITY_PATTERN_SWEEP_2026-07.md) (archived — dated point-in-time sweep)

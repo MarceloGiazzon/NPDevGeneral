@@ -55,7 +55,7 @@
           "name": "emit",
           "type": "emitEvent",
           "event": "InvoiceCreatedV2",
-          "payload": "$input"
+          "from": "$input"
         },
         {
           "name": "ret",

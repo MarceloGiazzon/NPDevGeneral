@@ -60,7 +60,8 @@ class LadderTest(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
 
     def run_ladder(self, pack="leads", version=None, validate=_ok_report, update=_update_ok):
-        return ws.test_pack(None, self.root, pack, version, stamp="20261114-100000", validate=validate, update=update)
+        return ws.test_pack(None, self.root, pack, version, stamp="20261114-100000", validate=validate, update=update,
+                            derive_probes=False)
 
     def steps(self, verdict):
         return {s["step"]: s["result"] for s in verdict["steps"]}
@@ -245,6 +246,81 @@ class LadderTest(unittest.TestCase):
         self.assertEqual(self.steps(verdict)["exposure-matrix"], "skipped")
         self.assertIn("=dev:rep:REP;", record["env"]["NPDEV_AUTH_API_KEYS"])
         self.assertEqual(record["env"]["NPDEV_AUTH_API_KEYS"], record["env"]["NPDEV_AUTH_APIKEYS"])
+
+    # ---- rung 4 without the authoring AI: probes derived from the pack's own declarations ---------------------------
+
+    def _derivable_pack(self):
+        doc = _pack()
+        doc["concepts"][0]["access"] = {"read": "$user.roles.contains(role('rep')) || $user.roles.contains('ADMIN')",
+                                        "write": "$user.roles.contains(role('rep'))"}
+        doc["concepts"][0]["fields"].append({"name": "code", "type": "string", "required": True, "maxLength": 40})
+        return _put(self.root, doc)
+
+    def _boot_with_metadata(self, record):
+        def boot(cli, consumer, env):
+            meta = Path(consumer["outputRoot"]) / "App" / "npdev-generated" / "src" / "main" / "resources" / "npdev"
+            meta.mkdir(parents=True)
+            (meta / "compiled-metadata.json").write_text(json.dumps({"catalogs": {"invocations": [
+                {"kind": "createDirect", "concept": "leads::Lead", "path": "/api/concepts/leads_leads"},
+                {"kind": "read", "concept": "leads::Lead", "path": "/api/concepts/leads_leads/{id}"}]}}), encoding="utf-8")
+            record["env"] = env
+            return "http://probe.invalid", lambda: None
+        return boot
+
+    @staticmethod
+    def _app(admit_decoy=False, refuse_everything=False):
+        """A fake app that follows the pack's rule: only REP may create, REP and ADMIN may read; the decoy is refused."""
+        def call(key, method, path, body):
+            who = "rep" if key.startswith("probe-") and call.rep_key == key else "decoy"
+            if refuse_everything:
+                return 422, {"code": "invariant_failed"}
+            if who == "rep":
+                return (201, {"id": "row1"}) if method == "POST" else (200, {"id": "row1"})
+            return (201, {"id": "row2"}) if (admit_decoy and method == "POST") else (403, {"error": "no"})
+        call.rep_key = None
+        return call
+
+    def _derived_run(self, call):
+        record = {}
+        boot = self._boot_with_metadata(record)
+
+        def spy(cli, consumer, env):
+            # the keys are 'probe-<hex>=dev:<name>:<ROLE>' pairs; remember which key is the rep's
+            for pair in env["NPDEV_AUTH_API_KEYS"].split(";"):
+                key, ident = pair.split("=", 1)
+                if ident.startswith("dev:rep:"):
+                    call.rep_key = key
+            return boot(cli, consumer, env)
+        verdict = ws.test_pack(_FakeCli(self.root), self.root, "leads", None, stamp="20261114-100000", validate=_ok_report,
+                               update=_update_ok, boot=spy, probe_call=call)
+        return verdict, record
+
+    def test_a_pack_with_no_probes_gets_derived_ones_and_reaches_probed(self):
+        self._derivable_pack()
+        verdict, record = self._derived_run(self._app())
+        self.assertEqual(verdict["status"], "probed")
+        detail = [s for s in verdict["steps"] if s["step"] == "behavior-probes"][0]["detail"]
+        self.assertIn("DERIVED", detail)
+        self.assertIn("=dev:rep:REP", record["env"]["NPDEV_AUTH_API_KEYS"])
+        self.assertIn("=dev:decoy:PROBEDECOY", record["env"]["NPDEV_AUTH_API_KEYS"])
+        written = list((self.root / "runs" / "leads@1.0.0" / "20261114-100000" / "derived-probes").glob("*.json"))
+        self.assertEqual([p.name for p in written], ["derived-Lead.json"])
+        self.assertEqual(json.loads(written[0].read_text(encoding="utf-8"))["steps"][0]["path"], "/api/concepts/leads_leads")
+
+    def test_a_pack_that_admits_the_decoy_role_is_rejected_with_the_rule_named(self):
+        self._derivable_pack()
+        verdict, _ = self._derived_run(self._app(admit_decoy=True))
+        self.assertEqual(verdict["status"], "rejected")
+        self.assertTrue(verdict["feedbackForAi"][0].startswith("derived probe derived-Lead.json"))
+        self.assertIn("access rules", verdict["feedbackForAi"][0])
+
+    def test_a_derived_probe_that_cannot_build_a_row_is_inconclusive_not_a_rejection(self):
+        self._derivable_pack()
+        verdict, _ = self._derived_run(self._app(refuse_everything=True))
+        self.assertEqual(verdict["status"], "secure")
+        detail = [s for s in verdict["steps"] if s["step"] == "behavior-probes"][0]
+        self.assertEqual(detail["result"], "skipped")
+        self.assertIn("inconclusive", detail["detail"])
 
     # ---- rung 5: screens (opt-in) ----------------------------------------------------------------------------------
 

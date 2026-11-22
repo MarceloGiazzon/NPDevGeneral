@@ -1,6 +1,6 @@
 # Scheduled / background execution (LNCH-12)
 
-A flow can declare a recurring `schedule` (cron expression + tenant scope). The runtime scheduler
+A flow can declare a recurring `trigger.schedule` (cron expression + tenant scope). The runtime scheduler
 invokes it exactly like an HTTP-triggered run — same authorization, same event emission — under a
 system principal, never the ControlPanel superuser key.
 
@@ -11,9 +11,11 @@ system principal, never the ControlPanel superuser key.
   "name": "CloseStaleOrders",
   "concept": "Order",
   "steps": [ ... ],
-  "schedule": {
-    "cron": "0 0 2 * * *",
-    "tenantScope": ["default"]
+  "trigger": {
+    "schedule": {
+      "cron": "0 0 2 * * *",
+      "tenantScope": ["default"]
+    }
   }
 }
 ```

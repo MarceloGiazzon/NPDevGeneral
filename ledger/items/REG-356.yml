@@ -1,0 +1,41 @@
+id: REG-356
+title: >-
+  Follow-ups owed after the convention-visibility and domainType-convention work (2026-11-22), plus the single-source model.schema.json the owner wants soon
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-22
+source: >-
+  Owner, 2026-11-22: "2) OK, logo vemos isso. Deixe marcado para ser feito em breve" and "7) Fonte unica. Deve ser implementado em breve. Anotar junto com a sessao 2".
+  The list is the one given to the owner at the close of the convention-visibility step; nothing here has a design decision pending except where a line says so.
+surface: contract/dsl, contract/schemas, manager, generator/business-ui, samples/ride-hailing
+files:
+  - NPDevContract/schemas/model.schema.json
+  - NPDevContract/schemas/authoring/model.schema.json
+  - NPDevContract/dsl/src/main/resources/schema/model.schema.json
+  - NPDevContract/dsl/resources/Schemas/model.schema.json
+  - scripts/quality/check-schema-mirror-consistency.py
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/FieldConventionExpansion.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/cli/ModelValidatorMain.java
+  - NPDevSamples/ride-hailing/drive_s2.py
+detail: |
+  A. SINGLE-SOURCE model.schema.json (owner: soon; was "deferred", now approved to implement). Today the schema exists as four copies (the two under NPDevContract/schemas, the DSL jar resource,
+     the legacy NPDevContract/dsl/resources/Schemas copy that also carries canonicalSchema/deprecated keys) and every schema edit is made four times and then compared semantically by
+     check-schema-mirror-consistency.py (done by hand for `fieldConvention.defaults.domainType` on 2026-11-22). Goal: ONE file edited by hand, the others generated or read from it, the
+     CLAUDE.md "duplicated in 4 places" paragraph deleted, the checker reduced or removed. Pre-users setting: paths may change freely; migrate every reader (Gradle, Python tools, the Manager, jars) in the same commit.
+  B. Convention notes (info diagnostics FIELD_CONVENTION_APPLIED, IMPLICIT_ID_ADDED): (1) check whether and how the Manager shows an `info` diagnostic and rebuild it if it hides or mangles one;
+     (2) the note texts are English only -- confirm that is allowed for validator output against scripts/policy/ui-i18n-policy.json; (3) a field that declares a domainType but no type still fails with
+     "declares no type" -- decide whether it should take the type from the domain type's baseType; (4) measure what teaching "omit type / id, and a convention may name a domainType" adds to the AI briefing
+     before adding it (the 5k tokens-per-app target is the constraint).
+  C. ride-hailing: re-run the app after the `lower(status)` driver-list label (validated only at T0); re-check Zone showing `none`, lat/lng boxes in the rider form and English labels in a Portuguese session;
+     capture en/pt screenshots and publish the gallery if that is an outward action the owner must click; investigate the flaky acceptance check "driver2 stayed OFFLINE" in drive_s2.py (~line 559):
+     it failed once and passed on re-run, cause unknown.
+  D. Packs: two more built-in packs to reach `probed` on a real booted app (only `leave` has); the wave-2 delivery request still has two owner questions (`payments`, `kitchen`); bench step "clinic app from
+     packs only, under 2k output tokens" has no record of being run and depends on wave 2 and on provider quota (bench-023 on Gemini is blocked by quota).
+  E. Verification owed to the freshness ledger before the single commit: the twelve checks the T1 gate listed as overdue on 2026-11-22 (budget, reference, concept-map, ui-i18n, doc-references, adr,
+     experience-client, manager-version-bump, dsl-test-touched-area, model-validate-touched, f6-showcase-browser, jrn-journeys) run through the ledger-recording path, plus run-shell-scenarios and the i18n-pt browser routine.
+  PAUSED BY THE OWNER until 2026-11-25: the kernel coverage-floor root cause (floor 73.4185 -> 73.4139) -- "ignore this problem completely for the next 3 days"; do not investigate or let that ratchet drive work before then.
+done_when: >-
+  The four schema copies are one source and check-schema-mirror-consistency.py is gone or trivial; each of B-E is either done and verified or recorded in its own item with a reason; the paused kernel
+  item is picked up on or after 2026-11-25.

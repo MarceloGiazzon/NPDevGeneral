@@ -14,7 +14,6 @@ public final class CapabilityOperationAst {
     private final SchemaAst outputSchema;
     private final CapabilityPolicyAst executionPolicy;
     private final List<CapabilityOperationErrorAst> errors;
-    private final String sideEffects;
     private final CapabilityAuthAst auth;
     private final Map<String, Object> http;
 
@@ -30,7 +29,7 @@ public final class CapabilityOperationAst {
             SchemaAst outputSchema,
             CapabilityPolicyAst executionPolicy
     ) {
-        this(name, input, output, inputSchema, outputSchema, executionPolicy, List.of(), null, null);
+        this(name, input, output, inputSchema, outputSchema, executionPolicy, List.of(), null);
     }
 
     public CapabilityOperationAst(
@@ -41,10 +40,9 @@ public final class CapabilityOperationAst {
             SchemaAst outputSchema,
             CapabilityPolicyAst executionPolicy,
             List<CapabilityOperationErrorAst> errors,
-            String sideEffects,
             CapabilityAuthAst auth
     ) {
-        this(name, input, output, inputSchema, outputSchema, executionPolicy, errors, sideEffects, auth, Map.of());
+        this(name, input, output, inputSchema, outputSchema, executionPolicy, errors, auth, Map.of());
     }
 
     /** INT-1: attaches the operation's declarative HTTP request -- see getHttp. */
@@ -56,7 +54,6 @@ public final class CapabilityOperationAst {
             SchemaAst outputSchema,
             CapabilityPolicyAst executionPolicy,
             List<CapabilityOperationErrorAst> errors,
-            String sideEffects,
             CapabilityAuthAst auth,
             Map<String, Object> http
     ) {
@@ -67,7 +64,6 @@ public final class CapabilityOperationAst {
         this.outputSchema = outputSchema;
         this.executionPolicy = executionPolicy;
         this.errors = new ArrayList<>(errors);
-        this.sideEffects = sideEffects;
         this.auth = auth;
         this.http = http == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(http));
     }
@@ -96,10 +92,6 @@ public final class CapabilityOperationAst {
 
     public List<CapabilityOperationErrorAst> getErrors() {
         return Collections.unmodifiableList(errors);
-    }
-
-    public String getSideEffects() {
-        return sideEffects;
     }
 
     public CapabilityAuthAst getAuth() {

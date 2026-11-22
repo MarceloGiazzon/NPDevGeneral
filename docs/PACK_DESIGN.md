@@ -96,9 +96,8 @@ for dev, a real queue in prod — never touches the pack or the app model, only 
 
 An operation's `input`/`output` can point at a `conceptRef`/`schemaRef` instead of an inline schema —
 prefer that when the payload shape already exists as a concept, so the two never drift independently.
-`policy` on an operation is purely resilience (retry, timeout, circuit breaker, bulkhead, idempotency); what an operation can fail with and whether it writes are expressed separately, through the operation's `errors` (`capabilityOperationError[]`) and `sideEffects`
-— it says nothing about what the operation can fail with or whether it writes anything; that gap is
-tracked separately as W4.1 in the roadmap, not something a pack author can express yet.
+`policy` on an operation is purely resilience (retry, timeout, circuit breaker, bulkhead, idempotency); what an operation can fail with is expressed separately, through the operation's `errors` (`capabilityOperationError[]`)
+— `policy` says nothing about what the operation can fail with.
 
 ## When to specialize instead of forking
 

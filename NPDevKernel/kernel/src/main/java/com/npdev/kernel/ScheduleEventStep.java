@@ -18,7 +18,7 @@ import java.util.Objects;
  *
  * <p><b>R2.4 -- the delay is now real.</b> Until R2.4 this class computed {@code scheduledForEpochMs}
  * into the envelope's metadata and then appended + published + resumed waiters immediately, exactly
- * like {@link EmitEventStep}. So {@code delayMinutes: 1440} fired NOW and merely labelled itself
+ * like {@link EmitEventStep}. So {@code delaySeconds: 86400} fired NOW and merely labelled itself
  * {@code deliveryMode: scheduled} -- the canonical demo's 24-hour appointment reminder arrived the
  * instant the appointment was created. The durable substrate existed the whole time (the
  * {@code npdev_scheduled_event} table with its {@code due_at} column, and since R2.3 a timer that

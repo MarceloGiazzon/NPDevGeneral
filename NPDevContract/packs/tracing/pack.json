@@ -2,7 +2,7 @@
   "$schema": "../../schemas/pack.schema.json",
   "dslVersion": "3.0.0",
   "pack": "tracing",
-  "version": "1.0.4",
+  "version": "2.0.0",
   "namespace": "com.npdev.tracing",
   "description": "Built-in NPDev tracing pack: declarative trace retention, a human-readable trace viewer panel, and safe redaction defaults. Wraps the existing kernel tracing adapters (tracing-inproc, tracestore-postgres, tracing-redaction-default) so an app author can toggle tracing on and an app user can actually read the log.",
   "category": "other",

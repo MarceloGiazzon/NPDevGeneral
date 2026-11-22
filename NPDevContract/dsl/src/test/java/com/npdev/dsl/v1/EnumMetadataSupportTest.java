@@ -43,7 +43,7 @@ class EnumMetadataSupportTest {
                               "order": 10,
                               "group": "Active",
                               "default": true,
-                              "iconHint": "calendar-clock",
+                              "icon": "calendar-clock",
                               "badge": "info",
                               "description": "Initial state"
                             },
@@ -52,7 +52,7 @@ class EnumMetadataSupportTest {
                               "label": "Completed",
                               "order": 20,
                               "group": "Terminal",
-                              "badgeHint": "success"
+                              "badge": "success"
                             }
                           ]
                         }

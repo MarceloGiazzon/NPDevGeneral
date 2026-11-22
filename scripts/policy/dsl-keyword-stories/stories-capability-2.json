@@ -1,0 +1,30 @@
+{
+  "$comment": "Everyday stories, noun Capability, part 2 of 2 (httpConnector, httpConnectorAuth, httpConnectorOperation, inboundDoor). Same style rules as stories-pilot.json. Owner reviews each part.",
+  "schemaVersion": "npdev-keyword-stories.v1",
+  "stories": {
+    "httpConnector.auth": "The carrier's website lets in only those who show a key. Auth says how the requests identify themselves. If you say nothing, no login is used.",
+    "httpConnector.baseUrl": "Every request to the carrier starts with the same web address, the carrier's front door. Base URL is that fixed beginning, and it must start with http or https. One of base URL and base URL property is required.",
+    "httpConnector.baseUrlProperty": "A software company has a test customer that talks to the carrier's sandbox and a real one that talks to the production service. Base URL property names a setting whose value, for the calling customer, replaces the fixed base URL.",
+    "httpConnector.headers": "Every request to the carrier must say that the answer should come back as JSON. Headers are such fixed lines of the request, sent on every call.",
+    "httpConnector.maxRetries": "A request to read a parcel's status fails sometimes. Max retries is how many extra attempts are made, from zero to five, and only for calls that are safe to repeat. The default is none.",
+    "httpConnector.timeoutMs": "A flow should not hang for a minute on one slow request. Timeout is the deadline of each attempt in milliseconds, from one to 120000. The default is ten seconds.",
+    "httpConnectorAuth.name": "Some services want the key in a header line with a name of their choice, others in the address. Name is that header or parameter name, for the two schemes that carry a key.",
+    "httpConnectorAuth.secretEnvVar": "A password must never be written in the model, because the model is shared and stored. Secret env var names the environment variable of the machine that holds the token, password or key, and never the secret itself.",
+    "httpConnectorAuth.type": "A service can ask for no login, a bearer token, a user and password, or a key in a header or in the address. Type picks the scheme: none, bearer, basic, API key in a header or API key in a query.",
+    "httpConnectorAuth.usernameEnvVar": "With a user-and-password login, the username is also kept out of the model. Username env var names the environment variable that holds it.",
+    "httpConnectorOperation.body": "To create a shipment, the app must send a small data package to the carrier. Body is the template of that package, an object or a text. It is ignored for read and delete requests.",
+    "httpConnectorOperation.bodyEncoding": "Some services want the data package as JSON, others as a web form. Body encoding picks json, which is the default, or form, which allows a flat object only.",
+    "httpConnectorOperation.headers": "One operation needs an extra line, such as the language of the answer. Headers are extra lines for this operation only, and their values may use the operation's arguments.",
+    "httpConnectorOperation.method": "Reading a parcel, creating a shipment and cancelling one are different kinds of request. Method picks GET, POST, PUT, PATCH or DELETE.",
+    "httpConnectorOperation.params": "The operation 'track parcel' needs the parcel number. Params names the arguments in the order the caller hands them over. Every name used in the request must be listed.",
+    "httpConnectorOperation.path": "Tracking a parcel goes to the 'parcels' page of the carrier's site, with the parcel number inside the address. Path is that part of the address, starting with a slash, and the placeholders in braces are filled from the params.",
+    "httpConnectorOperation.query": "A request may add 'only open parcels, twenty at a time' to the end of the address. Query lists those parameters. One whose value comes out empty is dropped from the address.",
+    "httpConnectorOperation.response": "The carrier's answer has a lot of detail, but the app needs only the tracking status. Response says which part of the answer is returned, by a pointer into it.",
+    "inboundDoor.eventName": "When a payment company calls the app, the app should announce 'payment received' inside itself. Event name is the model's own event that is published once the signature has been verified. It is optional if a flow already has a webhook trigger for this capability.",
+    "inboundDoor.fieldMapping": "The payment company sends 'data.order.ref', but the app's event wants a box called 'orderId'. Field mapping says, box by box, where in the incoming data each value comes from. Without it, the incoming data becomes the event unchanged.",
+    "inboundDoor.hmacSecretEnvVar": "The door has to be sure that the call really comes from the payment company, using a shared secret. Hmac secret env var names the environment variable that holds that secret, never the secret itself. If you say nothing, a name is derived from the door's path.",
+    "inboundDoor.idempotencyKey": "Payment companies sometimes deliver the same notice twice. Idempotency key says where in the incoming data, or in a header, to find a number that identifies it. A delivery already handled is answered with a short 'duplicate' and nothing is published again.",
+    "inboundDoor.path": "The payment company needs a fixed address to call, one that never changes. Path is the last piece of that address, after the app's 'hooks' section. It defaults to the capability's name, and it is required when the capability belongs to a pack, so the address never changes.",
+    "inboundDoor.signature": "Each provider proves its calls in its own way: a header with a code, sometimes with a prefix, valid for a few minutes. Signature describes the scheme, header, prefix and tolerance in seconds. If you say nothing, the platform's own scheme is used."
+  }
+}

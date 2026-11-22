@@ -70,7 +70,7 @@ class CompiledMetadataCanonicalJsonTest {
                 "Expected Patient.mrn to reference the MRN domain type.");
         assertTrue(findFieldPresentation(fields, "Patient", "mrn", "Medical record number", "Registration"),
                 "Expected Patient.mrn presentation metadata in the field catalog.");
-        assertTrue(findFieldInteraction(fields, "Appointment", "providerId", "status == 'Scheduled'", "search-dialog", "available-providers"),
+        assertTrue(findFieldInteraction(fields, "Appointment", "providerId", "status == 'Scheduled'"),
                 "Expected Appointment.providerId interaction metadata in the field catalog.");
         assertTrue(findFieldLayout(fields, "Appointment", "providerId", "Overview", 2, "lg", true, 20),
                 "Expected Appointment.providerId layout metadata in the field catalog.");
@@ -91,13 +91,13 @@ class CompiledMetadataCanonicalJsonTest {
                 "Expected Appointment.patientId enriched reference metadata.");
         assertTrue(findAction(actions, "flow", "CreateAppointment"),
                 "Expected flow catalog entry for CreateAppointment.");
-        assertTrue(findActionMetadata(actions, "flow", "CreateAppointment", "Create appointment", "appointments.create", "appointment-create"),
+        assertTrue(findActionMetadata(actions, "flow", "CreateAppointment", "Create appointment", "appointments.create"),
                 "Expected flow-level action metadata for CreateAppointment.");
         assertTrue(findFlowStepMetadata(actions, "CreateAppointment", "capture-created-id", "map", "", "", 0, ""),
                 "Expected assign/map flow-step metadata for CreateAppointment.");
         assertTrue(findFlowStepMetadata(actions, "CreateAppointment", "queue-appointment-reminder", "scheduleEvent", "AppointmentReminderDue", "then", 86400, "flow-correlation"),
                 "Expected scheduled reminder flow-step metadata for CreateAppointment.");
-        assertTrue(findActionMetadata(actions, "flowStep", "save-appointment", "Persist appointment", "appointments.create", "appointment-create"),
+        assertTrue(findActionMetadata(actions, "flowStep", "save-appointment", "Persist appointment", "appointments.create"),
                 "Expected flow-step action metadata for save-appointment.");
         // FORM P3-T5c: the orchestration rule is the event-trigger flow CompleteAppointmentFlow
         assertTrue(findAction(actions, "flow", "CompleteAppointmentFlow"),
@@ -354,8 +354,7 @@ class CompiledMetadataCanonicalJsonTest {
             String kind,
             String name,
             String label,
-            String permissionHint,
-            String inputFormHint
+            String permissionHint
     ) {
         if (actions == null || !actions.isArray()) {
             return false;
@@ -364,8 +363,7 @@ class CompiledMetadataCanonicalJsonTest {
             if (kind.equals(item.path("kind").asText())
                     && name.equals(item.path("name").asText())
                     && label.equals(item.path("label").asText())
-                    && permissionHint.equals(item.path("permissionHint").asText())
-                    && inputFormHint.equals(item.path("inputFormHint").asText())) {
+                    && permissionHint.equals(item.path("permissionHint").asText())) {
                 return true;
             }
         }
@@ -576,9 +574,7 @@ class CompiledMetadataCanonicalJsonTest {
             JsonNode fields,
             String concept,
             String fieldPath,
-            String enabledWhen,
-            String pickerType,
-            String filterPreset
+            String enabledWhen
     ) {
         if (fields == null || !fields.isArray()) {
             return false;
@@ -586,9 +582,7 @@ class CompiledMetadataCanonicalJsonTest {
         for (JsonNode item : fields) {
             if (concept.equals(item.path("concept").asText())
                     && fieldPath.equals(item.path("fieldPath").asText())
-                    && enabledWhen.equals(item.path("enabledWhen").asText())
-                    && pickerType.equals(item.path("pickerType").asText())
-                    && filterPreset.equals(item.path("filterPreset").asText())) {
+                    && enabledWhen.equals(item.path("enabledWhen").asText())) {
                 return true;
             }
         }

@@ -149,7 +149,7 @@ def _has_field_access(model: dict) -> bool:
     return False
 
 
-_LABEL_SITE_KEYS = ("label", "shortLabel", "displayLabel", "actionLabel")
+_LABEL_SITE_KEYS = ("label", "shortLabel", "actionLabel")
 
 
 def _is_locale_label_object(value) -> bool:
@@ -462,18 +462,11 @@ def _has_on_failure(model: dict) -> bool:
 
 
 def _schedule_event_delay_seconds(step: dict):
-    """The delay a scheduleEvent step resolves to, mirroring JsonModelParser's own precedence
-    (delaySeconds, else delayMinutes * 60, else delayMs rounded up). Returns None when the step
-    declares no delay at all -- which FlowValidation rejects, so it only happens mid-edit."""
+    """The delay (seconds) a scheduleEvent step declares. Returns None when the step declares no delay
+    at all -- which FlowValidation rejects, so it only happens mid-edit."""
     raw = step.get("delaySeconds")
     if isinstance(raw, (int, float)) and not isinstance(raw, bool):
         return int(raw)
-    raw = step.get("delayMinutes")
-    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
-        return int(raw) * 60
-    raw = step.get("delayMs")
-    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
-        return max(0, (int(raw) + 999) // 1000)
     return None
 
 

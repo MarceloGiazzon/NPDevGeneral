@@ -30,7 +30,7 @@ class InvariantExpressionValidationTest {
                   { "name": "cxPad", "type": "integer" },
                   { "name": "cxAvulsas", "type": "integer" },
                   { "name": "total", "type": "integer" } ],
-                  "invariants": [ { "name": "inv1", "type": "expression", "expression": "%s" } ] }
+                  "invariants": [ { "name": "inv1", "type": "expression", "expr": "%s" } ] }
               ]
             }
             """.formatted(expression);

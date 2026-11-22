@@ -65,10 +65,7 @@ class InteractionMetadataSupportTest {
                             "enabledWhen": "status == 'Scheduled'",
                             "readonlyWhen": "status == 'Completed'",
                             "requiredWhen": "status == 'Scheduled'",
-                            "pickerType": "search-dialog",
-                            "allowInlineCreate": false,
-                            "searchFields": ["fullName", "specialty"],
-                            "filterPreset": "available-providers"
+                            "searchFields": ["fullName", "specialty"]
                           }
                         }
                       ]
@@ -96,7 +93,6 @@ class InteractionMetadataSupportTest {
 
         assertEquals("status == 'Scheduled'", providerField.getUi().getEnabledWhen());
         assertEquals("status == 'Completed'", providerField.getUi().getReadonlyWhen());
-        assertEquals("search-dialog", providerField.getUi().getPickerType());
         assertEquals(List.of("fullName", "specialty"), providerField.getUi().getSearchFields());
     }
 
@@ -128,7 +124,6 @@ class InteractionMetadataSupportTest {
                           "type": "string",
                           "ui": {
                             "label": "Visit reason",
-                            "pickerType": "search-dialog",
                             "visibleWhen": "status ==",
                             "searchFields": ["fullName", "fullName"]
                           }
@@ -202,7 +197,7 @@ class InteractionMetadataSupportTest {
                         {
                           "name": "providerId",
                           "type": "reference",
-                          "ref": "Provider",
+                          "reference": "Provider",
                           "ui": { "label": "Provider" },
                           "picker": { "filter": "fullName != 'Retired'" }
                         }

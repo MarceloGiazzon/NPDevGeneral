@@ -689,7 +689,7 @@ def migrate_label_locales(doc: dict, locale: str) -> MigrationResult:
     Walks the exact shapes the label-site schema (`$defs/localizableLabel`) and
     `JsonModelParser`'s corresponding parse sites recognize: top-level `properties[]`,
     `domainTypes[].ui`, `concepts[].ui` / `concepts[].fields[].ui` (label + shortLabel),
-    `concepts[].fields[].enumValues[]` (label + displayLabel), `concepts[].lifecycle.states[]` /
+    `concepts[].fields[].enumValues[]` (label), `concepts[].lifecycle.states[]` /
     `.transitions[]` (actionLabel), `screens[].panel.actions[]`, and every `autoPanels[].<surface>`
     (selection/detail/transaction/prompt) actions/bandPickers/derivedFields/uiState. Does NOT
     reach a nested `actionMetadata` block's own `label` (e.g. a lifecycle transition's `action`
@@ -735,7 +735,6 @@ def migrate_label_locales(doc: dict, locale: str) -> MigrationResult:
                 if isinstance(option, dict):
                     owhere = f"{fwhere}.enumValues[{k}]"
                     _widen_label_site(option, "label", locale, owhere, result)
-                    _widen_label_site(option, "displayLabel", locale, owhere, result)
         lifecycle = concept.get("lifecycle")
         if isinstance(lifecycle, dict):
             for j, state in enumerate(lifecycle.get("states", None) or []):

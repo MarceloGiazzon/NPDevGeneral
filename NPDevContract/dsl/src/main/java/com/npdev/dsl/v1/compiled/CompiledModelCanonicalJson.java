@@ -1151,7 +1151,6 @@ public final class CompiledModelCanonicalJson {
         ObjectNode node = JsonNodeFactory.instance.objectNode();
         node.set("label", toLabelNode(ui.getLabel(), ui.getLabelLocales()));
         node.put("placeholder", safe(ui.getPlaceholder()));
-        node.put("helpText", safe(ui.getHelpText()));
         node.put("widget", safe(ui.getWidget()));
         return node;
     }
@@ -1164,7 +1163,6 @@ public final class CompiledModelCanonicalJson {
         node.set("label", toLabelNode(metadata.getLabel(), metadata.getLabelLocales()));
         node.set("shortLabel", toLabelNode(metadata.getShortLabel(), metadata.getShortLabelLocales()));
         node.put("description", safe(metadata.getDescription()));
-        node.put("helpText", safe(metadata.getHelpText()));
         node.put("placeholder", safe(metadata.getPlaceholder()));
         node.put("group", safe(metadata.getGroup()));
         node.put("section", safe(metadata.getSection()));
@@ -1173,30 +1171,17 @@ public final class CompiledModelCanonicalJson {
         } else {
             node.put("order", metadata.getOrder());
         }
-        if (metadata.getAdvanced() == null) {
-            node.putNull("advanced");
-        } else {
-            node.put("advanced", metadata.getAdvanced());
-        }
         if (metadata.getDeprecated() == null) {
             node.putNull("deprecated");
         } else {
             node.put("deprecated", metadata.getDeprecated());
         }
-        node.set("examples", toStringArray(metadata.getExamples()));
         node.put("widget", safe(metadata.getWidget()));
         node.put("visibleWhen", safe(metadata.getVisibleWhen()));
         node.put("enabledWhen", safe(metadata.getEnabledWhen()));
         node.put("readonlyWhen", safe(metadata.getReadonlyWhen()));
         node.put("requiredWhen", safe(metadata.getRequiredWhen()));
-        node.put("pickerType", safe(metadata.getPickerType()));
-        if (metadata.getAllowInlineCreate() == null) {
-            node.putNull("allowInlineCreate");
-        } else {
-            node.put("allowInlineCreate", metadata.getAllowInlineCreate());
-        }
         node.set("searchFields", toStringArray(metadata.getSearchFields()));
-        node.put("filterPreset", safe(metadata.getFilterPreset()));
         node.put("tab", safe(metadata.getTab()));
         if (metadata.getColumn() == null) {
             node.putNull("column");
@@ -1275,7 +1260,6 @@ public final class CompiledModelCanonicalJson {
                 operationNode.set("outputSchema", toSchema(operation.getOutputSchema()));
                 operationNode.set("executionPolicy", toExecutionPolicy(operation.getExecutionPolicy()));
                 operationNode.set("errors", toOperationErrors(operation.getErrors()));
-                operationNode.put("sideEffects", safe(operation.getSideEffects()));
                 operationNode.set("auth", toAuth(operation.getAuth()));
                 if (!operation.getHttp().isEmpty()) {
                     operationNode.set("http", toObjectMap(operation.getHttp()));
@@ -1966,12 +1950,9 @@ public final class CompiledModelCanonicalJson {
         ObjectNode node = JsonNodeFactory.instance.objectNode();
         node.set("label", toLabelNode(action.getLabel(), action.getLabelLocales()));
         node.put("confirmationText", safe(action.getConfirmationText()));
-        node.put("successMessage", safe(action.getSuccessMessage()));
-        node.put("failureHint", safe(action.getFailureHint()));
         node.put("dangerLevel", safe(action.getDangerLevel()));
         node.put("visibleWhen", safe(action.getVisibleWhen()));
         node.put("permissionHint", safe(action.getPermissionHint()));
-        node.put("inputFormHint", safe(action.getInputFormHint()));
         return node;
     }
 
@@ -2029,7 +2010,6 @@ public final class CompiledModelCanonicalJson {
         }
         ObjectNode node = JsonNodeFactory.instance.objectNode();
         node.set("roles", toStringArray(auth.getRoles()));
-        node.set("scopes", toStringArray(auth.getScopes()));
         return node;
     }
 

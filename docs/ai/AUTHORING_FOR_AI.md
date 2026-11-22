@@ -43,8 +43,10 @@ event on save without a flow:
 
 1. **Every object is closed (`additionalProperties: false`)** except the free-form `metadata` maps on
    panels and flows. An invented key fails generation; it is not ignored.
-2. **Exactly one field per concept has `"id": true`**; conventionally
-   `{"name":"id","type":"uuid","id":true,"required":true}`.
+2. **Every concept has exactly one `"id": true` field, and you do NOT write it:** the platform adds
+   `{"name":"id","type":"uuid","id":true,"required":true}` as the first field. Declare an id field only to use
+   something else as the key (e.g. a `code` string with `"id": true`); a concept that `specializes` another
+   inherits the parent's.
 3. **`reference.target` names a concept in the composed model** (own or from a pack/fragment).
 4. **Root uses `concepts`, not `entities`** (rejected legacy shape).
 5. Required root fields: `version`, `namespace` (or `model`), non-empty `concepts`. `dslVersion` is optional (omit it, or write `"3.0.0"`; any other value is an error).
@@ -201,7 +203,7 @@ and `npdev-submission.json` you cannot deliver them:** do not write Java; state 
 `couldNotExpress` and model the rest, so the person can add the code later.
 
 **An outside REST API, no code.** A capability of type `HttpConnector` bound to adapter `http-connector`:
-`{"name":"maps","type":"HttpConnector","http":{"baseUrl":"https://maps.example.com/v1","auth":{"type":"apiKeyHeader","name":"X-Key","secretEnvVar":"MAPS_API_KEY"},"timeoutMs":5000,"maxRetries":1},"operations":[{"name":"route","sideEffects":"reads","http":{"method":"GET","path":"/route","query":{"from":"$from"}}}]}`
+`{"name":"maps","type":"HttpConnector","http":{"baseUrl":"https://maps.example.com/v1","auth":{"type":"apiKeyHeader","name":"X-Key","secretEnvVar":"MAPS_API_KEY"},"timeoutMs":5000,"maxRetries":1},"operations":[{"name":"route","http":{"method":"GET","path":"/route","query":{"from":"$from"}}}]}`
 and `{"capability":"maps","adapter":"http-connector"}`. Secrets are environment-variable names, never values.
 
 ## Field types
@@ -212,7 +214,7 @@ and `{"capability":"maps","adapter":"http-connector"}`. Secrets are environment-
 
 ## Gotchas
 
-- **Invariant key:** `"expression"` (`"expr"` is an alias). A multi-field unique invariant is
+- **Invariant key:** `"expr"`. A multi-field unique invariant is
   `{"type":"unique","fields":[...]}`.
 - **`reference.onDelete`:** `restrict` (default), `cascade`, `nullify`; `nullify` is REJECTED on a
   `required` field.

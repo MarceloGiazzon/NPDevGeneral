@@ -109,19 +109,19 @@ class HttpConnectorCapabilityHandlerTest {
                     "name": "shop", "type": "HttpConnector", "adapter": "http-connector",
                     "http": %s,
                     "operations": [
-                      { "name": "getCustomer", "sideEffects": "reads",
+                      { "name": "getCustomer",
                         "http": { "method": "GET", "path": "/customers/{customerId}", "params": ["customerId", "expand"],
                                   "query": { "expand": "{expand}" }, "response": { "pointer": "/data" } } },
-                      { "name": "createCharge", "sideEffects": "external",
+                      { "name": "createCharge",
                         "http": { "method": "POST", "path": "/charges", "params": ["amount", "currency"],
                                   "body": { "amount": "{amount}", "currency": "{currency}", "note": "for {currency}" },
                                   "response": { "pointer": "/id" } } },
-                      { "name": "chargeForm", "sideEffects": "external",
+                      { "name": "chargeForm",
                         "http": { "method": "POST", "path": "/form", "params": ["amount", "currency"],
                                   "bodyEncoding": "form", "body": { "amount": "{amount}", "currency": "{currency}" } } },
-                      { "name": "listAll", "sideEffects": "reads", "http": { "method": "GET", "path": "/list" } },
-                      { "name": "failPost", "sideEffects": "external", "http": { "method": "POST", "path": "/fail", "body": {} } },
-                      { "name": "slow", "sideEffects": "reads", "http": { "method": "GET", "path": "/slow" } }
+                      { "name": "listAll", "http": { "method": "GET", "path": "/list" } },
+                      { "name": "failPost", "http": { "method": "POST", "path": "/fail", "body": {} } },
+                      { "name": "slow", "http": { "method": "GET", "path": "/slow" } }
                     ] } ]
                 }
                 """.formatted(capabilityHttpBlock);

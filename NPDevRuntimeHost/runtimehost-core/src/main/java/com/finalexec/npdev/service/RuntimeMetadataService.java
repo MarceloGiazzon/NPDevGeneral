@@ -823,7 +823,6 @@ public class RuntimeMetadataService {
             summary.put("label", label);
             summary.put("permissionHint", stringValue(item.get("permissionHint")));
             summary.put("dangerLevel", stringValue(item.get("dangerLevel")));
-            summary.put("inputFormHint", stringValue(item.get("inputFormHint")));
             summaries.add(summary);
         }
         return summaries;

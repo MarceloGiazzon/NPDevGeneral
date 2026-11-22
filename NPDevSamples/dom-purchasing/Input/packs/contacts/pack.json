@@ -2,7 +2,7 @@
   "$schema": "../../schemas/pack.schema.json",
   "dslVersion": "3.0.0",
   "pack": "contacts",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "namespace": "com.npdev.contacts",
   "description": "Built-in NPDev contacts pack: organizations (customers, suppliers, partners), the people who work there, and their postal addresses -- with list/detail/edit screens and the common queries. Reference it from any business app instead of re-modelling a CRM-lite by hand.",
   "category": "other",

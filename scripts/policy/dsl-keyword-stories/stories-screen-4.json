@@ -1,0 +1,15 @@
+{
+  "$comment": "Everyday stories, noun Screen, part 4 of 4 (documentBand, documentColumn, documentLogo: the printed documents). Same style rules as stories-pilot.json. Owner reviews each part.",
+  "schemaVersion": "npdev-keyword-stories.v1",
+  "stories": {
+    "documentBand.collection": "The items table of a printed invoice has to read from the invoice's list of lines. Collection names that top-level list of the bound bundle. It is required for line-item bands and not allowed on a header band.",
+    "documentBand.fields": "A band with no boxes would print as a blank block, which looks like 'there was no data'. Fields lists the boxes the band prints, with how each is shown, and at least one is required. An empty band is refused when the model is checked.",
+    "documentBand.kind": "An invoice has a top part, with customer and date, and a table of items. Kind says which one a band is: header, which prints boxes of the main record, or line items, which prints the rows of a list.",
+    "documentBand.label": "Above the table of items the printed page says 'Items'. Label is that heading printed above the band.",
+    "documentBand.name": "Two bands of one invoice must not be confused. Name is the band's own name, and it is unique inside the document.",
+    "documentColumn.field": "A column of a printed sales report has to say which box it prints. Field names that box of the report's concept.",
+    "documentColumn.label": "The box is called 'unitPrice', but the printed heading should say 'Unit price'. Label is the heading printed above the column. If you leave it out, the box's name is used.",
+    "documentColumn.total": "At the end of each group of a sales report the amounts are added up, but the prices are averaged. Total says which calculation goes in the subtotal and grand-total rows of this column: sum, count, minimum, maximum or average.",
+    "documentLogo.field": "A company's logo is stored as a picture on its record. Field names the box of the document's main concept that holds that image, and the printed page shows it."
+  }
+}

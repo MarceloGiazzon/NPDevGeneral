@@ -98,7 +98,7 @@ class DslParserRobustnessTest {
                       "name": "Patient",
                       "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true },
-                        { "name": "providerId", "type": "reference", "ref": "Provider", "required": true }
+                        { "name": "providerId", "type": "reference", "reference": "Provider", "required": true }
                       ]
                     }
                   ]

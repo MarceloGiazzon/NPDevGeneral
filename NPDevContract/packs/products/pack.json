@@ -2,7 +2,7 @@
   "$schema": "../../schemas/pack.schema.json",
   "dslVersion": "3.0.0",
   "pack": "products",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "namespace": "com.npdev.products",
   "description": "Built-in NPDev products pack: the single product and service register every other pack points at. A product is what you sell, buy or stock, identified by its SKU. Selling price, purchase cost and stock levels are not here: the sales, purchasing and inventory packs keep their own data about a product in a satellite that points back to it, so the product itself is registered once.",
   "category": "other",

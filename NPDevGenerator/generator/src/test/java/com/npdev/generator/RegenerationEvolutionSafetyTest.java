@@ -105,7 +105,6 @@ class RegenerationEvolutionSafetyTest {
                         .put("label", "Portal nickname")
                         .put("shortLabel", "Portal")
                         .put("description", "Optional nickname used in patient-facing portal messages")
-                        .put("helpText", "A safe additive field used to verify regeneration behavior")
                         .put("group", "Preferences")
                         .put("section", "Communication")
                         .put("order", 55)
@@ -114,12 +113,12 @@ class RegenerationEvolutionSafetyTest {
                         .put("width", "md")));
 
         ObjectNode appointment = findNamedObject(root.withArray("concepts"), "name", "Appointment");
-        appointment.with("ui").put("helpText", "Evolved scheduling baseline used to verify safe iteration.");
+        appointment.with("ui").put("description", "Evolved scheduling baseline used to verify safe iteration.");
 
         ObjectNode statusField = findNamedObject(appointment.withArray("fields"), "name", "status");
         ObjectNode cancelledOption = findEnumOption(statusField.withArray("enumValues"), "Cancelled");
         cancelledOption.put("label", "Cancelled by clinic");
-        cancelledOption.put("iconHint", "calendar-x-evolved");
+        cancelledOption.put("icon", "calendar-x-evolved");
 
         ObjectNode cancelTransition = findTransition(appointment.with("lifecycle").withArray("transitions"), "Scheduled", "Cancelled");
         cancelTransition.put("actionLabel", "Cancel visit");

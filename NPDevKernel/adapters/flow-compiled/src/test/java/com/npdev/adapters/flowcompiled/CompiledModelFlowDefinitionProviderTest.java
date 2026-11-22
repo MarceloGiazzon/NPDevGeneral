@@ -62,7 +62,8 @@ class CompiledModelFlowDefinitionProviderTest {
                         },
                         {
                           "name": "EmailUnique",
-                          "rule": "unique(email)"
+                          "type": "unique",
+                          "fields": ["email"]
                         }
                       ]
                     }

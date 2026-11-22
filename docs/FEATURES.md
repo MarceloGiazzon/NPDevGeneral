@@ -88,7 +88,7 @@ processes, screens, permissions, and how it all changes over time.
 | **Human tasks (`awaitEvent.task`)** | the wait becomes a task in the assignee's inbox (`GET /api/tasks`), with a title, a form and named `outcomes`; completing it resumes the flow with the values and who completed it |
 | **`onFailure` compensation** | saga-style cleanup: if a later step fails for good, the completed steps' `onFailure` steps run in reverse order (best effort, not a distributed transaction) |
 | **`forEach`, including parallel** | iterate a collection; parallel iterations stay **isolated from each other** and each resumes correctly after a crash |
-| **`scheduleEvent` + `schedule`** | delayed and recurring work without a separate scheduler |
+| **`scheduleEvent` + `trigger.schedule`** | delayed and recurring work without a separate scheduler |
 | **`procedures`** | reusable server-side logic with parameters, locals, and a return value |
 | **`trigger: {event}` on a flow** | react to events: when *this* happens, run *that* |
 | **`capabilities` / `bindings`** | name an operation, bind it to an implementation — swap adapters without touching the model |

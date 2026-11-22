@@ -1,0 +1,33 @@
+{
+  "$comment": "Everyday stories, noun Model root (the top-level keys of a model.json), one part. Same style rules as stories-pilot.json. Owner reviews each part.",
+  "schemaVersion": "npdev-keyword-stories.v1",
+  "stories": {
+    "root:$schema": "A person writing a model by hand loves it when the editor suggests the right keywords. This is the address of the JSON schema the editor reads for that help. It changes nothing in the app itself.",
+    "root:agentAccess": "A company wants its own AI assistants to read orders but never to delete anything. Agent access says what AI agents are offered and on which channels. It is the one place to look to know what an agent can do.",
+    "root:capabilities": "An app has to charge cards, send e-mail and receive notices from a payment company. Capabilities lists these dealings with the outside world, both what the app calls and what calls the app.",
+    "root:concepts": "Every app is about things: customers, orders, products. Concepts are those kinds of record, and an app needs at least one. Everything else in the model is about them.",
+    "root:conversions": "When the app is updated and one 'name' box becomes two, the rows already stored must be carried over. Conversions are those data-migration steps, applied when the app starts after a change.",
+    "root:domainTypes": "A shop has many boxes that hold a tax number, and each should be checked the same way. Domain types are reusable named kinds of value, so the rule is written once.",
+    "root:dslVersion": "The rules of the language change over time. DSL version says which version of it the model uses. It is optional and defaults to 3.0.0.",
+    "root:events": "'Order shipped' and 'payment received' are facts that other parts of the app react to. Events are those named facts that flows publish, start on and wait for.",
+    "root:experiences": "A driver and a manager should not land on the same page. Experiences say who lands where and on which device. A signed-in person lands in the first experience that names one of their roles, so the order matters.",
+    "root:externalAi": "A company may want an outside AI to write product descriptions or review changes. External AI is the opt-in to that delegation, with the vendors, the prompts and the limits. Without it, nothing is sent to any outside AI.",
+    "root:fieldConventions": "A model can say that any box ending in 'Dt' is a date, so nobody has to repeat it. Field conventions are those naming rules for boxes that declare no type. The platform's own rules always apply with the lowest priority.",
+    "root:flows": "'Ship an order' is a recipe of steps, and it must survive a restart in the middle. Flows are those durable lists of steps, each started by a trigger.",
+    "root:functions": "A taxi app computes the surge price in many places. Functions are named calculations callable from any expression. NPDev pastes each one into place when the model is compiled, so they cost nothing at run time. A pack's function is called with the pack's name in front.",
+    "root:metadata": "Whoever wrote the model wants to leave a note, such as 'owner: finance team'. Metadata is a free notebook on the model. NPDev never gives it any behavior.",
+    "root:modules": "A big company splits its system into separate areas, such as sales and stock, each with its own files. Modules declare those areas, each pointing to the file that holds its pieces. A reference from one area to another has to be allowed explicitly.",
+    "root:namespace": "The generated app needs a home name for its code, usually built from the company's and the app's names. Namespace is the root of that name and the prefix of generated identifiers. It is required.",
+    "root:packs": "Instead of writing a customer concept from scratch, a shop uses a ready-made pack. Packs lists the packs the model uses, each a local file or a remote address.",
+    "root:properties": "An app has settings, such as the sender address or the free-shipping limit, that may differ by company or by branch. Properties declare them, and the value is found by walking through the scopes.",
+    "root:propertyScopes": "A setting may be set for the whole company, for one branch or for one user, and the most specific wins. Property scopes are those levels, listed from the most specific. The least specific level is each property's own default.",
+    "root:provides": "A pack for payments says it needs a refund role and an internet connection. Provides is the app's answer: what it gives to those needs. If a need is not met, putting the app together is refused, naming the pack and the missing item.",
+    "root:queries": "'Orders of this city, newest first' is a question asked of the data again and again. Queries are those named questions, with blanks the caller fills in.",
+    "root:roles": "A clerk, a manager and an auditor should not be able to do the same things. Roles are the kinds of user and what each one may do.",
+    "root:schemaVersion": "The model file itself has a container format. Schema version says which one, and it is always 1.0.0.",
+    "root:screens": "Each page of the app is one of a fixed set of shapes: list, detail, form, status, inbox, board, map, dashboard, workbench, document, picker or custom. Screens are those pages, and experiences lead people to them. Their names are unique across the model.",
+    "root:seeds": "A new app for a clinic should start with the list of specialties already filled in. Seeds are those starting rows, created once at the first start through the same checked path as any other save.",
+    "root:sequences": "Invoices must be numbered one after another, such as INV-2026-0001. Sequences are those counters. A box's default rule can ask for the next number, and the number is never given twice.",
+    "root:version": "The team needs to know which release of the model is running. Version is the model's own number, such as 1.0.0. It is required."
+  }
+}

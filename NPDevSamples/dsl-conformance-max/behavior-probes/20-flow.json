@@ -4165,7 +4165,6 @@
         "flowStep.itemKey",
         "flowStep.awaitRef",
         "flowStep.event",
-        "flowStep.payload",
         "flowStep.input",
         "flowStep.output"
       ],

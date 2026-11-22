@@ -69,6 +69,68 @@ class FieldConventionsTest {
     }
 
     @Test
+    void everyConventionTypedFieldLeavesAnInfoNoteAndNothingElseDoes() throws Exception {
+        var source = new ModelSourceResolver().resolve(write("model.json", model("""
+                { "match": "*Amt", "defaults": { "type": "decimal", "precision": 18, "scale": 2 } }
+                """, """
+                { "name": "name" }, { "name": "birthDt" }, { "name": "totalAmt" }, { "name": "code", "type": "string" }
+                """)));
+        var notes = source.diagnostics();
+        assertEquals(3, notes.size(), notes.toString());
+        assertTrue(notes.stream().allMatch(n -> n.getSeverity() == com.npdev.dsl.v1.validation.ValidationSeverity.INFO));
+        var birth = notes.stream().filter(n -> "birthDt".equals(n.getField())).findFirst().orElseThrow();
+        assertEquals("FIELD_CONVENTION_APPLIED", birth.getCode());
+        assertEquals("Customer", birth.getConcept());
+        assertTrue(birth.getMessage().contains("built-in convention '*Dt'"), birth.getMessage());
+        assertTrue(birth.getMessage().contains("type date"), birth.getMessage());
+        var total = notes.stream().filter(n -> "totalAmt".equals(n.getField())).findFirst().orElseThrow();
+        assertTrue(total.getMessage().contains("the model's convention '*Amt'"), total.getMessage());
+        assertTrue(notes.stream().noneMatch(n -> "code".equals(n.getField()) || "id".equals(n.getField())));
+        // The parser hands the same notes to the validator, and no warning is raised for using a convention.
+        JsonModelParser parser = new JsonModelParser();
+        ModelAst ast = parser.parse(source);
+        assertEquals(3, parser.getAuthoringNotes().size());
+        assertTrue(ast.getParserWarnings().isEmpty(), ast.getParserWarnings().toString());
+    }
+
+    private String domainModel(String declaredDomainTypes) {
+        return """
+                {
+                  "namespace": "demo", "dslVersion": "3.0.0", "version": "1.0",
+                  %s
+                  "fieldConventions": [ { "match": "*Email",
+                      "defaults": { "type": "string", "maxLength": 120, "domainType": "Email" } } ],
+                  "concepts": [ { "name": "Customer", "fields": [ %s, { "name": "contactEmail" },
+                      { "name": "billingEmail", "domainType": "Email", "type": "string" } ] } ]
+                }
+                """.formatted(declaredDomainTypes, ID);
+    }
+
+    @Test
+    void aConventionCanPointAtADomainTypeSoOneEndingBringsTypeSizeAndValidation() throws Exception {
+        Path file = write("model.json", domainModel("\"domainTypes\": [ { \"name\": \"Email\", \"baseType\": \"string\" } ],"));
+        var source = new ModelSourceResolver().resolve(file);
+        JsonNode contact = field(source.resolvedRoot(), "contactEmail");
+        assertEquals("string", contact.get("type").asText());
+        assertEquals("Email", contact.get("domainType").asText());
+        assertEquals(120, contact.get("maxLength").asInt());
+        ModelAst ast = new JsonModelParser().parse(source);
+        var errors = new com.npdev.dsl.v1.validation.SemanticValidator().validate(ast);
+        assertTrue(errors.isEmpty(), errors.toString());
+        assertTrue(source.diagnostics().stream().anyMatch(
+                n -> "contactEmail".equals(n.getField()) && n.getMessage().contains("domainType Email")),
+                source.diagnostics().toString());
+    }
+
+    @Test
+    void aConventionNamingAMissingDomainTypeIsAnErrorNotAGuess() throws Exception {
+        Path file = write("model.json", domainModel(""));
+        ModelAst ast = new JsonModelParser().parse(new ModelSourceResolver().resolve(file));
+        var errors = new com.npdev.dsl.v1.validation.SemanticValidator().validate(ast);
+        assertTrue(errors.stream().anyMatch(e -> e.contains("domain type not found: Email")), errors.toString());
+    }
+
+    @Test
     void theEndingIsTheLastCamelCaseWordNotAnySubstring() {
         // `hasToRename` ends in the word Rename, `hostname` is one lower-case word, `Dtt` is not `Dt`.
         for (String name : new String[] {"hasToRename", "hostname", "nickname"}) {

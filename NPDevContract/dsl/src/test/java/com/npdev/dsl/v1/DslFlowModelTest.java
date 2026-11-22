@@ -37,7 +37,7 @@ class DslFlowModelTest {
                         { "name": "name", "type": "string" }
                       ],
                       "invariants": [
-                        { "name": "emailUnique", "rule": "unique(email)" }
+                        { "name": "emailUnique", "type": "unique", "fields": ["email"] }
                       ]
                     }
                   ],
@@ -74,7 +74,7 @@ class DslFlowModelTest {
                       "steps": [
                         { "name": "pre", "type": "invariantCheck", "checkpoint": "pre", "invariants": ["emailUnique"] },
                         { "name": "save", "type": "capabilityCall", "capability": "PersistenceCapability", "operation": "save", "input": "$input", "output": "$saved" },
-                        { "name": "emit", "type": "emitEvent", "event": "UserCreated", "payload": "$saved" }
+                        { "name": "emit", "type": "emitEvent", "event": "UserCreated", "from": "$saved" }
                       ]
                     }
                   ]
@@ -121,7 +121,7 @@ class DslFlowModelTest {
                         { "name": "email", "type": "string", "required": true }
                       ],
                       "invariants": [
-                        { "name": "emailUnique", "rule": "unique(email)" }
+                        { "name": "emailUnique", "type": "unique", "fields": ["email"] }
                       ]
                     }
                   ],
@@ -143,7 +143,7 @@ class DslFlowModelTest {
                       "steps": [
                         { "name": "pre", "type": "invariantCheck", "checkpoint": "pre", "invariants": ["missingInvariant"] },
                         { "name": "cap", "type": "capabilityCall", "capability": "PersistenceCapability", "operation": "missingOp" },
-                        { "name": "evt", "type": "emitEvent", "event": "MissingEvent", "payload": "$input" }
+                        { "name": "evt", "type": "emitEvent", "event": "MissingEvent", "from": "$input" }
                       ]
                     }
                   ]
@@ -212,7 +212,7 @@ class DslFlowModelTest {
                       ],
                       "invariants": [
                         { "name": "EmailRule", "expr": "email != null" },
-                        { "name": "EmailRule", "rule": "unique(email)" }
+                        { "name": "EmailRule", "type": "unique", "fields": ["email"] }
                       ]
                     }
                   ],

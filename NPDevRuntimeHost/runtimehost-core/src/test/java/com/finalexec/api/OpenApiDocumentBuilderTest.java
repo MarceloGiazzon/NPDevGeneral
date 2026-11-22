@@ -32,7 +32,7 @@ class OpenApiDocumentBuilderTest {
                     { "name": "lines", "concept": "OrderLine", "childField": "orderId", "ownership": "owned" } ] }, "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
                     { "name": "total", "type": "decimal", "required": true },
-                    { "name": "status", "type": "enum", "values": ["OPEN", "PAID"] },
+                    { "name": "status", "type": "enum", "enumValues": ["OPEN", "PAID"] },
                     { "name": "placedAt", "type": "datetime" },
                     { "name": "seats", "type": "long" } ] },
                 { "name": "OrderLine", "fields": [

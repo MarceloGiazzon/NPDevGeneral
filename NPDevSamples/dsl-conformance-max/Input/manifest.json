@@ -17,7 +17,7 @@
     "procedures",
     "screens[].panel (kind custom: a hand-written panel)",
     "ruleProfiles",
-    "flow.schedule (cron)",
+    "flow.trigger.schedule (cron)",
     "flow.specializes + flow.hooks",
     "step: forEach (+ maxLoopIterations)",
     "step: onFailure (compensation)",

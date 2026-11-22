@@ -1,0 +1,19 @@
+{
+  "$comment": "Everyday stories, noun Property (property, propertyScope, externalAi), one part. Same style rules as stories-pilot.json. Owner reviews each part.",
+  "schemaVersion": "npdev-keyword-stories.v1",
+  "stories": {
+    "externalAi.egress": "A hospital wants to use AI help but never send patient data out. Egress is the gate: denied lets nothing out, pack only lets prompts be prepared and reviewed on the machine but never sent by themselves, and API enabled lets the adapter call a configured vendor.",
+    "externalAi.limits": "An outside AI is billed per use, and a runaway flow could burn the month's budget. Limits cap the calls per user per day and the monthly cost, each one naming a declared setting. Without a limit, that axis is unbounded.",
+    "externalAi.prompts": "A shop wants an AI to write product descriptions. Prompts are named requests that a flow runs, each with its description, vendor and the shape of the answer. The answer is checked against that shape before the flow sees it.",
+    "externalAi.providers": "A company has its own AI gateway, or a model on its own server. Providers declares such endpoints, beyond those in the NPDev catalogue, for this app only. Each one must still be listed among the vendors before it can be called.",
+    "externalAi.vendors": "An app may use an outside AI only after saying so. Vendors lists the vendor ids the app opted into, taken from the NPDev catalogue or from the app's own providers. An unknown id is rejected when the model is validated.",
+    "property.default": "A free-shipping limit should have a value even before anyone sets one. Default is the least specific level of the cascade: when no scope holds a value, this is what you get. It must match the property's type.",
+    "property.label": "The administration page should show 'Free shipping limit' and not the technical name. Label is the name shown there.",
+    "property.name": "Expressions need a name to read a setting by, such as the free-shipping limit. Name is that handle, and it is read with the property prefix.",
+    "property.securityRelevant": "A setting such as 'allow external access' must never decide who can read a record. Security relevant, when true, forbids it inside access rules, marks it visually in the administration page and asks for an elevated role to change it.",
+    "property.settableAt": "The free-shipping limit may differ by branch but not by single user. Settable at lists the scopes that may hold a value for it. Every name there must be declared among the property scopes.",
+    "property.type": "A setting is a text, a whole number, a yes or no, a choice from a list or a date. Type picks which. Objects and lists are not allowed, because the cascade resolves one typed value per key.",
+    "propertyScope.from": "To find the value for a branch, NPDev must know which branch the person belongs to. From says how this level's id is found when the person signs in, such as the person's own tenant, user id or a tag. The implicit top level always uses the tenant.",
+    "propertyScope.name": "A level of the cascade, such as 'branch', needs a name that the settings can point to. Name is that handle, used by settable at."
+  }
+}

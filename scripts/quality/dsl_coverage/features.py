@@ -155,7 +155,7 @@ FEATURE_DETECTORS = {
         isinstance(c, dict) and c.get("physicallyIsolate") is True
         for c in (m.get("modules", None) or [])
     ),
-    "flow.schedule": lambda m: any("schedule" in f for f in _flows(m)),
+    "flow.schedule": lambda m: any(isinstance(f.get("trigger"), dict) and "schedule" in f["trigger"] for f in _flows(m)),
     "flow.specializes": lambda m: any("specializes" in f for f in _flows(m)),
     "flow.hooks": lambda m: any(f.get("hooks") for f in _flows(m)),
     "step.onFailure": _has_on_failure,

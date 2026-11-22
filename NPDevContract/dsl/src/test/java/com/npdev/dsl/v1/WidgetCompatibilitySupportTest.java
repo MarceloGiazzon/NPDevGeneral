@@ -54,8 +54,8 @@ class WidgetCompatibilitySupportTest {
                           "name": "status",
                           "type": "enum",
                           "enumValues": [
-                            { "value": "Active", "iconHint": "\\ud83d\\udfe2" },
-                            { "value": "Retired", "iconHint": "\\u26aa" }
+                            { "value": "Active", "icon": "\\ud83d\\udfe2" },
+                            { "value": "Retired", "icon": "\\u26aa" }
                           ],
                           "ui": { "label": "Status", "widget": "image-select" }
                         },

@@ -2,18 +2,18 @@
   "schemaVersion" : "npdev-lock.v1",
   "packs" : {
     "contacts" : {
-      "resolvedVersion" : "1.1.0",
-      "digest" : "sha256:07741b285b62b0f077e27ec32fca72d48010ef100b4444f6bd0e57b655a7df97",
+      "resolvedVersion" : "2.0.0",
+      "digest" : "sha256:8cd7e33c9a87b03b571b322326a56158eae567101e9476023f8038cf6a067c80",
       "sourcePath" : "packs/contacts/pack.json"
     },
     "products" : {
-      "resolvedVersion" : "1.0.0",
-      "digest" : "sha256:56ba8d49d89bc7a12b3451b8c195beb9a38854c9195040316db5b377eab25317",
+      "resolvedVersion" : "2.0.0",
+      "digest" : "sha256:14fb7323ac8dd801ff51455dd5bb831395d53839789957795f05b005cb7476dd",
       "sourcePath" : "packs/products/pack.json"
     },
     "sales" : {
-      "resolvedVersion" : "2.0.0",
-      "digest" : "sha256:78018fa2b4b080923d5d48a60c6cfa15739332bce1c396b222028695c9260965",
+      "resolvedVersion" : "3.0.0",
+      "digest" : "sha256:7ee2744aad236a34d08bd2304ad5a208617560ddf07c04a54b3d84d243e76925",
       "sourcePath" : "packs/sales/pack.json"
     }
   }

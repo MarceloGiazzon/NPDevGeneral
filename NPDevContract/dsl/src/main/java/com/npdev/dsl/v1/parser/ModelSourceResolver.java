@@ -394,7 +394,7 @@ public final class ModelSourceResolver {
             }
         });
         try {
-            FieldConventionExpansion.apply(resolved);
+            FieldConventionExpansion.apply(resolved, state.diagnostics);
         } catch (FieldConventionExpansion.Problem problem) {
             throw error(sourceFile, problem.path(), problem.getMessage());
         }
@@ -1445,7 +1445,7 @@ public final class ModelSourceResolver {
     /** P4.1: validates BOTH branches -- an already-qualified {@code authored} value (unchanged
      *  behavior) AND, now, a bare name that {@code resolver} successfully resolved to a qualified
      *  {@code Qualifier::Name} (previously left silently unvalidated here, which is exactly the
-     *  "normal path" {@code {"type":"reference","ref":"OrderItem"}} bare-reference case a pack
+     *  "normal path" {@code {"type":"reference","reference":"OrderItem"}} bare-reference case a pack
      *  visibility check MUST cover -- see NPDEV_PATH_A_REALIGNMENT_PLAN.md P4.1). Harmless for
      *  every existing caller: {@link #QUALIFIED_REF_NOOP} ignores both branches identically, and
      *  {@code resolveContexts}'s D3 gate already treats a same-context resolution as a no-op
@@ -1956,7 +1956,7 @@ public final class ModelSourceResolver {
         return out;
     }
 
-    /** PK-1: a concept field's {@code ref}/{@code reference} name another concept (unchanged from
+    /** PK-1: a concept field's {@code reference} names another concept (unchanged from
      *  before this card); {@code domainType} names a domainTypes member -- new in this card, the
      *  same "a pack's own custom domain type must resolve after namespacing" gap R6's sibling bugs
      *  came from. */
@@ -1966,13 +1966,6 @@ public final class ModelSourceResolver {
     ) {
         Map<String, String> conceptRewriteMap = mapFor(rewriteMaps, "concepts");
         ObjectNode out = field.deepCopy();
-        if (out.has("ref") && out.get("ref").isTextual()) {
-            String target = out.get("ref").asText();
-            String rewritten = conceptRewriteMap.get(target);
-            if (rewritten != null) {
-                out.put("ref", rewritten);
-            }
-        }
         if (out.has("reference")) {
             JsonNode ref = out.get("reference");
             if (ref.isTextual() && conceptRewriteMap.containsKey(ref.asText())) {

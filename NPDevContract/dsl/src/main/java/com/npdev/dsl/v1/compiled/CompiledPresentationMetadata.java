@@ -9,23 +9,17 @@ public final class CompiledPresentationMetadata {
     private final String label;
     private final String shortLabel;
     private final String description;
-    private final String helpText;
     private final String placeholder;
     private final String group;
     private final String section;
     private final Integer order;
-    private final Boolean advanced;
     private final Boolean deprecated;
-    private final List<String> examples;
     private final String widget;
     private final String visibleWhen;
     private final String enabledWhen;
     private final String readonlyWhen;
     private final String requiredWhen;
-    private final String pickerType;
-    private final Boolean allowInlineCreate;
     private final List<String> searchFields;
-    private final String filterPreset;
     private final String tab;
     private final Integer column;
     private final Integer columnSpan;
@@ -51,23 +45,17 @@ public final class CompiledPresentationMetadata {
             String label,
             String shortLabel,
             String description,
-            String helpText,
             String placeholder,
             String group,
             String section,
             Integer order,
-            Boolean advanced,
             Boolean deprecated,
-            List<String> examples,
             String widget,
             String visibleWhen,
             String enabledWhen,
             String readonlyWhen,
             String requiredWhen,
-            String pickerType,
-            Boolean allowInlineCreate,
             List<String> searchFields,
-            String filterPreset,
             String tab,
             Integer column,
             Integer columnSpan,
@@ -92,23 +80,17 @@ public final class CompiledPresentationMetadata {
         this.label = label;
         this.shortLabel = shortLabel;
         this.description = description;
-        this.helpText = helpText;
         this.placeholder = placeholder;
         this.group = group;
         this.section = section;
         this.order = order;
-        this.advanced = advanced;
         this.deprecated = deprecated;
-        this.examples = examples == null ? List.of() : new ArrayList<>(examples);
         this.widget = widget;
         this.visibleWhen = visibleWhen;
         this.enabledWhen = enabledWhen;
         this.readonlyWhen = readonlyWhen;
         this.requiredWhen = requiredWhen;
-        this.pickerType = pickerType;
-        this.allowInlineCreate = allowInlineCreate;
         this.searchFields = searchFields == null ? List.of() : new ArrayList<>(searchFields);
-        this.filterPreset = filterPreset;
         this.tab = tab;
         this.column = column;
         this.columnSpan = columnSpan;
@@ -153,10 +135,6 @@ public final class CompiledPresentationMetadata {
         return description;
     }
 
-    public String getHelpText() {
-        return helpText;
-    }
-
     public String getPlaceholder() {
         return placeholder;
     }
@@ -173,16 +151,8 @@ public final class CompiledPresentationMetadata {
         return order;
     }
 
-    public Boolean getAdvanced() {
-        return advanced;
-    }
-
     public Boolean getDeprecated() {
         return deprecated;
-    }
-
-    public List<String> getExamples() {
-        return Collections.unmodifiableList(examples);
     }
 
     public String getWidget() {
@@ -205,20 +175,8 @@ public final class CompiledPresentationMetadata {
         return requiredWhen;
     }
 
-    public String getPickerType() {
-        return pickerType;
-    }
-
-    public Boolean getAllowInlineCreate() {
-        return allowInlineCreate;
-    }
-
     public List<String> getSearchFields() {
         return Collections.unmodifiableList(searchFields);
-    }
-
-    public String getFilterPreset() {
-        return filterPreset;
     }
 
     public String getTab() {

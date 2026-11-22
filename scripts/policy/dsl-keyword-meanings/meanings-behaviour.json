@@ -66,7 +66,7 @@
           {
             "type": "emitEvent",
             "event": "ExpenseSubmitted",
-            "payload": "$saved"
+            "from": "$saved"
           },
           {
             "type": "return",
@@ -108,13 +108,6 @@
     },
     "humanTask": {
       "summary": "Turns an `awaitEvent` step into a task in a person's inbox. The flow resumes when the person picks an outcome and fills the form."
-    },
-    "generatedActionDescriptor": {
-      "summary": "Legacy. Describes the audit, idempotency, trace and correlation behavior of a procedure exposed as a generated action.",
-      "status": {
-        "label": "Legacy - retiring",
-        "note": "Part of the procedure family being removed (REG-342)."
-      }
     },
     "event": {
       "summary": "A named fact that happened. Declared at the model root or inside a concept; flows publish it with `emitEvent` or `scheduleEvent`, are triggered by it (`trigger.event`) or wait for it (`awaitEvent`). A concept-nested event with `mode` is also published automatically by the generated create, update or delete.",
@@ -183,7 +176,6 @@
     "flow.outputSchema": "A `schemaObject` describing the flow's output (the value of its `return` step).",
     "flow.action": "How a button that starts this flow is presented (label, confirmation, danger level).",
     "flow.startEndpoint": "Whether the generated app offers a start endpoint for the flow. `expose` is the current way to control who may start it.",
-    "flow.schedule": "Recurring start by cron (the older spelling of `trigger.schedule`).",
     "flow.metadata": "Binds an author-supplied, hash-pinned Java class to the flow instead of its steps. Holds `untrustedExtensionEntrypoint`.",
     "flow.hooks": "Steps to run before or after named steps of the specialized base flow.",
     "flow.steps": "The ordered steps, at least one. Required unless the flow specializes another and only adds hooks.",
@@ -193,7 +185,6 @@
     "flowStep.name": "The step's name: unique within the flow, shown in traces, and the way a hook's `targetStep` refers to the step.",
     "flowStep.type": "What the step does. `invariantCheck` evaluates invariants; `capabilityCall` calls a capability operation; `generatedAction` runs a generated action; `createConcept`, `updateConcept`, `deleteConcept`, `readConcept`, `listConcepts` and `runQuery` work with concepts and queries; `emitEvent` publishes an event now and `scheduleEvent` later; `awaitEvent` parks until an event arrives; `branch` chooses between step lists; `forEach` loops; `map` and `set` compute values; `callFlow` starts another flow; `notify` sends a notification; `return` ends the flow with a value.",
     "flowStep.checkpoint": "On an `invariantCheck`: `pre` or `post`, when the invariants are evaluated relative to the surrounding work.",
-    "flowStep.phase": "Alias of `checkpoint`.",
     "flowStep.scope": "On an `invariantCheck`, `createConcept` or other concept step: the concept the step applies to.",
     "flowStep.invariants": "On an `invariantCheck`: the names of the invariants to evaluate.",
     "flowStep.capability": "On a `capabilityCall`: the name of the capability to call (a declared capability, or a platform one such as `notification`).",
@@ -203,9 +194,8 @@
     "flowStep.args": "On a `capabilityCall`: positional arguments, each a literal or a flow-state reference.",
     "flowStep.policy": "Overrides the called operation's execution policy (retries, timeout, circuit breaker, idempotency) for this step.",
     "flowStep.event": "On `emitEvent` and `scheduleEvent`: the name of the event to publish (a declared event).",
-    "flowStep.payload": "On `emitEvent` and `scheduleEvent`: the event payload, a flow-state reference.",
-    "flowStep.from": "A flow-state reference giving the step's source value: for `map` the value copied, for `emitEvent` / `scheduleEvent` the event payload (alternative to `payload` and `data`).",
-    "flowStep.data": "An object built in place - a map from name to literal or flow-state reference - used as the event payload of `emitEvent` / `scheduleEvent` instead of `payload` or `from`.",
+    "flowStep.from": "A flow-state reference giving the step's source value: for `map` the value copied, for `emitEvent` / `scheduleEvent` the event payload (alternative to `data`).",
+    "flowStep.data": "An object built in place - a map from name to literal or flow-state reference - used as the event payload of `emitEvent` / `scheduleEvent` instead of `from`.",
     "flowStep.condition": "On a `branch`: the expression that chooses `then` (true) or `else` (false).",
     "flowStep.action": "How the step is presented in traces and action histories (label, danger level).",
     "flowStep.actionName": "On a `generatedAction`: the name of the generated action to run.",
@@ -215,8 +205,6 @@
     "flowStep.awaitRef": "On an `awaitEvent`: the flow-state key under which the arriving event's payload is stored.",
     "flowStep.match": "On an `awaitEvent`: how an arriving event is matched to this flow instance.",
     "flowStep.delaySeconds": "On a `scheduleEvent`: seconds to wait before the event is published.",
-    "flowStep.delayMinutes": "On a `scheduleEvent`: minutes to wait before the event is published.",
-    "flowStep.delayMs": "On a `scheduleEvent`: milliseconds to wait before the event is published.",
     "flowStep.value": "On a `return`: the value the flow ends with. On a `set`: the expression whose result is stored in `output`.",
     "flowInput.concept": "The concept whose request body the flow's input mirrors.",
     "flowInput.mode": "Which request body: `create`, `update`, `delete` or `query`.",
@@ -231,7 +219,6 @@
     "event.name": "The event's name, unique within the model; the string flows publish, trigger on and await.",
     "event.specializes": "Name of a base event (typically from a pack) this event specializes.",
     "event.version": "Version label of the event's payload contract.",
-    "event.payloadSchemaRef": "Reference to a schema describing the payload, as an alternative to `payload`.",
     "event.payload": "The payload fields: each a field name string or an object with a name and a type.",
     "eventPayloadField.name": "The payload field's name.",
     "eventPayloadField.type": "The payload field's type (a scalar field type).",

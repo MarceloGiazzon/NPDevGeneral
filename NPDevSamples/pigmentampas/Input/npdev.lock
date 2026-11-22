@@ -12,10 +12,10 @@
       }
     },
     "tracing": {
-      "resolvedVersion": "1.0.4",
-      "digest": "sha256:9cac1205d3f9451380f459d18f108ba2e5c561298aa68b171395e5b3effd1539",
-      "sourcePath": "sha256/9cac1205d3f9451380f459d18f108ba2e5c561298aa68b171395e5b3effd1539/pack.json",
-      "from": "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/tracing@tracing-1.0.4",
+      "resolvedVersion": "2.0.0",
+      "digest": "sha256:c786e71adf1ff2b5bd6e972f25e18a9aa231946ee826c4271b76895caff30362",
+      "sourcePath": "sha256/c786e71adf1ff2b5bd6e972f25e18a9aa231946ee826c4271b76895caff30362/pack.json",
+      "from": "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/tracing@tracing-2.0.0",
       "signature": {
         "status": "unsigned",
         "allowedUnsigned": true

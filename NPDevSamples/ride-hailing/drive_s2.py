@@ -65,6 +65,7 @@ class Run:
             self.ep.update(json.load(open(args.endpoints, encoding="utf-8")))
         self.psp = args.psp.rstrip("/") if args.psp else None
         self.push = args.push.rstrip("/") if args.push else None
+        self.reminder_wait = int(getattr(args, "reminder_wait", 0) or 0)
         self.results: list[tuple[str, bool, str]] = []
         self.tokens: dict[str, str] = {}
         self.ids: dict[str, str] = {}
@@ -505,8 +506,15 @@ def x_request(r: Run, rider):
 
 def stage_experience(r: Run):
     # ---- clean slate: no open offers, every driver OFFLINE and parked where stage setup put them
-    end = time.time() + 30
-    while time.time() < end and any(o.get("status") == "OFFERED" for o in offers_of(r, "disp1")):
+    # An OFFERED-offer wait is not enough: an earlier stage (route) leaves rides parked on an offer, and
+    # between the offer turning EXPIRED and ReleaseOffer freeing its driver no offer is OFFERED any more, so
+    # ReleaseOffer would set a driver AVAILABLE again AFTER the reset below (seen once in 22 runs: driver2
+    # AVAILABLE, offersMissed 3). So wait until every ride this run opened has left REQUESTED/ASSIGNED.
+    end = time.time() + 3 * (OFFER_WINDOW_S + TICK_SLACK_S) + 10
+    while time.time() < end:
+        open_rides = [i for i in list(r.seen_rides) if r.ride(i).get("status") in ("REQUESTED", "ASSIGNED")]
+        if not open_rides and not any(o.get("status") == "OFFERED" for o in offers_of(r, "disp1")):
+            break
         time.sleep(1)
     spots = {"driver1": (-23.5520, -46.6350), "driver2": (-23.5600, -46.6400), "driver3": (-23.5700, -46.6500)}
     for d, (lat, lng) in spots.items():
@@ -643,6 +651,19 @@ def stage_experience(r: Run):
     r.check("experience: driver1 completes the ride through CompleteRide (pays, then waits for the rate reminder)", s in (200, 201, 202), f"{s} {str(b)[:300]}")
     now = r.wait_ride(rid, lambda x: x.get("status") == "COMPLETED", 15)
     r.check("experience: ride COMPLETED", now.get("status") == "COMPLETED", now)
+    if r.reminder_wait:
+        # CompleteRide only SCHEDULES RateReminderDue (600 s in the committed model) and returns; RemindToRate starts on
+        # that event. A proof run stages a model with a short delay and passes --reminder-wait N: the reminder must reach
+        # the still-unrated rider on its own, before any rating below.
+        reminded, titles = False, []
+        deadline = time.time() + r.reminder_wait
+        while time.time() < deadline and not reminded:
+            s, b = r.call("GET", r.ep["notifications"], None, "rider1")
+            titles = [i.get("title", "") for i in b.get("items", [])] if s == 200 else []
+            reminded = any("How was your trip" in t for t in titles)
+            if not reminded:
+                time.sleep(1)
+        r.check("experience: the rate reminder reaches the unrated rider by itself (RemindToRate starts on RateReminderDue)", reminded, titles)
     s, b = xflow(r, "RateDriver", {"id": rid, "driverStars": 9}, "rider1")
     r.check("experience: RateDriver refuses 9 stars (1..5)", s in (400, 409, 422), f"{s} {str(b)[:200]}")
     s, b = xflow(r, "RateDriver", {"id": rid, "driverStars": 5}, "rider2")
@@ -717,6 +738,8 @@ def main(argv=None) -> int:
     p.add_argument("--psp")
     p.add_argument("--push")
     p.add_argument("--endpoints")
+    p.add_argument("--reminder-wait", type=int, default=0,
+                   help="seconds to wait, in the experience stage, for the rate reminder to arrive (0 = skip; needs a staged model with a short RateReminderDue delay)")
     a = p.parse_args(argv)
     wanted = ORDER if a.stages == "all" else ["setup"] + [s for s in a.stages.split(",") if s and s != "setup"]
     unknown = [s for s in wanted if s not in STAGES]

@@ -26,7 +26,7 @@ class PanelValidationSelectorReferencesTest {
                     { "name": "Widget", "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true },
                         {
-                          "name": "widgetRef", "type": "reference", "ref": "Widget"
+                          "name": "widgetRef", "type": "reference", "reference": "Widget"
                           %s
                         }
                     ] }

@@ -66,10 +66,9 @@
       "id": "lc-transition-guard-and-required-payload-enforced",
       "keywords": [
         "lifecycleTransition.guard",
-        "lifecycleTransition.requiredPayload",
-        "lifecycleTransition.requires"
+        "lifecycleTransition.requiredPayload"
       ],
-      "description": "WidgetReviewDemo declares Draft -> Submitted with requiredPayload [reviewer], and Submitted -> Approved with requires [approvedNote] and guard reviewMode == 'manual'. Expected: the first move without a reviewer, the second with reviewMode 'auto', and the second without an approvedNote are each refused 422 (CrudLifecycleSupport names these status_transition_requires_field / status_transition_guard_failed). Actual: the REST PUT (ConceptGateway) only checks that the from->to edge exists, so all three are accepted with 200 and the guard and payload requirements are decoration.",
+      "description": "WidgetReviewDemo declares Draft -> Submitted with requiredPayload [reviewer], and Submitted -> Approved with requiredPayload [approvedNote] and guard reviewMode == 'manual'. Expected: the first move without a reviewer, the second with reviewMode 'auto', and the second without an approvedNote are each refused 422 (CrudLifecycleSupport names these status_transition_requires_field / status_transition_guard_failed). Actual: the REST PUT (ConceptGateway) only checks that the from->to edge exists, so all three are accepted with 200 and the guard and payload requirements are decoration.",
       "steps": [
         {
           "name": "create a",
@@ -337,11 +336,11 @@
       ]
     },
     {
-      "id": "fl-invariant-check-phase-alias-blocks-the-write",
+      "id": "fl-invariant-check-pre-blocks-the-write",
       "keywords": [
-        "flowStep.phase"
+        "flowStep.checkpoint"
       ],
-      "description": "flowStep.phase is the alias of checkpoint: PhasedLineQuantityUpdate declares its invariantCheck with phase 'pre' instead of checkpoint. An update to quantity 0 is refused 422 INVARIANT_FAILED at step validate-line before updateConcept runs (stored quantity unchanged); a valid quantity is applied.",
+      "description": "PhasedLineQuantityUpdate declares its invariantCheck with checkpoint 'pre'. An update to quantity 0 is refused 422 INVARIANT_FAILED at step validate-line before updateConcept runs (stored quantity unchanged); a valid quantity is applied.",
       "steps": [
         {
           "name": "create line",
@@ -479,13 +478,11 @@
       ]
     },
     {
-      "id": "fl-schedule-event-delay-seconds-ms-minutes",
+      "id": "fl-schedule-event-delay-seconds",
       "keywords": [
-        "flowStep.delaySeconds",
-        "flowStep.delayMs",
-        "flowStep.delayMinutes"
+        "flowStep.delaySeconds"
       ],
-      "description": "Three flows each scheduleEvent WidgetOrderReviewDue with a different spelling of the delay: delaySeconds 2, delayMs 2000, delayMinutes 30. None of the events exists right after the flow returns (the delay is real, not published inline); the seconds and milliseconds ones arrive within a few scheduler ticks, and the 30-minute one is still absent at that point (it is a minutes delay, not a zero delay).",
+      "description": "Three flows each scheduleEvent WidgetOrderReviewDue with a different delaySeconds: 2, 2 and 1800. None of the events exists right after the flow returns (the delay is real, not published inline); the two short ones arrive within a few scheduler ticks, and the 1800-second one is still absent at that point (it is a long delay, not a zero delay).",
       "steps": [
         {
           "name": "seconds flow",
@@ -505,7 +502,7 @@
           }
         },
         {
-          "name": "ms flow",
+          "name": "second short flow",
           "method": "POST",
           "path": "/api/flows/DelayedReminderMsDemo/execute",
           "body": {
@@ -522,7 +519,7 @@
           }
         },
         {
-          "name": "minutes flow",
+          "name": "long flow",
           "method": "POST",
           "path": "/api/flows/DelayedReminderMinutesDemo/execute",
           "body": {
@@ -561,7 +558,7 @@
           }
         },
         {
-          "name": "delayMs event arrives",
+          "name": "second short event arrives",
           "method": "GET",
           "path": "/api/events/by-correlation/${corrMs}",
           "expect": {
@@ -574,7 +571,7 @@
           }
         },
         {
-          "name": "delayMinutes event still pending",
+          "name": "long-delay event still pending",
           "method": "GET",
           "path": "/api/events/by-correlation/${corrMin}",
           "expect": {
@@ -587,11 +584,11 @@
     {
       "id": "fl-cron-schedule-fires-and-respects-tenant-scope",
       "keywords": [
-        "flow.schedule",
+        "flow.trigger",
         "flowSchedule.cron",
         "flowSchedule.tenantScope"
       ],
-      "description": "MinuteHeartbeat declares schedule cron '0 * * * * *' with tenantScope [dev]: within about a minute the scheduler runs it (actor system:scheduler) and its HeartbeatTick event appears. MinuteHeartbeatOtherTenant has the same cron but tenantScope 'tenant-that-does-not-exist': by the time the first tick exists, the scoped-out flow has emitted nothing.",
+      "description": "MinuteHeartbeat declares trigger.schedule cron '0 * * * * *' with tenantScope [dev]: within about a minute the scheduler runs it (actor system:scheduler) and its HeartbeatTick event appears. MinuteHeartbeatOtherTenant has the same cron but tenantScope 'tenant-that-does-not-exist': by the time the first tick exists, the scoped-out flow has emitted nothing.",
       "steps": [
         {
           "name": "first tick",

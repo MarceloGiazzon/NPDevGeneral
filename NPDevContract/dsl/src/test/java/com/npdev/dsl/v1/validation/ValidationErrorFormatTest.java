@@ -31,7 +31,7 @@ class ValidationErrorFormatTest {
                           "name": "Patient",
                           "fields": [
                             { "name": "id", "type": "uuid", "id": true, "required": true },
-                        { "name": "primaryProviderId", "type": "reference", "ref": "Provider", "required": true }
+                        { "name": "primaryProviderId", "type": "reference", "reference": "Provider", "required": true }
                       ]
                     }
                   ]

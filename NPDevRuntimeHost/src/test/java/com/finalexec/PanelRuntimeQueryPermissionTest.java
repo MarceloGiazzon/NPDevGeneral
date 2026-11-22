@@ -41,10 +41,11 @@ class PanelRuntimeQueryPermissionTest {
           "queries": [
             { "name": "AuditedLedger", "concept": "Ledger", "permissionRequirements": [ "ledger.audit" ] }
           ],
-          "panels": [
-            { "name": "LedgerPanel", "route": "/ledger",
-              "dataSources": [ { "name": "rows", "query": "AuditedLedger" } ],
-              "layout": { "type": "table" } }
+          "screens": [
+            { "name": "LedgerPanel", "kind": "custom",
+              "panel": { "route": "/ledger",
+                "dataSources": [ { "name": "rows", "query": "AuditedLedger" } ],
+                "layout": { "type": "table" } } }
           ]
         }
         """;

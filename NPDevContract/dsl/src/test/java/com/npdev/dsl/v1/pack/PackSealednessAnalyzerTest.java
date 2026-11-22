@@ -72,12 +72,11 @@ class PackSealednessAnalyzerTest {
         assertTrue(result.sealed(), "violations: " + result.violations());
     }
 
-    /** Positive-case sibling to the two false-negative regressions below: the bare-string spellings
-     *  must not become spuriously OVER-strict either -- a self-contained reference using {@code "ref"}
-     *  or bare-string {@code "reference"} must still analyze sealed, same as the object form already
-     *  proven above. */
+    /** Positive-case sibling to the false-negative regression below: the bare-string spelling must
+     *  not become spuriously OVER-strict either -- a self-contained bare-string {@code "reference"}
+     *  must still analyze sealed, same as the object form already proven above. */
     @Test
-    void packWithSelfContainedReferences_usingBareRefAndBareStringReferenceSpellings_isSealed() {
+    void packWithSelfContainedReferences_usingObjectAndBareStringReferenceSpellings_isSealed() {
         JsonNode sealedPack = pack("""
             {
               "dslVersion": "3.0.0",
@@ -90,7 +89,7 @@ class PackSealednessAnalyzerTest {
                 ]},
                 { "name": "WidgetPrice", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
-                  { "name": "widgetId", "type": "reference", "required": true, "ref": "Widget" }
+                  { "name": "widgetId", "type": "reference", "required": true, "reference": { "target": "Widget" } }
                 ]},
                 { "name": "WidgetTag", "fields": [
                   { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -130,41 +129,12 @@ class PackSealednessAnalyzerTest {
                 "expected a violation naming Order/placedByUserId/identity::User, got: " + result.violations());
     }
 
-    /** Regression (adversarial review before merge, PR #82): {@code "ref": "Concept"} is the
-     *  bare-string shorthand {@code JsonModelParser} checks FIRST (readText(f, "ref")) -- an earlier
-     *  version of the analyzer only recognized the object form ({@code "reference": {"target": ...}})
-     *  and reported this shape's outbound reference as sealed=true, wrongly certifying a pack with a
-     *  real dependency on a non-pack concept. */
-    @Test
-    void outboundReferenceViaBareRefShorthand_isRefused_namingTheConceptAndTarget() {
-        JsonNode unsealedPack = pack("""
-            {
-              "dslVersion": "3.0.0",
-              "pack": "orders",
-              "version": "1.0.0",
-              "concepts": [
-                { "name": "Order", "fields": [
-                  { "name": "id", "type": "uuid", "id": true, "required": true },
-                  { "name": "placedByUserId", "type": "reference", "required": true,
-                    "ref": "identity::User" }
-                ]}
-              ]
-            }
-            """);
-
-        PackSealednessAnalyzer.SealednessResult result = PackSealednessAnalyzer.analyze(unsealedPack);
-
-        assertFalse(result.sealed(), "bare 'ref' shorthand must be recognized, not silently skipped");
-        assertTrue(result.violations().stream().anyMatch(v ->
-                        v.contains("Order") && v.contains("placedByUserId") && v.contains("identity::User")),
-                "expected a violation naming Order/placedByUserId/identity::User, got: " + result.violations());
-    }
-
     /** Regression (adversarial review before merge, PR #82): {@code "reference": "Concept"} (bare
      *  string, distinct from the object form {@code "reference": {"target": ...}}) is
-     *  {@code JsonModelParser}'s third accepted spelling (readText(f, "reference")). Same false-
-     *  negative risk as the {@code ref}-shorthand case above -- covered separately since the two
-     *  spellings are read by different code paths in {@link PackSealednessAnalyzer#referenceTarget}. */
+     *  {@code JsonModelParser}'s second accepted spelling (readText(f, "reference")). An earlier
+     *  version of the analyzer only recognized the object form and wrongly certified a pack with a
+     *  real dependency on a non-pack concept as sealed -- the two spellings are read by different
+     *  code paths in {@link PackSealednessAnalyzer#referenceTarget}. */
     @Test
     void outboundReferenceViaBareStringReferenceField_isRefused_namingTheConceptAndTarget() {
         JsonNode unsealedPack = pack("""

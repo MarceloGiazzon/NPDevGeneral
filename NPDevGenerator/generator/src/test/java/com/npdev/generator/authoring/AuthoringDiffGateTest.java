@@ -483,7 +483,7 @@ class AuthoringDiffGateTest {
             [ { "name": "Order",
                 "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true },
                             { "name": "total", "type": "int" } ],
-                "invariants": [ { "type": "expression", "expression": "total >= 0" } ] } ]
+                "invariants": [ { "type": "expression", "expr": "total >= 0" } ] } ]
             """));
         ModelAst submitted = model(conceptModel("1.1", """
             [ { "name": "Order",

@@ -25,7 +25,7 @@ class InvariantTemporalComparisonValidationTest {
                   { "name": "stamp", "type": "datetime" },
                   { "name": "days", "type": "decimal" },
                   { "name": "note", "type": "string" } ],
-                  "invariants": [ { "name": "inv1", "type": "expression", "expression": "%s" } ] }
+                  "invariants": [ { "name": "inv1", "type": "expression", "expr": "%s" } ] }
               ]
             }
             """.formatted(expression);

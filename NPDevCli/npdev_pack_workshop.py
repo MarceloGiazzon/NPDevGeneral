@@ -545,6 +545,15 @@ def assemble_consumer(cli, run: Path, pack_id: str, order: list[str], find, user
     return {"folder": folder, "definition": definition, "name": name, "port": port, "outputRoot": out}
 
 
+def _consumer_invocations(consumer: dict) -> list[dict]:
+    """`catalogs.invocations` of the generated consumer's compiled-metadata.json (the exact REST path of every concept)."""
+    path = Path(consumer["outputRoot"]) / "App" / "npdev-generated" / "src" / "main" / "resources" / "npdev" / "compiled-metadata.json"
+    try:
+        return json.loads(path.read_text(encoding="utf-8")).get("catalogs", {}).get("invocations", [])
+    except (OSError, ValueError):
+        return []
+
+
 BOOT_BUDGET_SECONDS = 300  # owner rule (2026-11-14): nothing runs longer than 5 minutes; over budget = skipped, never rejected
 
 
@@ -607,12 +616,14 @@ def default_boot(cli, consumer: dict, env: dict):
 
 
 def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stamp: str | None = None,
-              validate=None, update=None, boot=None, probe_call=None, screens: bool = False, shoot=None) -> dict:
+              validate=None, update=None, boot=None, probe_call=None, screens: bool = False, shoot=None,
+              derive_probes: bool = True) -> dict:
     """Run the ladder for one pack. Writes runs/<pack>@<version>/<stamp>/ and returns the verdict dict.
     `validate(model_path, report_path) -> report|None`, `update(model_path) -> (ok, text)` and
     `boot(cli, consumer, env) -> (base_url, stop)` (or raise BootUnavailable) are injectable for tests;
     `probe_call(key, method, path, body) -> (status, payload)` replaces the HTTP client in tests.
-    `screens=True` adds rung 5 (screenshots per identity); `shoot(base_url, out_dir, users, keys)` replaces the browser in tests."""
+    `screens=True` adds rung 5 (screenshots per identity); `shoot(base_url, out_dir, users, keys)` replaces the browser in tests.
+    `derive_probes=False` keeps the old rule that a pack with no probes/*.json cannot reach rung 4 (default: derive them)."""
     folder = find_pack_dir(root, pack_id, version)
     if folder is None:
         raise WorkshopError(f"{pack_id}{'@' + version if version else ''} is not in the workshop ({root}); ingest it first")
@@ -718,8 +729,19 @@ def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stam
     started = time.monotonic()
     import npdev_pack_probe
     probe_files = sorted((folder / "probes").glob("*.json"))
-    if not probe_files and not screens:
-        _step(steps, "behavior-probes", started, "skipped", "the pack delivered no probes/*.json, so it cannot reach 'probed'")
+    # A pack that delivered no probes gets the ones its own declarations imply (npdev_pack_probe_derive), so 'probed'
+    # no longer depends on the authoring AI writing them. They are never mixed with AI-written probes.
+    derived_docs: dict[str, dict] = {}
+    derived_skipped: list[str] = []
+    if not probe_files and derive_probes:
+        import npdev_pack_probe_derive
+        finder = make_pack_finder(root)
+        composed = {pid: json.loads(finder(pid).read_text(encoding="utf-8")) for pid in order}
+        derived_docs, derived_skipped = npdev_pack_probe_derive.derive(pack_id, composed[pack_id], composed)
+    if not probe_files and not derived_docs and not screens:
+        _step(steps, "behavior-probes", started, "skipped",
+              "the pack delivered no probes/*.json and none could be derived from its declarations"
+              + (f" ({'; '.join(derived_skipped[:3])})" if derived_skipped else ""))
         return finish(status)
     docs: dict[str, dict] = {}
     shape: list[str] = []
@@ -738,6 +760,10 @@ def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stam
         _step(steps, "behavior-probes", started, "fail", f"{len(shape)} problem(s) in the probe files")
         feedback.extend(shape)
         return finish("rejected")
+    derived_names: set[str] = set()
+    if not docs and derived_docs:
+        docs.update(derived_docs)
+        derived_names = set(derived_docs)
     users, conflict = merge_probe_users(docs)
     if conflict:
         _step(steps, "behavior-probes", started, "fail", conflict)
@@ -770,9 +796,31 @@ def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stam
     shots: dict | None = None
     screens_note = ""
     screens_started = time.monotonic()
+    inconclusive: list[str] = []
     try:
+        if derived_names:
+            import npdev_pack_probe_derive
+            invocations = _consumer_invocations(consumer)
+            for name in sorted(derived_names):
+                why = npdev_pack_probe_derive.resolve_paths(docs[name], invocations)
+                if why:
+                    inconclusive.append(f"{name}: {why}")
+                    docs.pop(name)
+            (run / "derived-probes").mkdir(exist_ok=True)
+            for name, doc in docs.items():
+                (run / "derived-probes" / name).write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
         for name, doc in docs.items():
             results[name] = npdev_pack_probe.run_probe(base_url, doc, keys, probe_call)
+        for name in sorted(derived_names & set(results)):
+            # A derived probe whose POSITIVE step failed could not build a valid row (an invariant or a rule the
+            # declaration does not show): that says nothing about the pack, so it is inconclusive, never a rejection.
+            refusals = npdev_pack_probe_derive.OUTSIDER_STATUSES
+            rows, plan = results[name], docs[name]["steps"]
+            if any(not row["ok"] and step["expect"]["status"] != refusals for row, step in zip(rows, plan)):
+                first = next(row for row, step in zip(rows, plan) if not row["ok"] and step["expect"]["status"] != refusals)
+                inconclusive.append(f"{name}: {first['name']} - {first['detail']}")
+                results.pop(name)
+                docs.pop(name)
         probes_ok = all(r["ok"] for rows in results.values() for r in rows)
         if screens and probes_ok:
             import npdev_pack_screens
@@ -788,15 +836,25 @@ def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stam
         (run / "probes.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
         if failed:
             _step(steps, "behavior-probes", started, "fail", f"{len(failed)} of {total} step(s) failed", "probes.json")
-            feedback.extend(f"probes/{file} step '{r['name']}' (as {r['as']}) - {r['detail']} - fix the pack's rules or the probe's expectation"
+            feedback.extend((f"derived probe {file} step '{r['name']}' (as {r['as']}) - {r['detail']} - the probe was derived from the pack's own "
+                             f"access rules, so either the rule admits a role it should not or it refuses one it should admit")
+                            if file in derived_names else
+                            f"probes/{file} step '{r['name']}' (as {r['as']}) - {r['detail']} - fix the pack's rules or the probe's expectation"
                             for file, r in failed[:20])
             return finish("rejected")
-        _step(steps, "behavior-probes", started, "pass", f"{len(docs)} probe file(s), {total} step(s)", "probes.json")
+        feedback.extend(f"(warning) derived probe inconclusive, so it proves nothing either way: {line}" for line in inconclusive)
+        feedback.extend(f"(warning) no probe could be derived for {line}" for line in derived_skipped)
+        _step(steps, "behavior-probes", started, "pass",
+              f"{len(docs)} probe file(s), {total} step(s)" + (f" -- DERIVED from the pack's declarations; {len(inconclusive)} inconclusive, "
+                                                                f"{len(derived_skipped)} concept(s) not derivable" if derived_names else ""),
+              "probes.json")
         status = "probed"
         _step(steps, "exposure-matrix", time.monotonic(), "skipped",
               "the matrix logs in with passwords; the probe consumer uses static API keys -- not wired yet")
     else:
-        _step(steps, "behavior-probes", started, "skipped", "the pack delivered no probes/*.json, so it cannot reach 'probed'")
+        _step(steps, "behavior-probes", started, "skipped",
+              ("the probes derived from the pack's declarations were all inconclusive (" + "; ".join(inconclusive[:2]) + ")") if inconclusive
+              else "the pack delivered no probes/*.json, so it cannot reach 'probed'")
     if screens:
         if shots is None:
             _step(steps, "screens", screens_started, "skipped", f"no screenshots were taken: {screens_note}")

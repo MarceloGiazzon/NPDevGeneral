@@ -293,6 +293,83 @@ class CatalogBriefingTests(unittest.TestCase):
         self.assertLessEqual(len([n for n in first if n.startswith("filler")]), engine.CATALOG_PICK_MAX - 2)
         self.assertEqual(engine.select_catalog_entries(crowded, "the and for"), [])   # stop words alone pick nothing
 
+    # --- L1 cards of the chosen packs (FORM P7: the Manager picks, the AI reads the few cards that matter) -----------------
+
+    CARD = {"id": "appointments", "version": "1.0.0", "need": "Book and manage appointments",
+            "provides": {"concepts": ["Appointment(startsAt, status:BOOKED|DONE)"], "roles": ["scheduler -> writes Appointment"],
+                         "events": ["AppointmentBooked", "AppointmentDone"]},
+            "use": '{"from": "git+x//packs/appointments@appointments-1.0.0"}', "limit": "No recurring bookings.",
+            "requires": ["contacts"]}
+
+    def test_the_cards_of_the_chosen_packs_follow_the_list(self):
+        text = engine.pack_catalog_text(self._big_catalog(), "A clinic that books appointments", {"appointments": self.CARD})
+        self.assertIn("Cards of the chosen packs", text)
+        self.assertIn("### appointments 1.0.0 - Book and manage appointments", text)
+        self.assertIn("- concepts: Appointment(startsAt, status:BOOKED|DONE)", text)
+        self.assertIn("- events: AppointmentBooked, AppointmentDone", text)
+        self.assertIn("- also import: contacts", text)
+        self.assertIn('- packs[] entry: {"from": "git+x//packs/appointments@appointments-1.0.0"}', text)
+        self.assertIn("- limit: No recurring bookings.", text)
+        self.assertLess(text.index("- appointments 1.0.0"), text.index("### appointments"))   # one-liner first, card after
+
+    def test_without_cards_the_section_is_what_it_was(self):
+        big = self._big_catalog()
+        ask = "A clinic that books appointments"
+        self.assertEqual(engine.pack_catalog_text(big, ask), engine.pack_catalog_text(big, ask, {}))
+        self.assertNotIn("Cards of the chosen packs", engine.pack_catalog_text(big, ask))
+
+    def test_a_card_of_a_pack_that_was_not_chosen_is_not_shown(self):
+        other = dict(self.CARD, id="filler3", need="Unrelated")
+        text = engine.pack_catalog_text(self._big_catalog(), "A clinic that books appointments", {"filler3": other})
+        self.assertNotIn("### filler3", text)
+
+    def test_a_whole_catalog_shows_no_cards(self):
+        text = engine.pack_catalog_text(CATALOG, "contacts for my clinic", {"contacts": dict(self.CARD, id="contacts")})
+        self.assertNotIn("Cards of the chosen packs", text)
+
+    def test_fetch_cards_reads_each_card_and_skips_what_it_cannot(self):
+        class Reply:
+            def __init__(self, body):
+                self.body = body
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self):
+                return self.body
+
+        seen = []
+
+        def fake_open(request, timeout=None):
+            seen.append(request.full_url)
+            if request.full_url.endswith("/appointments.json"):
+                return Reply(json.dumps(self.CARD).encode("utf-8"))
+            if request.full_url.endswith("/contacts.json"):
+                return Reply(json.dumps(dict(self.CARD, id="somebody-else")).encode("utf-8"))   # wrong id: not trusted
+            raise OSError("no such card")
+
+        with mock.patch("urllib.request.urlopen", fake_open):
+            got = engine.fetch_cards("https://example.invalid/NPR/main/catalog-index.json", ["appointments", "contacts", "invoicing"])
+        self.assertEqual(list(got), ["appointments"])
+        self.assertEqual(seen[0], "https://example.invalid/NPR/main/catalog/cards/appointments.json")
+
+    def test_with_pack_catalog_fetches_cards_only_for_the_chosen_packs(self):
+        with mock.patch.object(npdev_cli, "_load_pack_catalog", return_value=(self._big_catalog(), {"status": "fresh"})),                 mock.patch.object(engine, "fetch_cards", return_value={"appointments": self.CARD}) as fetched:
+            text, manifest = engine.with_pack_catalog("bundle\n", {"bytes": 7, "sections": []}, "A clinic that books appointments")
+        asked = fetched.call_args[0][1]
+        self.assertIn("appointments", asked)
+        self.assertNotIn("filler0", asked)
+        self.assertIn("### appointments 1.0.0", text)
+        self.assertEqual(manifest["bytes"], len(text.encode("utf-8")))
+
+    def test_with_pack_catalog_does_not_touch_the_network_for_a_small_catalog(self):
+        with mock.patch.object(npdev_cli, "_load_pack_catalog", return_value=(CATALOG, {"status": "fresh"})),                 mock.patch.object(engine, "fetch_cards") as fetched:
+            engine.with_pack_catalog("bundle\n", {"bytes": 7, "sections": []}, "contacts for my clinic")
+        fetched.assert_not_called()
+
     def test_offline_with_nothing_cached_leaves_the_bundle_alone(self):
         with mock.patch.object(npdev_cli, "_load_pack_catalog", side_effect=npdev_cli.CliError("no cache")):
             self.assertEqual(engine.with_pack_catalog("bundle\n", {"bytes": 7}), ("bundle\n", {"bytes": 7}))

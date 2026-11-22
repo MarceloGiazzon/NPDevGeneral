@@ -413,8 +413,8 @@ class InheritancePolicyConformanceTest {
                   "concepts": [ { "name": "Order", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true } ] } ],
                   "flows": [
-                    { "name": "BaseFlow", "concept": "Order", "schedule": { "cron": "0 0 * * *" }, "steps": [ %s ] },
-                    { "name": "NightlySpecial", "specializes": "BaseFlow", "schedule": { "cron": "0 3 * * *" }, "hooks": [] },
+                    { "name": "BaseFlow", "concept": "Order", "trigger": { "schedule": { "cron": "0 0 * * *" } }, "steps": [ %s ] },
+                    { "name": "NightlySpecial", "specializes": "BaseFlow", "trigger": { "schedule": { "cron": "0 3 * * *" } }, "hooks": [] },
                     { "name": "NightlyDefault", "specializes": "BaseFlow", "hooks": [] }
                   ]
                 }

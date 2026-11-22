@@ -1068,7 +1068,7 @@ final class FlowValidation {
         validateEventStep(flow, step, eventNames, errors);
         if (step.getDelaySeconds() == null) {
             errors.add("Flow " + flow.getName() + " step " + step.getName()
-                    + ": scheduleEvent step must define delaySeconds/delayMinutes/delayMs");
+                    + ": scheduleEvent step must define delaySeconds");
             return;
         }
         if (step.getDelaySeconds() < 0L) {

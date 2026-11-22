@@ -554,10 +554,7 @@ final class UxMetadataValidation {
         if (fieldUi == null) {
             return;
         }
-        boolean hasPickerMetadata = hasText(fieldUi.getPickerType())
-                || fieldUi.getAllowInlineCreate() != null
-                || !fieldUi.getSearchFields().isEmpty()
-                || hasText(fieldUi.getFilterPreset());
+        boolean hasPickerMetadata = !fieldUi.getSearchFields().isEmpty();
         if (!hasPickerMetadata) {
             return;
         }
@@ -578,7 +575,7 @@ final class UxMetadataValidation {
                     field.getName(),
                     "fields",
                     null,
-                    "Move pickerType/searchFields/allowInlineCreate/filterPreset to a reference field or remove them.",
+                    "Move searchFields to a reference field or remove it.",
                     "validation.ux-metadata.interaction_metadata_not_supported"
             ));
         }

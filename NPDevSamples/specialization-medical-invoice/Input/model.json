@@ -31,7 +31,7 @@
           "specializes": "PositiveTotal",
           "override": true,
           "type": "expression",
-          "expression": "total > 10"
+          "expr": "total > 10"
         }
       ],
       "access": {

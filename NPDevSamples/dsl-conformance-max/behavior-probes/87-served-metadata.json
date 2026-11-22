@@ -138,7 +138,7 @@
         "flow.action",
         "flowStep.action"
       ],
-      "description": "A flow's action metadata and a step's action metadata reach the runtime catalogs a client builds its buttons and confirmations from: ShapeWidgetOrderLineEvent is served in the actions catalog (kind flow) and the invocations catalog with label 'Shape order-line event' and its confirmation text, and its emit-shaped step (kind flowStep) with label, success message and danger level; the return-shaped step, which declares no action, is served with an empty label.",
+      "description": "A flow's action metadata and a step's action metadata reach the runtime catalogs a client builds its buttons and confirmations from: ShapeWidgetOrderLineEvent is served in the actions catalog (kind flow) and the invocations catalog with label 'Shape order-line event' and its confirmation text, and its emit-shaped step (kind flowStep) with label and danger level; the return-shaped step, which declares no action, is served with an empty label.",
       "steps": [
         {
           "name": "actions catalog",
@@ -150,7 +150,6 @@
               "$.items[?kind=flow&name=ShapeWidgetOrderLineEvent].label": "Shape order-line event",
               "$.items[?kind=flow&name=ShapeWidgetOrderLineEvent].confirmationText": "Emit the shaped event?",
               "$.items[?kind=flowStep&ownerName=ShapeWidgetOrderLineEvent&name=emit-shaped].label": "Emit shaped event",
-              "$.items[?kind=flowStep&ownerName=ShapeWidgetOrderLineEvent&name=emit-shaped].successMessage": "Shaped event emitted",
               "$.items[?kind=flowStep&ownerName=ShapeWidgetOrderLineEvent&name=emit-shaped].dangerLevel": "low",
               "$.items[?kind=flowStep&ownerName=ShapeWidgetOrderLineEvent&name=return-shaped].label": ""
             }

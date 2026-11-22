@@ -8,12 +8,6 @@
       "name": "Rider",
       "fields": [
         {
-          "name": "id",
-          "type": "uuid",
-          "id": true,
-          "required": true
-        },
-        {
           "name": "name",
           "type": "string",
           "required": true
@@ -86,12 +80,6 @@
     {
       "name": "Driver",
       "fields": [
-        {
-          "name": "id",
-          "type": "uuid",
-          "id": true,
-          "required": true
-        },
         {
           "name": "name",
           "type": "string",
@@ -259,12 +247,6 @@
     {
       "name": "Ride",
       "fields": [
-        {
-          "name": "id",
-          "type": "uuid",
-          "id": true,
-          "required": true
-        },
         {
           "name": "rider",
           "type": "reference",
@@ -630,12 +612,6 @@
       "name": "RideOffer",
       "fields": [
         {
-          "name": "id",
-          "type": "uuid",
-          "id": true,
-          "required": true
-        },
-        {
           "name": "ride",
           "type": "reference",
           "required": true,
@@ -738,12 +714,6 @@
     {
       "name": "Payment",
       "fields": [
-        {
-          "name": "id",
-          "type": "uuid",
-          "id": true,
-          "required": true
-        },
         {
           "name": "ride",
           "type": "reference",
@@ -901,12 +871,6 @@
     {
       "name": "Zone",
       "fields": [
-        {
-          "name": "id",
-          "type": "uuid",
-          "id": true,
-          "required": true
-        },
         {
           "name": "name",
           "type": "string",
@@ -1277,15 +1241,6 @@
           }
         },
         {
-          "type": "awaitEvent",
-          "awaitEvent": "RateReminderDue",
-          "awaitRef": "rw",
-          "match": {
-            "correlation": true
-          }
-        },
-        "call RemindToRate with $done as $reminded",
-        {
           "name": "final",
           "type": "callFlow",
           "flow": "ReadRide",
@@ -1302,8 +1257,10 @@
     {
       "name": "PeakOnMorning",
       "concept": "Zone",
-      "schedule": {
-        "cron": "0 0 7 * * MON-FRI"
+      "trigger": {
+        "schedule": {
+          "cron": "0 0 7 * * MON-FRI"
+        }
       },
       "steps": [
         {
@@ -1323,8 +1280,10 @@
     {
       "name": "PeakOffMorning",
       "concept": "Zone",
-      "schedule": {
-        "cron": "0 0 10 * * MON-FRI"
+      "trigger": {
+        "schedule": {
+          "cron": "0 0 10 * * MON-FRI"
+        }
       },
       "steps": [
         {
@@ -1344,8 +1303,10 @@
     {
       "name": "PeakOnEvening",
       "concept": "Zone",
-      "schedule": {
-        "cron": "0 0 17 * * MON-FRI"
+      "trigger": {
+        "schedule": {
+          "cron": "0 0 17 * * MON-FRI"
+        }
       },
       "steps": [
         {
@@ -1365,8 +1326,10 @@
     {
       "name": "PeakOffEvening",
       "concept": "Zone",
-      "schedule": {
-        "cron": "0 0 20 * * MON-FRI"
+      "trigger": {
+        "schedule": {
+          "cron": "0 0 20 * * MON-FRI"
+        }
       },
       "steps": [
         {
@@ -2391,11 +2354,13 @@
     },
     {
       "name": "RemindToRate",
-      "description": "10 minutes after the trip: if the rider has not rated the driver yet, remind them.",
+      "description": "10 minutes after the trip (CompleteRide schedules RateReminderDue and moves on; this flow starts on that event): if the rider has not rated the driver yet, remind them.",
+      "trigger": {
+        "event": "RateReminderDue"
+      },
       "expose": "internal",
-      "runAs": "system",
       "steps": [
-        "read Ride $input.id as ride",
+        "read Ride $input.rideId as ride",
         {
           "type": "branch",
           "condition": "!($ride.driverStars != null && $ride.driverStars != 0)",
@@ -2622,7 +2587,6 @@
       "operations": [
         {
           "name": "createCharge",
-          "sideEffects": "external",
           "http": {
             "method": "POST",
             "path": "/v1/charges",
@@ -2645,7 +2609,6 @@
         },
         {
           "name": "refundCharge",
-          "sideEffects": "external",
           "http": {
             "method": "POST",
             "path": "/v1/refunds",
@@ -2698,7 +2661,6 @@
       "operations": [
         {
           "name": "routeMetres",
-          "sideEffects": "reads",
           "http": {
             "method": "GET",
             "path": "/route/v1/driving/{fromLng},{fromLat};{toLng},{toLat}",
@@ -2718,7 +2680,6 @@
         },
         {
           "name": "routeSeconds",
-          "sideEffects": "reads",
           "http": {
             "method": "GET",
             "path": "/route/v1/driving/{fromLng},{fromLat};{toLng},{toLat}",
@@ -3511,7 +3472,7 @@
       "map": {
         "lat": "lat",
         "lng": "lng",
-        "label": "name + ' (' + status + ')'",
+        "label": "name + ' (' + lower(status) + ')'",
         "tiles": "driversTilesUrl"
       }
     },

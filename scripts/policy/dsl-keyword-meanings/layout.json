@@ -20,7 +20,7 @@
       "id": "flow",
       "title": "Flow",
       "intro": "Something the app does: an ordered list of steps started by a trigger (an API call, a screen button, an event, a schedule, a webhook or another flow). Flows are durable, can wait for events or human tasks and can compensate on failure. The legacy procedure kinds at the end of this section are being retired in favour of flows.",
-      "defs": ["flow", "flowInput", "flowSchedule", "flowHook", "flowStep", "awaitMatch", "humanTask", "generatedActionDescriptor"]
+      "defs": ["flow", "flowInput", "flowSchedule", "flowHook", "flowStep", "awaitMatch", "humanTask"]
     },
     {
       "id": "event",

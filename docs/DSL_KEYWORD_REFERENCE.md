@@ -4,7 +4,7 @@
 
 The complete list of keywords an NPDev model (`model.json`) or pack (`pack.json`) may use: what each one means, where it may appear, whether it is required, and which values it accepts. Every keyword of the DSL is here; a key that is not here is rejected by the schema (`additionalProperties: false`).
 
-Schema version `1.0.0`, DSL version `3.0.0`. **758 keywords** are documented: 721 declared by the model schema (100 object kinds) and 37 by the pack schema, counted exactly as `scripts/quality/check-dsl-keyword-budget.py` counts them. The model root keys are listed separately in section 0.
+Schema version `1.0.0`, DSL version `3.0.0`. **718 keywords** are documented: 681 declared by the model schema (99 object kinds) and 37 by the pack schema, counted exactly as `scripts/quality/check-dsl-keyword-budget.py` counts them. The model root keys are listed separately in section 0.
 
 ## How to read this reference
 
@@ -19,7 +19,7 @@ Schema version `1.0.0`, DSL version `3.0.0`. **758 keywords** are documented: 72
 - [0. Model root and pack file](#0-model-root-and-pack-file)
 - [1. Concept](#1-concept): [`concept`](#concept), [`field`](#field), [`fieldConvention`](#fieldconvention), [`domainType`](#domaintype), [`enumOption`](#enumoption), [`referenceDefinition`](#referencedefinition), [`schemaObject`](#schemaobject), [`localizableLabel`](#localizablelabel), [`presentationMetadata`](#presentationmetadata), [`uiField`](#uifield), [`conceptAccess`](#conceptaccess), [`index`](#index), [`invariant`](#invariant), [`lifecycle`](#lifecycle), [`lifecycleState`](#lifecyclestate), [`lifecycleTransition`](#lifecycletransition), [`actionMetadata`](#actionmetadata), [`composition`](#composition), [`aggregateCollection`](#aggregatecollection), [`aggregateCollectionLookupField`](#aggregatecollectionlookupfield), [`aggregateInvariant`](#aggregateinvariant), [`aggregateBalance`](#aggregatebalance), [`sequence`](#sequence), [`seed`](#seed)
 - [2. Query](#2-query): [`query`](#query), [`queryLookup`](#querylookup), [`queryComputedColumn`](#querycomputedcolumn), [`groupByField`](#groupbyfield), [`aggregateFunction`](#aggregatefunction), [`queryParameter`](#queryparameter)
-- [3. Flow](#3-flow): [`flow`](#flow), [`flowInput`](#flowinput), [`flowSchedule`](#flowschedule), [`flowHook`](#flowhook), [`flowStep`](#flowstep), [`awaitMatch`](#awaitmatch), [`humanTask`](#humantask), [`generatedActionDescriptor`](#generatedactiondescriptor)
+- [3. Flow](#3-flow): [`flow`](#flow), [`flowInput`](#flowinput), [`flowSchedule`](#flowschedule), [`flowHook`](#flowhook), [`flowStep`](#flowstep), [`awaitMatch`](#awaitmatch), [`humanTask`](#humantask)
 - [4. Event](#4-event): [`event`](#event), [`eventPayloadField`](#eventpayloadfield)
 - [5. Function](#5-function): [`function`](#function)
 - [6. Capability](#6-capability): [`capability`](#capability), [`capabilityOperation`](#capabilityoperation), [`capabilityContractSchemaRef`](#capabilitycontractschemaref), [`capabilityPolicy`](#capabilitypolicy), [`failureClassification`](#failureclassification), [`capabilityOperationError`](#capabilityoperationerror), [`capabilityAuth`](#capabilityauth), [`httpConnector`](#httpconnector), [`httpConnectorAuth`](#httpconnectorauth), [`httpConnectorOperation`](#httpconnectoroperation), [`inboundDoor`](#inbounddoor)
@@ -182,11 +182,11 @@ One column of a concept (and one entry of an object's properties). The `type` de
 
 **Conditional rules:**
 
-- When `type` is `enum` and `type` is present: requires at least one of `enumValues`, `values`.
+- When `type` is `enum` and `type` is present: requires `enumValues`.
 - When `type` is `object` and `type` is present: requires `properties`.
 - When `type` is `array` and `type` is present: requires `items`; each `items` entry has `type` one of `object`, `enum`.
-- When `type` is `reference` and `type` is present: requires at least one of `ref`, `reference`.
-- When `type` is `file` and `type` is present: `unique` must be `false`; `reference` is not allowed; `ref` is not allowed.
+- When `type` is `reference` and `type` is present: requires `reference`.
+- When `type` is `file` and `type` is present: `unique` must be `false`; `reference` is not allowed.
 
 | Keyword | Type | Required | Meaning |
 |---|---|---|---|
@@ -203,8 +203,6 @@ One column of a concept (and one entry of an object's properties). The `type` de
 | `access` | object | optional | field-level (not row-level) authorization -- the next rung on the ladder below concept.access: role ceiling (permission) -&gt; row scope (concept.access) -&gt; field scope (this). Each expression is evaluated per-record through the platform's unified expression language (ComputedExpression), with $user.id/$user.tenantId/$user.actorId/$user.roles available alongside the record's own fields, exactly like concept.access. read gates whether this field's value may appear in a read/list/query response for a given record (denied means the field key is OMITTED from the response, never returned masked/null). write gates whether a save may set/change this field's value (denied means the WHOLE write is rejected, never silently dropped). Absent = no additional field-level restriction beyond the concept's own row-level access and role permissions.<br>Keys written inside it:<br>`read` (`string`; optional; min length 1): Expression evaluated per record; while false the field is hidden from the caller.<br>`write` (`string`; optional; min length 1): Expression evaluated per record; while false the field is read-only for the caller. |
 | `file` | object | optional | Metadata for a file-typed field. The persisted value is a FileHandle (or list, if multiple), never raw bytes.<br>Keys written inside it:<br>`contentTypes` (array of `string`; optional; min items 1): Allowed MIME types of the uploaded file.<br>`maxSizeBytes` (`integer`; optional; min 1): Largest allowed upload in bytes.<br>`multiple` (`boolean`; optional; default `false`): True: the field holds a list of files. |
 | `enumValues` | array of `string` or [`enumOption`](#enumoption) (min items 1) | optional | The allowed values of an `enum` field, in display order. Each entry is a plain string or an `enumOption` object that adds a label, icon, badge or order. |
-| `values` | array of `string` or [`enumOption`](#enumoption) (min items 1) | optional | Alias of `enumValues`. |
-| `ref` | `string` (min length 1) | optional | Shorthand for the target of a reference field: the name of the referenced concept. Prefer `reference`. |
 | `reference` | `string` or [`referenceDefinition`](#referencedefinition) | optional | Makes the field a reference to another concept's row. Either the target concept's name, or a `referenceDefinition` object that also configures lookup, preview and delete behavior. |
 | `domainType` | `string` (min length 1) | optional | Name of a `domainTypes[]` entry whose base type, validation, normalization and presentation this field inherits. |
 | `description` | `string` (min length 1) | optional | A sentence saying what the field holds. Shown as help in the generated UI and read by AI authors. |
@@ -250,7 +248,7 @@ A field naming convention: a concept field that declares no `type` takes the def
 | Keyword | Type | Required | Meaning |
 |---|---|---|---|
 | `match` | `string` (pattern `^(\*[A-Z][A-Za-z0-9]*\|[a-z][A-Za-z0-9_]*)$`) | required | Which field names the rule types: an exact name (`name`) or a camelCase ending (`*Dt`). An ending matches when the field's LAST camelCase word is that text, so `*Name` matches `clientName` and `shippingAddressName` but not `name` (that is an exact rule) and not `hasToRename`. An exact rule beats an ending, a longer ending beats a shorter one. |
-| `defaults` | object | optional | What a matching field takes when it leaves the property out: always a `type`, optionally the size and constraint keys listed under it. A field that declares its own `type` is never touched.<br>Keys written inside it:<br>`type` (one of `string`, `uuid`, `int`, `integer`, `long`, `decimal`, `boolean`, `date`, `datetime`; required): The field type the rule gives: string, uuid, int, integer, long, decimal, boolean, date or datetime.<br>`maxLength` (`integer`; optional; min 0): Longest text the field accepts; an explicit `maxLength` on the field wins.<br>`minLength` (`integer`; optional; min 0): Shortest text the field accepts.<br>`precision` (`integer`; optional; min 1; max 38): Total digits of a decimal field (1 to 38).<br>`scale` (`integer`; optional; min 0): Digits after the decimal point of a decimal field.<br>`min` (`number`; optional): Smallest value a number field accepts.<br>`max` (`number`; optional): Largest value a number field accepts.<br>`required` (`boolean`; optional): Whether the field must be present.<br>`unique` (`boolean`; optional): Whether no two rows may share the value.<br>`sensitive` (`boolean`; optional): Marks the field as sensitive (omitted from reads and logs unless granted). |
+| `defaults` | object | optional | What a matching field takes when it leaves the property out: always a `type`, optionally the size and constraint keys listed under it. A field that declares its own `type` is never touched.<br>Keys written inside it:<br>`type` (one of `string`, `uuid`, `int`, `integer`, `long`, `decimal`, `boolean`, `date`, `datetime`; required): The field type the rule gives: string, uuid, int, integer, long, decimal, boolean, date or datetime.<br>`maxLength` (`integer`; optional; min 0): Longest text the field accepts; an explicit `maxLength` on the field wins.<br>`minLength` (`integer`; optional; min 0): Shortest text the field accepts.<br>`precision` (`integer`; optional; min 1; max 38): Total digits of a decimal field (1 to 38).<br>`scale` (`integer`; optional; min 0): Digits after the decimal point of a decimal field.<br>`min` (`number`; optional): Smallest value a number field accepts.<br>`max` (`number`; optional): Largest value a number field accepts.<br>`required` (`boolean`; optional): Whether the field must be present.<br>`unique` (`boolean`; optional): Whether no two rows may share the value.<br>`sensitive` (`boolean`; optional): Marks the field as sensitive (omitted from reads and logs unless granted).<br>`domainType` (`string`; optional; min length 1): Name of a `domainTypes[]` entry the field takes, so one ending brings type, size and the domain type's validation; the domain type must exist or the field is an error. |
 
 ### `domainType`
 
@@ -290,23 +288,19 @@ Example:
 
 A rich enum member, written instead of a plain string inside `field.enumValues` / `field.values` when the member needs a label, an icon, a badge or a position.
 
-**Used in:** `field.enumValues`, `field.values`
+**Used in:** `field.enumValues`
 
 | Keyword | Type | Required | Meaning |
 |---|---|---|---|
 | `value` | `string` (min length 1) | required | The stored value of this enum member. |
 | `label` | [`localizableLabel`](#localizablelabel) | optional | The text shown for the member (a plain string or per-locale object). |
-| `displayLabel` | [`localizableLabel`](#localizablelabel) | optional | An alternative display text used where the short `label` is not enough, for example in a form dropdown. |
 | `order` | `integer` (min 0) | optional | Position of the member in dropdowns and filters (lower first). Members without `order` follow in declaration order. |
 | `group` | `string` (min length 1) | optional | Heading under which the member is grouped in dropdowns. |
 | `default` | `boolean` | optional | True: this member is preselected on create. |
 | `deprecated` | `boolean` | optional | True: existing rows may keep the value but it is no longer offered for new data. |
 | `icon` | `string` (min length 1) | optional | Icon name shown next to the member. |
-| `iconHint` | `string` (min length 1) | optional | Accessible text explaining the icon. |
 | `badge` | `string` (min length 1) | optional | Short badge text or color token shown next to the member. |
-| `badgeHint` | `string` (min length 1) | optional | Accessible text explaining the badge. |
 | `description` | `string` (min length 1) | optional | A sentence describing what the member means. |
-| `help` | `string` (min length 1) | optional | Longer help shown when the user focuses the member. |
 
 ### `referenceDefinition`
 
@@ -319,14 +313,12 @@ The long form of `field.reference`: the target concept of a reference field plus
 | `target` | `string` (min length 1) | required | The referenced concept's name (`Concept`, or `pack::Concept` / `context::Concept` for one declared elsewhere). |
 | `multiple` | `boolean` | optional | True: the field holds a list of references instead of one. |
 | `displayField` | `string` (min length 1) | optional | Field of the target used as the human-readable text of a reference. |
-| `lookupFields` | array of `string` | optional | Fields of the target shown in lookup results. |
 | `searchFields` | array of `string` | optional | Fields of the target the picker searches when the user types. |
 | `previewFields` | array of `string` | optional | Fields of the target shown in the hover or detail preview of a selected reference. |
 | `displayTemplate` | `string` (min length 1) | optional | A template combining target fields into the displayed text, for example `{code} - {name}`. |
 | `pickerColumns` | array of `string` | optional | Columns of the target shown in the picker dialog. |
 | `previewCardTemplate` | `string` (min length 1) | optional | A template for the preview card shown for a selected reference. |
 | `defaultFilter` | `string` (min length 1) | optional | A predicate that restricts which target rows the picker offers. |
-| `defaultFilterBehavior` | `string` (min length 1) | optional | Alias of `defaultFilter`. |
 | `inlineCreate` | one of `allow`, `deny` | optional | `allow` lets the user create a new target row from inside the picker; `deny` hides that option. |
 | `via` | `string` (min length 1) | optional | Name of a field of the target to reference instead of its id. It must be the target's id or a unique field marked `connectable: anchor`. |
 | `onDelete` | one of `restrict`, `cascade`, `nullify` | optional | What happens to this field when the referenced row is deleted: `restrict` refuses the delete, `cascade` deletes the referencing rows too, `nullify` clears the reference. |
@@ -356,7 +348,6 @@ A small inline type description (a JSON-Schema-like subset) used wherever a valu
 - When `type` is `array`: requires `items`.
 - When `type` is `object`: requires `properties`.
 - When `enumValues` is present: `type` must be `"enum"`.
-- When `values` is present: `type` must be `"enum"`.
 
 | Keyword | Type | Required | Meaning |
 |---|---|---|---|
@@ -374,10 +365,7 @@ A small inline type description (a JSON-Schema-like subset) used wherever a valu
 | `itemIdentityField` | `string` (min length 1) | optional | Property that identifies an array element, used with `duplicationPolicy`. |
 | `duplicationPolicy` | one of `allow`, `deny` | optional | `allow` or `deny` array elements that share the same identity. |
 | `regex` | `string` (min length 1) | optional | A regular expression a string value must match. |
-| `pattern` | `string` (min length 1) | optional | Alias of `regex`. |
 | `enumValues` | array of `string` (min items 1) | optional | The allowed values of an enum value. |
-| `values` | array of `string` (min items 1) | optional | Alias of `enumValues`. |
-| `enum` | array of `string` (min items 1) | optional | Alias of `enumValues`. |
 | `required` | array of `string` | optional | For an object, the names of the properties that must be present. |
 | `properties` | map of name to [`schemaObject`](#schemaobject) | optional | For an object, a map from property name to the `schemaObject` describing it. |
 | `items` | [`schemaObject`](#schemaobject) | optional | For an array, the `schemaObject` describing every element. |
@@ -389,7 +377,7 @@ A small inline type description (a JSON-Schema-like subset) used wherever a valu
 
 A text shown to users. Either a plain string, or an object with a required `default` text plus one entry per locale (for example `pt-BR`); the runtime picks the requested locale, then its language, then `default`.
 
-**Used in:** `property.label`, `workbenchAction.label`, `workbenchBandPicker.label`, `transactionDerivedField.label`, `transactionUiState.label`, `lifecycleState.label`, `lifecycleTransition.actionLabel`, `enumOption.label`, `enumOption.displayLabel`, `presentationMetadata.label`, `presentationMetadata.shortLabel`, `actionMetadata.label`, `panelAction.label`, `documentBand.label`
+**Used in:** `property.label`, `workbenchAction.label`, `workbenchBandPicker.label`, `transactionDerivedField.label`, `transactionUiState.label`, `lifecycleState.label`, `lifecycleTransition.actionLabel`, `enumOption.label`, `presentationMetadata.label`, `presentationMetadata.shortLabel`, `actionMetadata.label`, `panelAction.label`, `documentBand.label`
 
 Accepted forms:
 
@@ -408,22 +396,16 @@ Presentation hints for the generated UI. Used on a concept (`concept.ui`: whole-
 | `shortLabel` | [`localizableLabel`](#localizablelabel) | optional | A shorter name used where space is tight, such as a table header or a mobile card. |
 | `description` | `string` (min length 1) | optional | A sentence of help shown next to the control. |
 | `placeholder` | `string` (min length 1) | optional | Hint text shown inside an empty input. |
-| `helpText` | `string` (min length 1) | optional | Longer help text shown under the control. |
 | `order` | `integer` | optional | Position of the field in forms and details (lower first). |
 | `widget` | `string` (min length 1) | optional | The control used to edit the field (for example `text`, `textarea`, `select`, `checkbox`, `date`, `number`, `custom`). It must be compatible with the field's type; the validator checks it. With `custom`, `customWidgetRef` names the component. |
 | `group` | `string` (min length 1) | optional | Name of the group the field belongs to in a form; fields with the same group render together. |
 | `section` | `string` (min length 1) | optional | Name of the form section (a titled block) the field is placed in. |
-| `advanced` | `boolean` | optional | True: the field is tucked away under an Advanced toggle. |
 | `deprecated` | `boolean` | optional | True: the field is kept for old data but hidden for new entries. |
-| `examples` | array of `string` | optional | Example values shown as hints. |
 | `visibleWhen` | `string` (min length 1) | optional | Expression over the record; the control is shown only while it is true. |
 | `enabledWhen` | `string` (min length 1) | optional | Expression over the record; the control is editable only while it is true. |
 | `readonlyWhen` | `string` (min length 1) | optional | Expression over the record; while true the control is read-only. |
 | `requiredWhen` | `string` (min length 1) | optional | Expression over the record; while true the control is marked and enforced as required. |
-| `pickerType` | `string` (min length 1) | optional | How a reference field is picked, for example a `search-dialog`. |
-| `allowInlineCreate` | `boolean` | optional | True: the picker lets the user create a new target row in place. |
 | `searchFields` | array of `string` | optional | Fields searched by the picker for this reference field. |
-| `filterPreset` | `string` (min length 1) | optional | Name of a preset filter applied to the picker's candidate rows. |
 | `tab` | `string` (min length 1) | optional | Name of the form tab the field is placed on. |
 | `column` | `integer` | optional | Grid column (1-based) the field occupies in a multi-column form. |
 | `columnSpan` | `integer` | optional | Number of grid columns the field spans in a multi-column form. |
@@ -509,23 +491,21 @@ Example:
 
 ### `invariant`
 
-A rule every row of the concept must satisfy before it is written. Either a uniqueness rule over fields (`type: unique`) or a boolean expression over the row (`type: expression`). A specializing concept can replace an inherited invariant with `override: true`.
+A rule every row of the concept must satisfy before it is written. Either a uniqueness rule over fields (`type: unique`) or a boolean `expr` over the row (`type: expression`). A specializing concept can replace an inherited invariant with `override: true`.
 
 **Used in:** `concept.invariants`
 
 **Conditional rules:**
 
-- At least one of `type`, `rule`, `expr`, `expression` must be present.
+- At least one of `type`, `expr` must be present.
 
 | Keyword | Type | Required | Meaning |
 |---|---|---|---|
 | `name` | `string` (min length 1) | optional | The rule's name, shown in the error when it is violated and used to refer to it from `override`. |
-| `type` | one of `unique`, `expression` | optional | `unique` (the `fields` must be unique together) or `expression` (a boolean expression that must hold). |
+| `type` | one of `unique`, `expression` | optional | `unique` (the `fields` must be unique together) or `expression` (the `expr` must hold). |
 | `specializes` | `string` (min length 1) | optional | Name of an inherited invariant this one refines. |
 | `override` | `boolean` | optional | True: replaces the inherited invariant of the same name in a specializing concept. |
-| `rule` | `string` (min length 1) | optional | A one-line rule text that the parser turns into the `type`, `fields` and `expression` of the invariant. Prefer the explicit keys. |
-| `expr` | `string` (min length 1) | optional | Alias of `expression`. |
-| `expression` | `string` (min length 1) | optional | The boolean expression over the row's fields that must be true for a write to be accepted. |
+| `expr` | `string` (min length 1) | optional | The boolean expression over the row's fields that must be true for a write to be accepted. |
 | `fields` | array of `string` | optional | For `type: unique`, the fields whose combined values must be unique. |
 
 Example:
@@ -534,7 +514,7 @@ Example:
 {
   "name": "PositiveTotal",
   "type": "expression",
-  "expression": "total >= 0"
+  "expr": "total >= 0"
 }
 ```
 
@@ -605,7 +585,6 @@ One allowed move from a state to another, optionally guarded by an expression an
 | `actionLabel` | [`localizableLabel`](#localizablelabel) | optional | Caption of the button that performs the transition. |
 | `action` | [`actionMetadata`](#actionmetadata) | optional | Presentation of the transition's action (confirmation text, success message, danger level). |
 | `requiredPayload` | array of `string` | optional | Names of fields of the row that must hold a value for the transition to be performed. |
-| `requires` | array of `string` | optional | Alias of `requiredPayload`. |
 | `metadata` | map of name to `string` | optional | Free-form string notes carried into the compiled model unchanged. |
 
 ### `actionMetadata`
@@ -618,12 +597,9 @@ How an action button is presented: caption, confirmation text, success and failu
 |---|---|---|---|
 | `label` | [`localizableLabel`](#localizablelabel) | optional | Caption of the action button. |
 | `confirmationText` | `string` (min length 1) | optional | Question shown for confirmation before the action runs. |
-| `successMessage` | `string` (min length 1) | optional | Message shown after the action succeeds. |
-| `failureHint` | `string` (min length 1) | optional | Hint shown to the user when the action fails. |
 | `dangerLevel` | one of `low`, `medium`, `high`, `critical` | optional | How destructive the action is: `low`, `medium`, `high` or `critical`; higher levels get stronger confirmation styling. |
 | `visibleWhen` | `string` (min length 1) | optional | Expression; the button is shown only while it is true. |
 | `permissionHint` | `string` (min length 1) | optional | Text explaining which permission the action needs. |
-| `inputFormHint` | `string` (min length 1) | optional | Free-text hint for how the action's input form should be rendered. It is parsed and exposed through the runtime UI metadata API but does not change rendering today; use it to document authoring intent. |
 
 ### `composition`
 
@@ -916,7 +892,6 @@ Something the app does: an ordered list of steps started by a trigger. A flow is
 | `action` | [`actionMetadata`](#actionmetadata) | optional | How a button that starts this flow is presented (label, confirmation, danger level). |
 | `description` | `string` (min length 1) | optional | What the flow is for, in one or two sentences (read by humans and by AI authors). |
 | `startEndpoint` | `boolean` | optional | Whether the generated app offers a start endpoint for the flow. `expose` is the current way to control who may start it. |
-| `schedule` | [`flowSchedule`](#flowschedule) | optional | Recurring start by cron (the older spelling of `trigger.schedule`). |
 | `trigger` | fixed `"api"` or object | optional | What starts this flow. "api" (the default) or exactly one of event (optionally with a condition in the one expression language), schedule (a cron, folded into the flow's schedule; declaring both schedule and trigger.schedule is refused) or webhook (a hook name). An event trigger runs the flow (as the system principal of the event's tenant) whenever the event is published; a webhook trigger names a capability that declares an inbound door and runs on every verified delivery; a schedule trigger runs from its cron.<br>Keys written inside it:<br>`event` (`string`; required; min length 1): Name of the event whose publication starts the flow.<br>`condition` (`string`; optional; min length 1): Optional expression over `$event` that must be true for the event to start the flow.<br>`schedule` ([`flowSchedule`](#flowschedule); required): A `flowSchedule` (cron and tenant scope): the flow starts on that schedule.<br>`webhook` (`string`; required; min length 1): Name of a capability that declares an `inbound` door; the flow starts on every verified delivery to that door. |
 | `expose` | one of `api`, `ui`, `internal` | optional | Who may start this flow. api (default): a public REST endpoint; ui: startable from a screen or panel action; internal: only through a callFlow step. |
 | `runAs` | one of `caller`, `system` | optional | Caller (default) runs every step as the acting user; system runs them as the platform's system principal, the caller kept for audit. |
@@ -942,7 +917,7 @@ Example:
     {
       "type": "emitEvent",
       "event": "ExpenseSubmitted",
-      "payload": "$saved"
+      "from": "$saved"
     },
     {
       "type": "return",
@@ -967,7 +942,7 @@ Declares that the flow's input has the shape of a concept's request body, for a 
 
 Recurring start of a flow: a cron expression and the tenants it runs for. The scheduler starts the flow like an HTTP call, under the system principal.
 
-**Used in:** `flow.schedule`
+**Used in:** not referenced by another schema node (reachable only through the parent noted above).
 
 | Keyword | Type | Required | Meaning |
 |---|---|---|---|
@@ -1008,9 +983,9 @@ One step of a flow. `type` decides what the step does and which other keywords i
 - When `type` is `invariantCheck`: requires at least one of `invariants`, `scope`.
 - When `type` is `capabilityCall`: requires `capability`, `operation`.
 - When `type` is `generatedAction`: requires `actionName`.
-- When `type` is one of `emitEvent`, `scheduleEvent`: requires `event`; requires at least one of `payload`, `from`, `data`.
+- When `type` is one of `emitEvent`, `scheduleEvent`: requires `event`; requires at least one of `from`, `data`.
 - When `type` is `branch`: requires `condition`, `then`.
-- When `type` is `scheduleEvent`: requires `event`; requires at least one of `payload`, `from`, `data`; requires at least one of `delaySeconds`, `delayMinutes`, `delayMs`.
+- When `type` is `scheduleEvent`: requires `event`; requires at least one of `from`, `data`; requires `delaySeconds`.
 - When `type` is `awaitEvent`: requires `awaitEvent`.
 - When `type` is `return`: requires `value`.
 - When `type` is `forEach`: requires `collection`, `itemKey`, `steps`; `steps` needs at least 1 entry.
@@ -1026,7 +1001,6 @@ One step of a flow. `type` decides what the step does and which other keywords i
 | `name` | `string` (min length 1) | optional | The step's name: unique within the flow, shown in traces, and the way a hook's `targetStep` refers to the step. |
 | `type` | one of `invariantCheck`, `capabilityCall`, `generatedAction`, `emitEvent`, `scheduleEvent`, `return`, `branch`, `awaitEvent`, `createConcept`, `updateConcept`, `map`, `forEach`, `set`, `deleteConcept`, `readConcept`, `listConcepts`, `runQuery`, `callFlow`, `notify` | required | What the step does. `invariantCheck` evaluates invariants; `capabilityCall` calls a capability operation; `generatedAction` runs a generated action; `createConcept`, `updateConcept`, `deleteConcept`, `readConcept`, `listConcepts` and `runQuery` work with concepts and queries; `emitEvent` publishes an event now and `scheduleEvent` later; `awaitEvent` parks until an event arrives; `branch` chooses between step lists; `forEach` loops; `map` and `set` compute values; `callFlow` starts another flow; `notify` sends a notification; `return` ends the flow with a value. |
 | `checkpoint` | one of `pre`, `post` | optional | On an `invariantCheck`: `pre` or `post`, when the invariants are evaluated relative to the surrounding work. |
-| `phase` | one of `pre`, `post` | optional | Alias of `checkpoint`. |
 | `scope` | `string` (min length 1) | optional | On an `invariantCheck`, `createConcept` or other concept step: the concept the step applies to. |
 | `invariants` | array of `string` | optional | On an `invariantCheck`: the names of the invariants to evaluate. |
 | `capability` | `string` (min length 1) | optional | On a `capabilityCall`: the name of the capability to call (a declared capability, or a platform one such as `notification`). |
@@ -1040,9 +1014,8 @@ One step of a flow. `type` decides what the step does and which other keywords i
 | `flow` | `string` (min length 1) | optional | The flow a callFlow step starts. |
 | `policy` | [`capabilityPolicy`](#capabilitypolicy) | optional | Overrides the called operation's execution policy (retries, timeout, circuit breaker, idempotency) for this step. |
 | `event` | `string` (min length 1) | optional | On `emitEvent` and `scheduleEvent`: the name of the event to publish (a declared event). |
-| `payload` | `string` (min length 1) | optional | On `emitEvent` and `scheduleEvent`: the event payload, a flow-state reference. |
-| `from` | `string` (min length 1) | optional | A flow-state reference giving the step's source value: for `map` the value copied, for `emitEvent` / `scheduleEvent` the event payload (alternative to `payload` and `data`). |
-| `data` | map of name to `string` | optional | An object built in place - a map from name to literal or flow-state reference - used as the event payload of `emitEvent` / `scheduleEvent` instead of `payload` or `from`. |
+| `from` | `string` (min length 1) | optional | A flow-state reference giving the step's source value: for `map` the value copied, for `emitEvent` / `scheduleEvent` the event payload (alternative to `data`). |
+| `data` | map of name to `string` | optional | An object built in place - a map from name to literal or flow-state reference - used as the event payload of `emitEvent` / `scheduleEvent` instead of `from`. |
 | `condition` | `string` (min length 1) | optional | On a `branch`: the expression that chooses `then` (true) or `else` (false). |
 | `action` | [`actionMetadata`](#actionmetadata) | optional | How the step is presented in traces and action histories (label, danger level). |
 | `actionName` | `string` (min length 1) | optional | On a `generatedAction`: the name of the generated action to run. |
@@ -1052,8 +1025,6 @@ One step of a flow. `type` decides what the step does and which other keywords i
 | `awaitRef` | `string` (min length 1) | optional | On an `awaitEvent`: the flow-state key under which the arriving event's payload is stored. |
 | `match` | [`awaitMatch`](#awaitmatch) | optional | On an `awaitEvent`: how an arriving event is matched to this flow instance. |
 | `delaySeconds` | `integer` (min 0) | optional | On a `scheduleEvent`: seconds to wait before the event is published. |
-| `delayMinutes` | `integer` (min 0) | optional | On a `scheduleEvent`: minutes to wait before the event is published. |
-| `delayMs` | `integer` (min 0) | optional | On a `scheduleEvent`: milliseconds to wait before the event is published. |
 | `value` | `string` (min length 1) | optional | On a `return`: the value the flow ends with. On a `set`: the expression whose result is stored in `output`. |
 | `collection` | `string` (min length 1) | optional | State ref to the collection a forEach flow step iterates. |
 | `itemKey` | `string` (min length 1) | optional | State variable name each forEach iteration's item is bound to. |
@@ -1116,25 +1087,6 @@ Turns an `awaitEvent` step into a task in a person's inbox. The flow resumes whe
 | `record` | `string` (min length 1) | optional | Optional flow-state ref to the business record the task is about (must carry an id); the inbox links to it. |
 | `proposal` | object | optional | Makes this task a REVIEW of a proposed change. The inbox shows value (usually an externalAi.generate output) against current as a field-by-field diff, and the completed event carries the proposed values (payload key 'proposal') plus the record id (payload key 'recordId') read from the parked flow state, never from the client.<br>Keys written inside it:<br>`value` (`string`; required; min length 1): Flow-state ref to the proposed values (a map), e.g. $suggestion.<br>`current` (`string`; optional; min length 1): Flow-state ref to the record the proposal would change; only the keys present in value are compared. |
 
-### `generatedActionDescriptor`
-
-> **Legacy - retiring.** Part of the procedure family being removed (REG-342).
-
-Legacy. Describes the audit, idempotency, trace and correlation behavior of a procedure exposed as a generated action.
-
-**Used in:** not referenced by another schema node (reachable only through the parent noted above).
-
-| Keyword | Type | Required | Meaning |
-|---|---|---|---|
-| `actionName` | `string` (min length 1) | optional | The name of the generated action. |
-| `affectedConcepts` | array of `string` | optional | Names of the concepts the action changes. |
-| `sideEffectConcept` | `string` (min length 1) | optional | The concept the action's main side effect is on. |
-| `eventNameOnSuccess` | `string` (min length 1) | optional | Name of the event published when the action succeeds. |
-| `auditResourceType` | `string` (min length 1) | optional | Resource type recorded in the audit trail for the action. |
-| `idempotencyPolicy` | one of `record`, `disabled` | optional | `record` stores the result so a repeated call is answered from the record; `disabled` does not. |
-| `tracePolicy` | one of `record`, `disabled` | optional | `record` stores an execution trace; `disabled` does not. |
-| `correlationPolicy` | one of `claim`, `disabled` | optional | `claim` links the action to the caller's correlation id; `disabled` does not. |
-
 ## 4. Event
 
 A named fact that happened, with a payload. Flows emit events and can be triggered by them or wait for them; a capability's inbound door publishes one per verified webhook delivery.
@@ -1151,7 +1103,6 @@ A named fact that happened. Declared at the model root or inside a concept; flow
 | `uid` | `string` (pattern `^[a-z0-9]{8,32}$`) | optional | A stable identity for this event, generated once and never reused (npdev migrate assign-uids stamps one). When a live element's persisted uid matches a model event's uid but the name differs, the rename is resolved by identity -- declared by construction, no renamedFrom needed. Optional: a model with no uids behaves exactly as before. |
 | `specializes` | `string` (min length 1) | optional | Name of a base event (typically from a pack) this event specializes. |
 | `version` | `string` (min length 1) | optional | Version label of the event's payload contract. |
-| `payloadSchemaRef` | `string` (min length 1) | optional | Reference to a schema describing the payload, as an alternative to `payload`. |
 | `payload` | array of `string` or [`eventPayloadField`](#eventpayloadfield) | optional | The payload fields: each a field name string or an object with a name and a type. |
 | `mode` | one of `create`, `update`, `delete` | optional | When set on a concept-nested event, generated CRUD publishes this event directly from the matching mutation step (in addition to any Flow's own emitEvent step) -- no Flow required to reach it. |
 
@@ -1260,7 +1211,6 @@ Example:
   "operations": [
     {
       "name": "createCharge",
-      "sideEffects": "external",
       "http": {
         "method": "POST",
         "path": "/charges",
@@ -1289,7 +1239,6 @@ One operation of a capability: its contract (input and output), resilience polic
 | `output` | [`capabilityContractSchemaRef`](#capabilitycontractschemaref) or [`schemaObject`](#schemaobject) | optional | The type of the operation's result, in the same forms as `input`. |
 | `policy` | [`capabilityPolicy`](#capabilitypolicy) | optional | Resilience settings (retries, timeout, circuit breaker, bulkhead, idempotency). |
 | `errors` | array of [`capabilityOperationError`](#capabilityoperationerror) | optional | The failures the operation can end with, each classified. |
-| `sideEffects` | one of `none`, `reads`, `writes`, `external` | optional | What the operation does to the world: `none`, `reads`, `writes` or `external` (an outside party is changed). Drives retry safety. |
 | `auth` | [`capabilityAuth`](#capabilityauth) | optional | Roles and scopes a caller must hold. |
 | `http` | [`httpConnectorOperation`](#httpconnectoroperation) | optional | The HTTP request, when the capability is an HTTP connector. |
 
@@ -1310,7 +1259,7 @@ A reference to the type of an operation's input or output: either a named schema
 
 ### `capabilityPolicy`
 
-Resilience settings of a capability call: retries, timeout, circuit breaker, concurrency limit and idempotency. Set on an operation (`capabilityOperation.policy`) and optionally overridden per flow step (`flowStep.policy`). It describes only how the call is protected; what it may fail with is in `errors`, and whether it writes is `sideEffects`.
+Resilience settings of a capability call: retries, timeout, circuit breaker, concurrency limit and idempotency. Set on an operation (`capabilityOperation.policy`) and optionally overridden per flow step (`flowStep.policy`). It describes only how the call is protected; what it may fail with is in `errors`.
 
 **Used in:** `capabilityOperation.policy`, `flowStep.policy`
 
@@ -1323,7 +1272,6 @@ Resilience settings of a capability call: retries, timeout, circuit breaker, con
 | `circuitOpenMs` | `integer` (min 0) | optional | Milliseconds the circuit stays open before a trial call is allowed. |
 | `bulkheadMaxConcurrent` | `integer` (min 1) | optional | Maximum number of calls in flight at once for this capability. |
 | `idempotencyKeyField` | `string` (min length 1) | optional | Name of an input field whose value deduplicates repeated calls. |
-| `idempotencyKey` | `string` (min length 1) | optional | An expression giving the deduplication key of the call. |
 | `failureClassification` | [`failureClassification`](#failureclassification) | optional | How failures of this call are classified by default. |
 
 ### `failureClassification`
@@ -1355,7 +1303,6 @@ Who may call an operation: the caller must hold at least one of the roles and al
 | Keyword | Type | Required | Meaning |
 |---|---|---|---|
 | `roles` | array of `string` | optional | Role names; a caller needs at least one. |
-| `scopes` | array of `string` | optional | Permission scopes; a caller needs all of them. |
 
 ### `httpConnector`
 
@@ -2373,7 +2320,7 @@ The app's opt-in to delegating work to an outside AI. Absent means denied: no co
 
 ## Coverage
 
-- Keywords documented: 758 (721 model + 37 pack), the same set the keyword budget freezes.
+- Keywords documented: 718 (681 model + 37 pack), the same set the keyword budget freezes.
 - Meaning taken from the schema's own `description`: 256.
-- Meaning written in `scripts/policy/dsl-keyword-meanings/`: 502.
+- Meaning written in `scripts/policy/dsl-keyword-meanings/`: 462.
 - `scripts/quality/check-dsl-keyword-reference.py` fails when a keyword has no meaning, when the meanings data names a keyword the schema no longer has, or when this page is stale against the schema.

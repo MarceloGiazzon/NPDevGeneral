@@ -84,7 +84,6 @@ class HttpConnectorDslTest {
                   "operations": [
                     {
                       "name": "getCustomer",
-                      "sideEffects": "reads",
                       "policy": {
                         "retryCount": 2,
                         "retryDelayMs": 500
@@ -102,7 +101,6 @@ class HttpConnectorDslTest {
                     },
                     {
                       "name": "createCharge",
-                      "sideEffects": "external",
                       "http": {
                         "method": "POST",
                         "path": "/charges",
@@ -212,7 +210,7 @@ class HttpConnectorDslTest {
                             "adapter":"http-connector",
                             "specializes":"payments",
                             "operations":[
-                              {"name":"refund","sideEffects":"external","http":{"method":"POST","path":"/refunds","params":["chargeId"],"body":{"charge":"{chargeId}"}}}
+                              {"name":"refund","http":{"method":"POST","path":"/refunds","params":["chargeId"],"body":{"charge":"{chargeId}"}}}
                             ]
                           },""");
         CompiledModel compiled = new ModelCompiler().compile(parse(model));

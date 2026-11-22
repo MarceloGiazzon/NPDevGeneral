@@ -93,7 +93,7 @@ A **field** is the smallest unit — one column:
 **Invariants** are the rules a record must satisfy before it can be saved. Two shapes:
 
 ```jsonc
-{ "name": "PositiveUnitPrice", "type": "expression", "expression": "unitPrice > 0" }
+{ "name": "PositiveUnitPrice", "type": "expression", "expr": "unitPrice > 0" }
 { "name": "EmailUnique", "type": "unique", "fields": ["email"] }
 ```
 
@@ -175,7 +175,7 @@ flow is public API automatically; there's no extra wiring to expose it.
 | `capabilityCall` (`capability`+`operation`) | Calls a capability operation — save something, send a notification, run custom logic. |
 | `createConcept` / `updateConcept` | Persists a concept record (the "obvious" built-in way to save data, simpler than calling the `persistence` capability yourself). |
 | `emitEvent` | Broadcasts an event with data taken `from` a variable. |
-| `scheduleEvent` | Same as `emitEvent`, but delayed (`delaySeconds`/`delayMinutes`/`delayMs`). |
+| `scheduleEvent` | Same as `emitEvent`, but delayed (`delaySeconds`). |
 | `branch` | Conditional: `condition`, then `then: [...]`, optional `else: [...]`. |
 | `awaitEvent` | Pauses the flow until a matching event arrives — see §5/§6. Add `task` and the wait becomes a **human task** in the assignee's inbox (`GET /api/tasks`), with a form and named outcomes. |
 | `map` | Copies a value from one flow-state variable to another. |

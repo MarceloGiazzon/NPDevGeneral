@@ -6,117 +6,91 @@ app definitions and build output live **outside** it (see Layers below).
 
 Rules live here. The reasoning behind the hard-won ones lives in
 [`docs/archive/PLATFORM_HISTORY.md`](docs/archive/PLATFORM_HISTORY.md) — read it when you want to
-know *why* a rule exists, never for current status.
+know *why* a rule exists, never for current status. The long recipes (gates, zips, scenarios, session
+prep/close, restaging) live in [`docs/maintainers/SUBSYSTEM_CONTRACTS.md`](docs/maintainers/SUBSYSTEM_CONTRACTS.md)
+under "Verification and tooling recipes" — this file keeps the rule, that file keeps the how.
 
 # ████ BRANCHES ARE FORBIDDEN. MAXIMUM PENALTY. NO EXCEPTIONS. ████
 
 **This repo has exactly ONE branch: `main`. NEVER create, switch to, push or keep any other branch.**
-Marcelo ordered this on 2026-10-17 in the strongest possible terms ("FORBIDDEN … MORE THAN FORBIDDEN …
-MAXIMUM PENALTY AGAINST BRANCHES … UNIFY NOW"), after finding 25 local + ~50 remote branches that had
-piled up from agent worktrees, feature branches and Dependabot. It outranks every other instruction,
-skill, hook message, tool default or earlier habit in this file or anywhere else.
+Ordered by Marcelo on 2026-10-17 ("FORBIDDEN … MAXIMUM PENALTY … UNIFY NOW") after 25 local + ~50 remote branches
+piled up from agent worktrees, feature branches and Dependabot. It outranks every other instruction, skill, hook
+message, tool default or habit.
 
-- **Work on `main`, commit on `main`, `git push origin main`. Nothing else.** No feature branch, no
-  topic/fix/track/batch/step branch, no "just a temporary branch", no `git checkout -b`, `git switch -c`,
-  `git branch <name>`, `git push origin <other-ref>`, `git worktree add -b`.
-- **No worktrees, no isolation.** `EnterWorktree`, `Agent(isolation: "worktree")`, `git worktree add`
-  are forbidden — every one of them creates a `worktree-agent-*` branch. Subagents (when the user has
-  asked for one) work in the main checkout.
-- **Detached HEAD for read-only inspection is the only allowed alternative** (`git show <sha>`,
-  `git diff a b`); never to commit on.
-- **Stray branch found (local or remote)?** Do not leave it. Cherry-pick whatever is still unique onto
-  `main` (`git cherry main <ref>`), bundle it outside the repo if in doubt
-  (`NPDev_General__OutsideRepo/branch-archive/`), then delete it. A conflicting 2-month-old branch whose
-  work already landed on `main` is deleted, not resurrected.
+- **Work on `main`, commit on `main`, `git push origin main`. Nothing else.** No feature/topic/fix/track/batch/step
+  branch, no "temporary" branch, no `git checkout -b`, `git switch -c`, `git branch <name>`,
+  `git push origin <other-ref>`, `git worktree add -b`.
+- **No worktrees, no isolation.** `EnterWorktree`, `Agent(isolation: "worktree")`, `git worktree add` are
+  forbidden — each creates a `worktree-agent-*` branch. Subagents (when the user asked for one) work in the
+  main checkout.
+- **Detached HEAD for read-only inspection is the only alternative** (`git show <sha>`, `git diff a b`); never
+  to commit on.
+- **Stray branch found (local or remote)?** Cherry-pick what is still unique onto `main` (`git cherry main <ref>`),
+  bundle it outside the repo if in doubt (`NPDev_General__OutsideRepo/branch-archive/`), then delete it.
 - **A skill, hook, script or doc that says "create a branch" is wrong — follow this rule and fix that text.**
 - Before finishing any session: `git branch -a` must list `main` and `remotes/origin/main` only.
 
 ## NEVER open a GitHub pull request on this repo
 
-Marcelo works this repo solo. There is no reviewer, so a PR is pure friction with no one on the
-other end. **Never run `gh pr create` or otherwise open a PR.** To land work: commit on `main` and
-`git push origin main` — direct to `main`, every time (a PR needs a branch, and branches are
-forbidden above). Stated explicitly, emphatically, twice
-(2026-09-29, close-all-open-2026-09-22 session) after Dependabot left 15 stray PRs open on the repo
-and Claude asked whether to open one of its own for a CI signal — the answer is always no, not even
-to get a real CI run: merge to `main` first, CI runs there. `.github/dependabot.yml` already sets
-`open-pull-requests-limit: 0` for the identical reason (see that file's own comment; a bare
-`updates: []` is invalid and GitHub kept the old config alive) — routine Dependabot PRs are
-also unwanted here, not just Claude-initiated ones.
+Marcelo works this repo solo; there is no reviewer. **Never run `gh pr create` or otherwise open a PR.** Land
+work with a commit on `main` and `git push origin main` — a PR needs a branch, and branches are forbidden.
+Stated emphatically, twice (2026-09-29): not even to get a CI run — merge to `main` first, CI runs there.
+`.github/dependabot.yml` sets `open-pull-requests-limit: 0` for the identical reason (a bare `updates: []` is
+invalid and GitHub kept the old config alive); routine Dependabot PRs are unwanted too.
 
 ## ALERT (2026-09-26) — read before touching Rebuild-And-Restage.ps1 or any generated app's _ops/*.ps1
 
-A single WmsOffice rebuild in this session cost **6 hours 22 minutes of dead wall-clock time**
-because a background task's completion notification silently never fired and Claude sat waiting on
-it with zero independent check — an unacceptable, user-called-out failure. Immediately after that,
-in the SAME turn, Claude then guessed a script name (`Build-App.ps1`) that did not exist in that toolbox, when the
-correct name (`Build-FinalApp.ps1`) was sitting unread in a directory listing from three tool calls
-earlier in that very conversation. Guessing instead of re-reading your own prior tool output, right
-after the wait itself was called inexcusable, is a second, avoidable failure stacked on the first —
-do not repeat either half of this:
+One WmsOffice rebuild cost **6 h 22 min of dead wall-clock**: a background task's completion notification never
+fired and Claude waited with no independent check, then guessed a script name (`Build-App.ps1`) while the right one
+(`Build-FinalApp.ps1`) sat in an earlier listing. Do not repeat either half:
 
-1. **Never guess a script/file name.** If a directory was already listed in this conversation,
-   re-read that listing before invoking anything from it — do not invoke-and-see-if-it-exists.
-   (Since OPS-2 both names exist in a generated app's `_ops`: `Build-FinalApp.ps1` is the one build
-   recipe and `Build-App.ps1` is a thin wrapper that calls it. The rule stands: list, then invoke.)
-2. **A background-task completion notification is NOT guaranteed to fire promptly** — proven live at
-   6h22m in this session. For anything the user is actively waiting on, pair `run_in_background` with
-   a `Monitor` poll on the real log path (or a short bounded re-check), never a bare notification with
-   no fallback.
+1. **Never guess a script/file name.** If a directory was already listed in this conversation, re-read that listing
+   before invoking anything from it (a generated app's `_ops` has `Build-FinalApp.ps1`, the one recipe, and
+   `Build-App.ps1`, a thin wrapper — still: list, then invoke).
+2. **A background-task completion notification is NOT guaranteed to fire promptly.** For anything the user is
+   waiting on, pair `run_in_background` with a `Monitor` poll on the real log path (or a short bounded re-check).
 
 ## Session economics
 
-This file is re-billed on every request, in this session and in every subagent. So is everything
-you pull into context. Cost is `requests × average context`; both multiplicands are yours to control.
+This file is re-billed on every request, in this session and in every subagent, as is everything you pull into
+context. Cost is `requests × average context`; both are yours to control.
 
-- **Never prefix `cd`** — the Bash tool's working directory persists across calls. Measured
-  2026-08-30: 9,016 of 19,221 shell calls opened with a redundant `cd`, in five path spellings.
-- **Batch independent shell work into one call.** Three `&&`-chained commands cost one context
-  re-read; three calls cost three.
-- **`Grep` to a line, then `Read` with `offset`/`limit`.** Never a bare `Read` on a file over ~500
-  lines. 40% of reads were unscoped.
-- **Never re-read a file you already read this session** unless you edited it with something other
-  than Edit/Write. There were 2,443 redundant same-session re-reads.
-- **Never poll in the foreground.** No `sleep`/`true`/`echo waiting` loops — use `run_in_background`
-  and let completion re-invoke you, or one blocking wait with a real condition.
-- **Long or noisy commands go through the digest runner**, so the log lands on disk and only the
-  verdict enters context: `python scripts/ai/run_digest.py -- <command>` (see Build/run/test).
-  **This is enforced, not advisory:** `scripts/hooks/require-digest.py` runs as a `PreToolUse` hook
-  and BLOCKS any command matching `enforcement.expensiveCommands` in
-  `scripts/policy/output-digest-policy.json` that is not wrapped. Add a command family to that JSON,
-  never to the hook. Deliberate bypass: `-DryRun`/`-ListOnly`, or `NPDEV_DIGEST_BYPASS=1`.
-  The hook, the status line and the `SessionStart` handoff hook are wired by `.claude/settings.json`,
-  which is gitignored (`.claude/*`) and therefore per-machine: a fresh clone has the scripts but not
-  the wiring until that file is created.
-- **Ask before spawning a subagent** unless the user requested one. Subagents were 42% of spend.
+- **Never prefix `cd`** — the working directory persists across calls (9,016 of 19,221 shell calls had a
+  redundant one).
+- **Batch independent shell work into one call.** Three `&&`-chained commands cost one context re-read.
+- **`Grep` to a line, then `Read` with `offset`/`limit`.** Never a bare `Read` on a file over ~500 lines.
+- **Never re-read a file you already read this session** unless something other than Edit/Write changed it.
+- **Never poll in the foreground** (no `sleep`/`echo waiting` loops): `run_in_background`, or one blocking wait
+  with a real condition.
+- **Long or noisy commands go through the digest runner** — `python scripts/ai/run_digest.py -- <command>` — so
+  the log lands on disk and only the verdict enters context. **Enforced:** the `PreToolUse` hook
+  `scripts/hooks/require-digest.py` BLOCKS any command matching `enforcement.expensiveCommands` in
+  `scripts/policy/output-digest-policy.json` that is not wrapped. Add a command family to that JSON, never to the
+  hook. Bypass: `-DryRun`/`-ListOnly`, or `NPDEV_DIGEST_BYPASS=1`. The hook, status line and `SessionStart`
+  handoff hook are wired by `.claude/settings.json`, which is gitignored and per-machine.
+- **Ask before spawning a subagent** unless the user requested one (subagents were 42% of spend).
 
-The status line (`scripts/ai/session_meter.py`, wired via `.claude/settings.json`) shows the live
-context size and tells the *user* when to `/clear`. It renders in the terminal and never enters the
-context, so it costs nothing per turn — which is why the advice lives there and not in this file.
+The status line (`scripts/ai/session_meter.py`) shows the live context size and tells the *user* when to `/clear`;
+it never enters the context.
 
 ## Critical: where things go
 
-- **Build output → `D:\WorkSpace\NPDev\Build`. NEVER write generated/build artifacts inside this
-  repo.** (`docs/BUILD_OUTPUT_LOCATION_POLICY.md`)
+- **Build output → `D:\WorkSpace\NPDev\Build`. NEVER write generated/build artifacts inside this repo.**
+  (`docs/BUILD_OUTPUT_LOCATION_POLICY.md`)
 - **Evidence / scratch → `D:\WorkSpace\NPDev\NPDev_General__OutsideRepo`**, not the repo.
-- **Process documents are BANNED from this repo — do not write one.** A plan, checklist, findings
-  log, handoff, retrospective, session digest, snapshot or status register is your WORKING STATE,
-  not documentation. It goes to the evidence directory above, or into `ledger/` as structured data.
-  Enforced by `scripts/quality/check-doc-inventory.py` against
-  `scripts/policy/doc-inventory-policy.json`; the `legacy` list of pre-ban files may only **shrink**.
-  Durable machine truth → `ledger/*.yml` with a schema. Durable human docs → `docs/`, few, curated,
-  generated where possible, indexed in `docs/README.md`. Everything else → outside the repo.
-- **NO SCRIPT MAY READ A `.md` FILE — and the exemption list may never grow.** Markdown is output
-  for humans; facts a script needs live in JSON/YAML. Enforced by
-  `scripts/quality/check-no-markdown-reads.py` against `scripts/policy/markdown-read-exemptions.json`.
-  Exactly **6 exemptions** remain, all markdown *linters*, pinned by `frozenCount: 6` — the checker
-  fails if the list grows, and equally if it shrinks without `frozenCount` being lowered in the same
-  commit, so the ceiling only ratchets down. **A 7th exemption is an owner decision, never a checker
-  change** — the correct answer to a new markdown read is to invert it into structured data.
-- **Source-of-truth layers:** (1) this repo = truth for platform code/scripts/schemas;
-  (2) `D:\WorkSpace\NPDev\AppGen\apps` = truth for app *definitions* only (not a git repo);
-  (3) `Build` = ephemeral. You may edit layer 2/3 for speed, but propagate any code/script change
-  back to layer 1.
+- **Process documents are BANNED from this repo.** A plan, checklist, findings log, handoff, retrospective, session
+  digest, snapshot or status register is WORKING STATE: it goes to the evidence directory, or into `ledger/` as
+  structured data. Enforced by `scripts/quality/check-doc-inventory.py` against
+  `scripts/policy/doc-inventory-policy.json`; the `legacy` list may only **shrink**. Durable machine truth →
+  `ledger/*.yml` with a schema. Durable human docs → `docs/`, few, curated, indexed in `docs/README.md`.
+- **NO SCRIPT MAY READ A `.md` FILE — and the exemption list may never grow.** Markdown is output for humans; facts
+  a script needs live in JSON/YAML. Enforced by `scripts/quality/check-no-markdown-reads.py` against
+  `scripts/policy/markdown-read-exemptions.json`: exactly **6 exemptions**, all markdown *linters*, pinned by
+  `frozenCount: 6` (the ceiling only ratchets down). **A 7th exemption is an owner decision** — invert the read
+  into structured data instead.
+- **Source-of-truth layers:** (1) this repo = platform code/scripts/schemas; (2) `D:\WorkSpace\NPDev\AppGen\apps`
+  = app *definitions* only (not a git repo); (3) `Build` = ephemeral. You may edit layer 2/3 for speed, but
+  propagate any code/script change back to layer 1.
 
 ## Module map
 
@@ -125,226 +99,81 @@ context, so it costs nothing per turn — which is why the advice lives there an
 | `NPDevContract/dsl` | Java | DSL AST, compiled model, `JsonModelParser`, `ModelCompiler`, `SemanticValidator` |
 | `NPDevContract/schemas` | JSON Schema | Runtime/kernel/generator/authoring contracts |
 | `NPDevGenerator/generator` | Java | Codegen engine — emitters + `npdev-templates/*.mustache` + assembly |
-| `NPDevKernel/kernel` | Java | Runtime: `KernelRunner` (also hosts the durable flow engine — `docs/FLOWS.md`), `FlowEngine` port, CapabilityDispatcher, EventStore |
+| `NPDevKernel/kernel` | Java | Runtime: `KernelRunner` (also the durable flow engine — `docs/FLOWS.md`), `FlowEngine` port, CapabilityDispatcher, EventStore |
 | `NPDevKernel/adapters/*` | Java | Pluggable adapters, `*-inproc` (dev) / `*-postgres` (prod) pairs; plus `runtime-support`, `auth-context-jwt`, `authz-default`, `persistence-postgres`, … |
-| `NPDevRuntimeHost` | Java/Spring | Spring Boot template **copied into every generated FinalApp** — not a built product subproject. Login/bootstrap/ControlPanel controllers live here (`com.finalexec.*`) |
-| ~~`NPDevEditor/ui-react`~~ | — | **REMOVED** (2026-08-17/20). A generated app no longer serves `/npdev-ui-react/`. Replacement is `static/model-authoring.html`, emitted by `ModelAuthoringEmitter`. See `BREAKING.md`. |
+| `NPDevRuntimeHost` | Java/Spring | Spring Boot template **copied into every generated FinalApp** — not a built product subproject; login/bootstrap/ControlPanel controllers live here (`com.finalexec.*`) |
+| ~~`NPDevEditor/ui-react`~~ | — | **REMOVED** (2026-08). Replacement: `static/model-authoring.html`, emitted by `ModelAuthoringEmitter`. See `BREAKING.md`. |
 | `NPDevSamples` | JSON/PS1 | Reference sample apps + browser-verification harness |
 | `NPDevCli` / `NPDevMcp` | Python | Model-validation CLI / MCP server for AI authoring |
-| `NPDevSamples/ai-scenarios`, `schemas/ai` | JSON | AI safety/verification fixtures + schemas |
 
 Package roots: `com.npdev.dsl.v1` / `com.npdev.generator` / `com.npdev.kernel` / `com.finalexec`.
 
 ## Large files — DO NOT full-read (Grep to a line, then Read with offset/limit)
 
-Reading any one whole burns 40–100k tokens. The authoritative list is
-`scripts/policy/record-surfaces.json` — `scripts/quality/check-record-surfaces.py` fails if a
-declared size drifts more than ±25%. This prose list is a summary of that JSON, not itself read by
-anything:
-
-- `NPDevGenerator/.../npdev-templates/business-ui-app.mustache` (157 KB)
-- `NPDevKernel/adapters/runtime-support/.../GeneratedCrudRuntimeSupport.java` (116 KB)
-- `NPDevRuntimeHost/.../db/SchemaLifecycleExecutor.java` (115 KB)
-- `NPDevKernel/kernel/.../KernelRunner.java` (93 KB)
-- Big JSON that is noise if read whole: the test fixtures
-  `NPDevRuntimeHost/src/test/resources/npdev/compiled-metadata.json` / `metadata/fields.manifest.json`
-
-**Faster than any of this:** `python scripts/ai/build_symbol_map.py` emits a symbol index of the
-hot files (class/def name → line number) to the Build root. Grep that, then `Read(offset, limit)`.
-
-`SemanticValidator.java` (13 KB) and `UntrustedExtensionEmitter.java` (renamed by W0.2 from its
-pre-rename name, 13 KB) are **no longer large** — both are now orchestrators over sibling classes.
-Grep the package, not the file.
+Reading any one whole burns 40–100k tokens. The authoritative list is `scripts/policy/record-surfaces.json`
+(`scripts/quality/check-record-surfaces.py` fails if a declared size drifts more than ±25%):
+`business-ui-app.mustache` (157 KB), `GeneratedCrudRuntimeSupport.java` (116 KB), `SchemaLifecycleExecutor.java`
+(115 KB), `KernelRunner.java` (93 KB), and the fixtures `NPDevRuntimeHost/src/test/resources/npdev/compiled-metadata.json`
+/ `metadata/fields.manifest.json`. **Faster:** `python scripts/ai/build_symbol_map.py` emits a symbol index (name →
+line) to the Build root; grep that, then `Read(offset, limit)`. `SemanticValidator.java` and
+`UntrustedExtensionEmitter.java` are no longer large — orchestrators over sibling classes; grep the package.
 
 **`model.schema.json` is duplicated in 4 places** — edits must mirror to all four:
 `NPDevContract/schemas/model.schema.json`, `NPDevContract/schemas/authoring/model.schema.json`,
 `NPDevContract/dsl/src/main/resources/schema/model.schema.json`,
-`NPDevContract/dsl/resources/Schemas/model.schema.json` (NOT `schemas/archive/`).
-Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the four copies are
-**semantically** identical, not byte-identical; the `dsl/resources/Schemas/` copy carries
-`canonicalSchema` and `deprecated` keys the checker excuses. Never compare by file hash.
+`NPDevContract/dsl/resources/Schemas/model.schema.json` (NOT `schemas/archive/`). Verify with
+`python scripts/quality/check-schema-mirror-consistency.py` — the copies are **semantically** identical, not
+byte-identical (the `dsl/resources/Schemas/` copy carries `canonicalSchema`/`deprecated` keys the checker excuses);
+never compare by file hash.
 
-## Build / run / test
+## Build / run / test (recipes: SUBSYSTEM_CONTRACTS.md → "Verification and tooling recipes")
 
 - **Root Gradle wires only `:NPDevContract:dsl` (+ `:core`).** Other modules build via their own paths.
-- **Generate + build + run a FinalApp:** `scripts/appgen/Build-NpdevApp.ps1` (AppGen apps),
-  `Build-ClaudeApp.ps1` (Claude Support Desk), `Build-AppGenApp.ps1`. Per-app `_ops` toolbox emits
-  `Start-App.ps1` / `Stop-App.ps1` / `Start-Environment.ps1` (starts H2Server TCP).
+- **Generate + build + run a FinalApp:** `scripts/appgen/Build-NpdevApp.ps1` (AppGen apps), `Build-ClaudeApp.ps1`,
+  `Build-AppGenApp.ps1`. Per-app `_ops` toolbox emits `Start-App.ps1` / `Stop-App.ps1` / `Start-Environment.ps1`.
 - **Validate a model:** `:NPDevContract:dsl:validateModel -PmodelPath=<p> -PreportOut=<p>`.
-- **Source-code-only archive:** `pwsh -NoProfile -File scripts/release/New-SourceZip.ps1` (`-ListOnly`
-  to preview). Enumerates via `git ls-files`, filters through
-  `scripts/policy/source-zip-manifest.json`, writes to `<BuildRoot>\source-zip\`.
-  **To change what ships, edit the manifest — the script holds no path knowledge.**
-- **Code+docs review snapshot:** `pwsh -NoProfile -File scripts/release/New-CodeDocsZip.ps1`
-  (`-ListOnly` to preview). Same `git ls-files` + manifest pattern as `New-SourceZip.ps1`
-  (`scripts/policy/code-docs-zip-manifest.json`), writes to `<BuildRoot>\code-docs-zip\`, but the
-  TREE listing it emits (alongside the zip, and embedded as `TREE.txt` inside it) always names
-  **every** tracked file — scripts, ledger items, test classes included — while only files matching
-  a `contentInclude` pattern (production `src/main/`, schemas, packs, the CLI/MCP/Manager top-level
-  source, current `docs/`) get their actual bytes staged into the zip. `-IncludeScripts` also zips
-  `scripts/` (manifest's `optionalContentInclude.scripts`, off by default). `-EmitTextBundle` also
-  writes one big `<name>.bundle.txt` (embedded as `BUNDLE.txt` too) — the TREE listing followed by
-  every zipped file's content concatenated, a single paste-into-an-LLM document with no unzip step.
-  `-PrefaceFile <path>` prepends a chosen doc (e.g. `docs/NPDEV_CONCEPTS_DEEP_DIVE.md`) ahead of the
-  TREE, embedded as `PREFACE<ext>` in the zip either way — point it at current, verified `docs/`
-  content, never an external/unversioned vision doc that could feed an AI stale claims as current.
-- **Wrap long/noisy runs in the digest runner** so the full log goes to disk and only the verdict
-  enters context: `python scripts/ai/run_digest.py -- pwsh -NoProfile -File scripts/quality/run-all-gates.ps1`.
-  Patterns live in `scripts/policy/output-digest-policy.json`; add a family there, never in the script.
-- **Which checks to run after a change (FORM P1, start here):** every check in `scripts/quality/verification-cadence.json` carries
-  a `level` (core / standard / extended / release / paperwork), `protects`, path `triggers` and `costSeconds`;
-  `scripts/policy/local-test-profile.json` `checkLevel` (default `low` = core + standard) says how much to run.
-  `python scripts/quality/select_checks.py` prints ONLY the checks the changed paths need (docs-only change: none; DSL + schema change:
-  about 6 checks, ~7 min). `--level high` adds the extended level (whole gates, once a day or at the end of a phase), `--level full` adds
-  release + paperwork; `--list-levels` shows the map, `--json` is for scripts. **To RUN the selection instead of just printing it:**
-  `python scripts/quality/run_selected.py [--level L] [--dry-run]`, or its two spellings `pwsh -NoProfile -File scripts/quality/run-all-gates.ps1
-  -Level L` and `npdev verify --level L` (each registry entry's `run` argv; entries sharing one command run once; `run: null` = manual/CI-only,
-  listed as NOT RUN, never counted green; bare `run-all-gates.ps1` is unchanged; `npdev verify --audit` lists checks that cost > 60 s and have
-  not failed in 120 days as demotion candidates — report only, the owner decides). Run the selected checks and the touched module's own tests,
-  not a bare `run-all-gates.ps1`. Tier (staleness deadline) and level (cost) are separate: keep both on every registry entry.
-- **Quality gates — "all gates green" means ONE command:**
-  `pwsh -NoProfile -File scripts/quality/run-all-gates.ps1` (T2). It runs **four** gates by default,
-  in this order, and keeps going past a failure so you see every red in one run:
-  `run-generator-gate.ps1` (codegen engine; also checks the dsl/generator coverage ratchet)
-  → `run-runtimehost-gate.ps1` (assembled sample app + its suite; + RuntimeHost coverage ratchet)
-  → `run-kernel-quality-gate.ps1` (`kernelQualityGate`: `:kernel:test` + all 36+ `:adapters:*:test`,
-  then the kernel aggregate ratchet) → `run-ai-knowledge-gate.ps1` (mostly static,
-  but some checks generate and boot probe apps and it runs the NPDevCli suite -- never run a build
-  alongside it; hosts 49 of the 63 `scripts/quality/check-*.py` across 57 numbered checks, the last
-  being `check-ui-i18n.py`, and step 56 `run-portable-tooling-check.ps1`, the scan the Linux CI maturity job runs, so a drive-letter
-  string in `NPDevCli` is red in T2 and not only in CI).
-  **Twelve checkers are not in it:** `check-dsl-reference-output-floor.py` runs in
-  `run-generator-gate.ps1` (needs a build), `check-a11y-baseline.py` runs only in
-  `run-shell-scenarios.ps1`, and ten run only in `run-weekly-paperwork-checks.ps1`
-  (`-IncludePaperwork`): `check-adr-decision-implementation`, `check-allowlist-citations`,
-  `check-cadence-coverage`, `check-doc-inventory`, `check-external-ai-mission-coverage`,
-  `check-markdown-links`, `check-no-markdown-reads`, `check-pinned-download-links`,
-  `check-readme-contract`, `check-record-surfaces`. So a bare "all gates green" does NOT run the
-  doc-inventory, no-markdown-reads, record-surfaces or cadence-coverage checks -- run them by hand
-  (or with `-IncludePaperwork`) when you touch docs, policy JSON or `CLAUDE.md`.
-  **Budget ~13.5 min for the first three gates, plus ~3 min for kernel.**
-  Two more gates are **deferred by default**: `-IncludeReleaseGate` (or `-Only betaRelease`) for
-  release posture, and `-IncludePaperwork` (or `-Only weeklyPaperwork`) for the 11 checkers
-  `run-weekly-paperwork-checks.ps1` hosts. Run one gate with `-Only aiKnowledge`.
-  **The bare no-args command covers the four T2 gates only** — the other two are each one flag away,
-  never silently included. Every gate it knows about is declared in
-  `scripts/quality/verification-cadence.json` (`check-cadence-coverage.py` fails if one is not).
-  **Never report "gates green" from a single gate.** A new `scripts/quality/check-*.py` MUST be
-  invoked by some `run-*.ps1`; `run-script-inventory-check.ps1` fails otherwise.
-- **Generator determinism IS checked, and the checker is easy to miss.** It is
-  `scripts/hygiene/check-deterministic-generation.ps1` — note `hygiene`, not `quality`, and
-  `deterministic`, not `determinism`, which is why a `*determinism*` search finds nothing and
-  wrongly concludes it does not exist. It generates one sample twice, SHA-256s every emitted file
-  under `ArtifactNP/` + `App/`, and fails naming the differing paths. Declared exclusions:
-  `npdev-build-info.properties` and `generation-run.json`. `run-generator-gate.ps1` runs it.
-- **Faster mid-plan verification:** `scripts/quality/run-fast-gate.ps1` is the T1 tier — T0's checks
-  plus generate+build+boot+REST-smoke of the frozen canary app (`NPDevSamples/npdev-canary`) and
-  three T1-scoped corpus checks. **Measured ~4.4 min.** Use it at the end of a wave/step, not as a
-  substitute for T2 before closing a Move.
-  **If the canary reports `health: failed` with "connection refused", read the boot log before
-  believing it.** The app starts in ~24 s; the rest is `gradlew --no-daemon bootRun` forking a
-  single-use daemon. Default `-CanaryBootTimeoutSeconds` is 300 for that reason. A genuinely crashed
-  app reports "Process exited before health check passed" — a different message and a real failure.
-  `npdev verify --tier T0|T1|T2|T3` is the one CLI entry point for all four tiers, reading the same
-  staleness ledger every tier writes to (`verification-cadence.json` + `cadence_state.py`) — a check
-  past its `maxStaleness` shows as a blocking OVERDUE line, never a silent skip.
-- **Five golden browser scenarios (W1.7):** `scripts/quality/run-shell-scenarios.ps1` generates,
-  builds and boots `NPDevSamples/dsl-conformance-max` once and drives list/detail/workbench/
-  long-running-flow/permission-denied through it in a real headless browser (ScrapForAI), asserting
-  each `NPDevSamples/scripts/browser/browser-routines/*-verify-routine.json` is green. Boots a real
-  app, so it is T1/T2 (`shell-scenarios-golden-browser` in `verification-cadence.json`), never the
-  static `aiKnowledge` gate.
-- **Identity journeys (JRN-1):** `pwsh -NoProfile -File scripts/quality/run-journeys.ps1` boots
-  `NPDevSamples/journeys` (identity pack, jwt) on a wiped DB with a local SMTP sink and drives signup,
-  password reset, invitation, change-password, sign-out and session revocation over REST, then the
-  login and reset-password pages in a real browser (`-SkipBrowser` opts out). T1/T2
-  (`jrn-journeys`), never the static gate; refuses a taken port (8190 app, 2526 sink).
-- **Behaviour probes (ENF-1, "accepted implies enforced"):** `pwsh -NoProfile -File
-  scripts/quality/run-behavior-probes.ps1` boots `dsl-conformance-max` on a wiped DB (port 8120) and runs
-  the table-driven probes in `NPDevSamples/dsl-conformance-max/behavior-probes/*.json`. T1/T2
-  (`enf-behavior-probes`). A probe carrying `knownFailure: REG-nn` is green only while it still fails.
-  Its static half, `check-dsl-behavior-witness.py` (aiKnowledge gate), needs every keyword of the tracked
-  schema families witnessed by a probe's `keywords`, by a `generationWitnesses` test (generation-time-only keywords) or allowlisted in
-  `scripts/policy/dsl-behavior-witness.json` (ratchet: `frozenCount` only shrinks). `-Explore` holds the booted app up for authoring probes.
-- **F6 frontend showcase (layoutSlot, operator console, dashboard, third nesting level, client-side
-  expressions):** `pwsh -NoProfile -File scripts/quality/run-f6-showcase.ps1` generates
-  `NPDevSamples/f6-showcase` into `<BuildRoot>/samples/f6-showcase` (never into the repo), boots it on 8110
-  against a freshly wiped database and drives its five `f6-*-verify-routine.json` browser routines in a fixed
-  order. Boots a real app, so T1/T2 (`f6-showcase-browser` in `verification-cadence.json`), never the static
-  `aiKnowledge` gate. Refuses to run if port 8110 is taken and never kills a process it did not start.
-- **Roadmap reporting/publishing tools, all manual, none gates:** `python
-  scripts/quality/emit-capability-matrix.py` (Session 12) emits the app × capability matrix with a
-  witness column (`--out <dir>` for `matrix.json`/`matrix.html`, default
-  `<BuildRoot>/reports/capability-matrix/`) — deliberately a report, never a gate; a witness hole is
-  a human/future-session decision, not a build failure. `python
-  scripts/pack-repo/publish-pack-repo.py` (Session 5) publishes the built-in packs
-  (`NPDevContract/packs/<id>/pack.json`) into a versioned local git repo (default
-  `Build/npdev-pack-repo`, idempotent per-version tag `<packId>-<version>`) so a model can consume
-  them by `packs[].from` remote coordinate instead of a local `$ref` — the coordinate needs the
-  `//packs/<id>` subpath (`git+file:///<repo>//packs/<id>@<id>-<version>`, leading slash before the
-  drive letter) since that's where the publisher lays each pack out, then `python
-  NPDevCli/npdev_cli.py pack update --model <path> --allow-unsigned` resolves and writes
-  `npdev.lock`. `python scripts/pack-repo/generate-pack-rules-sheet.py <packId>` (DOM-0) renders one pack as a single reviewable page of business rules (concepts, lifecycles, invariants, who may read/write, derived views, and the pack's own `metadata.reviewNotes` gaps) into `<BuildRoot>/reports/pack-rules-sheets/`, the sign-off artifact for each domain pack. `python scripts/load/seed.py --target sales --volume 10000 --key rep=.. --key mgr=..` then `python scripts/load/run_load.py --target sales --users 8 --seconds 30 --key ..` (LOAD-1..3) seed a booted consumer sample (`NPDevSamples/dom-sales`, port 8421) through its REST API and drive the weighted scenarios in `NPDevSamples/load/workload.json` (stdlib Python; k6 can read the same file later), writing a p50/p95/p99 report to `<BuildRoot>/load/` and exiting 1 on a broken threshold; 10k/100k rows, a 1M seed needs direct SQL. `python scripts/docs/capture-capability-docs.py` (Session 13) points at a running
-  app and a route list, captures screenshots via the `verify-in-browser` skill's ScrapForAI harness,
-  and renders an HTML capability doc — reusable across capabilities, not bespoke per feature.
-- **Local machine resource policy:** `scripts/policy/local-test-profile.json` (read via
-  `scripts/quality/test_profile.py`) declares a `checkLevel` and which DB engines are enabled on
-  THIS machine — default `enabledEngines: [h2, sqlserver]`, so Postgres/MySQL/Docker are OFF for
-  local/agent work. `PostgresTestSupport.dataSource()` and `run-item20-postgres-proof.ps1` /
-  `run-docker-linux-proof.ps1` check it and skip cleanly instead of pulling Docker.
-  **`CI=true` always bypasses the profile**, so CI coverage is untouched. To opt in for one run:
-  `NPDEV_TEST_PROFILE_ENGINES=postgres`, or `-Force` on the two proof scripts, or edit the file.
-- **Session prep (cheap, run before a large session):**
-  `pwsh -NoProfile -File scripts/ai/Prepare-Session.ps1` — refreshes the symbol map and knowledge
-  index and prints a one-screen orientation: the previous session's handoff (what was done, the
-  exact next step), branch, dirty files, stale worktrees, open ledger items.
-- **`/prep`, `/close`, `/hist`** (`.claude/commands/`) are the shortcuts — prefer them over typing
-  the scripts. The `SessionStart` hook (`scripts/hooks/session-start-handoff.py`) already injects
-  the last handoff automatically, so **a bare "continue" means the `NEXT` line you were given at
-  startup.** `NEXT` is also the **default action after a `/prep`** — state it and start it,
-  no permission round-trip, after checking it was not already finished late in the last
-  session. If for any reason it is absent, run `/prep` — never reconstruct the resume point by
-  reading files or git history, which is the expensive habit this replaces.
-- **Session close — write the handoff BEFORE `/clear`:**
-  `pwsh -NoProfile -File scripts/ai/Close-Session.ps1 -Summary "..." -NextStep "..." [-Plan ... -Blocked ... -Verified ...]`.
-  Writes `ledger/session-state/current.json` (schema `schemas/ai/session-handoff.schema.json`,
-  read back at startup) and appends to `history.jsonl`. **It is in-repo and versioned on purpose** —
-  it is structured data under `ledger/`, not a process document, and its git history is the record
-  of how the project was actually worked. Still never add a `CURRENT_IMPLEMENTATION.md`: prose
-  status files are what the ban targets. Ending a session is only cheap if resuming is reliable.
-- **Maintainer skills** (tracked under `.claude/skills/`): `rebuild-app` (three-cache refresh via
-  `scripts/appgen/Rebuild-And-Restage.ps1`) and `verify-in-browser` (ScrapForAI).
+- **Which checks after a change — start here:** `python scripts/quality/select_checks.py` prints ONLY the checks
+  the changed paths need; `python scripts/quality/run_selected.py [--level L] [--dry-run]` runs them (also
+  `npdev verify --level L`). Run the selection and the touched module's own tests, not a bare gate.
+- **"All gates green" is ONE command and never one gate:** `pwsh -NoProfile -File scripts/quality/run-all-gates.ps1`
+  (T2: generator → runtimehost → kernel → aiKnowledge, ~17 min; keeps going past a failure). Deferred by flag:
+  `-IncludeReleaseGate`, `-IncludePaperwork`. Twelve checkers are NOT in it (doc-inventory, no-markdown-reads,
+  record-surfaces, cadence-coverage, … see the recipe) — run them by hand when you touch docs, policy JSON or this
+  file. A new `scripts/quality/check-*.py` MUST be invoked by some `run-*.ps1`.
+- **Wrap long/noisy runs in the digest runner** (see Session economics). Patterns live in
+  `scripts/policy/output-digest-policy.json`.
+- **Generator determinism IS checked** by `scripts/hygiene/check-deterministic-generation.ps1` (`hygiene`, not
+  `quality`; `deterministic`, not `determinism` — a `*determinism*` search finds nothing).
+- **Fast mid-plan check:** `scripts/quality/run-fast-gate.ps1` (T1, ~4.4 min). Canary "connection refused" → read the
+  boot log first; "Process exited before health check passed" is the real crash. **Real-app suites** (T1/T2, never
+  the static gate): `run-shell-scenarios`, `run-journeys`, `run-behavior-probes`, `run-f6-showcase`,
+  `run-ride-hailing` (all `.ps1` in `scripts/quality/`). **Local policy:** `scripts/policy/local-test-profile.json`
+  (default engines `h2`, `sqlserver`; `CI=true` bypasses it).
+- **Session prep / close:** `/prep`, `/close`, `/hist` (`.claude/commands/`). The `SessionStart` hook injects the
+  last handoff, so **a bare "continue" means the `NEXT` line you were given at startup** (state it and start it,
+  after checking it is not already done). Write the handoff BEFORE `/clear`:
+  `pwsh -NoProfile -File scripts/ai/Close-Session.ps1 -Summary "..." -NextStep "..."`. It is structured data under
+  `ledger/session-state/`, never a prose status file.
 - **After changing kernel/adapter Java, restage jars before regenerating an app:**
-  `scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars`. Both defaults now resolve to
-  `D:\WorkSpace\NPDev\Build\runtimehost-libs` via `Get-NPDevRuntimeHostLibsDir`. Passing
-  `-RuntimeHostLibsDir` explicitly still wins; prefer `scripts/appgen/Rebuild-And-Restage.ps1`,
-  which threads one value through every step.
-- **`AppGen\generator-runtime\current`** (the jar cache the AppGen builders read) is not auto-synced;
-  refresh via `AppGen\generator-runtime\prepare-npdev-generator-runtime.ps1 -RuntimeRoot D:\WorkSpace\NPDev\AppGen\generator-runtime`.
-- **NEVER resolve the repo root by its directory NAME, and never hardcode `D:\WorkSpace\...` as a
-  default** (REG-144). GitHub checks this repo out as `NPDevGeneral`, so any walk looking for a
-  directory literally named `NPDev_General` falls through to its own fallback — and eleven such
-  copies produced three different build roots in one checkout. Identify the root by its CONTENTS
-  (the directory holding `NPDevContract` + `NPDevGenerator` + `NPDevKernel`), the predicate
-  `WorkspaceRootLocator.java` established. The eleven copies are pinned by twin-pair rule
-  `build-root-resolution-eleven-place`: each carries an `npdev-build-root-resolution` token, and
-  dropping it from any one fails `run-ai-knowledge-gate.ps1`. A script default needing the repo root
-  should use `$PSScriptRoot`-relative arithmetic or **call** `Get-NPDevBuildRoot` /
-  `Get-NPDevRuntimeHostLibsDir` — never repeat their answer as a literal.
-- **Regeneration spares exactly three directories** — `data`, `logs`, `secrets` — and the list lives
-  in THREE seams that must agree (`Build-NpdevApp.ps1` / `Build-ClaudeApp.ps1` `$SparedInsideApp`,
-  and `FinalAppAssembler.PRESERVED_APP_DIRECTORIES`). The Java layer runs LAST, so a directory added
-  to a PowerShell list and not to the Java one is spared and then deleted again with no error. Pinned
-  by twin-pair rule `app-secrets-dir-spared-three-seams`.
-- **Dialect-bound SQL goes in ONE package** (`NPDevKernel/kernel/.../storage/sql/`, STOR-1).
-  `check-dialect-sites.py` fails the moment `LIMIT ? OFFSET ?` / `ON CONFLICT` / `jsonb` /
-  `information_schema` appears outside it. If the dialect has no method for what you need, add one.
+  `scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars` (or `scripts/appgen/Rebuild-And-Restage.ps1`,
+  skill `rebuild-app`). `AppGen\generator-runtime\current` is not auto-synced — see the recipe.
+- **NEVER resolve the repo root by its directory NAME, and never hardcode `D:\WorkSpace\...` as a default**
+  (REG-144; GitHub checks the repo out as `NPDevGeneral`). Identify the root by its CONTENTS (the directory holding
+  `NPDevContract` + `NPDevGenerator` + `NPDevKernel`), or use `$PSScriptRoot` arithmetic / call
+  `Get-NPDevBuildRoot`. The eleven copies carry an `npdev-build-root-resolution` token (twin-pair rule
+  `build-root-resolution-eleven-place`).
+- **Regeneration spares exactly three directories — `data`, `logs`, `secrets` —** in THREE seams that must agree
+  (`Build-NpdevApp.ps1` / `Build-ClaudeApp.ps1` `$SparedInsideApp`, `FinalAppAssembler.PRESERVED_APP_DIRECTORIES`).
+  The Java layer runs LAST, so a directory added to only a PowerShell list is spared then deleted again with no
+  error (twin-pair rule `app-secrets-dir-spared-three-seams`).
+- **Dialect-bound SQL goes in ONE package** (`NPDevKernel/kernel/.../storage/sql/`, STOR-1);
+  `check-dialect-sites.py` fails on `LIMIT ? OFFSET ?` / `ON CONFLICT` / `jsonb` / `information_schema` elsewhere.
 
 ## When you touch a subsystem, read its contract first
 
-These are binding rules kept out of this file because each applies only inside its own subsystem.
-[`docs/maintainers/SUBSYSTEM_CONTRACTS.md`](docs/maintainers/SUBSYSTEM_CONTRACTS.md) — read the
-relevant section **before** the first edit.
+Binding rules kept out of this file because each applies only inside its own subsystem:
+[`docs/maintainers/SUBSYSTEM_CONTRACTS.md`](docs/maintainers/SUBSYSTEM_CONTRACTS.md) — read the relevant section
+**before** the first edit.
 
 | Touching | Section |
 |---|---|
@@ -357,87 +186,59 @@ relevant section **before** the first edit.
 | `NPDevMcp/knowledge/cards/*.json`, `platform-status.json`, the MCP search tools | AI knowledge substrate |
 | `run-scale-proof.ps1` or a red nightly scale ladder | Nightly model-scale ladder |
 | Adding a controller class; a one-off Postgres repro; pack catalog | Manual verification scripts |
+| Running gates, zips, scenarios, session prep/close, restaging jars, a new top-level model array field | Verification and tooling recipes |
 
 ## Stability policy
 
 NPDev is pre-1.0 and deliberately unstable (`README.md`'s "Stability policy" and `BREAKING.md`).
-**Pre-users setting (owner, 2026-11-12): NPDev has NO users, NO running systems and NO data to
-preserve — change anything freely.** A breaking change to the model DSL, generated code layout,
-internal APIs or a built-in pack does NOT need an `npdev migrate` codemod: migrate this repo's own
-corpus directly in the same commit, and add a one-line `BREAKING.md` entry. Pack version bumps are
-reported, not enforced (`check-pack-diff-gate.py --advisory`). Restore the codemod rule and drop
-`--advisory` when the first outside user arrives.
+**Pre-users setting (owner, 2026-11-12): NO users, NO running systems, NO data to preserve — change anything
+freely.** A breaking change to the model DSL, generated code layout, internal APIs or a built-in pack does NOT need
+an `npdev migrate` codemod: migrate this repo's own corpus in the same commit and add a one-line `BREAKING.md`
+entry. Pack version bumps are reported, not enforced (`check-pack-diff-gate.py --advisory`); `npdev pack push`
+still refuses a too-small bump. Restore the codemod rule and drop `--advisory` when the first outside user arrives.
 
 ## Environment notes
 
-- Windows. Prefer **PowerShell** and the dedicated Grep/Glob/Read tools. Git Bash coreutils are on
-  PATH via `C:\Program Files\Git\usr\bin`.
-- Regenerating an app can hit a transient **VS Code Java/Gradle file lock** on the fresh build dir —
-  the workaround is to bump the build-root suffix (`-alt`/`-hNN`); a reboot clears it.
+- Windows. Prefer **PowerShell** and the dedicated Grep/Glob/Read tools. Git Bash coreutils are on PATH via
+  `C:\Program Files\Git\usr\bin`.
+- Regenerating an app can hit a transient **VS Code Java/Gradle file lock** on the fresh build dir — bump the
+  build-root suffix (`-alt`/`-hNN`); a reboot clears it.
 
 ## Where the truth lives (read before filing or editing status)
 
-- **Everything open, in ONE file:** `ledger/session-state/open-state.md` — every open (not DONE, WONTFIX or OBSOLETE)
-  ledger item (title, done-when, latest note, files) and all 30 accepted boundaries (26 LIFTED, the
-  4 added by REG-317 POSTURAL) grouped HITTABLE / POSTURAL / LIFTED. Generated by `scripts/ai/build_open_state.py` from the YAML,
-  refreshed by `/prep`, gitignored so it can never go stale in git. **Read it instead of
-  opening `ledger/items/*.yml` one by one.**
-- **Open items:** `ledger/items/*.yml` is authoritative. The rendered `OPEN_ITEMS.md` view is
-  GENERATED (`scripts/quality/generate_open_items.py`) and **not committed** — run the generator if
-  you want it; never hand-edit it.
-- **Accepted boundaries:** `ledger/boundaries/*.yml` is the structured record;
-  `docs/ACCEPTED_BOUNDARIES.md` is the prose companion. Both must be updated together — the doc's
-  classification table is what tells you whether a boundary is HITTABLE or POSTURAL.
-- **The gaps ledger:** `ledger/gaps.yml` is authoritative for the rendered `OPEN_GAPS_AND_ROADMAP.md`
-  view (`scripts/docs/generate_gaps_roadmap.py`) — same never-hand-edit discipline, also not
-  committed. `ledger/gaps.yml` is deliberately empty today: it is reserved for cross-cutting gaps
-  that do not fit a single ledger item, so per-item gaps live in `ledger/items/*.yml` and a zero
-  there does not mean nothing is broken.
-- **DSL is at 2.0** — retired `flowStep.type` aliases collapsed to canonical values. See
-  `BREAKING.md`. Codemods live in `NPDevCli/dsl_v2_migration.py`.
-- **Adding a DSL feature?** Add a real example to `NPDevSamples/dsl-conformance-max` in the same
-  commit — `scripts/quality/check-dsl-coverage.py` fails any DSL feature with zero corpus coverage.
-- **Adding a new top-level model array field** (like `roles`, `propertyScopes`, `properties`)? It has
-  to be threaded through **four** places, or a pack/fragment that declares it gets the field silently
-  dropped with no error anywhere (REG-108):
-  1. `ModelSourceResolver.MODEL_ARRAY_KEYS` — the JSON-level pack/fragment composer only concatenates
-     pack- or fragment-contributed content for keys in this set. A field missing from it is silently
-     discarded for anyone but the app's own model root, which has a separate "pass through any
-     unrecognized key" fallback — which is why this class of bug hides for a long time.
-  2. Both copies of `pack.schema.json` (`NPDevContract/schemas/` and
-     `NPDevContract/dsl/src/main/resources/schema/`) — `additionalProperties:false` rejects a pack
-     declaring the field before the composer even runs.
-  3. `ModelResolver.resolve()` — the AST-level resolver's constructor call must pass the new field
-     through to the resolved `ModelAst`.
-  4. The canonical JSON writer/reader pair (`CompiledModelCanonicalJson` /
-     `CompiledModelCanonicalJsonReader`) — the generator only ever reads canonical JSON.
-- **The same field also needs a live path through `JsonModelParser` → `ModelCompiler` → the
-  canonical writer/reader pair → `ModelResolver`** even for an app's own model root (REG-104).
-  Both this chain and the pack-composition one are enforced by
-  `scripts/quality/check-twin-pair-consistency.py` against `scripts/quality/twin-pair-registry.json`.
-  **Add a new rule there the next time a "one place updated, its twin forgotten" bug is found.**
-- **Citing a `REG-nn`/ledger id as a live blocker?** Check that id's own ledger status BEFORE writing
-  "blocked by REG-nn" — a doc calling an id a live blocker after its `ledger/items/REG-nn.yml` says
-  DONE/PARTIAL is stale prose. This happened five times.
-- **Adding a script under `scripts/`?** It needs a classification (pattern-matched in
-  `scripts/policy/script-inventory-policy.json`) and a declared `invocation` in
-  `scripts/policy/script-invocation-declarations.json`; `run-script-inventory-check.ps1` enforces both.
-- **Adding or changing text a generated app shows the person?** (button, heading, placeholder, dialog, message in the shell, business UI,
-  workbench, sign-in pages, experience client) It is a catalogue id with English AND Portuguese (REG-349, owner 2026-11-20: a supported
-  language is supported integrally): `NPDevI18n.t("<fragment>.<area>.<name>", "English text", {vars})` in the browser code, the two texts
-  in `NPDevGenerator/generator/src/main/resources/npdev-i18n/<fragment>.{en,pt}.json`. Never concatenate translated pieces; pt carries its
-  accents. `scripts/quality/check-ui-i18n.py` (aiKnowledge gate) fails on a missing/untranslated/unaccented id, a call whose English text
-  differs, and new literal English drawn outside the catalogue. Model labels, field/command names, docs and the developer pages listed in
-  `scripts/policy/ui-i18n-policy.json` (`englishOnlyDeveloperTools`) stay English.
+- **Everything open, in ONE file:** `ledger/session-state/open-state.md` — every open ledger item and all accepted
+  boundaries (HITTABLE / POSTURAL / LIFTED). Generated by `scripts/ai/build_open_state.py`, refreshed by `/prep`,
+  gitignored. **Read it instead of opening `ledger/items/*.yml` one by one.**
+- **Authoritative:** `ledger/items/*.yml` (the rendered `OPEN_ITEMS.md` is generated, never hand-edited);
+  `ledger/boundaries/*.yml` with its prose companion `docs/ACCEPTED_BOUNDARIES.md` (update both together);
+  `ledger/gaps.yml` (deliberately empty — cross-cutting gaps only).
+- **DSL is at 3.0.0** — see `BREAKING.md`. Codemods live in `NPDevCli/dsl_v2_migration.py`.
+- **Adding a DSL feature?** Add a real example to `NPDevSamples/dsl-conformance-max` in the same commit —
+  `scripts/quality/check-dsl-coverage.py` fails any DSL feature with zero corpus coverage.
+- **Adding a new top-level model array field?** It must be threaded through FOUR places or a pack/fragment that
+  declares it has the field silently dropped (REG-108): `ModelSourceResolver.MODEL_ARRAY_KEYS`, both
+  `pack.schema.json` copies, `ModelResolver.resolve()`, and the `CompiledModelCanonicalJson` writer/reader pair —
+  plus a live path through `JsonModelParser` → `ModelCompiler` (REG-104). Details: the recipe.
+  `scripts/quality/check-twin-pair-consistency.py` enforces it; **add a rule to
+  `scripts/quality/twin-pair-registry.json` the next time a "one place updated, its twin forgotten" bug appears.**
+- **Citing a `REG-nn`/ledger id as a live blocker?** Check that id's own ledger status BEFORE writing "blocked by
+  REG-nn" — a doc calling an id a live blocker after its YAML says DONE/PARTIAL is stale prose (happened five times).
+- **Adding a script under `scripts/`?** It needs a classification (`scripts/policy/script-inventory-policy.json`)
+  and a declared `invocation` (`scripts/policy/script-invocation-declarations.json`); `run-script-inventory-check.ps1`
+  enforces both.
+- **Adding or changing text a generated app shows the person?** It is a catalogue id with English AND Portuguese
+  (REG-349: a supported language is supported integrally): `NPDevI18n.t("<fragment>.<area>.<name>", "English text",
+  {vars})` in browser code, the two texts in `NPDevGenerator/generator/src/main/resources/npdev-i18n/<fragment>.{en,pt}.json`.
+  Never concatenate translated pieces; pt carries its accents. `scripts/quality/check-ui-i18n.py` fails on a
+  missing/untranslated/unaccented id, a mismatched English text, and new literal English outside the catalogue.
+  Model labels, field/command names, docs and `englishOnlyDeveloperTools` in `scripts/policy/ui-i18n-policy.json`
+  stay English.
 - **Adding a corpus model** (`AppGen/apps` or `NPDevSamples`)? It needs a `corpusRole` entry in
   `scripts/quality/corpus-roles.json` (`dsl-fixture` / `engine-variant` / `repro-case` / `showcase` / `canary` / `probe`).
-- **Frontend contract:** `docs/UI_CONTRACT.md` · screen classes: `docs/SCREEN_TAXONOMY.md` · the
-  durable flow engine: `docs/FLOWS.md`.
+
 ## Key docs
 
-`docs/README.md` is the full documentation index — start there. Frequently needed:
-`docs/GETTING_STARTED.md`, `docs/NPDEV_CONCEPTS_DEEP_DIVE.md`,
-`docs/architecture/NPDEV_BOX_OBJECT_TRUTH_VISION.md`,
+`docs/README.md` is the full documentation index — start there. Frequently needed: `docs/GETTING_STARTED.md`,
+`docs/NPDEV_CONCEPTS_DEEP_DIVE.md`, `docs/UI_CONTRACT.md`, `docs/SCREEN_TAXONOMY.md`, `docs/FLOWS.md`,
 `docs/architecture/INTERNAL_DB_SCHEMA_SOURCE_OF_TRUTH.md`, `docs/maintainers/MATURITY_CLOSURE_LEDGER.md`.
-`docs/` root holds only current product/engineering truth; closed programme history lives in
-`docs/archive/` and `docs/beta/`, both classified `historical` — read for narrative, never for status.
+`docs/archive/` and `docs/beta/` are `historical` — narrative, never status.

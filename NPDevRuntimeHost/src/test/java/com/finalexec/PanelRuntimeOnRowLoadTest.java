@@ -46,9 +46,10 @@ class PanelRuntimeOnRowLoadTest {
               { "name": "id", "type": "uuid", "id": true, "required": true },
               { "name": "label", "type": "string" } ] }
           ],
-          "panels": [
-            { "name": "WidgetsPanel", "route": "/widgets",
-              "dataSources": [ { "name": "widgets", "concept": "Widget", "onRowLoad": "EnrichWidgetsProcedure" } ] }
+          "screens": [
+            { "name": "WidgetsPanel", "kind": "custom",
+              "panel": { "route": "/widgets",
+                "dataSources": [ { "name": "widgets", "concept": "Widget", "onRowLoad": "EnrichWidgetsProcedure" } ] } }
           ]
         }
         """;

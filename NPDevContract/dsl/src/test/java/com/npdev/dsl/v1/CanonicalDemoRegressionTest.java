@@ -124,7 +124,6 @@ class CanonicalDemoRegressionTest {
         JsonNode createAppointment = findByName(catalogs.path("actions"), "CreateAppointment");
         assertEquals("flow", createAppointment.path("kind").asText());
         assertEquals("appointments.create", createAppointment.path("permissionHint").asText());
-        assertEquals("appointment-create", createAppointment.path("inputFormHint").asText());
 
         JsonNode appointmentConcept = findByName(catalogs.path("concepts"), "Appointment");
         assertEquals("status", appointmentConcept.path("lifecycleStatusField").asText());

@@ -336,20 +336,15 @@ public final class PackSealednessAnalyzer {
 
     /**
      * Resolves a {@code reference}-typed field's target the SAME way {@code JsonModelParser}
-     * (lines ~239-249) actually does at real parse time -- three legitimate, independently-authored
-     * spellings, in the SAME priority order: (a) the bare-string shorthand {@code "ref": "Concept"},
-     * checked first; (b) the object form {@code "reference": {"target": "Concept", ...}}; (c) the
-     * bare-string form {@code "reference": "Concept"}. {@code ModelSourceResolver
-     * .namespacePackFieldRefs} independently confirms all three are real, separately-rewritten
-     * spellings during actual pack composition -- an analyzer that only recognizes (b) would
-     * wrongly certify a pack using (a) or (c) for an outbound reference as sealed. Returns
-     * {@code null} (not blank) when the field declares no resolvable target at all.
+     * (lines ~239-249) actually does at real parse time -- two legitimate, independently-authored
+     * spellings, in the SAME priority order: (a) the object form {@code "reference": {"target":
+     * "Concept", ...}}; (b) the bare-string form {@code "reference": "Concept"}. {@code
+     * ModelSourceResolver.namespacePackFieldRefs} independently confirms both are real,
+     * separately-rewritten spellings during actual pack composition -- an analyzer that only
+     * recognizes (a) would wrongly certify a pack using (b) for an outbound reference as sealed.
+     * Returns {@code null} (not blank) when the field declares no resolvable target at all.
      */
     private static String referenceTarget(JsonNode field) {
-        String bareRef = textOrNull(field.get("ref"));
-        if (bareRef != null) {
-            return bareRef;
-        }
         JsonNode referenceNode = field.get("reference");
         if (referenceNode != null && referenceNode.isObject()) {
             String target = textOrNull(referenceNode.get("target"));

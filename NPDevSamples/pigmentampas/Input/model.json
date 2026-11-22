@@ -325,7 +325,7 @@
       "as": "identity"
     },
     {
-      "from": "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/tracing@tracing-1.0.4",
+      "from": "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/tracing@tracing-2.0.0",
       "as": "tracing"
     },
     {
@@ -1449,11 +1449,13 @@
     {
       "name": "CloseMonthlyChallenges",
       "concept": "Challenge",
-      "schedule": {
-        "cron": "0 0 0 1 * *",
-        "tenantScope": [
-          "dev"
-        ]
+      "trigger": {
+        "schedule": {
+          "cron": "0 0 0 1 * *",
+          "tenantScope": [
+            "dev"
+          ]
+        }
       },
       "steps": [
         {

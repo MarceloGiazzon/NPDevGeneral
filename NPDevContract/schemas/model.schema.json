@@ -2402,13 +2402,6 @@
             "minLength": 1
           }
         },
-        "requires": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
         "metadata": {
           "type": "object",
           "additionalProperties": {
@@ -2445,7 +2438,8 @@
             "max": { "type": "number" },
             "required": { "type": "boolean" },
             "unique": { "type": "boolean" },
-            "sensitive": { "type": "boolean" }
+            "sensitive": { "type": "boolean" },
+            "domainType": { "type": "string", "minLength": 1 }
           }
         }
       }
@@ -2596,25 +2590,6 @@
             ]
           }
         },
-        "values": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "oneOf": [
-              {
-                "type": "string",
-                "minLength": 1
-              },
-              {
-                "$ref": "#/$defs/enumOption"
-              }
-            ]
-          }
-        },
-        "ref": {
-          "type": "string",
-          "minLength": 1
-        },
         "reference": {
           "oneOf": [
             {
@@ -2712,17 +2687,8 @@
             }
           },
           "then": {
-            "anyOf": [
-              {
-                "required": [
-                  "enumValues"
-                ]
-              },
-              {
-                "required": [
-                  "values"
-                ]
-              }
+            "required": [
+              "enumValues"
             ]
           }
         },
@@ -2781,17 +2747,8 @@
             }
           },
           "then": {
-            "anyOf": [
-              {
-                "required": [
-                  "ref"
-                ]
-              },
-              {
-                "required": [
-                  "reference"
-                ]
-              }
+            "required": [
+              "reference"
             ]
           }
         },
@@ -2809,8 +2766,7 @@
               "unique": {
                 "const": false
               },
-              "reference": false,
-              "ref": false
+              "reference": false
             }
           }
         }
@@ -2882,9 +2838,6 @@
         "label": {
           "$ref": "#/$defs/localizableLabel"
         },
-        "displayLabel": {
-          "$ref": "#/$defs/localizableLabel"
-        },
         "order": {
           "type": "integer",
           "minimum": 0
@@ -2903,23 +2856,11 @@
           "type": "string",
           "minLength": 1
         },
-        "iconHint": {
-          "type": "string",
-          "minLength": 1
-        },
         "badge": {
           "type": "string",
           "minLength": 1
         },
-        "badgeHint": {
-          "type": "string",
-          "minLength": 1
-        },
         "description": {
-          "type": "string",
-          "minLength": 1
-        },
-        "help": {
           "type": "string",
           "minLength": 1
         }
@@ -2942,13 +2883,6 @@
         "displayField": {
           "type": "string",
           "minLength": 1
-        },
-        "lookupFields": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
         },
         "searchFields": {
           "type": "array",
@@ -2980,10 +2914,6 @@
           "minLength": 1
         },
         "defaultFilter": {
-          "type": "string",
-          "minLength": 1
-        },
-        "defaultFilterBehavior": {
           "type": "string",
           "minLength": 1
         },
@@ -3026,10 +2956,6 @@
           "type": "string",
           "minLength": 1
         },
-        "helpText": {
-          "type": "string",
-          "minLength": 1
-        },
         "order": {
           "type": "integer"
         },
@@ -3045,18 +2971,8 @@
           "type": "string",
           "minLength": 1
         },
-        "advanced": {
-          "type": "boolean"
-        },
         "deprecated": {
           "type": "boolean"
-        },
-        "examples": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
         },
         "visibleWhen": {
           "type": "string",
@@ -3074,23 +2990,12 @@
           "type": "string",
           "minLength": 1
         },
-        "pickerType": {
-          "type": "string",
-          "minLength": 1
-        },
-        "allowInlineCreate": {
-          "type": "boolean"
-        },
         "searchFields": {
           "type": "array",
           "items": {
             "type": "string",
             "minLength": 1
           }
-        },
-        "filterPreset": {
-          "type": "string",
-          "minLength": 1
         },
         "tab": {
           "type": "string",
@@ -3176,14 +3081,6 @@
           "type": "string",
           "minLength": 1
         },
-        "successMessage": {
-          "type": "string",
-          "minLength": 1
-        },
-        "failureHint": {
-          "type": "string",
-          "minLength": 1
-        },
         "dangerLevel": {
           "type": "string",
           "enum": [
@@ -3198,11 +3095,6 @@
           "minLength": 1
         },
         "permissionHint": {
-          "type": "string",
-          "minLength": 1
-        },
-        "inputFormHint": {
-          "description": "Free-text hint for how this action's input form should be rendered. Move 5 Wave 6 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md) confirmed this is currently informational only: it is parsed, compiled, canonical-JSON round-tripped, and exposed via the runtime UI metadata API, but no generator template, runtime controller, or authoring-UI renderer reads its value to change rendering today. Set it to document authoring intent for a future renderer; do not rely on it to affect current behavior.",
           "type": "string",
           "minLength": 1
         }
@@ -3327,15 +3219,7 @@
         "override": {
           "type": "boolean"
         },
-        "rule": {
-          "type": "string",
-          "minLength": 1
-        },
         "expr": {
-          "type": "string",
-          "minLength": 1
-        },
-        "expression": {
           "type": "string",
           "minLength": 1
         },
@@ -3355,17 +3239,7 @@
         },
         {
           "required": [
-            "rule"
-          ]
-        },
-        {
-          "required": [
             "expr"
-          ]
-        },
-        {
-          "required": [
-            "expression"
           ]
         }
       ],
@@ -3458,10 +3332,6 @@
         "errors": {
           "type": "array",
           "items": { "$ref": "#/$defs/capabilityOperationError" }
-        },
-        "sideEffects": {
-          "type": "string",
-          "enum": ["none", "reads", "writes", "external"]
         },
         "auth": {
           "$ref": "#/$defs/capabilityAuth"
@@ -3568,10 +3438,6 @@
           "type": "string",
           "minLength": 1
         },
-        "payloadSchemaRef": {
-          "type": "string",
-          "minLength": 1
-        },
         "payload": {
           "type": "array",
           "items": {
@@ -3662,9 +3528,6 @@
         },
         "startEndpoint": {
           "type": "boolean"
-        },
-        "schedule": {
-          "$ref": "#/$defs/flowSchedule"
         },
         "trigger": {
           "description": "FORM P3-T5a: what starts this flow. \"api\" (the default) or exactly one of event (optionally with a condition in the one expression language), schedule (a cron, folded into the flow's schedule; declaring both schedule and trigger.schedule is refused) or webhook (a hook name). An event trigger runs the flow (as the system principal of the event's tenant) whenever the event is published; a webhook trigger names a capability that declares an inbound door and runs on every verified delivery; a schedule trigger runs from its cron.",
@@ -3859,13 +3722,6 @@
             "post"
           ]
         },
-        "phase": {
-          "type": "string",
-          "enum": [
-            "pre",
-            "post"
-          ]
-        },
         "scope": {
           "type": "string",
           "minLength": 1
@@ -3927,10 +3783,6 @@
           "type": "string",
           "minLength": 1
         },
-        "payload": {
-          "type": "string",
-          "minLength": 1
-        },
         "from": {
           "type": "string",
           "minLength": 1
@@ -3983,14 +3835,6 @@
           "$ref": "#/$defs/awaitMatch"
         },
         "delaySeconds": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "delayMinutes": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "delayMs": {
           "type": "integer",
           "minimum": 0
         },
@@ -4167,11 +4011,6 @@
                 "anyOf": [
                   {
                     "required": [
-                      "payload"
-                    ]
-                  },
-                  {
-                    "required": [
                       "from"
                     ]
                   },
@@ -4219,11 +4058,6 @@
                 "anyOf": [
                   {
                     "required": [
-                      "payload"
-                    ]
-                  },
-                  {
-                    "required": [
                       "from"
                     ]
                   },
@@ -4235,22 +4069,8 @@
                 ]
               },
               {
-                "anyOf": [
-                  {
-                    "required": [
-                      "delaySeconds"
-                    ]
-                  },
-                  {
-                    "required": [
-                      "delayMinutes"
-                    ]
-                  },
-                  {
-                    "required": [
-                      "delayMs"
-                    ]
-                  }
+                "required": [
+                  "delaySeconds"
                 ]
               }
             ]
@@ -4976,56 +4796,6 @@
         "field": {
           "type": "string",
           "minLength": 1
-        }
-      },
-      "additionalProperties": false
-    },
-    "generatedActionDescriptor": {
-      "type": "object",
-      "properties": {
-        "actionName": {
-          "type": "string",
-          "minLength": 1
-        },
-        "affectedConcepts": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "sideEffectConcept": {
-          "type": "string",
-          "minLength": 1
-        },
-        "eventNameOnSuccess": {
-          "type": "string",
-          "minLength": 1
-        },
-        "auditResourceType": {
-          "type": "string",
-          "minLength": 1
-        },
-        "idempotencyPolicy": {
-          "type": "string",
-          "enum": [
-            "record",
-            "disabled"
-          ]
-        },
-        "tracePolicy": {
-          "type": "string",
-          "enum": [
-            "record",
-            "disabled"
-          ]
-        },
-        "correlationPolicy": {
-          "type": "string",
-          "enum": [
-            "claim",
-            "disabled"
-          ]
         }
       },
       "additionalProperties": false
@@ -5803,27 +5573,7 @@
           "type": "string",
           "minLength": 1
         },
-        "pattern": {
-          "type": "string",
-          "minLength": 1
-        },
         "enumValues": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "values": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "enum": {
           "type": "array",
           "minItems": 1,
           "items": {
@@ -5890,20 +5640,6 @@
           "if": {
             "required": [
               "enumValues"
-            ]
-          },
-          "then": {
-            "properties": {
-              "type": {
-                "const": "enum"
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "required": [
-              "values"
             ]
           },
           "then": {
@@ -6022,10 +5758,6 @@
           "type": "string",
           "minLength": 1
         },
-        "idempotencyKey": {
-          "type": "string",
-          "minLength": 1
-        },
         "failureClassification": {
           "$ref": "#/$defs/failureClassification"
         }
@@ -6064,10 +5796,6 @@
       "type": "object",
       "properties": {
         "roles": {
-          "type": "array",
-          "items": { "type": "string", "minLength": 1 }
-        },
-        "scopes": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
         }

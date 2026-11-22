@@ -37,7 +37,7 @@
       "invariants": [
         {
           "name": "LargeNeedsApproval",
-          "expression": "amount <= 1000 || needsManagerApproval == true"
+          "expr": "amount <= 1000 || needsManagerApproval == true"
         }
       ]
     }

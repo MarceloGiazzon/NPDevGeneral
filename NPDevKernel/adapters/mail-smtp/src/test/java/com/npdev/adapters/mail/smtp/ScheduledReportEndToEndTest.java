@@ -96,8 +96,10 @@ final class ScheduledReportEndToEndTest {
                 {
                   "name": "NightlyReportEmail",
                   "concept": "Report",
-                  "schedule": {
-                    "cron": "0 0 3 * * *"
+                  "trigger": {
+                    "schedule": {
+                      "cron": "0 0 3 * * *"
+                    }
                   },
                   "steps": [
                     {

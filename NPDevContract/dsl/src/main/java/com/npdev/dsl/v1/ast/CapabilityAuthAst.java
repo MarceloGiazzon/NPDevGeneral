@@ -6,18 +6,12 @@ import java.util.List;
 
 public final class CapabilityAuthAst {
     private final List<String> roles;
-    private final List<String> scopes;
 
-    public CapabilityAuthAst(List<String> roles, List<String> scopes) {
+    public CapabilityAuthAst(List<String> roles) {
         this.roles = new ArrayList<>(roles);
-        this.scopes = new ArrayList<>(scopes);
     }
 
     public List<String> getRoles() {
         return Collections.unmodifiableList(roles);
-    }
-
-    public List<String> getScopes() {
-        return Collections.unmodifiableList(scopes);
     }
 }

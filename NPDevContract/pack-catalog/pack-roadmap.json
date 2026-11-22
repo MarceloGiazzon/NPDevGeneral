@@ -16,10 +16,12 @@
       "id": "modules",
       "name": "Modules",
       "kinds": [
+        "concept",
+        "facet",
         "module",
         "specialization"
       ],
-      "about": "A business area controlled in the app, from one concept to several."
+      "about": "A business area controlled in the app. A concept is the base every sector reuses, a specialization is a new kind of a concept (is-a, one parent), a facet adds fields and rules to a concept of another pack (several facets combine on the same concept), a module is a whole area of several concepts."
     },
     {
       "id": "solutions",
@@ -36,7 +38,9 @@
     "capability": "Capability",
     "module": "Module",
     "specialization": "Specialization",
-    "solution": "Solution"
+    "solution": "Solution",
+    "concept": "Concept",
+    "facet": "Facet"
   },
   "areas": [
     {
@@ -1613,7 +1617,7 @@
     {
       "id": "documents",
       "name": "Documents",
-      "kind": "module",
+      "kind": "concept",
       "need": "Attach files to any record, with versions",
       "summary": "Files attached to any record, with versions and who uploaded them.",
       "area": "compliance",
@@ -3047,7 +3051,7 @@
     {
       "id": "contacts",
       "name": "Contacts",
-      "kind": "module",
+      "kind": "concept",
       "need": "Register companies, their contacts and addresses",
       "summary": "Organizations (customers, suppliers, partners), the people who work at them and their addresses.",
       "area": "people",
@@ -3128,7 +3132,7 @@
     {
       "id": "person",
       "name": "Person and profiles",
-      "kind": "module",
+      "kind": "concept",
       "need": "Keep a single person record with several roles",
       "summary": "One person, several profiles. The same Person can be a patient, a customer and a courier. Verticals specialize PersonProfile instead of creating another kind of user.",
       "area": "people",
@@ -3637,7 +3641,7 @@
     {
       "id": "products",
       "name": "Products",
-      "kind": "module",
+      "kind": "concept",
       "need": "Keep a single catalog of products and services",
       "summary": "The catalog of products and services that sales, purchasing and inventory point to.",
       "area": "sales",

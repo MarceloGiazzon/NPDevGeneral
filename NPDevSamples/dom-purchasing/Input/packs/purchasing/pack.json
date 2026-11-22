@@ -2,7 +2,7 @@
   "$schema": "../../schemas/pack.schema.json",
   "dslVersion": "3.0.0",
   "pack": "purchasing",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "namespace": "com.npdev.purchasing",
   "description": "NPDev purchasing pack: suppliers, a purchasable-item list, purchase orders with lines, and supplier bills. It keeps only what buying needs: who the supplier is lives in the contacts pack (contacts::Organization) and what is bought lives in the products pack (products::Product); a Supplier is the buying data about an organization (code, payment terms) and a purchase item is the standard cost of a product, each a satellite pointing back to it. A person with the 'buyer' role drafts purchase orders and adds lines; 'purchasingManager' also approves orders, maintains suppliers and the item list and may do anything a payables clerk can; 'payables' records supplier bills and their payment. An order is DRAFT, then APPROVED, then RECEIVED (or CANCELLED); a bill is OPEN, then PAID (or VOID). Order totals and the amount owed per supplier are derived by queries, never typed in. The three roles are logical: the importing app binds them with provides.roleBindings { \"buyer\": ..., \"purchasingManager\": ..., \"payables\": ... } (composition refuses when one is unbound) and grants them read/create/update on the pack's concepts in its own roles[] (see the dom-purchasing sample). Numeric bounds are declared as invariants (enforced today) beside field min, because field.min/max are not yet enforced by the platform (REG-255).",
   "category": "other",
@@ -10,11 +10,11 @@
   "packs": [
     {
       "pack": "contacts",
-      "version": "^1.0"
+      "version": "^2.0"
     },
     {
       "pack": "products",
-      "version": "^1.0"
+      "version": "^2.0"
     }
   ],
   "metadata": {

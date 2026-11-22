@@ -34,7 +34,7 @@
         {
           "name": "positiveTotal",
           "type": "expression",
-          "expression": "total > 0"
+          "expr": "total > 0"
         }
       ]
     },
@@ -54,7 +54,7 @@
           "specializes": "positiveTotal",
           "override": true,
           "type": "expression",
-          "expression": "total > 10"
+          "expr": "total > 10"
         }
       ]
     }
@@ -193,7 +193,7 @@
               "name": "emit-medical",
               "type": "emitEvent",
               "event": "MedicalInvoiceCreated",
-              "payload": "$input"
+              "from": "$input"
             }
           ]
         }

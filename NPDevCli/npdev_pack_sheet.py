@@ -65,7 +65,7 @@ def constraints(field: dict) -> str:
         parts.append(f"default {field['default']}")
     if "defaultExpression" in field:
         parts.append(f"default {field['defaultExpression']}")
-    ref = field.get("reference") or field.get("ref")
+    ref = field.get("reference")
     if isinstance(ref, dict):
         parts.append(f"points at a {ref.get('target')}")
     elif isinstance(ref, str):

@@ -35,7 +35,6 @@ There is no new top-level array: the block lives on `capabilities[]` and on each
       "operations": [
         {
           "name": "getCustomer",
-          "sideEffects": "reads",
           "policy": { "retryCount": 2, "retryDelayMs": 500 },
           "http": {
             "method": "GET",
@@ -46,7 +45,6 @@ There is no new top-level array: the block lives on `capabilities[]` and on each
         },
         {
           "name": "createCharge",
-          "sideEffects": "external",
           "http": {
             "method": "POST",
             "path": "/charges",
@@ -197,7 +195,7 @@ branches apply.
     "timeoutMs": 5000, "maxRetries": 1
   },
   "operations": [
-    { "name": "health", "sideEffects": "reads",
+    { "name": "health",
       "http": { "method": "GET", "path": "/actuator/health", "response": { "pointer": "/status" } } }
   ]
 }

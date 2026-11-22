@@ -29,6 +29,14 @@ public final class JsonModelParser {
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final JsonModelSchemaValidator schemaValidator = new JsonModelSchemaValidator();
+    /** {@code info} notes about what the authoring conventions did in the LAST parse (field types a rule filled in, ids
+     *  added implicitly). Reset by every parse; never part of the AST, so the compiled model cannot depend on it. */
+    private final List<ValidationDiagnostic> authoringNotes = new ArrayList<>();
+
+    /** What the authoring conventions did in the last parse, as {@code info} diagnostics -- see {@link #authoringNotes}. */
+    public List<ValidationDiagnostic> getAuthoringNotes() {
+        return List.copyOf(authoringNotes);
+    }
     private static final String SUPPORTED_DSL_VERSION = ModelAst.DEFAULT_DSL_VERSION;
     private static final String CURRENT_SCHEMA_VERSION = "1.0.0";
     private static final Pattern FIELD_MATCHES_PATTERN =
@@ -84,9 +92,14 @@ public final class JsonModelParser {
         if (source == null) {
             throw new IOException("Resolved model source is required");
         }
-        return parse(source.resolvedRoot(), source.rootModelPath().toString(), source.warnings().stream()
+        ModelAst ast = parse(source.resolvedRoot(), source.rootModelPath().toString(), source.warnings().stream()
                 .map(ValidationDiagnostic::getMessage)
                 .toList(), source.physicalQualifierByConceptName(), source.originByQualifiedMemberName());
+        // The resolver's own notes (field types a convention filled in) come before the parser's (implicit ids).
+        authoringNotes.addAll(0, source.diagnostics().stream()
+                .filter(d -> d.getSeverity() == ValidationSeverity.INFO)
+                .toList());
+        return ast;
     }
 
     public ModelAst parse(JsonNode root) throws IOException {
@@ -423,6 +436,8 @@ public final class JsonModelParser {
             throw new IOException("model.json root must be an object");
         }
         checkDeprecatedAuthoringShape(root);
+        authoringNotes.clear();
+        List<String> implicitIdConcepts = new ArrayList<>();
         String namespace = readText(root, "namespace");
         if (namespace == null || namespace.isBlank()) {
             throw new IOException("Missing/blank required field: namespace");
@@ -463,7 +478,6 @@ public final class JsonModelParser {
         List<com.npdev.dsl.v1.ast.PropertyAst> properties = new ArrayList<>();
         List<com.npdev.dsl.v1.ast.ContextAst> contexts = new ArrayList<>();
         List<String> parserWarnings = new ArrayList<>(sourceWarnings == null ? List.of() : sourceWarnings);
-        collectEnumOptionAliasWarnings(root, "$", parserWarnings);
         Map<String, ConceptAst> conceptsByLowerName = new LinkedHashMap<>();
 
         JsonNode conceptsNode = root.get("concepts");
@@ -518,14 +532,36 @@ public final class JsonModelParser {
                 throw new IOException("Concept " + name + " fields must be an array");
             }
 
+            // Implicit id (owner 2026-11-22): a concept that declares no id field gets the one every concept in the
+            // corpus wrote by hand, {"name":"id","type":"uuid","id":true,"required":true}, as its first field, read
+            // through the same code as a hand-written one so the compiled model is byte-for-byte the same. Not added
+            // where it would be wrong: a specializing concept inherits its parent's id, an `augments` pack only
+            // contributes fields to a concept another pack owns, and a field already called `id` is the author's own.
+            List<JsonNode> fieldNodes = new ArrayList<>();
+            boolean declaresId = false;
             for (JsonNode f : fieldsNode) {
+                declaresId |= (f.has("id") && f.get("id").asBoolean(false)) || "id".equals(readText(f, "name"));
+            }
+            if (!declaresId && specializesName == null && !root.has("augments")) {
+                com.fasterxml.jackson.databind.node.ObjectNode implicitId =
+                        com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+                implicitId.put("name", "id");
+                implicitId.put("type", "uuid");
+                implicitId.put("id", true);
+                implicitId.put("required", true);
+                fieldNodes.add(implicitId);
+                implicitIdConcepts.add(name);
+            }
+            fieldsNode.forEach(fieldNodes::add);
+
+            for (JsonNode f : fieldNodes) {
                 String fname = requiredText(f, "name");
                 String ftype = requiredText(f, "type");
                 boolean id = f.has("id") && f.get("id").asBoolean(false);
                 boolean required = readBooleanFlag(f, "required");
                 boolean unique = f.has("unique") && f.get("unique").asBoolean(false);
                 List<EnumOptionAst> enumOptions = parseEnumOptions(
-                        f.get("enumValues") != null ? f.get("enumValues") : f.get("values"),
+                        f.get("enumValues"),
                         "concepts[" + name + "].fields[" + fname + "].enumValues"
                 );
                 List<String> enumValues = enumOptions.stream()
@@ -536,11 +572,8 @@ public final class JsonModelParser {
                         "concepts[" + name + "].fields[" + fname + "].reference"
                 );
                 String referenceTarget = firstNonBlank(
-                        readText(f, "ref"),
-                        firstNonBlank(
-                                referenceSemantics == null ? null : referenceSemantics.getTarget(),
-                                readText(f, "reference")
-                        )
+                        referenceSemantics == null ? null : referenceSemantics.getTarget(),
+                        readText(f, "reference")
                 );
                 String domainType = readText(f, "domainType");
                 String connectable = readText(f, "connectable");
@@ -585,30 +618,20 @@ public final class JsonModelParser {
                 for (JsonNode inv : invNode) {
                     String iname = readText(inv, "name");
                     String itype = readText(inv, "type");
-                    String rule = readText(inv, "rule");
-                    String expression = firstNonBlank(readText(inv, "expression"), readText(inv, "expr"));
+                    String expression = readText(inv, "expr");
                     String invariantSpecializes = readText(inv, "specializes");
                     boolean invariantOverride = inv.has("override") && inv.get("override").asBoolean(false);
 
                     List<String> invFields = parseTextArray(inv.get("fields"));
-                    if ((itype == null || itype.isBlank()) && rule != null && !rule.isBlank()) {
-                        ParsedRule parsed = parseInvariantRule(rule);
-                        itype = parsed.type();
-                        invFields = parsed.fields();
-                        expression = parsed.expression();
-                    }
                     if ((itype == null || itype.isBlank()) && expression != null && !expression.isBlank()) {
                         itype = "expression";
                     }
 
                     if (itype == null || itype.isBlank()) {
-                        throw new IOException("Invariant must declare 'type' or parseable 'rule'");
+                        throw new IOException("Invariant must declare 'type' or 'expr'");
                     }
 
                     if ("expression".equalsIgnoreCase(itype)) {
-                        if (expression == null || expression.isBlank()) {
-                            expression = rule;
-                        }
                         if ((invFields == null || invFields.isEmpty()) && expression != null && !expression.isBlank()) {
                             invFields = extractExpressionFieldCandidates(expression);
                         }
@@ -755,9 +778,9 @@ public final class JsonModelParser {
                 SchemaAst outputSchema = parseSchema(flowNode.get("outputSchema"), "flows[" + flowName + "].outputSchema");
                 ActionMetadataAst action = parseActionMetadata(flowNode.get("action"), "flows[" + flowName + "].action");
                 Boolean startEndpoint = readOptionalBoolean(flowNode, "startEndpoint");
-                FlowScheduleAst schedule = parseFlowSchedule(flowNode.get("schedule"), flowName);
-                // FORM P3-T5a: trigger / expose / runAs. A trigger.schedule lands in the flow's own schedule
-                // (declaring both is refused), so the cron scheduler keeps reading one place.
+                // FORM P3-T5a: trigger / expose / runAs. A trigger.schedule lands in the flow's own schedule,
+                // so the cron scheduler keeps reading one place. (The flow-level `schedule` spelling is gone.)
+                FlowScheduleAst schedule = null;
                 FlowTriggerAst trigger = null;
                 JsonNode triggerNode = flowNode.get("trigger");
                 if (triggerNode != null && !triggerNode.isNull()) {
@@ -799,9 +822,6 @@ public final class JsonModelParser {
                                 break;
                             }
                             case "schedule": {
-                                if (schedule != null) {
-                                    throw new IOException("Flow " + flowName + " declares both schedule and trigger.schedule");
-                                }
                                 schedule = parseFlowSchedule(triggerNode.get("schedule"), flowName);
                                 if (schedule == null) {
                                     throw new IOException("Flow " + flowName + " trigger.schedule must be an object with a cron");
@@ -930,7 +950,7 @@ public final class JsonModelParser {
         // here so a malformed band/column/logo is a parse error now, never a surprise in a later getDocuments().
         parseDocumentScreens(screens);
 
-        return new ModelAst(
+        ModelAst ast = new ModelAst(
                 namespace,
                 dslVersion,
                 version,
@@ -960,6 +980,21 @@ public final class JsonModelParser {
                 experiences,
                 screens
         );
+        // One aggregated note, not one per concept: a model of forty concepts must not bury its findings.
+        if (!implicitIdConcepts.isEmpty()) {
+            authoringNotes.add(new ValidationDiagnostic(
+                    ValidationLayer.SEMANTIC,
+                    ValidationSeverity.INFO,
+                    "IMPLICIT_ID_ADDED",
+                    implicitIdConcepts.size() + " concept" + (implicitIdConcepts.size() == 1 ? "" : "s")
+                            + " declare no id field and got the implicit one {\"name\": \"id\", \"type\": \"uuid\", "
+                            + "\"id\": true, \"required\": true} as their first field: "
+                            + String.join(", ", implicitIdConcepts) + ". Declare an id field on a concept to use a "
+                            + "different key.",
+                    "NPDevContract",
+                    "/concepts"));
+        }
+        return ast;
     }
 
     /** FORM P5-T1: parses an optional top-level array whose entries are carried as opaque JSON objects
@@ -2822,50 +2857,6 @@ public final class JsonModelParser {
         return out;
     }
 
-    /** Enum option keys parseEnumOptions folds together; the first of each pair wins. */
-    private static final String[][] ENUM_OPTION_ALIAS_PAIRS = {
-            {"label", "displayLabel"}, {"description", "help"}, {"icon", "iconHint"}, {"badge", "badgeHint"}};
-
-    /**
-     * ENF-1 (D5): an enum option that sets BOTH keys of an alias pair keeps the first and silently drops
-     * the second (dsl-conformance-max's Draft option did, for all four pairs). Warned, never refused:
-     * the model is valid, but the author wrote a value that will never be served.
-     */
-    private static void collectEnumOptionAliasWarnings(JsonNode node, String path, List<String> warnings) {
-        if (node == null) {
-            return;
-        }
-        if (node.isArray()) {
-            for (int i = 0; i < node.size(); i++) {
-                collectEnumOptionAliasWarnings(node.get(i), path + "[" + i + "]", warnings);
-            }
-            return;
-        }
-        if (!node.isObject()) {
-            return;
-        }
-        JsonNode options = node.get("enumValues");
-        if (options != null && options.isArray()) {
-            for (int i = 0; i < options.size(); i++) {
-                JsonNode option = options.get(i);
-                if (option == null || !option.isObject()) {
-                    continue;
-                }
-                for (String[] pair : ENUM_OPTION_ALIAS_PAIRS) {
-                    if (option.hasNonNull(pair[0]) && option.hasNonNull(pair[1])) {
-                        warnings.add(path + ".enumValues[" + i + "] (" + option.path("value").asText("?") + ") sets both '"
-                                + pair[0] + "' and its alias '" + pair[1] + "'; '" + pair[1] + "' is ignored -- keep one.");
-                    }
-                }
-            }
-        }
-        Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> entry = fields.next();
-            collectEnumOptionAliasWarnings(entry.getValue(), path + "." + entry.getKey(), warnings);
-        }
-    }
-
     private static List<EnumOptionAst> parseEnumOptions(JsonNode node, String fieldPath) throws IOException {
         List<EnumOptionAst> out = new ArrayList<>();
         if (node == null || node.isNull()) {
@@ -2888,17 +2879,16 @@ public final class JsonModelParser {
                 throw new IOException(fieldPath + "[" + index + "] must be string or object");
             }
             String value = requiredText(item, "value");
-            String label = firstNonBlank(readLabelText(item, "label"), readLabelText(item, "displayLabel"));
-            Map<String, String> labelLocales = !readLabelLocales(item, "label").isEmpty()
-                    ? readLabelLocales(item, "label")
-                    : readLabelLocales(item, "displayLabel");
+            String label = readLabelText(item, "label");
+            Map<String, String> labelLocales = readLabelLocales(item, "label");
             Integer order = readOptionalInt(item, "order");
             String group = readText(item, "group");
             boolean defaultValue = item.has("default") && item.get("default").asBoolean(false);
             boolean deprecated = item.has("deprecated") && item.get("deprecated").asBoolean(false);
-            String iconHint = firstNonBlank(readText(item, "icon"), readText(item, "iconHint"));
-            String badgeHint = firstNonBlank(readText(item, "badge"), readText(item, "badgeHint"));
-            String description = firstNonBlank(readText(item, "description"), readText(item, "help"));
+            // The compiled model and the generated UI still call these two iconHint / badgeHint; the authoring keys are icon and badge.
+            String iconHint = readText(item, "icon");
+            String badgeHint = readText(item, "badge");
+            String description = readText(item, "description");
             out.add(new EnumOptionAst(
                     value,
                     label,
@@ -2929,15 +2919,12 @@ public final class JsonModelParser {
         boolean multiple = node.has("multiple") && node.get("multiple").asBoolean(false);
         String displayField = readText(node, "displayField");
         List<String> searchFields = parseTextArray(node.get("searchFields"));
-        if (searchFields.isEmpty()) {
-            searchFields = parseTextArray(node.get("lookupFields"));
-        }
         List<String> previewFields = parseTextArray(node.get("previewFields"));
         String inlineCreatePolicy = readText(node, "inlineCreate");
         String displayTemplate = readText(node, "displayTemplate");
         List<String> pickerColumns = parseTextArray(node.get("pickerColumns"));
         String previewCardTemplate = readText(node, "previewCardTemplate");
-        String defaultFilter = firstNonBlank(readText(node, "defaultFilter"), readText(node, "defaultFilterBehavior"));
+        String defaultFilter = readText(node, "defaultFilter");
         String via = readText(node, "via");
         String onDelete = readText(node, "onDelete");
         return new ReferenceSemanticsAst(
@@ -3051,7 +3038,7 @@ public final class JsonModelParser {
 
         String rawType = requiredText(stepNode, "type");
         String type = normalizeStepType(rawType);
-        String checkpoint = firstNonBlank(readText(stepNode, "checkpoint"), readText(stepNode, "phase"));
+        String checkpoint = readText(stepNode, "checkpoint");
         String scope = readText(stepNode, "scope");
         List<String> invariants = parseTextArray(stepNode.get("invariants"));
         String capability = firstNonBlank(readText(stepNode, "capability"), readText(stepNode, "cap"));
@@ -3061,13 +3048,11 @@ public final class JsonModelParser {
         String output = firstNonBlank(readText(stepNode, "output"), readText(stepNode, "out"));
         List<String> args = parseTextArray(stepNode.get("args"));
         String event = readText(stepNode, "event");
-        String payload = firstNonBlank(readText(stepNode, "payload"), readText(stepNode, "from"));
+        String payload = readText(stepNode, "from");
         String generatedActionName = readText(stepNode, "actionName");
         Map<String, String> data = parseStringMap(stepNode.get("data"));
         String condition = readText(stepNode, "condition");
-        String awaitEvent = "await".equals(type)
-                ? firstNonBlank(readText(stepNode, "awaitEvent"), readText(stepNode, "event"))
-                : readText(stepNode, "awaitEvent");
+        String awaitEvent = readText(stepNode, "awaitEvent");
         String awaitRef = firstNonBlank(readText(stepNode, "awaitRef"), readText(stepNode, "as"));
         JsonNode awaitMatch = stepNode.get("match");
         Boolean awaitMatchCorrelation = readOptionalBoolean(awaitMatch, "correlation");
@@ -3075,18 +3060,6 @@ public final class JsonModelParser {
                 ? Map.of()
                 : parseStringMap(awaitMatch.get("payload"));
         Long delaySeconds = readOptionalLong(stepNode, "delaySeconds");
-        if (delaySeconds == null) {
-            Long delayMinutes = readOptionalLong(stepNode, "delayMinutes");
-            if (delayMinutes != null) {
-                delaySeconds = delayMinutes * 60L;
-            }
-        }
-        if (delaySeconds == null) {
-            Long delayMs = readOptionalLong(stepNode, "delayMs");
-            if (delayMs != null) {
-                delaySeconds = Math.max(0L, (delayMs + 999L) / 1000L);
-            }
-        }
         String returnValue = readText(stepNode, "value");
         ActionMetadataAst action = parseActionMetadata(stepNode.get("action"), "flows[" + flowName + "].steps[" + stepName + "].action");
         // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 1A): callProcedure invokes a named
@@ -3301,7 +3274,6 @@ public final class JsonModelParser {
                                 op.get("errors"),
                                 sourceLabel + "[" + name + "].operations[" + opName + "].errors"
                         );
-                        String sideEffects = readText(op, "sideEffects");
                         CapabilityAuthAst operationAuth = parseCapabilityAuth(op.get("auth"));
                         operations.add(new CapabilityOperationAst(
                                 opName,
@@ -3311,7 +3283,6 @@ public final class JsonModelParser {
                                 outputSchema,
                                 operationPolicy,
                                 operationErrors,
-                                sideEffects,
                                 operationAuth,
                                 parseObjectMap(op.get("http"))
                         ));
@@ -3342,10 +3313,7 @@ public final class JsonModelParser {
         Integer circuitOpenAfterFailures = readOptionalInt(policyNode, "circuitOpenAfterFailures");
         Long circuitOpenMs = readOptionalLong(policyNode, "circuitOpenMs");
         Integer bulkheadMaxConcurrent = readOptionalInt(policyNode, "bulkheadMaxConcurrent");
-        String idempotencyKeyField = firstNonBlank(
-                readText(policyNode, "idempotencyKeyField"),
-                readText(policyNode, "idempotencyKey")
-        );
+        String idempotencyKeyField = readText(policyNode, "idempotencyKeyField");
         String failureClassification = readText(policyNode, "failureClassification");
         return new CapabilityPolicyAst(
                 retryCount,
@@ -3390,8 +3358,7 @@ public final class JsonModelParser {
             throw new IOException("Capability operation field 'auth' must be an object when provided");
         }
         List<String> roles = parseTextArray(authNode.get("roles"));
-        List<String> scopes = parseTextArray(authNode.get("scopes"));
-        return new CapabilityAuthAst(roles, scopes);
+        return new CapabilityAuthAst(roles);
     }
 
     private static SchemaAst parseCapabilityOperationSchema(
@@ -3530,12 +3497,9 @@ public final class JsonModelParser {
         return new ActionMetadataAst(
                 readLabelText(node, "label"),
                 readText(node, "confirmationText"),
-                readText(node, "successMessage"),
-                readText(node, "failureHint"),
                 readText(node, "dangerLevel"),
                 readText(node, "visibleWhen"),
                 readText(node, "permissionHint"),
-                readText(node, "inputFormHint"),
                 readLabelLocales(node, "label")
         );
     }
@@ -3555,7 +3519,6 @@ public final class JsonModelParser {
         return new DomainTypeUiAst(
                 readLabelText(node, "label"),
                 readText(node, "placeholder"),
-                readText(node, "helpText"),
                 readText(node, "widget"),
                 readLabelLocales(node, "label")
         );
@@ -3572,23 +3535,17 @@ public final class JsonModelParser {
                 readLabelText(node, "label"),
                 readLabelText(node, "shortLabel"),
                 readText(node, "description"),
-                readText(node, "helpText"),
                 readText(node, "placeholder"),
                 readText(node, "group"),
                 readText(node, "section"),
                 readOptionalInt(node, "order"),
-                readOptionalBoolean(node, "advanced"),
                 readOptionalBoolean(node, "deprecated"),
-                parseTextArray(node.get("examples")),
                 readText(node, "widget"),
                 readText(node, "visibleWhen"),
                 readText(node, "enabledWhen"),
                 readText(node, "readonlyWhen"),
                 readText(node, "requiredWhen"),
-                readText(node, "pickerType"),
-                readOptionalBoolean(node, "allowInlineCreate"),
                 parseTextArray(node.get("searchFields")),
-                readText(node, "filterPreset"),
                 readText(node, "tab"),
                 readOptionalInt(node, "column"),
                 readOptionalInt(node, "columnSpan"),
@@ -3633,7 +3590,7 @@ public final class JsonModelParser {
         String duplicationPolicy = readText(node, "duplicationPolicy");
         Double min = readOptionalDouble(node, "min");
         Double max = readOptionalDouble(node, "max");
-        String regex = firstNonBlank(readText(node, "regex"), readText(node, "pattern"));
+        String regex = readText(node, "regex");
 
         Map<String, SchemaAst> properties = new LinkedHashMap<>();
         JsonNode propertiesNode = node.get("properties");
@@ -3656,11 +3613,7 @@ public final class JsonModelParser {
 
         List<String> required = parseTextArray(node.get("required"));
         SchemaAst items = parseSchema(node.get("items"), fieldPath + ".items");
-        List<String> enumValues = parseTextArray(
-                node.get("enumValues") != null
-                        ? node.get("enumValues")
-                        : (node.get("values") != null ? node.get("values") : node.get("enum"))
-        );
+        List<String> enumValues = parseTextArray(node.get("enumValues"));
         Object defaultValue = parseJsonValue(node.get("default"));
         String defaultExpression = readText(node, "defaultExpression");
         String derivedExpression = readText(node, "derivedExpression");
@@ -3721,9 +3674,6 @@ public final class JsonModelParser {
             String from = requiredText(transitionNode, "from");
             String to = requiredText(transitionNode, "to");
             List<String> requiredPayload = parseTextArray(transitionNode.get("requiredPayload"));
-            if (requiredPayload.isEmpty()) {
-                requiredPayload = parseTextArray(transitionNode.get("requires"));
-            }
             String event = readText(transitionNode, "event");
             String guard = readText(transitionNode, "guard");
             String actionLabel = readLabelText(transitionNode, "actionLabel");
@@ -3861,19 +3811,6 @@ public final class JsonModelParser {
         };
     }
 
-    private static ParsedRule parseInvariantRule(String rule) {
-        String trimmed = rule.trim();
-        String lower = trimmed.toLowerCase(Locale.ROOT);
-        if (!lower.startsWith("unique(") || !trimmed.endsWith(")")) {
-            return new ParsedRule("expression", extractExpressionFieldCandidates(trimmed), trimmed);
-        }
-        String inner = trimmed.substring(trimmed.indexOf('(') + 1, trimmed.length() - 1).trim();
-        if (inner.isBlank()) {
-            return new ParsedRule("unique", List.of(), null);
-        }
-        return new ParsedRule("unique", List.of(inner), null);
-    }
-
     private static List<String> extractExpressionFieldCandidates(String expression) {
         if (expression == null || expression.isBlank()) return List.of();
 
@@ -3962,9 +3899,6 @@ public final class JsonModelParser {
         String normalized = schemaTarget.replace('\\', '/').toLowerCase(Locale.ROOT);
         String legacyModelSchemaName = "model-" + "1.0.0" + ".schema.json";
         return normalized.endsWith("/" + legacyModelSchemaName) || normalized.endsWith(legacyModelSchemaName);
-    }
-
-    private record ParsedRule(String type, List<String> fields, String expression) {
     }
 }
 

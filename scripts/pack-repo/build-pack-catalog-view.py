@@ -15,7 +15,8 @@ the moment someone edits a pack.json. So the two are split:
 
 The output is `pack-catalog.json` in exactly the format the viewer reads, with
 `source.kind = "generated"`. By default it goes to `<Build root>/reports/pack-catalog-view/` together
-with a copy of `pack-tree.html`, so that folder can be served as is:
+with a copy of `pack-tree.html` that carries the catalog inside the page, so it also opens by double click
+(a page loaded from disk cannot fetch its sibling file); the folder can equally be served as is:
 
     python scripts/pack-repo/build-pack-catalog-view.py
     python -m http.server -d <Build root>/reports/pack-catalog-view
@@ -176,6 +177,25 @@ def validate_roadmap_entry(entry: dict, roadmap: dict, errors: list[str]) -> Non
             errors.append(f"roadmap pack {pack_id}: unknown sector {sector!r}")
     if entry.get("status") not in ("existing", "proposed"):
         errors.append(f"roadmap pack {pack_id}: status must be 'existing' or 'proposed', got {entry.get('status')!r}")
+    # A facet adds fields and rules to a concept of ANOTHER pack (pack.augments); it combines with other facets on
+    # the same concept. A proposed one must say which pack and concept, and must require that pack.
+    if entry.get("kind") == "facet" and entry.get("status") == "proposed":
+        aug = entry.get("augments")
+        if not isinstance(aug, dict) or not aug.get("pack") or not aug.get("concept"):
+            errors.append(f"roadmap pack {pack_id}: a facet needs augments {{pack, concept}} (what it adds fields to)")
+        elif aug["pack"] not in (entry.get("requires") or []):
+            errors.append(f"roadmap pack {pack_id}: a facet must list augments.pack {aug['pack']!r} in requires")
+
+
+EMBED_RE = re.compile(r'(<script type="application/json" id="catalog-data">)(.*?)(</script>)', re.S)
+
+
+def embed_catalog(viewer_html: str, catalog_json: str) -> str:
+    """The viewer page with `catalog_json` placed in its script#catalog-data block (any earlier copy replaced)."""
+    if not EMBED_RE.search(viewer_html):
+        raise SystemExit(f"build-pack-catalog-view: {VIEWER_NAME} has no <script type=\"application/json\" id=\"catalog-data\"> block")
+    safe = catalog_json.replace("</", "<\\/")
+    return EMBED_RE.sub(lambda m: m.group(1) + "\n" + safe + m.group(3), viewer_html, count=1)
 
 
 def build_catalog(roadmap: dict, real_packs: dict[str, dict], date: str,
@@ -334,10 +354,11 @@ def main() -> int:
     catalog_path.write_bytes(text.encode("utf-8"))
     viewer_src = CATALOG_DIR / VIEWER_NAME
     viewer_dst = out_dir / VIEWER_NAME
-    if viewer_dst.resolve() != viewer_src.resolve():
-        shutil.copyfile(viewer_src, viewer_dst)
+    # The viewer carries a copy of the catalog inside the page (script#catalog-data), so it also opens by double click:
+    # a page loaded from disk cannot fetch its sibling file. Written even when source and target are the same file.
+    viewer_dst.write_bytes(embed_catalog(viewer_src.read_text(encoding="utf-8"), text).encode("utf-8"))
     print(f"build-pack-catalog-view: wrote {catalog_path.resolve()} -- {summary}")
-    print(f"build-pack-catalog-view: serve it with: python -m http.server -d {out_dir.resolve()}")
+    print(f"build-pack-catalog-view: open {viewer_dst.resolve()} directly, or serve it with: python -m http.server -d {out_dir.resolve()}")
     return 0
 
 

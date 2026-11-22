@@ -14,7 +14,6 @@ public final class CompiledCapabilityOperation {
     private final CompiledSchema outputSchema;
     private final CompiledCapabilityExecutionPolicy executionPolicy;
     private final List<CompiledCapabilityOperationError> errors;
-    private final String sideEffects;
     private final CompiledCapabilityAuth auth;
     private final Map<String, Object> http;
 
@@ -30,7 +29,7 @@ public final class CompiledCapabilityOperation {
             CompiledSchema outputSchema,
             CompiledCapabilityExecutionPolicy executionPolicy
     ) {
-        this(name, input, output, inputSchema, outputSchema, executionPolicy, List.of(), null, null);
+        this(name, input, output, inputSchema, outputSchema, executionPolicy, List.of(), null);
     }
 
     public CompiledCapabilityOperation(
@@ -41,10 +40,9 @@ public final class CompiledCapabilityOperation {
             CompiledSchema outputSchema,
             CompiledCapabilityExecutionPolicy executionPolicy,
             List<CompiledCapabilityOperationError> errors,
-            String sideEffects,
             CompiledCapabilityAuth auth
     ) {
-        this(name, input, output, inputSchema, outputSchema, executionPolicy, errors, sideEffects, auth, Map.of());
+        this(name, input, output, inputSchema, outputSchema, executionPolicy, errors, auth, Map.of());
     }
 
     /** INT-1: attaches the operation's declarative HTTP request -- see getHttp. */
@@ -56,7 +54,6 @@ public final class CompiledCapabilityOperation {
             CompiledSchema outputSchema,
             CompiledCapabilityExecutionPolicy executionPolicy,
             List<CompiledCapabilityOperationError> errors,
-            String sideEffects,
             CompiledCapabilityAuth auth,
             Map<String, Object> http
     ) {
@@ -69,7 +66,6 @@ public final class CompiledCapabilityOperation {
                 ? CompiledCapabilityExecutionPolicy.defaults()
                 : executionPolicy;
         this.errors = new ArrayList<>(errors);
-        this.sideEffects = sideEffects;
         this.auth = auth;
         this.http = http == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(http));
     }
@@ -98,10 +94,6 @@ public final class CompiledCapabilityOperation {
 
     public List<CompiledCapabilityOperationError> getErrors() {
         return Collections.unmodifiableList(errors);
-    }
-
-    public String getSideEffects() {
-        return sideEffects;
     }
 
     public CompiledCapabilityAuth getAuth() {

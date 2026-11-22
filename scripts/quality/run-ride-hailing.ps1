@@ -19,6 +19,11 @@
     Optional model.json to copy over the sample's Input\model.json first (iterating on a staged model; the
     committed model is what the daily run uses).
 
+.PARAMETER ReminderWait
+    Seconds the experience stage waits for the rate reminder (RemindToRate, started by the RateReminderDue event)
+    to reach the unrated rider. 0 = skip, which is what the committed model needs (its delay is 600 s). To prove it
+    stage a copy of the model with a short delay in the scheduleEvent of CompleteRide and pass it with -ModelFile.
+
 .PARAMETER KeepRunning
     After the stages ran, leave the app and the three mocks up and print the URL and the logins the setup stage
     created, so you can open the app in a browser or call the API by hand. Pressing Enter stops everything this
@@ -38,6 +43,7 @@ param(
     [int]$BootTimeoutSeconds = 300,
     [switch]$ReuseBuild,
     [string]$ModelFile = "",
+    [int]$ReminderWait = 0,
     [switch]$KeepRunning,
     [int]$HoldSeconds = 0,
     [string]$ReportPath = "scripts/reports/out/ride-hailing-report.json"
@@ -199,7 +205,7 @@ try {
 
     Write-Section "Driving the acceptance script (stages: $Stages)"
     $driveOut = Join-Path $evidenceDir "drive.txt"
-    & $py -I (Join-Path $samplesRoot "$SampleId\drive_s2.py") --base $baseUrl --stages $Stages --psp "http://127.0.0.1:$PspPort" --push "http://127.0.0.1:$PushPort" 2>&1 | Tee-Object -FilePath $driveOut | Out-Host
+    & $py -I (Join-Path $samplesRoot "$SampleId\drive_s2.py") --base $baseUrl --stages $Stages --psp "http://127.0.0.1:$PspPort" --push "http://127.0.0.1:$PushPort" --reminder-wait $ReminderWait 2>&1 | Tee-Object -FilePath $driveOut | Out-Host
     $driveExit = $LASTEXITCODE
     $report.stages.drive = if ($driveExit -eq 0) { "passed" } else { "failed (see $driveOut)" }
     $report.status = if ($driveExit -eq 0) { "passed" } else { "failed" }

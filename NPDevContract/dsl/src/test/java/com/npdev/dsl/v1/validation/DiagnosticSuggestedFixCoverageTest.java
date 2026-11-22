@@ -117,7 +117,7 @@ class DiagnosticSuggestedFixCoverageTest {
                       "name": "Ticket",
                       "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true },
-                        { "name": "ownerId", "type": "reference", "ref": "Ghost", "required": true },
+                        { "name": "ownerId", "type": "reference", "reference": "Ghost", "required": true },
                         { "name": "status", "type": "enum", "enumValues": ["open", "open"] },
                         { "name": "ownerId", "type": "string" }
                       ]

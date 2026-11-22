@@ -1,0 +1,29 @@
+{
+  "$comment": "Everyday stories, noun Module (context, conversion, conversionCaseWhen, conversionLookupMatch, conversionSplitTarget), one part. Same style rules as stories-pilot.json. Owner reviews each part.",
+  "schemaVersion": "npdev-keyword-stories.v1",
+  "stories": {
+    "context.$ref": "The sales area of a company keeps its pieces in its own file. This is the relative path of that file, and everything inside it belongs to the area.",
+    "context.name": "Sales and stock are two areas, and each needs a name that prefixes its members, such as 'sales' in front of 'Customer'. Name is that handle. It starts with a letter.",
+    "context.physicallyIsolate": "A company wants the data of its payroll area stored apart from everything else. Physically isolate, when true, keeps the area's data in its own place, away from the rest of the app.",
+    "conversion.claims": "A hand-written conversion is a black box to NPDev, so it has to say which boxes it settles. Claims lists the plain field names the hook resolves, and each is checked against the concept. It is required with a Java hook.",
+    "conversion.concept": "When the shape of the customer changes, its stored rows must be converted. Concept names the kind of record whose rows are converted.",
+    "conversion.else": "A conversion that turns 'M' into 'Male' and 'F' into 'Female' still meets other values. Else is the value written when no condition matches. If it is left out, a row that matches nothing is left empty.",
+    "conversion.from": "A conversion needs its source. It is one box name for copy, split, convert and case, and two or more for merge and coalesce.",
+    "conversion.id": "Each conversion has to be told apart from the others. Id is its unique name, and it also names the folder of the hook NPDev generates.",
+    "conversion.into": "A 'full name' box has to become 'first name' and 'last name'. Into lists the target boxes of a split and which part each one receives.",
+    "conversion.javaHook": "Sometimes no ready-made operation fits, and a developer writes the conversion in Java. Java hook runs it in the isolated plugin pool, instead of the generated SQL, and the code goes through the same safety checks as any other plugin.",
+    "conversion.match": "A conversion can fill a box by looking up another list, such as the city's id from its name. Match says how the row of the other list is found.",
+    "conversion.op": "Old data can be carried over in several ways: copy a box, split one into several, look a value up in another concept, merge several into one, convert the type, take the first non-empty of several, or map fixed values. Op picks which.",
+    "conversion.set": "After finding the city by its name, the customer should keep the city's id. Set is the box of this concept that receives the id of the matched row. It is used by the lookup operation.",
+    "conversion.to": "Every conversion writes its answer somewhere. To is the target box that receives the result.",
+    "conversion.when": "To turn codes into words, the conversion needs a list of conditions: 'M' gives 'Male', 'F' gives 'Female'. When lists those branches, one or more, tested in order, and the first one that matches wins.",
+    "conversion.with": "Merging 'first name' and 'last name' needs a space between them. With is the separator placed between the merged boxes. If you leave it out, nothing is placed between them.",
+    "conversionCaseWhen.equals": "One branch of a code translation asks, 'is the value M?'. Equals is the fixed value the box is compared with.",
+    "conversionCaseWhen.then": "If the answer is yes, the branch writes 'Male'. Then is the fixed value written when the comparison matches.",
+    "conversionLookupMatch.concept": "To find a customer's city by its name, the conversion looks at the list of cities. Concept names the kind of record whose rows are matched.",
+    "conversionLookupMatch.equals": "The customer row carries the city's name. Equals is the box of the converted concept whose value must equal the other concept's matching box.",
+    "conversionLookupMatch.on": "In the list of cities, the name sits in its own box. On is the box of that concept that is compared with the customer's box.",
+    "conversionSplitTarget.field": "A split sends parts to different boxes. Field is the target box that receives one part.",
+    "conversionSplitTarget.take": "From 'Ana Souza', the first box takes 'Ana' and the second takes 'Souza'. Take says which part: the one before the first space, or the one after it."
+  }
+}

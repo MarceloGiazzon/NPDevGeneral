@@ -136,7 +136,7 @@ class DslSchemaConformanceTest {
                               "label": "Completed",
                               "order": 20,
                               "group": "Terminal",
-                              "badgeHint": "success"
+                              "badge": "success"
                             }
                           ]
                         }
@@ -178,7 +178,6 @@ class DslSchemaConformanceTest {
                             "target": "Patient",
                             "displayField": "lastName",
                             "displayTemplate": "{{lastName}}, {{firstName}} ({{mrn}})",
-                            "lookupFields": ["mrn", "lastName"],
                             "pickerColumns": ["mrn", "lastName"],
                             "previewFields": ["mrn", "lastName"],
                             "previewCardTemplate": "{{lastName}} | {{mrn}}",
@@ -287,8 +286,7 @@ class DslSchemaConformanceTest {
                         "description": "Patient profile",
                         "group": "Clinical operations",
                         "section": "Registration",
-                        "order": 10,
-                        "examples": ["New patient intake"]
+                        "order": 10
                       },
                       "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -299,14 +297,11 @@ class DslSchemaConformanceTest {
                             "label": "First name",
                             "shortLabel": "First",
                             "description": "Given name",
-                            "helpText": "Use the patient's preferred given name",
                             "placeholder": "Marina",
                             "group": "Identity",
                             "section": "Registration",
                             "order": 20,
-                            "advanced": false,
                             "deprecated": false,
-                            "examples": ["Marina"],
                             "widget": "text"
                           }
                         }
@@ -343,10 +338,7 @@ class DslSchemaConformanceTest {
                             "enabledWhen": "status != 'Draft'",
                             "readonlyWhen": "status == 'Draft'",
                             "requiredWhen": "status == 'Active'",
-                            "pickerType": "search-dialog",
-                            "allowInlineCreate": false,
-                            "searchFields": ["fullName"],
-                            "filterPreset": "available-providers"
+                            "searchFields": ["fullName"]
                           }
                         }
                       ]
@@ -434,12 +426,9 @@ class DslSchemaConformanceTest {
                             "action": {
                               "label": "Cancel appointment",
                               "confirmationText": "Cancel this appointment?",
-                              "successMessage": "Appointment cancelled.",
-                              "failureHint": "Only scheduled appointments can be cancelled.",
                               "dangerLevel": "high",
                               "visibleWhen": "status == 'Scheduled'",
-                              "permissionHint": "appointments.cancel",
-                              "inputFormHint": "appointment-cancel"
+                              "permissionHint": "appointments.cancel"
                             }
                           }
                         ]
@@ -462,11 +451,8 @@ class DslSchemaConformanceTest {
                       "action": {
                         "label": "Create appointment",
                         "confirmationText": "Create this appointment?",
-                        "successMessage": "Appointment created.",
-                        "failureHint": "Provide the required fields.",
                         "dangerLevel": "low",
-                        "permissionHint": "appointments.create",
-                        "inputFormHint": "appointment-create"
+                        "permissionHint": "appointments.create"
                       },
                       "steps": [
                         {
@@ -477,10 +463,8 @@ class DslSchemaConformanceTest {
                           "output": "$saved",
                           "action": {
                             "label": "Persist appointment",
-                            "successMessage": "Appointment persisted.",
                             "dangerLevel": "low",
-                            "permissionHint": "appointments.create",
-                            "inputFormHint": "appointment-create"
+                            "permissionHint": "appointments.create"
                           }
                         }
                       ]

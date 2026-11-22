@@ -1,0 +1,21 @@
+{
+  "$comment": "Everyday stories, noun Role (role, agentAccess, agentAccessChannel, agentAccessExposure), one part. Same style rules as stories-pilot.json. Owner reviews each part.",
+  "schemaVersion": "npdev-keyword-stories.v1",
+  "stories": {
+    "agentAccess.assistant": "A pizza shop lets customers chat with a helper on Telegram or WhatsApp. Assistant sets how that built-in helper behaves: its name, its instructions, its language and more. It does not apply to the MCP door, where the connecting agent brings its own model.",
+    "agentAccess.channels": "The shop wants the helper on Telegram but not yet on WhatsApp. Channels say which doors are open: MCP, Telegram or WhatsApp. Every one is closed until you open it.",
+    "agentAccess.expose": "The helper must be told what it may touch: the pizza ingredients, the order-taking flow, the whole order with its lines. Expose lists the concepts, flows and aggregates offered to agents. At least one is needed.",
+    "agentAccess.photoIntake": "A customer sends the bot a photo of a damaged parcel. Photo intake says what that photo becomes: the image is stored in a box of a new record, and an optional procedure can look at it first, for instance an AI that identifies the item, and pre-fill the other boxes.",
+    "agentAccessChannel.enabled": "A chat door should open only when someone decides so. Enabled turns a channel on, and it is off by default. Telegram and WhatsApp also need sign-in by token and the identity pack, which links the chat account to a person.",
+    "agentAccessExposure.aggregate": "The helper should be able to read a whole order, header and lines, and save it in one go. Aggregate offers such a bundle, read and saved whole through the same commit the workbench uses. A save replaces the tree, so lines left out are deleted.",
+    "agentAccessExposure.concept": "The helper should be able to look up customers. Concept offers the records of that concept to agents as tools.",
+    "agentAccessExposure.confirmWrites": "On a chat, a misunderstood sentence could delete a customer. Confirm writes, which is on by default, makes the helper ask the person to confirm before it creates, changes, deletes or runs a flow. It applies to chat channels only.",
+    "agentAccessExposure.description": "An AI that sees a concept called 'Ing' has to guess what it is. Description is a plain sentence for the AI, such as 'Pizza ingredients and how much of each is in stock'.",
+    "agentAccessExposure.fields": "The helper may see a customer's name and city, but not other boxes. Fields is the allow-list of boxes the agent sees and may set. Without it, every non-sensitive box is offered, and a sensitive box is never offered, even if listed.",
+    "agentAccessExposure.flow": "The helper should be able to start the recipe 'Take order'. Flow offers that flow to agents as a tool.",
+    "agentAccessExposure.operations": "For a concept the helper may only read, or also create, change and delete. Operations lists what it may do: list, get, create, update, delete. It reads only by default. For an aggregate the choices are get and save, and get is the default.",
+    "agentAccessExposure.roles": "Only managers should see the refund tool in the chat. Roles offers the tool only to users with one of these roles. Without it, every linked user sees it. This filters the offer, and the app's permissions still check every call.",
+    "role.grants": "A role can be allowed to start flows or to read executions. Grants lists the platform permissions the role may hold. It is a ceiling, not an assignment, and it is checked when the model is validated and again at start.",
+    "role.name": "Buttons, screens and rules need a name to point at, such as 'Manager'. Name is the role's handle, and experiences, access rules and capability rules refer to it."
+  }
+}

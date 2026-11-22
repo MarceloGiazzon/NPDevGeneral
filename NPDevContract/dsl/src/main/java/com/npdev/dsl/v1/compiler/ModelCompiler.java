@@ -411,7 +411,6 @@ public final class ModelCompiler {
                         toCompiledSchema(operationAst.getOutputSchema()),
                         toCompiledPolicy(operationAst.getExecutionPolicy()),
                         toCompiledOperationErrors(operationAst.getErrors()),
-                        operationAst.getSideEffects(),
                         toCompiledAuth(operationAst.getAuth()),
                         operationAst.getHttp()
                 ));
@@ -1510,7 +1509,6 @@ public final class ModelCompiler {
                 : new CompiledDomainTypeUi(
                 uiAst.getLabel(),
                 uiAst.getPlaceholder(),
-                uiAst.getHelpText(),
                 uiAst.getWidget(),
                 uiAst.getLabelLocales()
         );
@@ -2132,12 +2130,9 @@ public final class ModelCompiler {
         return new CompiledActionMetadata(
                 actionMetadata.getLabel(),
                 actionMetadata.getConfirmationText(),
-                actionMetadata.getSuccessMessage(),
-                actionMetadata.getFailureHint(),
                 actionMetadata.getDangerLevel(),
                 actionMetadata.getVisibleWhen(),
                 actionMetadata.getPermissionHint(),
-                actionMetadata.getInputFormHint(),
                 actionMetadata.getLabelLocales()
         );
     }
@@ -2401,23 +2396,17 @@ public final class ModelCompiler {
                 metadata.getLabel(),
                 metadata.getShortLabel(),
                 metadata.getDescription(),
-                metadata.getHelpText(),
                 metadata.getPlaceholder(),
                 metadata.getGroup(),
                 metadata.getSection(),
                 metadata.getOrder(),
-                metadata.getAdvanced(),
                 metadata.getDeprecated(),
-                metadata.getExamples(),
                 metadata.getWidget(),
                 metadata.getVisibleWhen(),
                 metadata.getEnabledWhen(),
                 metadata.getReadonlyWhen(),
                 metadata.getRequiredWhen(),
-                metadata.getPickerType(),
-                metadata.getAllowInlineCreate(),
                 metadata.getSearchFields(),
-                metadata.getFilterPreset(),
                 metadata.getTab(),
                 metadata.getColumn(),
                 metadata.getColumnSpan(),
@@ -2541,7 +2530,7 @@ public final class ModelCompiler {
         if (authAst == null) {
             return null;
         }
-        return new CompiledCapabilityAuth(authAst.getRoles(), authAst.getScopes());
+        return new CompiledCapabilityAuth(authAst.getRoles());
     }
 
     private static CompiledSchema resolveOperationSchema(

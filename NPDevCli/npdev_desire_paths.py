@@ -405,7 +405,7 @@ ROLLUP_KEYS = set(_ALIASES["rollup"]["canonicalKeys"])
 
 
 def _reference_target(field: dict) -> str | None:
-    ref = field.get("reference", field.get("ref"))
+    ref = field.get("reference")
     if isinstance(ref, dict):
         ref = ref.get("target")
     return ref if isinstance(ref, str) else None

@@ -448,10 +448,10 @@ class ExperienceValidationTest {
         assertEquals(List.of(), errorsFor(root -> {
             picker(root);
             ((ArrayNode) root.withArray("concepts").get(0).get("fields")).addObject()
-                    .put("name", "other").put("type", "reference").put("ref", "Ride").putObject("picker").put("selectorRef", "RidePicker");
+                    .put("name", "other").put("type", "reference").put("reference", "Ride").putObject("picker").put("selectorRef", "RidePicker");
         }));
         assertHas(errorsFor(root -> ((ArrayNode) root.withArray("concepts").get(0).get("fields")).addObject()
-                        .put("name", "other").put("type", "reference").put("ref", "Ride").putObject("picker").put("selectorRef", "RidePicker")),
+                        .put("name", "other").put("type", "reference").put("reference", "Ride").putObject("picker").put("selectorRef", "RidePicker")),
                 "names undeclared picker screen 'RidePicker'", "suggestedFix");
     }
 

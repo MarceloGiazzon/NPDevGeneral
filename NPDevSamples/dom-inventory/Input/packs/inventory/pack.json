@@ -2,7 +2,7 @@
   "$schema": "../../schemas/pack.schema.json",
   "dslVersion": "3.0.0",
   "pack": "inventory",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "namespace": "com.npdev.inventory",
   "description": "NPDev inventory and warehouse pack: warehouses, storage locations, products and a stock-movement ledger. What is stocked lives in the products pack (products::Product); this pack keeps only the stock data about a product (minimum stock) in a StockItem satellite pointing back to it, and every movement points at the product itself. A person with the 'stockkeeper' role records movements (receipt, issue, transfer, adjustment in/out) as DRAFT and posts them; only POSTED movements count towards stock, and a posted movement is undone by reversing it, never by editing it. A person with the 'inventoryManager' role does the same and also maintains warehouses, locations and products. The two roles are logical: the importing app binds them to its own role names with provides.roleBindings { \"stockkeeper\": ..., \"inventoryManager\": ... } (composition refuses when either is unbound) and grants those roles read/create/update on the pack's concepts in its own roles[] (manager: also delete; stockkeeper: read-only on warehouses, locations and products). On-hand stock is derived (queries StockByProduct and StockByProductLocation), not stored, so it cannot drift from the ledger. NOT enforced by the pack: a movement that would take a location below zero (that needs a read of the current balance inside the posting transaction); the rules sheet lists it as a rule for the importing app to add. Numeric bounds and the per-warehouse unique location code are declared as invariants (enforced today) in addition to field min and the unique index, because field.min/max and compound unique indexes are not yet enforced by the platform (REG-255, REG-257).",
   "category": "other",
@@ -10,7 +10,7 @@
   "packs": [
     {
       "pack": "products",
-      "version": "^1.0"
+      "version": "^2.0"
     }
   ],
   "metadata": {

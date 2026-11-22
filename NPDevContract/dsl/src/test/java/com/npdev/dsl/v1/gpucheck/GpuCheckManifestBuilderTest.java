@@ -60,19 +60,19 @@ class GpuCheckManifestBuilderTest {
                     { "name": "status", "type": "enum", "enumValues": ["OPEN", "CLOSED"] },
                     { "name": "active", "type": "boolean" },
                     { "name": "placedAt", "type": "datetime", "required": true },
-                    { "name": "customer", "type": "reference", "ref": "Customer" }
+                    { "name": "customer", "type": "reference", "reference": "Customer" }
                   ],
                   "invariants": [
-                    { "name": "positiveTotal", "expression": "qty + 1 > 1 && price >= 0.5" },
-                    { "name": "openOrActive", "expression": "status == 'OPEN' || active" },
-                    { "name": "codeNotEmpty", "expression": "!(code == '')" },
-                    { "name": "statusKnown", "expression": "status != null" },
-                    { "name": "negatedQty", "expression": "-qty < 0" },
-                    { "name": "closedNotOpen", "expression": "'CLOSED' == status || status == 'GONE'" },
-                    { "name": "doubleQty", "expression": "qty * 2 > 3" },
-                    { "name": "upperCode", "expression": "upper(code) == 'X'" },
-                    { "name": "datedOrder", "expression": "placedAt != null" },
-                    { "name": "codeIsAbc", "expression": "code == 'abc'" },
+                    { "name": "positiveTotal", "expr": "qty + 1 > 1 && price >= 0.5" },
+                    { "name": "openOrActive", "expr": "status == 'OPEN' || active" },
+                    { "name": "codeNotEmpty", "expr": "!(code == '')" },
+                    { "name": "statusKnown", "expr": "status != null" },
+                    { "name": "negatedQty", "expr": "-qty < 0" },
+                    { "name": "closedNotOpen", "expr": "'CLOSED' == status || status == 'GONE'" },
+                    { "name": "doubleQty", "expr": "qty * 2 > 3" },
+                    { "name": "upperCode", "expr": "upper(code) == 'X'" },
+                    { "name": "datedOrder", "expr": "placedAt != null" },
+                    { "name": "codeIsAbc", "expr": "code == 'abc'" },
                     { "name": "codeStatusUnique", "type": "unique", "fields": ["code", "status"] }
                   ]
                 }

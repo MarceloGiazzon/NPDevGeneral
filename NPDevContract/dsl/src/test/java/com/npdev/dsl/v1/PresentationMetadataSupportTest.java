@@ -40,8 +40,7 @@ class PresentationMetadataSupportTest {
                         "description": "Patient profile",
                         "group": "Clinical operations",
                         "section": "Registration",
-                        "order": 10,
-                        "examples": ["New patient intake"]
+                        "order": 10
                       },
                       "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true },
@@ -52,12 +51,10 @@ class PresentationMetadataSupportTest {
                             "label": "First name",
                             "shortLabel": "First",
                             "description": "Given name",
-                            "helpText": "Use the preferred given name",
                             "placeholder": "Marina",
                             "group": "Identity",
                             "section": "Registration",
                             "order": 10,
-                            "examples": ["Marina"],
                             "widget": "text"
                           }
                         },
@@ -98,7 +95,6 @@ class PresentationMetadataSupportTest {
                 .findFirst()
                 .orElseThrow();
         assertEquals("First", firstName.getUi().getShortLabel());
-        assertEquals("Marina", firstName.getUi().getExamples().get(0));
     }
 
     @Test

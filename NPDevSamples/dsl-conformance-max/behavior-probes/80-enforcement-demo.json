@@ -4,10 +4,9 @@
       "id": "ed-enum-value-membership-enforced",
       "keywords": [
         "enumOption.value",
-        "field.values",
         "field.enumValues"
       ],
-      "description": "An enum field whose options are enumOption objects (state) and one declared through the `values` alias with plain strings (tier) both refuse a value outside the declared set with 422 schema_validation naming the field, and accept every declared value (the control writes the deprecated option too, so deprecation is not a write block).",
+      "description": "An enum field whose options are enumOption objects (state) and one declared with plain strings (tier) both refuse a value outside the declared set with 422 schema_validation naming the field, and accept every declared value (the control writes the deprecated option too, so deprecation is not a write block).",
       "steps": [
         {
           "name": "undeclared state",
@@ -29,7 +28,7 @@
           }
         },
         {
-          "name": "undeclared tier (values alias)",
+          "name": "undeclared tier (plain strings)",
           "method": "POST",
           "path": "/api/widget_enforcement_demos",
           "body": {
@@ -110,13 +109,9 @@
         "enumOption.deprecated",
         "enumOption.description",
         "enumOption.icon",
-        "enumOption.iconHint",
-        "enumOption.badge",
-        "enumOption.badgeHint",
-        "enumOption.displayLabel",
-        "enumOption.help"
+        "enumOption.badge"
       ],
-      "description": "Each enumOption property reaches the runtime metadata the browser shell is built from: GET /api/admin/runtime/metadata/enums lists every option of WidgetEnforcementDemo.state with its label, order, group, default and deprecated flags and description; icon and badge (Draft, Live) and iconHint and badgeHint (Retired) surface as the catalog's iconHint/badgeHint. Presentation-only, so the check is that the declared value is served exactly, per option. Retired declares its label as displayLabel ('Withdrawn') and its description as help ('No longer used'): the two aliases are served as label and description.",
+      "description": "Each enumOption property reaches the runtime metadata the browser shell is built from: GET /api/admin/runtime/metadata/enums lists every option of WidgetEnforcementDemo.state with its label, order, group, default and deprecated flags and description; icon and badge surface as the catalog's iconHint/badgeHint. Presentation-only, so the check is that the declared value is served exactly, per option. Retired declares the label 'Withdrawn' and the description 'No longer used'.",
       "steps": [
         {
           "name": "enum catalog Draft",
@@ -175,11 +170,11 @@
       ]
     },
     {
-      "id": "ed-field-ref-alias-enforces-reference-target",
+      "id": "ed-field-reference-enforces-target",
       "keywords": [
-        "field.ref"
+        "field.reference"
       ],
-      "description": "A reference field declared with the `ref` alias (catalogRef -> WidgetCatalogEntry) is enforced like `reference`: an id that names no row is refused with 422 bond_target_not_found, a real row id is accepted.",
+      "description": "A reference field (catalogRef -> WidgetCatalogEntry) is enforced: an id that names no row is refused with 422 bond_target_not_found, a real row id is accepted.",
       "steps": [
         {
           "name": "catalog row",
@@ -249,14 +244,13 @@
       ]
     },
     {
-      "id": "ed-invariant-forms-unique-rule-expression",
+      "id": "ed-invariant-forms-unique-expr",
       "keywords": [
         "invariant.type",
         "invariant.fields",
-        "invariant.rule",
-        "invariant.expression"
+        "invariant.expr"
       ],
-      "description": "The three invariant authoring forms are enforced: type=unique with fields (BadgeCodeUnique -> 409 on a duplicate badgeCode), a bare `rule` (CodeNotReserved: code != 'RESERVED' -> 422) and type=expression with `expression` (CapacityWithinCap -> 422 above 100). Each control with a legal value is accepted, so the refusal is caused by the invariant alone.",
+      "description": "The two invariant authoring forms are enforced: type=unique with fields (BadgeCodeUnique -> 409 on a duplicate badgeCode) and `expr` (CodeNotReserved: code != 'RESERVED' -> 422; CapacityWithinCap -> 422 above 100). Each control with a legal value is accepted, so the refusal is caused by the invariant alone.",
       "steps": [
         {
           "name": "first badge",
@@ -293,7 +287,7 @@
           }
         },
         {
-          "name": "rule form",
+          "name": "expr form (reserved code)",
           "method": "POST",
           "path": "/api/widget_enforcement_demos",
           "body": {
@@ -309,7 +303,7 @@
           }
         },
         {
-          "name": "expression form over cap",
+          "name": "expr form over cap",
           "method": "POST",
           "path": "/api/widget_enforcement_demos",
           "body": {
@@ -326,7 +320,7 @@
           }
         },
         {
-          "name": "expression form at cap",
+          "name": "expr form at cap",
           "method": "POST",
           "path": "/api/widget_enforcement_demos",
           "body": {

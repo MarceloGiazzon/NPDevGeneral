@@ -115,7 +115,6 @@ public final class ResolvedModelCanonicalJson {
                 operationNode.set("outputSchema", toSchema(operation.getOutputSchema()));
                 operationNode.set("policy", toPolicy(operation.getExecutionPolicy()));
                 operationNode.set("errors", toOperationErrors(operation.getErrors()));
-                operationNode.put("sideEffects", safe(operation.getSideEffects()));
                 operationNode.set("auth", toAuth(operation.getAuth()));
                 operationsNode.add(operationNode);
             }
@@ -215,12 +214,9 @@ public final class ResolvedModelCanonicalJson {
         ObjectNode node = JsonNodeFactory.instance.objectNode();
         node.put("label", safe(action.getLabel()));
         node.put("confirmationText", safe(action.getConfirmationText()));
-        node.put("successMessage", safe(action.getSuccessMessage()));
-        node.put("failureHint", safe(action.getFailureHint()));
         node.put("dangerLevel", safe(action.getDangerLevel()));
         node.put("visibleWhen", safe(action.getVisibleWhen()));
         node.put("permissionHint", safe(action.getPermissionHint()));
-        node.put("inputFormHint", safe(action.getInputFormHint()));
         return node;
     }
 
@@ -284,7 +280,6 @@ public final class ResolvedModelCanonicalJson {
         }
         ObjectNode node = JsonNodeFactory.instance.objectNode();
         node.set("roles", toStringArray(auth.getRoles()));
-        node.set("scopes", toStringArray(auth.getScopes()));
         return node;
     }
 

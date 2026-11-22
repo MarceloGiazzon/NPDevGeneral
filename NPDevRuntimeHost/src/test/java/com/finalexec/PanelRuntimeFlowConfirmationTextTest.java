@@ -136,9 +136,6 @@ class PanelRuntimeFlowConfirmationTextTest {
                         "Confirm exit for the listed items?",
                         null,
                         null,
-                        null,
-                        null,
-                        null,
                         null
                 )
         );

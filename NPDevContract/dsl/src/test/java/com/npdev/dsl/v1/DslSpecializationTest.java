@@ -35,7 +35,7 @@ class DslSpecializationTest {
                         { "name": "amount", "type": "long", "required": true }
                       ],
                       "invariants": [
-                        { "rule": "unique(code)" }
+                        { "type": "unique", "fields": ["code"] }
                       ]
                     },
                     {

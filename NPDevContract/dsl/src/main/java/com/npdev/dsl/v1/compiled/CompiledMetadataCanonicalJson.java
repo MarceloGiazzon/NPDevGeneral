@@ -584,9 +584,7 @@ public final class CompiledMetadataCanonicalJson {
             } else {
                 node.put("formColumns", entity.getUi().getFormColumns());
             }
-            node.put("advanced", entity.getUi() != null && Boolean.TRUE.equals(entity.getUi().getAdvanced()));
             node.put("deprecated", entity.getUi() != null && Boolean.TRUE.equals(entity.getUi().getDeprecated()));
-            node.set("examples", toStringArray(entity.getUi() == null ? List.of() : entity.getUi().getExamples()));
             node.put("lifecycleStatusField", entity.getLifecycle() == null ? "" : safe(entity.getLifecycle().getStatusField()));
             node.put("initialState", entity.getLifecycle() == null ? "" : safe(initialState(entity.getLifecycle())));
             node.set("terminalStates", entity.getLifecycle() == null
@@ -789,7 +787,6 @@ public final class CompiledMetadataCanonicalJson {
             node.put("label", domainType.getUi() == null ? "" : safe(domainType.getUi().getLabel()));
             node.set("labelLocales", toStringMap(domainType.getUi() == null ? Map.of() : domainType.getUi().getLabelLocales()));
             node.put("placeholder", domainType.getUi() == null ? "" : safe(domainType.getUi().getPlaceholder()));
-            node.put("helpText", domainType.getUi() == null ? "" : safe(domainType.getUi().getHelpText()));
             node.put("widget", domainType.getUi() == null ? "" : safe(domainType.getUi().getWidget()));
             CompiledSchema schema = domainType.getValidationSchema();
             node.put("description", schema == null ? "" : safe(schema.getDescription()));
@@ -1382,12 +1379,9 @@ public final class CompiledMetadataCanonicalJson {
         node.put("label", safe(firstNonBlank(action == null ? null : action.getLabel(), fallbackLabel)));
         node.set("labelLocales", toStringMap(action == null ? Map.of() : action.getLabelLocales()));
         node.put("confirmationText", safe(action == null ? null : action.getConfirmationText()));
-        node.put("successMessage", safe(action == null ? null : action.getSuccessMessage()));
-        node.put("failureHint", safe(action == null ? null : action.getFailureHint()));
         node.put("dangerLevel", safe(action == null ? null : action.getDangerLevel()));
         node.put("visibleWhen", safe(action == null ? null : action.getVisibleWhen()));
         node.put("permissionHint", safe(action == null ? null : action.getPermissionHint()));
-        node.put("inputFormHint", safe(action == null ? null : action.getInputFormHint()));
     }
 
     private static void appendNestedFieldEntries(
@@ -1844,7 +1838,6 @@ public final class CompiledMetadataCanonicalJson {
         ObjectNode node = JsonNodeFactory.instance.objectNode();
         node.put("label", safe(domainType.getUi().getLabel()));
         node.put("placeholder", safe(domainType.getUi().getPlaceholder()));
-        node.put("helpText", safe(domainType.getUi().getHelpText()));
         node.put("widget", safe(domainType.getUi().getWidget()));
         return node;
     }
@@ -1857,7 +1850,6 @@ public final class CompiledMetadataCanonicalJson {
         node.put("label", safe(metadata.getLabel()));
         node.put("shortLabel", safe(metadata.getShortLabel()));
         node.put("description", safe(metadata.getDescription()));
-        node.put("helpText", safe(metadata.getHelpText()));
         node.put("placeholder", safe(metadata.getPlaceholder()));
         node.put("group", safe(metadata.getGroup()));
         node.put("section", safe(metadata.getSection()));
@@ -1866,30 +1858,17 @@ public final class CompiledMetadataCanonicalJson {
         } else {
             node.put("order", metadata.getOrder());
         }
-        if (metadata.getAdvanced() == null) {
-            node.putNull("advanced");
-        } else {
-            node.put("advanced", metadata.getAdvanced());
-        }
         if (metadata.getDeprecated() == null) {
             node.putNull("deprecated");
         } else {
             node.put("deprecated", metadata.getDeprecated());
         }
-        node.set("examples", toStringArray(metadata.getExamples()));
         node.put("widget", safe(metadata.getWidget()));
         node.put("visibleWhen", safe(metadata.getVisibleWhen()));
         node.put("enabledWhen", safe(metadata.getEnabledWhen()));
         node.put("readonlyWhen", safe(metadata.getReadonlyWhen()));
         node.put("requiredWhen", safe(metadata.getRequiredWhen()));
-        node.put("pickerType", safe(metadata.getPickerType()));
-        if (metadata.getAllowInlineCreate() == null) {
-            node.putNull("allowInlineCreate");
-        } else {
-            node.put("allowInlineCreate", metadata.getAllowInlineCreate());
-        }
         node.set("searchFields", toStringArray(metadata.getSearchFields()));
-        node.put("filterPreset", safe(metadata.getFilterPreset()));
         node.put("tab", safe(metadata.getTab()));
         if (metadata.getColumn() == null) {
             node.putNull("column");

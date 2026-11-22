@@ -14,7 +14,7 @@ import com.npdev.kernel.events.EventEnvelope;
  * only, bound by whoever already holds both halves.
  *
  * <p><b>There is deliberately no in-memory default.</b> A no-op or publish-now fallback would
- * reinstate exactly the trap R2.4 removes -- a step declaring {@code delayMinutes: 1440} that fires
+ * reinstate exactly the trap R2.4 removes -- a step declaring {@code delaySeconds: 86400} that fires
  * instantly while labelling itself {@code deliveryMode: scheduled}. A runner with no scheduler
  * configured fails a delayed {@code scheduleEvent} step loudly (EVENT_PERSIST_FAILED), the same way
  * the step has always failed when no {@code EventStore} is configured.

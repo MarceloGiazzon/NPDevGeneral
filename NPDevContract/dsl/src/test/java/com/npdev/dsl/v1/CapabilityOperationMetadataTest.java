@@ -22,8 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * W4.1 (NPDEV_ROADMAP_2026-09-12): {@code capabilityOperation} previously had no way to declare
- * what it can fail with ({@code errors}), whether it mutates anything ({@code sideEffects}), or who
- * may call it ({@code auth}) -- so neither validation nor AI tooling could answer those questions
+ * what it can fail with ({@code errors}) or who may call it ({@code auth}) -- so neither validation
+ * nor AI tooling could answer those questions
  * from the model alone. Proves the full chain a new capabilityOperation field must survive
  * (JsonModelParser -> ModelCompiler -> CompiledModelCanonicalJson writer -> reader), the same twin-
  * pair discipline {@code DslCapabilityPolicyTest} already applies to {@code policy}.
@@ -69,7 +69,6 @@ class CapabilityOperationMetadataTest {
                   "operations": [
                     {
                       "name": "save",
-                      "sideEffects": "writes",
                       "errors": [
                         {
                           "name": "DuplicateSku",
@@ -84,9 +83,6 @@ class CapabilityOperationMetadataTest {
                       "auth": {
                         "roles": [
                           "order-writer"
-                        ],
-                        "scopes": [
-                          "orders:write"
                         ]
                       }
                     }
@@ -98,7 +94,7 @@ class CapabilityOperationMetadataTest {
             """);
 
     @Test
-    void compilesAndRoundTripsOperationErrorsSideEffectsAndAuth() throws Exception {
+    void compilesAndRoundTripsOperationErrorsAndAuth() throws Exception {
         ModelAst ast = parse(MODEL_WITH_OPERATION_METADATA);
 
         List<String> validationErrors = new SemanticValidator().validate(ast);
@@ -110,14 +106,6 @@ class CapabilityOperationMetadataTest {
         String json = CompiledModelCanonicalJson.toJson(compiled);
         CompiledModel roundTripped = CompiledModelCanonicalJsonReader.fromJson(json);
         assertOperationMetadata(operationNamed(roundTripped, "save"));
-    }
-
-    @Test
-    void rejectsUnknownSideEffectsValueAtSchemaLayer() {
-        IOException error = assertThrows(IOException.class, () -> parse(MODEL_WITH_OPERATION_METADATA
-                .replace("\"sideEffects\":\"writes\"", "\"sideEffects\":\"mutates\"")));
-        assertTrue(error.getMessage().contains("Model schema validation failed"));
-        assertTrue(error.getMessage().contains("sideEffects"));
     }
 
     @Test
@@ -161,12 +149,10 @@ class CapabilityOperationMetadataTest {
         CompiledModel compiled = new ModelCompiler().compile(ast);
         CompiledCapabilityOperation operation = operationNamed(compiled, "save");
         assertTrue(operation.getErrors().isEmpty());
-        assertEquals(null, operation.getSideEffects());
         assertEquals(null, operation.getAuth());
     }
 
     private static void assertOperationMetadata(CompiledCapabilityOperation operation) {
-        assertEquals("writes", operation.getSideEffects());
         assertEquals(2, operation.getErrors().size());
         assertEquals("DuplicateSku", operation.getErrors().get(0).getName());
         assertEquals("CONTRACT", operation.getErrors().get(0).getClassification());
@@ -174,7 +160,6 @@ class CapabilityOperationMetadataTest {
         assertEquals("StoreUnavailable", operation.getErrors().get(1).getName());
         assertEquals("transient", operation.getErrors().get(1).getClassification());
         assertEquals(List.of("order-writer"), operation.getAuth().getRoles());
-        assertEquals(List.of("orders:write"), operation.getAuth().getScopes());
     }
 
     private static CompiledCapabilityOperation operationNamed(CompiledModel model, String name) {

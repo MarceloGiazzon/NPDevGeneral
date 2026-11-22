@@ -90,23 +90,17 @@ class CompiledModelCanonicalJsonReaderTest {
         CompiledActionMetadata flowAction = new CompiledActionMetadata(
                 "Create user",
                 "Create this user?",
-                "User created.",
-                "Review the user payload.",
                 "low",
                 null,
-                "users.create",
-                "user-create"
+                "users.create"
         );
 
         CompiledActionMetadata flowStepAction = new CompiledActionMetadata(
                 "Send welcome notification",
                 null,
-                "Notification sent.",
-                "Check notification bindings.",
                 "low",
                 null,
-                "notifications.send",
-                "welcome-notification"
+                "notifications.send"
         );
 
         // LNCH-17: a compensation step, to prove onFailureSteps survives the canonical JSON round
@@ -203,12 +197,9 @@ class CompiledModelCanonicalJsonReaderTest {
                         new CompiledActionMetadata(
                                 "Activate user",
                                 "Activate this user?",
-                                "User activated.",
-                                "Only draft users can be activated.",
                                 "medium",
                                 "status == 'Draft'",
-                                "users.activate",
-                                "user-activate"
+                                "users.activate"
                         )
                 ))
         );

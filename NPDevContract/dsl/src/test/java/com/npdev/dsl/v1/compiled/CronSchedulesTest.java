@@ -35,7 +35,7 @@ class CronSchedulesTest {
               ],
               "flows": [
                 { "name": "Nightly", "concept": "Order",
-                  "schedule": { "cron": "0 2 * * *" },
+                  "trigger": { "schedule": { "cron": "0 2 * * *" } },
                   "steps": [ { "name": "done", "type": "return", "value": "input" } ] }
               ]
             }

@@ -46,12 +46,9 @@ class ActionMetadataSupportTest {
                             "action": {
                               "label": "Check in patient",
                               "confirmationText": "Check in this patient?",
-                              "successMessage": "Patient checked in.",
-                              "failureHint": "Capture the check-in time before retrying.",
                               "dangerLevel": "low",
                               "visibleWhen": "status == 'Scheduled'",
-                              "permissionHint": "appointments.checkin",
-                              "inputFormHint": "appointment-checkin"
+                              "permissionHint": "appointments.checkin"
                             }
                           }
                         ]
@@ -74,11 +71,8 @@ class ActionMetadataSupportTest {
                       "action": {
                         "label": "Create appointment",
                         "confirmationText": "Create appointment?",
-                        "successMessage": "Appointment created.",
-                        "failureHint": "Review the appointment payload.",
                         "dangerLevel": "low",
-                        "permissionHint": "appointments.create",
-                        "inputFormHint": "appointment-create"
+                        "permissionHint": "appointments.create"
                       },
                       "steps": [
                         {
@@ -89,10 +83,8 @@ class ActionMetadataSupportTest {
                           "output": "$saved",
                           "action": {
                             "label": "Persist appointment",
-                            "successMessage": "Appointment persisted.",
                             "dangerLevel": "low",
-                            "permissionHint": "appointments.create",
-                            "inputFormHint": "appointment-create"
+                            "permissionHint": "appointments.create"
                           }
                         }
                       ]
@@ -110,7 +102,6 @@ class ActionMetadataSupportTest {
         assertNotNull(flow.getAction());
         assertEquals("Create appointment", flow.getAction().getLabel());
         assertEquals("appointments.create", flow.getAction().getPermissionHint());
-        assertEquals("appointment-create", flow.getAction().getInputFormHint());
 
         assertEquals(1, flow.getSteps().size());
         assertNotNull(flow.getSteps().get(0).getAction());

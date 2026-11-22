@@ -36,8 +36,8 @@ class DslGrammarEvolutionTest {
                         { "name": "email", "type": "string", "required": true }
                       ],
                       "invariants": [
-                        { "rule": "unique(email)" },
-                        { "rule": "email.matches(\\".+@.+\\")" }
+                        { "type": "unique", "fields": ["email"] },
+                        { "expr": "email.matches(\\".+@.+\\")" }
                       ]
                     }
                   ],
@@ -123,7 +123,7 @@ class DslGrammarEvolutionTest {
                         }
                       ],
                       "invariants": [
-                        { "name": "NoDuplicateAllergies", "type": "expression", "expression": "allergies.uniqueBy(allergen)" }
+                        { "name": "NoDuplicateAllergies", "type": "expression", "expr": "allergies.uniqueBy(allergen)" }
                       ]
                     }
                   ]

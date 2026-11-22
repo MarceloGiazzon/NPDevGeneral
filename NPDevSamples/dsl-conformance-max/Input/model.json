@@ -9,6 +9,13 @@
       "defaults": {
         "type": "string"
       }
+    },
+    {
+      "match": "*Sku",
+      "defaults": {
+        "type": "string",
+        "domainType": "Sku"
+      }
     }
   ],
   "externalAi": {
@@ -387,12 +394,6 @@
       },
       "fields": [
         {
-          "name": "id",
-          "type": "uuid",
-          "id": true,
-          "required": true
-        },
-        {
           "name": "name",
           "type": "string",
           "required": true,
@@ -568,12 +569,6 @@
         "label": "Shelf slot"
       },
       "fields": [
-        {
-          "name": "id",
-          "type": "uuid",
-          "id": true,
-          "required": true
-        },
         {
           "name": "shelfLayoutId",
           "type": "uuid",
@@ -892,7 +887,7 @@
         {
           "name": "catalogEntryId",
           "type": "reference",
-          "ref": "WidgetCatalogEntry",
+          "reference": "WidgetCatalogEntry",
           "ui": {
             "label": "Catalog entry"
           },
@@ -1150,7 +1145,7 @@
           "name": "CatalogSkuRequired",
           "specializes": "CatalogSkuRequired",
           "override": true,
-          "expression": "sku != null && sku != '' && sku != 'WID-BANNED'"
+          "expr": "sku != null && sku != '' && sku != 'WID-BANNED'"
         }
       ],
       "fields": [
@@ -1594,7 +1589,7 @@
         {
           "name": "catalogEntryId",
           "type": "reference",
-          "ref": "WidgetCatalogEntry",
+          "reference": "WidgetCatalogEntry",
           "ui": {
             "label": "Catalog entry"
           },
@@ -1940,6 +1935,13 @@
           }
         },
         {
+          "name": "altSku",
+          "required": false,
+          "ui": {
+            "label": "Alternate SKU"
+          }
+        },
+        {
           "name": "capacity",
           "type": "integer",
           "required": false,
@@ -1972,13 +1974,13 @@
             },
             {
               "value": "Retired",
-              "displayLabel": "Withdrawn",
+              "label": "Withdrawn",
               "order": 30,
               "group": "Closed",
               "deprecated": true,
-              "iconHint": "archive",
-              "badgeHint": "muted",
-              "help": "No longer used"
+              "icon": "archive",
+              "badge": "muted",
+              "description": "No longer used"
             }
           ],
           "required": true,
@@ -1989,7 +1991,7 @@
         {
           "name": "tier",
           "type": "enum",
-          "values": [
+          "enumValues": [
             "Bronze",
             "Silver",
             "Gold"
@@ -2075,7 +2077,7 @@
         {
           "name": "catalogRef",
           "type": "reference",
-          "ref": "WidgetCatalogEntry",
+          "reference": "WidgetCatalogEntry",
           "required": false,
           "ui": {
             "label": "Catalog entry"
@@ -2095,12 +2097,12 @@
         },
         {
           "name": "CodeNotReserved",
-          "rule": "code != 'RESERVED'"
+          "expr": "code != 'RESERVED'"
         },
         {
           "name": "CapacityWithinCap",
           "type": "expression",
-          "expression": "capacity == null || capacity <= 100"
+          "expr": "capacity == null || capacity <= 100"
         }
       ]
     },
@@ -2461,7 +2463,7 @@
             "from": "Submitted",
             "to": "Approved",
             "event": "WidgetReviewApproved",
-            "requires": [
+            "requiredPayload": [
               "approvedNote"
             ],
             "guard": "reviewMode == 'manual'"
@@ -2626,7 +2628,6 @@
       "operations": [
         {
           "name": "save",
-          "sideEffects": "writes",
           "errors": [
             {
               "name": "DuplicateKey",
@@ -2641,9 +2642,6 @@
           "auth": {
             "roles": [
               "WarehouseManager"
-            ],
-            "scopes": [
-              "persistence:write"
             ]
           }
         },
@@ -2671,8 +2669,7 @@
       "adapter": "webhook-http",
       "operations": [
         {
-          "name": "post",
-          "sideEffects": "external"
+          "name": "post"
         }
       ]
     },
@@ -2696,7 +2693,6 @@
       "operations": [
         {
           "name": "health",
-          "sideEffects": "reads",
           "policy": {
             "retryCount": 2,
             "retryDelayMs": 200
@@ -3319,7 +3315,7 @@
           "data": {
             "shelfId": "$input.id"
           },
-          "delayMs": 120000,
+          "delaySeconds": 120,
           "dedupeKey": "$input.id"
         },
         {
@@ -3339,7 +3335,7 @@
           "data": {
             "shelfId": "$input.id"
           },
-          "delayMinutes": 60,
+          "delaySeconds": 3600,
           "dedupeKey": "$input.id"
         },
         {
@@ -4265,8 +4261,10 @@
     {
       "name": "SweepDiscontinuedCatalog",
       "concept": "WidgetCatalogEntry",
-      "schedule": {
-        "cron": "0 15 3 * * *"
+      "trigger": {
+        "schedule": {
+          "cron": "0 15 3 * * *"
+        }
       },
       "steps": [
         {
@@ -4355,7 +4353,7 @@
               "name": "notify-line-approved-parallel",
               "type": "emitEvent",
               "event": "WidgetOrderLineApprovalRecorded",
-              "payload": "$lineApproval"
+              "from": "$lineApproval"
             }
           ]
         },
@@ -4384,7 +4382,7 @@
               "name": "escalate-approval",
               "type": "emitEvent",
               "event": "WidgetOrderApprovalEscalated",
-              "payload": "$input"
+              "from": "$input"
             }
           ]
         },
@@ -4585,7 +4583,7 @@
         {
           "name": "validate-line",
           "type": "invariantCheck",
-          "phase": "pre",
+          "checkpoint": "pre",
           "scope": "WidgetOrderLine",
           "invariants": [
             "PositiveQuantity"
@@ -4623,7 +4621,7 @@
               "name": "escalate-quick",
               "type": "emitEvent",
               "event": "WidgetOrderApprovalEscalated",
-              "payload": "$input"
+              "from": "$input"
             }
           ]
         },
@@ -4661,7 +4659,7 @@
           "type": "scheduleEvent",
           "event": "WidgetOrderReviewDue",
           "from": "$input",
-          "delayMs": 2000
+          "delaySeconds": 2
         },
         {
           "name": "return-delayed-ms",
@@ -4679,7 +4677,7 @@
           "type": "scheduleEvent",
           "event": "WidgetOrderReviewDue",
           "from": "$input",
-          "delayMinutes": 30
+          "delaySeconds": 1800
         },
         {
           "name": "return-delayed-minutes",
@@ -4706,7 +4704,6 @@
           },
           "action": {
             "label": "Emit shaped event",
-            "successMessage": "Shaped event emitted",
             "dangerLevel": "low"
           }
         },
@@ -4720,18 +4717,20 @@
     {
       "name": "MinuteHeartbeat",
       "concept": "WidgetCatalogEntry",
-      "schedule": {
-        "cron": "0 * * * * *",
-        "tenantScope": [
-          "dev"
-        ]
+      "trigger": {
+        "schedule": {
+          "cron": "0 * * * * *",
+          "tenantScope": [
+            "dev"
+          ]
+        }
       },
       "steps": [
         {
           "name": "tick",
           "type": "emitEvent",
           "event": "HeartbeatTick",
-          "payload": "$input"
+          "from": "$input"
         },
         {
           "name": "return-tick",
@@ -4743,16 +4742,18 @@
     {
       "name": "MinuteHeartbeatOtherTenant",
       "concept": "WidgetCatalogEntry",
-      "schedule": {
-        "cron": "0 * * * * *",
-        "tenantScope": "tenant-that-does-not-exist"
+      "trigger": {
+        "schedule": {
+          "cron": "0 * * * * *",
+          "tenantScope": "tenant-that-does-not-exist"
+        }
       },
       "steps": [
         {
           "name": "tick-other",
           "type": "emitEvent",
           "event": "HeartbeatTickOtherTenant",
-          "payload": "$input"
+          "from": "$input"
         },
         {
           "name": "return-tick-other",

@@ -143,6 +143,73 @@ class ModelResolverSpecializationTest {
         assertEquals(resolvedA.deterministicHashSha256(), resolvedB.deterministicHashSha256());
     }
 
+    @Test
+    void aSpecializationRedeclaringAnInheritedEventIsRefused() throws Exception {
+        assertDiagnosticCode(
+                """
+                {
+                  "namespace": "demo",
+                  "dslVersion": "3.0.0",
+                  "version": "v1",
+                  "concepts": [
+                    {
+                      "name": "Invoice",
+                      "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true }
+                      ],
+                      "events": [ { "name": "InvoiceIssued" } ]
+                    },
+                    {
+                      "name": "MedicalInvoice",
+                      "specializes": "Invoice",
+                      "fields": [ { "name": "doctorId", "type": "uuid", "required": true } ],
+                      "events": [ { "name": "InvoiceIssued" } ]
+                    }
+                  ]
+                }
+                """,
+                ResolutionDiagnosticCode.CONFLICT_DUPLICATE_MEMBER
+        );
+    }
+
+    @Test
+    void aSpecializationKeepsTheInheritedEventsAndAddsItsOwnInNameOrder() throws Exception {
+        ModelAst source = parseJson(
+                """
+                {
+                  "namespace": "demo",
+                  "dslVersion": "3.0.0",
+                  "version": "v1",
+                  "concepts": [
+                    {
+                      "name": "Invoice",
+                      "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true }
+                      ],
+                      "events": [ { "name": "InvoiceIssued" } ]
+                    },
+                    {
+                      "name": "MedicalInvoice",
+                      "specializes": "Invoice",
+                      "fields": [ { "name": "doctorId", "type": "uuid", "required": true } ],
+                      "events": [ { "name": "InvoiceAmended" } ]
+                    }
+                  ]
+                }
+                """);
+
+        ResolvedModel resolved = new ModelResolver().resolve(source);
+
+        List<String> eventNames = resolved.modelAst().getConcepts().stream()
+                .filter(concept -> concept.getName().equals("MedicalInvoice"))
+                .findFirst()
+                .orElseThrow()
+                .getEvents().stream()
+                .map(EventAst::getName)
+                .toList();
+        assertEquals(List.of("InvoiceAmended", "InvoiceIssued"), eventNames);
+    }
+
     private static void assertDiagnosticCode(String json, ResolutionDiagnosticCode expectedCode) throws Exception {
         ModelAst source = parseJson(json);
         ModelResolutionException exception = assertThrows(
@@ -331,7 +398,7 @@ class ModelResolverSpecializationTest {
                               "name": "emit-medical",
                               "type": "emitEvent",
                               "event": "MedicalInvoiceCreated",
-                              "payload": "$input"
+                              "from": "$input"
                             }
                           ]
                         }
@@ -361,7 +428,7 @@ class ModelResolverSpecializationTest {
                               "name": "emit-medical",
                               "type": "emitEvent",
                               "event": "MedicalInvoiceCreated",
-                              "payload": "$input"
+                              "from": "$input"
                             }
                           ]
                         }

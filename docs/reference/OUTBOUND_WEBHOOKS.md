@@ -14,7 +14,7 @@ by the receiver, and a receiver that is down for hours still gets the event.
 {
   "capabilities": [
     { "name": "webhook", "type": "WebhookCapability", "adapter": "webhook-http",
-      "operations": [ { "name": "post", "sideEffects": "external" } ] }
+      "operations": [ { "name": "post" } ] }
   ],
   "flows": [
     {

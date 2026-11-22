@@ -35,12 +35,9 @@
     "correlationHint" : "",
     "label" : "Create appointment",
     "confirmationText" : "Create this appointment and queue the related follow-up actions?",
-    "successMessage" : "Appointment created.",
-    "failureHint" : "Review the appointment details and required fields before retrying.",
     "dangerLevel" : "low",
     "visibleWhen" : "",
-    "permissionHint" : "appointments.create",
-    "inputFormHint" : "appointment-create"
+    "permissionHint" : "appointments.create"
   }, {
     "kind" : "flowStep",
     "ownerName" : "CreateAppointment",
@@ -71,12 +68,9 @@
     "correlationHint" : "",
     "label" : "",
     "confirmationText" : "",
-    "successMessage" : "",
-    "failureHint" : "",
     "dangerLevel" : "",
     "visibleWhen" : "",
-    "permissionHint" : "",
-    "inputFormHint" : ""
+    "permissionHint" : ""
   }, {
     "kind" : "flowStep",
     "ownerName" : "CreateAppointment",
@@ -107,12 +101,9 @@
     "correlationHint" : "",
     "label" : "Persist appointment",
     "confirmationText" : "",
-    "successMessage" : "Appointment persisted.",
-    "failureHint" : "Check persistence availability and appointment payload validity.",
     "dangerLevel" : "low",
     "visibleWhen" : "",
-    "permissionHint" : "appointments.create",
-    "inputFormHint" : "appointment-create"
+    "permissionHint" : "appointments.create"
   }, {
     "kind" : "flowStep",
     "ownerName" : "CreateAppointment",
@@ -143,12 +134,9 @@
     "correlationHint" : "",
     "label" : "",
     "confirmationText" : "",
-    "successMessage" : "",
-    "failureHint" : "",
     "dangerLevel" : "",
     "visibleWhen" : "",
-    "permissionHint" : "",
-    "inputFormHint" : ""
+    "permissionHint" : ""
   }, {
     "kind" : "flowStep",
     "ownerName" : "CreateAppointment",
@@ -179,12 +167,9 @@
     "correlationHint" : "",
     "label" : "",
     "confirmationText" : "",
-    "successMessage" : "",
-    "failureHint" : "",
     "dangerLevel" : "",
     "visibleWhen" : "",
-    "permissionHint" : "",
-    "inputFormHint" : ""
+    "permissionHint" : ""
   }, {
     "kind" : "flowStep",
     "ownerName" : "CreateAppointment",
@@ -215,12 +200,9 @@
     "correlationHint" : "flow-correlation",
     "label" : "Queue appointment reminder",
     "confirmationText" : "",
-    "successMessage" : "Reminder event queued.",
-    "failureHint" : "Verify scheduling infrastructure if reminder creation fails.",
     "dangerLevel" : "low",
     "visibleWhen" : "",
-    "permissionHint" : "appointments.reminders.schedule",
-    "inputFormHint" : "appointment-reminder"
+    "permissionHint" : "appointments.reminders.schedule"
   }, {
     "kind" : "flowStep",
     "ownerName" : "CreateAppointment",
@@ -251,11 +233,8 @@
     "correlationHint" : "",
     "label" : "",
     "confirmationText" : "",
-    "successMessage" : "",
-    "failureHint" : "",
     "dangerLevel" : "",
     "visibleWhen" : "",
-    "permissionHint" : "",
-    "inputFormHint" : ""
+    "permissionHint" : ""
   } ]
 }

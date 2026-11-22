@@ -9,7 +9,7 @@ A corpus-wide measurement on 2026-07-29 (across all 29 `model.json` files under 
 
 | Coverage before this fixture | Sections |
 |---|---|
-| **Zero models** | `selectors`, `externalAi`, step `forEach`, step `generatedAction`, `onFailure` (compensation), `flow.schedule` (cron), `flow.hooks` |
+| **Zero models** | `selectors`, `externalAi`, step `forEach`, step `generatedAction`, `onFailure` (compensation), `flow.trigger.schedule` (cron), `flow.hooks` |
 | **One model** | `domainTypes` (canonical-demo), `documents` (superuser-admin-console), `fragments` (npdev_split_model_sample_app), step `map`, step `scheduleEvent` |
 | **"Two" models — but byte-identical copies** | `aggregates`, `autoPanels`, `guidePages` — WmsOffice and `reg39-healthy-control` |
 
@@ -25,7 +25,7 @@ A schema, parser, or compiler change that broke any of those would have passed t
 
 `externalAi` (`egress: "apiEnabled"`, one prompt, limits) · `selfApi` http-connector (loopback `ConnectorSelfCheckFlow`, INT-3) · `domainTypes` · `selectors` ·
 `aggregates` · `autoPanels` · `documents` · `backOffice.pages` · `queries` · `procedures` · `screens[].panel` (kind custom) ·
-`ruleProfiles` · `roles` · `contexts` · `packs` · `fragments` (`Input/fragments/`) · `propertyScopes`/`properties` · `sequences` · `conversions` · `backOffice` (`defaultRoute`, `navigation`) · `agentAccess` · `provides` · `flow.schedule` (cron) · `flow.specializes` + `flow.hooks` · steps `forEach`
+`ruleProfiles` · `roles` · `contexts` · `packs` · `fragments` (`Input/fragments/`) · `propertyScopes`/`properties` · `sequences` · `conversions` · `backOffice` (`defaultRoute`, `navigation`) · `agentAccess` · `provides` · `flow.trigger.schedule` (cron) · `flow.specializes` + `flow.hooks` · steps `forEach`
 (with `maxLoopIterations`), `onFailure`, `map`, `scheduleEvent` (BOTH delivery modes — R2.4 made
 these two different code paths, so `delaySeconds: 0` publishes inline and `delaySeconds: 3600`
 writes a durable `npdev_scheduled_event` row instead; one witness each is required),

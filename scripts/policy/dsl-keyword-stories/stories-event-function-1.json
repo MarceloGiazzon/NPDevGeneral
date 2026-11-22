@@ -1,0 +1,19 @@
+{
+  "$comment": "Everyday stories, nouns Event (event, eventPayloadField) and Function (function), one part. Same style rules as stories-pilot.json. Owner reviews each part.",
+  "schemaVersion": "npdev-keyword-stories.v1",
+  "stories": {
+    "event.mode": "When an order is created, other parts of the app want to know without anyone writing a flow for it. Mode, on an event inside a concept, makes the generated create, update or delete publish that event by itself, in addition to any flow's own announcements.",
+    "event.name": "Flows announce 'order shipped', and others wait for it. Name is the event's own name, unique in the model, and it is the word flows publish, start on and wait for.",
+    "event.payload": "'Order shipped' should carry the order number and the carrier. Payload lists those boxes, each as a plain name or as a name with a type.",
+    "event.specializes": "A pack offers a standard 'Order shipped' event, and a shop wants one with an extra box. Specializes names that base event, and the new one builds on it.",
+    "event.uid": "An event called 'Shipped' is renamed to 'Dispatched'. Without a sticker on it, NPDev could think the old one vanished and a new one appeared. Uid is a stable identity number, made once and never reused, so the rename is recognised. It is optional.",
+    "event.version": "Others depend on what an event carries. Version is a label for the payload's contract, so everyone can tell when it changed.",
+    "eventPayloadField.name": "Each piece of data an event carries needs a name, such as 'orderId'. Name is the payload field's name.",
+    "eventPayloadField.type": "The order number is a number and the carrier is a text. Type is the field's scalar type, such as text, unique id or whole number.",
+    "function.body": "A taxi's surge price is computed from the open requests and the free drivers. Body is the formula, written over the parameters, over settings and over other functions. It cannot read a record's box and cannot call itself, even through others.",
+    "function.description": "Someone reading the model wants to know what 'surgeMultiplier' calculates. Description is one sentence that says it.",
+    "function.name": "A calculation used in many places needs a short name to call it by, such as 'surgeMultiplier'. Name is that handle, starting with a lower-case letter, and it must not reuse the name of a built-in function. In a pack it is prefixed with the pack's name.",
+    "function.params": "The surge calculation needs the number of open requests and the number of free drivers. Params are those typed inputs, in the order they are given when the function is called.",
+    "function.returns": "The surge calculation answers with a decimal number. Returns is the type of that answer, and NPDev checks it against the formula."
+  }
+}

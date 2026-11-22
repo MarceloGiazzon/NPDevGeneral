@@ -1034,23 +1034,17 @@ public final class CompiledModelCanonicalJsonReader {
                 readLabelText(node, "label"),
                 readLabelText(node, "shortLabel"),
                 optionalText(node, "description"),
-                optionalText(node, "helpText"),
                 optionalText(node, "placeholder"),
                 optionalText(node, "group"),
                 optionalText(node, "section"),
                 optionalIntegerObject(node.get("order")),
-                optionalBooleanObject(node.get("advanced")),
                 optionalBooleanObject(node.get("deprecated")),
-                toStringList(node.get("examples")),
                 optionalText(node, "widget"),
                 optionalText(node, "visibleWhen"),
                 optionalText(node, "enabledWhen"),
                 optionalText(node, "readonlyWhen"),
                 optionalText(node, "requiredWhen"),
-                optionalText(node, "pickerType"),
-                optionalBooleanObject(node.get("allowInlineCreate")),
                 toStringList(node.get("searchFields")),
-                optionalText(node, "filterPreset"),
                 optionalText(node, "tab"),
                 optionalIntegerObject(node.get("column")),
                 optionalIntegerObject(node.get("columnSpan")),
@@ -1126,7 +1120,6 @@ public final class CompiledModelCanonicalJsonReader {
         return new CompiledDomainTypeUi(
                 readLabelText(node, "label"),
                 optionalText(node, "placeholder"),
-                optionalText(node, "helpText"),
                 optionalText(node, "widget"),
                 readLabelLocales(node, "label")
         );
@@ -1179,7 +1172,6 @@ public final class CompiledModelCanonicalJsonReader {
                     toSchema(operationNode.get("outputSchema")),
                     toExecutionPolicy(operationNode.get("executionPolicy")),
                     toOperationErrors(operationNode),
-                    optionalText(operationNode, "sideEffects"),
                     toAuth(operationNode.get("auth")),
                     toObjectMap(operationNode.get("http"))
             ));
@@ -1389,7 +1381,7 @@ public final class CompiledModelCanonicalJsonReader {
         if (node == null || node.isNull() || node.isMissingNode()) {
             return null;
         }
-        return new CompiledCapabilityAuth(toStringList(node.get("roles")), toStringList(node.get("scopes")));
+        return new CompiledCapabilityAuth(toStringList(node.get("roles")));
     }
 
     private static CompiledQuery toQuery(JsonNode node) {
@@ -1682,12 +1674,9 @@ public final class CompiledModelCanonicalJsonReader {
         return new CompiledActionMetadata(
                 readLabelText(node, "label"),
                 optionalText(node, "confirmationText"),
-                optionalText(node, "successMessage"),
-                optionalText(node, "failureHint"),
                 optionalText(node, "dangerLevel"),
                 optionalText(node, "visibleWhen"),
                 optionalText(node, "permissionHint"),
-                optionalText(node, "inputFormHint"),
                 readLabelLocales(node, "label")
         );
     }

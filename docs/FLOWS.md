@@ -271,7 +271,7 @@ exercises 6 of the 10 kinds in sequence:
 ```
 
 `NPDevSamples/canonical-demo/Input/model.json`'s `CreateAppointment` flow covers `MAP`
-(`"type": "map"`) and `SCHEDULE_EVENT` with a real delay (`"delayMinutes": 1440`).
+(`"type": "map"`) and `SCHEDULE_EVENT` with a real delay (`"delaySeconds": 86400`).
 `NPDevSamples/user-minimal/Input/model.json`'s `AwaitDemo` flow is a minimal, dedicated
 `AWAIT_EVENT` example — two steps, nothing else.
 

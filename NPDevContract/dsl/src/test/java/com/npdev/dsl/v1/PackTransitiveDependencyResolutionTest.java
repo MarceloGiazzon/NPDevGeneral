@@ -55,7 +55,7 @@ class PackTransitiveDependencyResolutionTest {
                   "concepts": [
                     { "name": "Lead", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true },
-                      { "name": "ownerAccount", "type": "reference", "ref": "user::Account" }
+                      { "name": "ownerAccount", "type": "reference", "reference": "user::Account" }
                     ] }
                   ]
                 }
@@ -69,7 +69,7 @@ class PackTransitiveDependencyResolutionTest {
                   "concepts": [
                     { "name": "Invoice", "fields": [
                       { "name": "id", "type": "uuid", "id": true, "required": true },
-                      { "name": "billedAccount", "type": "reference", "ref": "user::Account" }
+                      { "name": "billedAccount", "type": "reference", "reference": "user::Account" }
                     ] }
                   ]
                 }
@@ -115,8 +115,8 @@ class PackTransitiveDependencyResolutionTest {
                 JsonNode fields = concept.get("fields");
                 boolean foundRef = false;
                 for (JsonNode field : fields) {
-                    if (field.has("ref")) {
-                        assertEquals("user::Account", field.get("ref").asText(),
+                    if (field.has("reference")) {
+                        assertEquals("user::Account", field.get("reference").asText(),
                                 name + "'s cross-pack reference must resolve to user::Account unchanged");
                         foundRef = true;
                     }

@@ -104,13 +104,13 @@ class CompiledModelKernelRunnerDeterminismTest {
                           "name": "emit-created",
                           "type": "emitEvent",
                           "event": "UserCreated",
-                          "payload": "$saved"
+                          "from": "$saved"
                         },
                         {
                           "name": "emit-audited",
                           "type": "emitEvent",
                           "event": "UserAudited",
-                          "payload": "$saved"
+                          "from": "$saved"
                         },
                         {
                           "name": "return-saved",

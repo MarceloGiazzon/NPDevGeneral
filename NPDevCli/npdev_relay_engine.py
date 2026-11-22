@@ -121,7 +121,57 @@ def select_catalog_entries(entries: list[dict], ask: str, limit: int = CATALOG_P
     return chosen
 
 
-def pack_catalog_text(catalog: dict | None, ask: str | None = None) -> str:
+CARD_FETCH_TIMEOUT = 5.0
+CARD_PATH = "catalog/cards/{id}.json"
+
+
+def chosen_for_request(catalog: dict | None, ask: str | None) -> list[dict]:
+    """The packs the briefing narrows to for `ask` (what `pack_catalog_text` will list), or [] when the whole catalog is
+    shown (no request, a small catalog, or nothing fits)."""
+    entries = [e for e in (catalog or {}).get("packs") or [] if isinstance(e, dict) and e.get("pack") and e.get("from")]
+    if ask and len(entries) > CATALOG_FULL_LIST_MAX:
+        return select_catalog_entries(entries, ask)
+    return []
+
+
+def fetch_cards(catalog_url: str, pack_ids: list[str], timeout: float = CARD_FETCH_TIMEOUT) -> dict[str, dict]:
+    """The L1 card (catalog/cards/<id>.json beside the catalog index) of every pack that has one. Anonymous HTTPS, never
+    raises: a pack whose card cannot be read is simply absent, and the briefing keeps its one-line form for it."""
+    import urllib.request
+    base = str(catalog_url).rsplit("/", 1)[0]
+    cards: dict[str, dict] = {}
+    for pack_id in pack_ids:
+        url = f"{base}/{CARD_PATH.format(id=pack_id)}"
+        try:
+            request = urllib.request.Request(url, headers={"User-Agent": "npdev-relay", "Accept": "application/json"})
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                card = json.loads(response.read().decode("utf-8"))
+        except Exception:  # noqa: BLE001 -- no network, 404, bad JSON: the card is optional
+            continue
+        if isinstance(card, dict) and card.get("id") == pack_id:
+            cards[pack_id] = card
+    return cards
+
+
+def card_text(card: dict) -> str:
+    """One L1 card as the few lines a chat AI needs to use the pack without reading it: its concepts with key fields
+    and states, the roles to bind, its events, the exact `packs[]` entry and its main limit."""
+    provides = card.get("provides") or {}
+    lines = [f"### {card.get('id')} {card.get('version')} - {card.get('need', '')}".rstrip(" -")]
+    for key in ("concepts", "roles", "events"):
+        items = [str(i) for i in provides.get(key) or [] if i]
+        if items:
+            lines.append(f"- {key}: " + ("; ".join(items) if key != "events" else ", ".join(items)))
+    if card.get("requires"):
+        lines.append("- also import: " + ", ".join(str(r) for r in card["requires"]))
+    if card.get("use"):
+        lines.append(f"- packs[] entry: {card['use']}")
+    if card.get("limit"):
+        lines.append(f"- limit: {card['limit']}")
+    return "\n".join(lines)
+
+
+def pack_catalog_text(catalog: dict | None, ask: str | None = None, cards: dict[str, dict] | None = None) -> str:
     """The "Pack catalog" section of the briefing, made from the NPR catalog's own entries (never typed by hand):
     one line per pack -- id, version, one sentence -- and the coordinate pattern once. "" when there is no catalog.
     With `ask` and a catalog bigger than CATALOG_FULL_LIST_MAX, only the packs that fit the request are listed (D-8),
@@ -172,7 +222,11 @@ def pack_catalog_text(catalog: dict | None, ask: str | None = None) -> str:
         if to_bind:
             lines += ["", "Roles you must bind in `provides.roleBindings` (pack: its roles, each to one of YOUR roles): "
                           + "; ".join(to_bind)]
-    return "\n".join(lines) + "\n"
+        shown = [cards[str(e["pack"])] for e in sorted(picked, key=lambda e: str(e["pack"])) if cards and str(e["pack"]) in cards]
+        if shown:
+            lines += ["", "Cards of the chosen packs (what each one models, so you do not re-model it):", ""]
+            lines += [card_text(card) + "\n" for card in shown]
+    return "\n".join(lines).rstrip("\n") + "\n"
 
 
 def with_pack_catalog(bundle: str, manifest: dict, ask: str | None = None) -> tuple[str, dict]:
@@ -183,7 +237,9 @@ def with_pack_catalog(bundle: str, manifest: dict, ask: str | None = None) -> tu
         catalog, _meta = cli._load_pack_catalog(cli._pack_catalog_url(None), refresh=True)
     except Exception:  # noqa: BLE001 -- CliError, no network, a broken cache: the briefing just has no list
         return bundle, manifest
-    section = pack_catalog_text(catalog, ask)
+    chosen = chosen_for_request(catalog, ask)
+    cards = fetch_cards(cli._pack_catalog_url(None), [str(e["pack"]) for e in chosen]) if chosen else {}
+    section = pack_catalog_text(catalog, ask, cards)
     if not section:
         return bundle, manifest
     text = bundle.rstrip("\n") + "\n\n" + section

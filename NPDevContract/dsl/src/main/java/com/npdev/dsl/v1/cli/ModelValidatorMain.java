@@ -87,7 +87,8 @@ public final class ModelValidatorMain {
 
         Path modelPath = Path.of(modelArg);
         List<ValidationDiagnostic> diagnostics = new ArrayList<>();
-        ModelAst ast = parseCollectingDiagnostics(modelPath, diagnostics);
+        JsonModelParser parser = new JsonModelParser();
+        ModelAst ast = parseCollectingDiagnostics(parser, modelPath, diagnostics);
 
         // Only run semantic validation when the model parsed -- a structurally broken model has
         // no AST to cross-check, and reporting the parse error alone is the actionable signal.
@@ -99,6 +100,10 @@ public final class ModelValidatorMain {
                 diagnostics.add(structural(
                         "Semantic validation crashed: " + safeMessage(semanticError)));
             }
+
+            // What the authoring conventions did (field types a rule filled in, implicit ids): `info`, so the report
+            // shows the author a rule that would otherwise be invisible, without touching status or the counters.
+            diagnostics.addAll(parser.getAuthoringNotes());
 
             // R81 (ledger/items/REG-81.yml): ReleaseGateValidator.validatePromotion is fully built
             // and unit-tested but, before this, called by nothing except its own test -- truth-level
@@ -119,9 +124,10 @@ public final class ModelValidatorMain {
         System.exit("failed".equals(report.get("status").asText()) ? 2 : 0);
     }
 
-    private static ModelAst parseCollectingDiagnostics(Path modelPath, List<ValidationDiagnostic> diagnostics) {
+    private static ModelAst parseCollectingDiagnostics(
+            JsonModelParser parser, Path modelPath, List<ValidationDiagnostic> diagnostics) {
         try {
-            return new JsonModelParser().parse(modelPath);
+            return parser.parse(modelPath);
         } catch (ModelSchemaValidationException schemaError) {
             diagnostics.addAll(schemaError.getDiagnostics());
         } catch (DeprecationException deprecation) {

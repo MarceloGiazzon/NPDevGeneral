@@ -50,14 +50,20 @@ function Get-RenderedContentDoc {
 }
 
 function Get-BashPath {
-    $command = Get-Command bash -ErrorAction SilentlyContinue
-    if ($null -ne $command) { return $command.Source }
+    # On Windows, `bash` on PATH is often the WSL launcher (System32\bash.exe), which fails with
+    # "execvpe(/bin/bash) failed" when no distro is installed. Prefer Git for Windows' own bash, and never
+    # take the WSL launcher or the WindowsApps stub; on Linux/macOS the Git candidates do not exist and the
+    # first `bash` on PATH is used.
     foreach ($candidate in @(
             "C:\Program Files\Git\bin\bash.exe",
             "C:\Program Files\Git\usr\bin\bash.exe"
         )) {
         if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
     }
+    $command = Get-Command bash -All -ErrorAction SilentlyContinue |
+        Where-Object { $_.Source -notmatch '\\Windows\\(System32|WindowsApps)\\' } |
+        Select-Object -First 1
+    if ($null -ne $command) { return $command.Source }
     return ""
 }
 
