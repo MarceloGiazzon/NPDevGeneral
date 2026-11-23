@@ -42,6 +42,14 @@ detail: |
   2. docker-linux-parity-report.json is missing: scripts/quality/run-docker-linux-proof.ps1 did not produce it. DIAGNOSIS CORRECTED 2026-11-23: Docker Desktop is installed but was simply NOT STARTED (no Docker Desktop
      process, WSL distro docker-desktop Stopped, `docker version` failed on npipe dockerDesktopLinuxEngine). Launching "C:\Program Files\Docker\Docker\Docker Desktop.exe" --minimized made `docker info` answer
      (Linux engine 29.9.2) in under a minute, and a Linux container ran (debian:12-slim pulled in about 4 min). The earlier "daemon or WSL backend not usable" was never a missing capability, only a stopped app.
+     LOCAL PROOF RUNS 2026-11-23 (run-docker-linux-proof.ps1 -Force; -Force is needed locally, the profile enables only h2/sqlserver): RUN 1 built the image (976 s, apt step 704 s) and the container died after 522 s at
+     run-ai-beta-gate.ps1:277 -- `Split-Path -Parent '/workspace'` is the EMPTY string on Linux, so the REG-358 3b project-cache derivation threw (a real Linux-only defect of ours). FIXED in both inline copies
+     (run-ai-beta-gate.ps1 and run-untrusted-extension-beta0-proof.ps1: [IO.Directory]::GetParent, Join-Path segment by segment; "gradle-project-caches\generator" was also one directory NAME with a backslash on Linux)
+     and pinned by twin-pair rule generator-project-cache-root-two-copies; checked inside the Linux image and by one ai-beta-gate scenario on Windows (base-ai-loop, passes, no NPDevGenerator/.gradle).
+     RUN 2 got past that line and ran 1599 s, then the engine wedged: the last report appeared 17:31, the container went silent, vmmemWSL sat at 7.3 of its 7.6 GB cap (half of this 16 GB laptop) with 0 s CPU
+     in 15 s, `docker ps`/`docker kill` hung, the CLI ended "error waiting for container: unexpected EOF" (exit 125). Most likely memory exhaustion (not proven). Docker Desktop was quit and the WSL VM shut down to
+     recover the memory. docker-linux-parity-report.json on disk is therefore "failed" from an environment limit, NOT a verdict on the product. The evidence has to come from CI: .github/workflows/ai-beta-gate.yml job
+     docker-linux-proof (ubuntu-latest, workflow_dispatch only, last green on main 2026-09-30 in 1 h 05 min; it uploads docker-linux-parity-report.json as an artifact). Not yet re-run there with the fix.
   3. workspace-cleanliness fails while the evidence exists: generating about 60 reports under scripts/reports/out pushes scripts/ past its 500-file limit (485 files before the run). The 21 story files under
      scripts/policy/dsl-keyword-stories/ could be merged into a handful of files to leave room; reports are removed by clean-workspace-state.ps1 -CleanReportsOut.
      FIXED 2026-11-22 instead: Test-WorkspaceSlimness.ps1 no longer counts scripts/reports/out in the 500-file limit (generated evidence, bounded by its own 15 MB limit); docs/WORKSPACE_CLEANUP_POLICY.md says so.

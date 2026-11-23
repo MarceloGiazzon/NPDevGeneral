@@ -872,9 +872,13 @@ function Invoke-GeneratedRuntimeIntegrationProof {
     $generatorBuildRoot = if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_BUILD_ROOT)) {
         [System.IO.Path]::GetFullPath($env:NPDEV_BUILD_ROOT)
     } else {
-        [System.IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $workspaceRoot) "Build"))
+        # npdev-generator-project-cache-root (twin: run-ai-beta-gate.ps1, same derivation).
+        # `Split-Path -Parent '/workspace'` is the EMPTY string on Linux (the Docker proof's container root), so take
+        # the parent through .NET; Join-Path segment by segment (a backslash is part of a name on Linux).
+        $workspaceParent = [System.IO.Directory]::GetParent($workspaceRoot)
+        [System.IO.Path]::GetFullPath((Join-Path $(if ($null -ne $workspaceParent) { $workspaceParent.FullName } else { $workspaceRoot }) "Build"))
     }
-    $generatorProjectCacheDir = Join-Path $generatorBuildRoot "gradle-project-caches\generator"
+    $generatorProjectCacheDir = Join-Path (Join-Path $generatorBuildRoot "gradle-project-caches") "generator"
     $generatorCommand = Invoke-ProcessEvidence -FilePath $generatorWrapper -Arguments @(":generator:run", ('--args="' + ($generatorArgsLine -join ' ') + '"'), "--no-daemon", "--console=plain", "--project-cache-dir", $generatorProjectCacheDir) -WorkingDirectory $generatorRoot -StdoutPath $generatorStdout -StderrPath $generatorStderr -TimeoutSeconds 180 -Name "generate-trusted-source-app"
     $commands += $generatorCommand
     $artifacts += [pscustomobject]@{ path = $generatorStdout; kind = "generator-stdout-log" }

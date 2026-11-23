@@ -274,9 +274,15 @@ function Invoke-ControlledGradleGenerator {
     $generatorBuildRoot = if (-not [string]::IsNullOrWhiteSpace($env:NPDEV_BUILD_ROOT)) {
         [System.IO.Path]::GetFullPath($env:NPDEV_BUILD_ROOT)
     } else {
-        [System.IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $workspaceRoot) "Build"))
+        # npdev-generator-project-cache-root (twin: run-untrusted-extension-beta0-proof.ps1, same derivation).
+        # Docker/Linux proof (2026-11-23): inside the container the workspace is /workspace and
+        # `Split-Path -Parent '/workspace'` is the EMPTY string on Linux (Join-Path then throws "Path is an empty
+        # string"), so take the parent through .NET (it gives "/" there). Join-Path segment by segment: a backslash
+        # in one literal would be part of a single directory NAME on Linux.
+        $workspaceParent = [System.IO.Directory]::GetParent($workspaceRoot)
+        [System.IO.Path]::GetFullPath((Join-Path $(if ($null -ne $workspaceParent) { $workspaceParent.FullName } else { $workspaceRoot }) "Build"))
     }
-    $generatorProjectCacheDir = Join-Path $generatorBuildRoot "gradle-project-caches\generator"
+    $generatorProjectCacheDir = Join-Path (Join-Path $generatorBuildRoot "gradle-project-caches") "generator"
     $runnerArguments = @(":generator:run", ("--args=" + $gradleArgLine), "--no-daemon", "--console=plain", "--project-cache-dir", $generatorProjectCacheDir)
     $runnerArgumentsJson = @($runnerArguments) | ConvertTo-Json -Compress
     $ErrorActionPreference = "Continue"

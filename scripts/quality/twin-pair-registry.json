@@ -1005,6 +1005,20 @@
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java"
       ]
+    },
+    {
+      "id": "generator-project-cache-root-two-copies",
+      "citedBy": "REG-358",
+      "description": "run-ai-beta-gate.ps1 and run-untrusted-extension-beta0-proof.ps1 each derive the Gradle project-cache directory for :generator:run (the Build root, else the folder named Build next to the workspace) inline. The first copy used Split-Path -Parent on the workspace root, which is the EMPTY string for /workspace on Linux, so the Docker/Linux parity proof died at that line after nine minutes of compiling (found 2026-11-23); the twin had the identical latent defect. Both now take the parent through [System.IO.Directory]::GetParent and join the path segment by segment; both carry the token so a copy that is changed alone fails the gate.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "npdev-generator-project-cache-root"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "scripts/quality/run-ai-beta-gate.ps1",
+        "scripts/quality/run-untrusted-extension-beta0-proof.ps1"
+      ]
     }
   ]
 }
