@@ -39,7 +39,9 @@ detail: |
      permissions) for every role named as a requiredRole, and writes access read/write "true" on a concept no declared role lists (the secure-by-default validator refuses a concept with neither once roles exist).
      VERIFIED: run-ai-beta-gate.ps1 (all scenarios): 31 total, 23 expected-fail as designed, 8 expected-pass passed (tenant-workflow-ops, tenant-service-desk, tenant-approval-portal included). The surface custom-procedures
      stays in the beta scope. The cascade blockers (ai-beta-gate, expanded-beta0-evidence, normalization, build/boot, smoke) should clear on the next run-beta-release-gate.ps1; blockers 2-4 below are unchanged.
-  2. docker-linux-parity-report.json is missing: scripts/quality/run-docker-linux-proof.ps1 did not produce it (Docker client 29.9.2 is installed, the daemon or WSL backend was not usable on this machine).
+  2. docker-linux-parity-report.json is missing: scripts/quality/run-docker-linux-proof.ps1 did not produce it. DIAGNOSIS CORRECTED 2026-11-23: Docker Desktop is installed but was simply NOT STARTED (no Docker Desktop
+     process, WSL distro docker-desktop Stopped, `docker version` failed on npipe dockerDesktopLinuxEngine). Launching "C:\Program Files\Docker\Docker\Docker Desktop.exe" --minimized made `docker info` answer
+     (Linux engine 29.9.2) in under a minute, and a Linux container ran (debian:12-slim pulled in about 4 min). The earlier "daemon or WSL backend not usable" was never a missing capability, only a stopped app.
   3. workspace-cleanliness fails while the evidence exists: generating about 60 reports under scripts/reports/out pushes scripts/ past its 500-file limit (485 files before the run). The 21 story files under
      scripts/policy/dsl-keyword-stories/ could be merged into a handful of files to leave room; reports are removed by clean-workspace-state.ps1 -CleanReportsOut.
      FIXED 2026-11-22 instead: Test-WorkspaceSlimness.ps1 no longer counts scripts/reports/out in the 500-file limit (generated evidence, bounded by its own 15 MB limit); docs/WORKSPACE_CLEANUP_POLICY.md says so.
