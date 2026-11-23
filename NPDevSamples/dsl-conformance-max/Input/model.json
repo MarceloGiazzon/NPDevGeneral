@@ -614,7 +614,8 @@
           "type": "reference",
           "required": true,
           "ui": {
-            "label": "Catalogue entry"
+            "label": "Catalogue entry",
+            "imageField": "photo"
           },
           "reference": {
             "target": "WidgetCatalogEntry",
@@ -1085,6 +1086,21 @@
           "required": true,
           "ui": {
             "label": "Name"
+          }
+        },
+        {
+          "name": "photo",
+          "type": "file",
+          "required": false,
+          "file": {
+            "contentTypes": [
+              "image/png",
+              "image/jpeg"
+            ],
+            "maxSizeBytes": 1048576
+          },
+          "ui": {
+            "label": "Photo"
           }
         },
         {
@@ -5484,6 +5500,9 @@
           {
             "name": "WidgetOrderGuide",
             "default": true,
+            "theme": {
+              "logoUrl": "/npdev-help/widget-order-logo.svg"
+            },
             "regions": {
               "right": {
                 "enabled": true
@@ -6284,6 +6303,7 @@
         "uid": "wcr00000000000001",
         "route": "/widget-catalog-review",
         "title": "Widget catalog review",
+        "enabledWhen": "actorId != ''",
         "dataSources": [
           {
             "name": "entries",
