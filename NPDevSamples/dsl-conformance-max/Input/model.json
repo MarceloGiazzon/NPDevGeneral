@@ -172,6 +172,9 @@
           "get",
           "save"
         ],
+        "roles": [
+          "WarehouseManager"
+        ],
         "description": "A shelf map and every one of its slots, read or saved whole in one call."
       }
     ]
@@ -2311,6 +2314,7 @@
     {
       "name": "CuratedLabel",
       "specializes": "labeling::Label",
+      "specializesFloat": true,
       "module": "Labeling",
       "truthLevel": "T2",
       "ui": {
@@ -2720,6 +2724,17 @@
             "path": "/actuator/health",
             "response": {
               "pointer": "/status"
+            }
+          }
+        },
+        {
+          "name": "submitProbeForm",
+          "http": {
+            "method": "POST",
+            "path": "/actuator/probe-form",
+            "bodyEncoding": "form",
+            "body": {
+              "note": "probe"
             }
           }
         }
@@ -6039,7 +6054,10 @@
             "sku",
             "displayName",
             "unitPrice"
-          ]
+          ],
+          "metadata": {
+            "note": "Cards, not a table: ask the catalog owner before changing the fields."
+          }
         },
         "dataSources": [
           {

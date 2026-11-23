@@ -1,6 +1,6 @@
 {
   "description": "DOCS-1 allowlist for scripts/quality/check-doc-references.py: names a doc legitimately uses that do not live in the tracked tree. Each entry needs a reason. frozenCount counts ignored values (a prefix entry counts once) and may only be lowered, in the commit that removes the entry; an entry nothing matches fails the check.",
-  "frozenCount": 18,
+  "frozenCount": 16,
   "ignore": [
     {
       "id": "user-app-paths",
@@ -26,8 +26,6 @@
         "RegisterUserProcedure",
         "InvoiceConsolePanel",
         "NotifyOnInvoiceIssued",
-        "UserAdminPanel",
-        "RegisterUser",
         "CreateNote",
         "InvoiceItem",
         "InvoiceNotification",

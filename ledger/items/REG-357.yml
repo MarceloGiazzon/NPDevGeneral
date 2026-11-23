@@ -72,9 +72,18 @@ detail: |
   Model validates with 0 errors; 163/163 behaviour probes green (2026-11-22, log 20261122T225231Z). Completeness 251 -> 311 of 745. Also: the stale "declared procedure" prose (25 schema descriptions
   in the four mirrors, 33 story/reason sentences) now says flow; the keys and the binding value `procedure` stay. NOTE found while doing it: capabilityContractSchemaRef.schemaRef is only an alias of
   conceptRef (JsonModelParser resolves "#/concepts/X" or "X" to a concept) -- a candidate for the owner's next shrink round.
-  FOUND 2026-11-22 (docs, not fixed): docs/content/npdev-concepts-deep-dive.yml (step table row `callProcedure`, section 8 on procedures) and docs/FLOWS.md (CALL_PROCEDURE, `callProcedure` outputs, lines
-  ~166-437) still teach `callProcedure`, a flow step removed in 2026-11-16 (BREAKING.md); the deep dive is rendered from the yml by generate_group_e_docs.py, so edit the yaml and regenerate.
-  STILL OPEN (next sessions, same 20% method): 323 written reasons, 6 tests, 49 official samples, 49 examples, 5 validator-only
+  FIXED 2026-11-23 (docs that taught `callProcedure`, removed 2026-11-16): docs/FLOWS.md now lists the 11 kernel step kinds (PROCEDURE_STEP and CALL_FLOW replace CALL_PROCEDURE) and the 19 author-facing
+  step names (notify, set, readConcept ... callFlow), and its output-shape notes say callFlow; the deep-dive yaml lost the `callProcedure` table row (the stray `return` row now sits inside the table),
+  section 8 is rewritten as "a flow that is not its own public endpoint" (expose ui/internal, no `procedures[]`, real examples from dsl-conformance-max), the panel section's `binding: procedure` note says it
+  runs an `expose: ui` flow, and the rendered md/json were regenerated. scripts/policy/doc-reference-policy.json lost two allowlist entries (RegisterUser, UserAdminPanel: only the deleted sentence named
+  them), frozenCount 18 -> 16.
+  BATCH 4, 2026-11-23 (same 20% method, seven kinds of value): 67 written reasons (reasons-batch-4.json); 4 keywords gained an official sample and an example in dsl-conformance-max
+  (concept.specializesFloat on CuratedLabel, agentAccessExposure.roles on the ShelfLayout exposure, panelLayout.metadata on the gallery panel, httpConnectorOperation.bodyEncoding through a new POST
+  operation submitProbeForm on the selfApi connector); 2 keywords gained a test (GuidePageRegionCollapseSurvivesCompileTest: guidePageRegion.collapsible and .defaultCollapsed). Model validates with
+  0 errors; 163/163 behaviour probes green (2026-11-23, log 20261123T175729Z). LEFT OUT of the 11 sample picks: autoPanel.aggregate (autoPanels are now the admin block of a screen),
+  capabilityContractSchemaRef.conceptRef (the alias shrink candidate), httpConnector.baseUrl (the fixture connector uses baseUrlProperty, the two are alternatives), transactionHooks.onValidate and
+  queryParameter.schema (they change behaviour the probes assert), schemaObject.maxItems (needs an array schemaObject; the maxItems the fixture has are field keys).
+  STILL OPEN (next sessions, same 20% method): 256 written reasons, 4 tests, 45 official samples, 45 examples, 5 validator-only
   keywords, 157 used only by the coverage fixture (no real model). Left out on purpose as complex: concept.renamedFrom (needs the restart-revision probe), pack:signature, pack:fieldConventions/propertyScopes
   (pack files), transactionHooks.onValidate, queryParameter.schema, panel bindings/layout children (they change served panel metadata that probes assert), autoPanel.name (admin may not repeat the name).
   The catalogue's Implemented column was rebuilt (layers: parser / plumbing / validated / build / runtime / tooling, accessor calls counted, a Real models

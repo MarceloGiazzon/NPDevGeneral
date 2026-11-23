@@ -36,8 +36,7 @@ preamble: |
   *boundary of your own* (Module)? If nothing fits, it is a field, a step or an expression of one of
   these — never a thirteenth block.
 
-  Not every key you can still write today has its own section below: `procedures`,
-  a few more keys are being merged into Flow, Screen and Concept (`autoPanels` is already a `screens[]` entry's `admin` block, and `panels` a `kind: custom` screen's `panel` block). The sections that follow
+  Not every key you can still write today has its own section below: a few keys are being merged into Flow, Screen and Concept (`autoPanels` is already a `screens[]` entry's `admin` block, and `panels` a `kind: custom` screen's `panel` block). The sections that follow
   describe the DSL as it is now and say where a block is on its way out.
 
   ---
@@ -191,16 +190,15 @@ sections:
     | `awaitEvent` | Pauses the flow until a matching event arrives — see §5/§6. Add `task` and the wait becomes a **human task** in the assignee's inbox (`GET /api/tasks`), with a form and named outcomes. |
     | `map` | Copies a value from one flow-state variable to another. |
     | `forEach` | Bounded iteration over a collection (`collection`, `itemKey`, `steps`, `maxLoopIterations`); `parallelAwait: true` lets every iteration wait on its own event at once. |
-    | `callProcedure` | Calls a declared procedure (§8) and stores its result in flow state. |
     | `generatedAction` | Invokes a specific generated action by name. |
     | `set` | Writes a value (a literal or a `$ref`, in `value`) to a flow-state variable (`output`). |
     | `readConcept` / `listConcepts` | Reads one record by `id`, or lists the concept's records, into `output`. |
     | `runQuery` | Runs a declared query (`query`, bind parameters in `params`) and binds its rows to `output`. |
     | `deleteConcept` | Deletes the record named by `id`. |
     | `callFlow` | Synchronously starts another flow (`flow`, `input`, `output`). A flow with `expose: internal` can only be started this way. |
+    | `return` | Ends the flow, producing `value` as the result. |
 
     A flow also takes `expose` (`api`, the default, `ui` or `internal`: only `api` flows get a public `POST /api/flows/<Name>/execute`; the others answer 404) and `runAs` (`caller` or `system`: every step runs as the tenant's system principal, the caller kept for audit).
-    | `return` | Ends the flow, producing `value` as the result. |
 
     Any step can also carry `onFailure: [...]`: compensation steps that run in reverse order if a
     later step fails for good (a saga, not a distributed transaction — see `docs/FLOWS.md` §5).
@@ -401,8 +399,8 @@ sections:
     aggregate's auto panel, since that list panel is generated). A dataSource with editable bindings or
     row-scoped actions keeps the table, since that is where those controls live. With `table`,
     `layout.fields` picks its columns. An action's
-    `binding` says what happens on click: `flow` (call a Flow), `procedure` (call a Procedure —
-    see §8), `conceptQuery` (re-run a query), or `conceptMutation` (a direct create/update/delete).
+    `binding` says what happens on click: `flow` (call a Flow), `procedure` (call a flow that has no
+    public endpoint of its own — see §8), `conceptQuery` (re-run a query), or `conceptMutation` (a direct create/update/delete).
 - level: 3
   title: Real example (from `invoice-bonds-demo`) — two panels, two different action bindings
   body: |2
@@ -425,10 +423,11 @@ sections:
     }
     ```
 
-    Note the button calls a **procedure**, not a flow — because `RegisterUserProcedure` is
-    transactional server-side logic that isn't meant to be its own public REST endpoint (see §8).
-    The sibling `InvoiceConsolePanel` above binds its button to a **flow** instead, because
-    `IssueInvoice` *is* meant to be independently callable over REST too.
+    Note the button uses `binding: procedure`, which runs a flow declared `expose: ui` —
+    `RegisterUserProcedure` is transactional server-side logic that isn't meant to be its own
+    public REST endpoint (see §8). The sibling `InvoiceConsolePanel` above binds its button to a
+    public **flow** (`binding: flow`) instead, because `IssueInvoice` *is* meant to be
+    independently callable over REST too.
 - level: 3
   title: Gotchas
   body: |2
@@ -677,92 +676,103 @@ sections:
 
     ---
 - level: 2
-  title: 8. Procedure — server-side logic that isn't its own public endpoint
+  title: 8. Procedure — a flow that is not its own public endpoint
   body: ""
 - level: 3
   title: What it is
   body: |2
 
-    A Procedure is a small script of steps, like a Flow, but it is **not** automatically
-    exposed as `POST /api/flows/...`. Instead, it's meant to be called from a Panel action
-    (`"binding": "procedure"`), or from another procedure. Reach for a procedure instead of a flow
-    when the logic is a supporting operation for a screen — "read this list for the admin page",
-    "save this record through the full governed path" — rather than a standalone action you want
-    other systems to call directly over REST.
+    There is no separate procedure block any more: the model has no `procedures[]` array, because a
+    procedure was always a script of steps, like a Flow. What used to be a procedure is now a **flow
+    whose `expose` is `ui` or `internal`** (2026-11-16, `BREAKING.md`):
+
+    - `expose: ui` — a screen runs it (a panel or workbench action, a data source, an `onRowLoad`, an
+      aggregate hook). It gets **no** public `POST /api/flows/<Name>/execute`; that route answers 404.
+    - `expose: internal` — another flow starts it with a `callFlow` step (or its own event, schedule or
+      webhook trigger does). It is not reachable from a screen or from outside.
+    - `expose: api` (the default) — the flow is also a public REST endpoint (§2).
+
+    Reach for a non-public flow instead of a public one when the logic is a supporting operation for a
+    screen — "read this list for the admin page", "save this record through the full governed path" —
+    rather than a standalone action you want other systems to call directly over REST. A screen still
+    names the flow in a key called `procedure` (an action's `binding: "procedure"` plus `procedure:
+    "<flow name>"`); the name is the flow of that name.
 - level: 3
   title: Anatomy
   body: |2
 
+    A flow with `expose` set is an ordinary flow (§2): the same `steps` and the same step types, the same
+    durable execution (an instance and a checkpoint per step) and the same permission check (the caller
+    needs `flow.execute`). Only the front door differs.
+
     ```jsonc
     {
-      "name": "RegisterUserProcedure",
-      "parameters": [ { "name": "id", "type": "uuid", "required": true } ],
-      "locals": [ /* optional working variables, alias: "variables" */ ],
-      "steps": [ /* REQUIRED, at least 1 */ ],
-      "returns": { /* optional shape of the result */ }
+      "name": "OneFlowUiOnly",
+      "expose": "ui",            // "internal", or leave it out for a public flow
+      "input": { "concept": "ShelfLayout", "mode": "query" },
+      "steps": [ /* REQUIRED, at least 1 */ ]
     }
     ```
 
-    **Step types available inside a procedure** (a different vocabulary from a flow's, oriented
-    around data access, and with no `awaitEvent`: a procedure never pauses). The executor
-    dispatches 15 kinds; the names after a slash are accepted aliases:
-    `readConcept`, `listConcepts`, `runQuery`/`conceptQuery`, `saveConcept`/`conceptCreate`/`conceptUpdate`,
-    `patchConcept`, `deleteConcept`/`conceptDelete`, `callCapability`/`capabilityCall`,
-    `publishEvent`/`eventPublish`, `callProcedure`/`procedureCall`, `if`/`condition`,
-    `forEach`/`loop`, `mapList`, `mapValue`/`assign`, `computeValue`, `return`.
+    The steps that move data are the flow's own: `readConcept`, `listConcepts`, `runQuery`,
+    `createConcept`/`updateConcept`, `set`, `deleteConcept`, `callFlow` and `return`, next to
+    `capabilityCall`, `emitEvent`, `branch`, `map` and `forEach`. A screen that calls a flow waits for its
+    answer, so a flow that parks on an `awaitEvent` is reported to the screen as `FLOW_WAITING`.
 
-    There is no per-procedure tracing or audit knob on an ordinary procedure (a top-level
-    `tracePolicy`/`auditPolicy` was retired because nothing read it). The one exception is an
-    untrusted-extension procedure: its `actionDescriptor` carries `tracePolicy`,
-    `idempotencyPolicy`, `auditResourceType` and `eventNameOnSuccess`, and those are read. Audit logging is NOT a per-procedure setting — every concept create, update,
-    delete and restore reached through the governed path (`saveConcept`/`deleteConcept` steps
-    included) is logged automatically, with a before/after field diff, no matter what the
-    procedure declares.
+    There is no per-flow audit knob: every concept create, update, delete and restore reached through the
+    governed path (`createConcept`/`updateConcept`/`deleteConcept` steps included) is logged
+    automatically, with a before/after field diff, no matter what the flow declares.
 - level: 3
-  title: Real examples (from `invoice-bonds-demo`) — a read procedure and a write procedure
+  title: Real example (from `dsl-conformance-max`) — a read flow, an internal helper and the call between them
   body: |2
 
-    A **read-oriented** procedure, running a governed query:
+    A **read-oriented** flow, loading one record through the governed path:
 
     ```json
     {
-      "name": "ListActiveUsersProcedure",
-      "description": "Read-kind procedure: returns active users via the governed query path.",
+      "name": "OneFlowReadLayout",
+      "input": { "concept": "ShelfLayout", "mode": "query" },
       "steps": [
-        { "name": "run-active-users", "type": "runQuery", "concept": "User", "query": "ActiveUsers",
-          "target": "activeUsers", "trace": true },
-        { "name": "return-active-users", "type": "return", "value": "$activeUsers", "trace": true }
+        { "name": "read", "type": "readConcept", "id": "$input.layoutId", "output": "$layout" },
+        { "name": "return-layout", "type": "return", "value": "$layout" }
       ]
     }
     ```
 
-    A **write-oriented** procedure, saving through the full governed path (permissions, tenant
-    isolation, audit — the same enforcement a business CRUD write gets):
+    Add `"expose": "ui"` and only a screen can run it. An **internal** helper, and the flow that calls it:
 
     ```json
     {
-      "name": "RegisterUserProcedure",
-      "description": "Write-kind procedure: saves a User through the Concept Gateway and returns the governed record.",
-      "parameters": [ { "name": "id", "type": "uuid", "required": true } ],
+      "name": "OneFlowInternalHelper",
+      "expose": "internal",
+      "input": { "concept": "ShelfLayout", "mode": "query" },
       "steps": [
-        { "name": "save-user-through-gateway", "type": "saveConcept", "concept": "User", "id": "$id",
-          "data": { "input": "$input" }, "target": "savedUser", "trace": true, "audit": true },
-        { "name": "return-saved-user", "type": "return", "value": "$savedUser", "trace": true }
+        { "name": "answer", "type": "set", "value": "'helper-says-hi'", "output": "$answer" },
+        { "name": "return-answer", "type": "return", "value": "$answer" }
+      ]
+    },
+    {
+      "name": "OneFlowCallsHelper",
+      "input": { "concept": "ShelfLayout", "mode": "query" },
+      "steps": [
+        { "name": "call-helper", "type": "callFlow", "flow": "OneFlowInternalHelper",
+          "input": "$input", "output": "$helped" },
+        { "name": "return-helped", "type": "return", "value": "$helped" }
       ]
     }
     ```
 
-    Both procedures are wired up as the click-action of a Panel button (§4,
-    `UserAdminPanel`/`RegisterUser`) — the person using the web page never sees a REST endpoint,
-    just a button that runs this logic.
+    `callFlow` starts the helper as a separate execution (its own instance, trace and permission check),
+    binds the helper's output to `$helped`, and fails the calling step if the helper does not finish.
 - level: 3
   title: Gotchas
   body: |2
 
-    - A procedure has no REST route of its own — if you need something callable directly by an
-      external client, use a Flow instead.
-    - The per-step `trace` and `audit` flags shown above are accepted but have no runtime effect
-      today — nothing reads them. Audit logging is unconditional, not opt-in.
+    - An `expose: ui` or `expose: internal` flow has no REST route of its own — if you need something
+      callable directly by an external client, leave `expose` out.
+    - A `callFlow` output that is a concept record reaches flow state as the map
+      `{conceptName, id, tenantId, data, rowVersion}`: its fields sit under `data` (`$helped.data.status`).
+    - `callFlow` nests at most 16 deep, so a flow that calls itself fails with a named error.
 
     ---
 - level: 2
@@ -818,7 +828,7 @@ sections:
 
     Role         — who may read/write which Concept and run which Flow
     Experience   — what a Role sees: home + navigation (the back-office menu: the `admin` experience)
-       └── Screen — one page (today: panel); its buttons call a Flow (or, today, a Procedure)
+       └── Screen — one page (today: panel); its buttons call a Flow (public, or `expose: ui`)
     Property     — a setting any of the above can read, changed without regenerating
     Pack / Module — how you split and reuse all of the above (a Module is today's context)
     Hand-made page — web/*.html beside the model, for any screen no declaration fits

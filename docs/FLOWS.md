@@ -147,9 +147,9 @@ see §9). Refuses with `NOT_STUCK` on any other status, and refuses a `STUCK` ro
   outside the resume sweep and an awaited event published later does not resume it. Refused with
   `NOT_CANCELLABLE` otherwise. `POST /api/executions/{id}/cancel`.
 
-## 3. The 10 step kinds
+## 3. The 11 step kinds
 
-The runtime enum is `FlowStepDefinition.Type` (`FlowStepDefinition.java`) — exactly these 10
+The runtime enum is `FlowStepDefinition.Type` (`FlowStepDefinition.java`) — exactly these 11
 values, each with its own factory method:
 
 | Kind | Factory | What it does |
@@ -163,25 +163,27 @@ values, each with its own factory method:
 | `MAP` | `map(name, fromRef, toRef)` | Copies a value from one flow-state reference to another |
 | `RETURN` | `returnValue(name, returnRef)` | Ends the flow, producing a value |
 | `FOR_EACH` | `forEach(name, collectionRef, itemKey, loopSteps, maxLoopIterations, parallelAwait)` | Bounded iteration over a collection; `parallelAwait` (default `false`) opts a loop body (exactly one top-level `AWAIT_EVENT` step, plus any number of other non-`FOR_EACH` steps before/after it, since Wave 3) into N-way parallel waiting (B15(B)) instead of one-at-a-time (B15(A)) — §6 |
-| `CALL_PROCEDURE` | `callProcedure(...)` | Calls a declared `procedure` and stores its output in flow state (a concept-record output nests the record's fields under `data`) |
+| `PROCEDURE_STEP` | `procedureStep(name, step, outputRef)` | Carries one concept step of the merged vocabulary (`set`, `readConcept`, `listConcepts`, `runQuery`, `deleteConcept`) as the procedure step that already implements it, so a flow and a procedure run the same code — see "The concept steps, `expose` and `runAs`" below |
+| `CALL_FLOW` | `callFlow(name, flowName, inputRef, outputRef)` | Synchronously starts another flow by name as a separate execution and stores its output in flow state (a concept-record output is the map `{conceptName, id, tenantId, data, rowVersion}`, so its fields nest under `data`) |
 
 Any step, regardless of kind, can additionally carry `onFailureSteps` (`withOnFailure`,
 `FlowStepDefinition`) — used only for compensation, §5.
 
 **A correction worth naming.** An earlier internal estimate of this list (repeated in a since-removed `EXECUTION_TREES.md`) included `PRE` as a
 step kind. That's wrong: `PRE`/`POST` are the two values of the *checkpoint* field on an `INVARIANT_CHECK` step,
-not a step kind of their own. `FOR_EACH` is the real kind it was mistaken for, and `CALL_PROCEDURE` was added
-later. This document is the corrected version.
+not a step kind of their own. `FOR_EACH` is the real kind it was mistaken for, and `PROCEDURE_STEP` and `CALL_FLOW` were added
+later (FORM P3-T5b; the `CALL_PROCEDURE` kind that existed in between was removed on 2026-11-16, see `BREAKING.md`). This document is the corrected version.
 
-### The author-facing step names, and how they map to the 10 kinds
+### The author-facing step names, and how they map to the 11 kinds
 
 Authors don't write `FOR_EACH` in JSON — the schema's `flowStep.type` enum (`$defs.flowStep` in
-`NPDevContract/dsl/src/main/resources/schema/model.schema.json`) accepts exactly 13 canonical names:
+`NPDevContract/dsl/src/main/resources/schema/model.schema.json`) accepts exactly 19 canonical names:
 
 ```
-invariantCheck · capabilityCall · generatedAction
+invariantCheck · capabilityCall · generatedAction · notify
 emitEvent · scheduleEvent · return · branch · awaitEvent
-createConcept · updateConcept · map · forEach · callProcedure
+createConcept · updateConcept · map · forEach
+set · readConcept · listConcepts · runQuery · deleteConcept · callFlow
 ```
 
 The 23-synonym DSL-1 vocabulary (`validate`, `assign`, `callCapability`, `if`, `await`, `waitForEvent`, ...) is
@@ -190,11 +192,11 @@ into the 10 real kinds:
 
 1. **Parse-time canonicalization** — `JsonModelParser.normalizeStepType`
    (`NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java`) maps each canonical name to
-   its 13 AST-level names (it no longer collapses aliases).
+   its AST-level name (it no longer collapses aliases; a `notify` step never reaches it: `lowerNotifyStep` turns it into a `map` plus a `notification.send` `capabilityCall` first).
 2. **Compile-to-kernel mapping** —
    `CompiledModelFlowDefinitionProvider.toFlowSteps`
    (`NPDevKernel/adapters/flow-compiled/.../CompiledModelFlowDefinitionProvider.java`) maps those
-   13 names down to the 10 `FlowStepDefinition.Type` values. Notably, `generatedAction`, `createConcept`, and
+   AST names down to the 11 `FlowStepDefinition.Type` values. Notably, `generatedAction`, `createConcept`, and
    `updateConcept` are **all author-facing sugar for `CAPABILITY_CALL`** — they compile to a call
    against the concept's own generated CRUD capability, not a distinct runtime behavior.
 
@@ -254,7 +256,7 @@ FIELDS first, as on a procedure's record, and `$ride.data.status` works too. Flo
 ### Worked examples, from real sample models
 
 `NPDevSamples/medium-expense-approval/Input/model.json`'s one flow, `SubmitExpense` (`:260-340`),
-exercises 6 of the 10 kinds in sequence:
+exercises 6 of the 11 kinds in sequence:
 
 ```jsonc
 { "type": "invariantCheck", ... }                               // → INVARIANT_CHECK
@@ -277,7 +279,7 @@ exercises 6 of the 10 kinds in sequence:
 
 > **DSL 2.0 (2026-07-27, the retired DSL 2.0 plan §2.A):** the spellings above are the
 > canonical ones as of this writing — `model.schema.json`'s `flowStep.type` enum now accepts exactly
-> these names (the kinds above, plus `createConcept`/`updateConcept`/`generatedAction` sugar; `callProcedure` came later);
+> these names (the kinds above, plus `createConcept`/`updateConcept`/`generatedAction` sugar; `callProcedure` came later and was replaced by `callFlow` on 2026-11-16);
 > the 23-alias v1 vocabulary (`validate`, `assign`, `callCapability`, `if`, `await`, `waitForEvent`,
 > `cap`/`op`/`out` field shorthands, etc.) is retired. Line numbers against these two files are
 > intentionally omitted above since the migration renumbered their content slightly; the flow/step
@@ -383,7 +385,7 @@ restarts the top-level list at that step, so:
 
 A timed await is looked at again by its own deadline: the quiet-wait back-off (5 s, 10 s, 20 s ...) never
 schedules the next sweep past it, so a 20-second `timeout` fires at about 20 seconds, not at the next rung.
-A `callProcedure` output reaches flow state in its persisted JSON shape (`$out.data.status`, `$out.id`),
+A `callFlow` output reaches flow state in its persisted JSON shape (`$out.data.status`, `$out.id`),
 so a condition reads the same value before and after the flow has parked.
 
 ### Human tasks — the optional `task` block (PROC-1)
@@ -417,7 +419,7 @@ not through `/api/events/publish`, so an assignee needs no `PUBLISH_EVENTS` perm
 bypass the assignee check by posting the raw event to `/api/events/publish`. Resolved refs
 (`assignee.user`, `${path}` in the title) read the instance's persisted flow state, and an unresolved ref is
 `null`, never its own text, so a task cannot be answered by a user literally named `$saved.recipientUsername`.
-Concept records written by a `createConcept` step are flat (`$saved.code`), but a `callProcedure` output
+Concept records written by a `createConcept` step are flat (`$saved.code`), but a `callFlow` output that is a concept record
 nests the record's fields under `data` (`$notified.data.recipientUsername`).
 
 The flow resumes as its ORIGINAL starter, so the answerer is recorded explicitly. The event payload is the
@@ -434,7 +436,7 @@ nodes a double click could publish twice.
 flow-state refs to the proposed values (usually an `externalAi.generate` output) and to the record they
 would change. The inbox then shows `proposal.diff` (per key: before, after, changed) and a SHA-256 of the
 proposal; the event payload gains `proposal` (the parked values) and `recordId` (from `task.record`),
-both read from the parked instance state, never from the client, so what a later `callProcedure` applies
+both read from the parked instance state, never from the client, so what a later `callFlow` applies
 is exactly what the reviewer saw. A prompt declared `review: required` makes the validator demand that
 every flow calling it be followed IMMEDIATELY by such an `awaitEvent` task whose `proposal.value` is the
 call's output, and bars procedures from calling it (they cannot wait). `optional` is recorded but not

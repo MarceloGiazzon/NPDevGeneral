@@ -3,7 +3,7 @@ title: >-
   Follow-ups owed after the convention-visibility and domainType-convention work (2026-11-22), plus the single-source model.schema.json the owner wants soon
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: PARTIAL
 opened: 2026-11-22
 source: >-
   Owner, 2026-11-22: "2) OK, logo vemos isso. Deixe marcado para ser feito em breve" and "7) Fonte unica. Deve ser implementado em breve. Anotar junto com a sessao 2".
@@ -44,7 +44,7 @@ detail: |
      notes are visible. But Studio (NPDevManager/ui/studio.js:279) builds its "the change has a problem" sentence with `severity !== "warning"`, so when a model FAILS validation the `info`
      notes (FIELD_CONVENTION_APPLIED, IMPLICIT_ID_ADDED) are listed as problems. FIXED 2026-11-22 in Manager 0.13.45 (`(d.severity || "error") === "error"`; version moved in Cargo.toml, Cargo.lock,
      tauri.conf.json and main.rs); the render-check scenario "Studio: a failed check lists the errors, not the info notes or the warnings" fails on the old line (403/404) and passes on the new one
-     (404/404). The installed Manager still says 0.13.44 until it is rebuilt (not done). B2-B4 untouched.
+     (404/404). REBUILT 2026-11-23: Build\manager-target\release\npdev-manager.exe is now 0.13.45 (cargo build --release, 3m17s, nothing running so no rename was needed; the render checker passed 404/404 against the repo ui). B2-B4 untouched.
   PAUSED BY THE OWNER until 2026-11-25: the kernel coverage-floor root cause (floor 73.4185 -> 73.4139) -- "ignore this problem completely for the next 3 days"; do not investigate or let that ratchet drive work before then.
 done_when: >-
   The four schema copies are one source and check-schema-mirror-consistency.py is gone or trivial; each of B-E is either done and verified or recorded in its own item with a reason; the paused kernel
