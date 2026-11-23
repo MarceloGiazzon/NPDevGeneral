@@ -49,7 +49,12 @@ detail: |
      RUN 2 got past that line and ran 1599 s, then the engine wedged: the last report appeared 17:31, the container went silent, vmmemWSL sat at 7.3 of its 7.6 GB cap (half of this 16 GB laptop) with 0 s CPU
      in 15 s, `docker ps`/`docker kill` hung, the CLI ended "error waiting for container: unexpected EOF" (exit 125). Most likely memory exhaustion (not proven). Docker Desktop was quit and the WSL VM shut down to
      recover the memory. docker-linux-parity-report.json on disk is therefore "failed" from an environment limit, NOT a verdict on the product. The evidence has to come from CI: .github/workflows/ai-beta-gate.yml job
-     docker-linux-proof (ubuntu-latest, workflow_dispatch only, last green on main 2026-09-30 in 1 h 05 min; it uploads docker-linux-parity-report.json as an artifact). Not yet re-run there with the fix.
+     docker-linux-proof (ubuntu-latest, workflow_dispatch only, last green on main 2026-09-30 in 1 h 05 min; it uploads docker-linux-parity-report.json as an artifact).
+     CI EVIDENCE 2026-11-23 -- PASSED: workflow run 45270743169 (workflow_dispatch on main at 068d270e, the commit with the Linux fix), job "Docker/Linux blocking proof" = success. Its docker-linux-parity-report.json
+     (artifact docker-linux-proof-reports, read and checked, copy at NPDev_General__OutsideRepo/ci-docker-proof-45270743169): overallStatus passed, host Ubuntu 26.04.1 LTS, docker-build 100 s, docker-run-ai-beta-gate 748 s,
+     failures []; the container's own ai-beta-gate report: 31 scenarios, overallStatus passed. So the Linux behaviour of the AI beta gate is now proven; the local laptop cannot repeat it (WSL memory cap above).
+     NOT done: the local beta release gate reads scripts/reports/out/docker-linux-parity-report.json (maxReportAgeHours 24), which locally still says "failed"; how a CI-produced report should be accepted by the local gate
+     (import the artifact, or let the gate read the CI result) is an open design choice. The other ~34 reports from 2026-11-22 are also older than 24 h now, so a full gate re-evaluation needs a fresh run.
   3. workspace-cleanliness fails while the evidence exists: generating about 60 reports under scripts/reports/out pushes scripts/ past its 500-file limit (485 files before the run). The 21 story files under
      scripts/policy/dsl-keyword-stories/ could be merged into a handful of files to leave room; reports are removed by clean-workspace-state.ps1 -CleanReportsOut.
      FIXED 2026-11-22 instead: Test-WorkspaceSlimness.ps1 no longer counts scripts/reports/out in the 500-file limit (generated evidence, bounded by its own 15 MB limit); docs/WORKSPACE_CLEANUP_POLICY.md says so.
