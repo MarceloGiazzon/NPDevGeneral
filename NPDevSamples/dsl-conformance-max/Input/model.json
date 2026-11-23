@@ -2697,6 +2697,7 @@
     },
     {
       "name": "selfApi",
+      "uid": "cp00000000000001",
       "type": "HttpConnector",
       "adapter": "http-connector",
       "http": {
@@ -2828,6 +2829,7 @@
     },
     {
       "name": "ShelfCheckDueMs",
+      "uid": "ev00000000000001",
       "payload": [
         {
           "name": "shelfId",
@@ -4043,6 +4045,8 @@
             "items": {
               "type": "string"
             },
+            "minItems": 0,
+            "maxItems": 5,
             "uniqueItems": true,
             "duplicationPolicy": "deny"
           },
@@ -6304,6 +6308,7 @@
           {
             "field": "displayName",
             "source": "entries.displayName",
+            "visibleWhen": "sku != ''",
             "enabledWhen": "sku != ''"
           }
         ],
