@@ -4070,7 +4070,21 @@
             "type": "decimal",
             "precision": 10,
             "scale": 2,
-            "min": 0
+            "min": 0,
+            "defaultExpression": "0"
+          },
+          "shipmentRefs": {
+            "type": "array",
+            "itemIdentityField": "ref",
+            "duplicationPolicy": "deny",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "lineCountDoubled": {
             "type": "integer",

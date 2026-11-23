@@ -96,8 +96,13 @@ detail: |
   (2026-11-23, log 20261123T195230Z). NOT checked in a browser: the logo is served from the app's own web folder, but no browser gate was run on the guide page after adding it. Not picked up on purpose:
   httpConnectorAuth.usernameEnvVar as a sample (needs a second, basic-auth connector whose env vars the probes would have to set), referenceDefinition.multiple (changes the generated column),
   panelAction.permissionRequirements (hides the awaitApproval button the browser gate clicks), screenPanel.guidePage (moves the panel into the guide page).
-  STILL OPEN (next sessions, same 20% method): 163 written reasons, 0 tests, 37 official samples, 37 examples, 5 validator-only
-  keywords, 169 used only by the coverage fixture (no real model). Left out on purpose as complex: concept.renamedFrom (needs the restart-revision probe), pack:signature, pack:fieldConventions/propertyScopes
+  BATCH 7, 2026-11-23 (same 20% method): 29 more written reasons (reasons-batch-7.json); 2 keywords gained an official sample and an example in dsl-conformance-max (schemaObject.defaultExpression on
+  PlaceWidgetOrder.inputSchema.discount, schemaObject.itemIdentityField on a new optional PlaceWidgetOrder.inputSchema.shipmentRefs array; extra input properties that are not WidgetOrder fields are accepted by the
+  create, as discount/tags/lineCountDoubled already showed). Model validates with 0 errors; 163/163 behaviour probes green (2026-11-23, log 20261123T213516Z). Not picked up on purpose: event.specializes and
+  capability.specializes (event specialization is resolved in the concept/pack lineage code and a new capability needs an adapter binding resolved at boot; read ModelResolver before trying), presentationMetadata.customWidgetRef
+  (an app-supplied widget file the browser gates would load), transactionHooks.onCommit (changes behaviour the probes assert), packRef.allowSideBySide (needs a real major-version id collision).
+  STILL OPEN (next sessions, same 20% method): 134 written reasons, 0 tests, 35 official samples, 35 examples, 5 validator-only
+  keywords, 171 used only by the coverage fixture (no real model). Catalogue completeness 584 of 745. Left out on purpose as complex: concept.renamedFrom (needs the restart-revision probe), pack:signature, pack:fieldConventions/propertyScopes
   (pack files), transactionHooks.onValidate, queryParameter.schema, panel bindings/layout children (they change served panel metadata that probes assert), autoPanel.name (admin may not repeat the name).
   The catalogue's Implemented column was rebuilt (layers: parser / plumbing / validated / build / runtime / tooling, accessor calls counted, a Real models
   column that leaves out the coverage fixture): the old "parser only" label was wrong for keywords the code reads through accessors (9 of the first 14 "unsupported" keywords were live).
