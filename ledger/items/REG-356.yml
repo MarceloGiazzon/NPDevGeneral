@@ -82,6 +82,16 @@ detail: |
         when run by their invoker (run-ai-knowledge-gate.ps1) right before the report -- recording them alone proves nothing. FOUND: check-schema-mirror-consistency passes at the START of a T1
         gate and shows overdue at its END, because cadence_state.py STALENESS_TO_TIMEDELTA["every-run"] = 5 min while a T1 run takes ~6.8 min (the code comment says no T0 pass spans 5 min).
         OWNER CALL, not changed: widen that window to ~15 min, or have the gate record its T0 checks last.
+     2a. THE ONE FULL BETA GATE, 2026-11-24: FAILED, as a TRACKED ptrack job (q9dcbe, 1 h 33 m, exit 1). The first attempt, started from the PowerShell tool, was invisible to ptrack and died unfinished with its session at
+        15:21. Verdict: candidateReady / releaseReady / officialReleaseEligible all false, 3 blockers. 23 of 25 orchestration steps passed, including sample-matrix (41 min), docker-linux-parity (-FromCi: the CI proof
+        45490868311) and report-schema-validation; the 2 failed-with-evidence are ai-beta-gate and expanded-beta0-evidence (it produces two of the blockers). (1) ai-beta-gate: 30 of 31 scenarios passed;
+        custom-panel-procedure-mismatch failed its generated app's Gradle build (exit 1 after 16 s with NO error text in either log, only the daemon notice) and so its boot / health / smoke. It PASSES alone
+        (run-ai-beta-gate.ps1 -Scenario custom-panel-procedure-mismatch, 11 min including the generator build), so it was a transient silent Gradle exit; the cause is NOT proven (CLAUDE.md names a VS Code Java/Gradle file
+        lock on a fresh build dir as a known transient). (2) stale-report-check: an ORDER DEFECT in scripts/quality/run-beta-release-evidence-orchestration.ps1 -- expanded-beta0-evidence (stage 2, ran 19:44) produces it,
+        but it measured report-schema-validation (stage 3), sample-matrix and runtimehost-staged-jar-preflight BEFORE this run regenerated them (49-51 h old, because the previous full gate was two days ago); all three
+        were fresh and passed minutes later. It can only pass when the previous full run was under 24 h earlier. (3) workspace-cleanliness: the check ran 28 s after ai-beta-gate, which leaves NPDevGenerator/.gradle
+        (8 files, 0 MB: "rebuildable directory must not remain in the workspace"). Evidence kept at NPDev_General__OutsideRepo/beta-gate-2026-11-24-failure (17 files). Another full run (about 1.5 h) is the owner's call;
+        before it, three gate fixes: retry a silent Gradle build exit once, evaluate the stale check after all producers (or at the end), and clean rebuildable directories before the cleanliness check.
 done_when: >-
   The four schema copies are one source and check-schema-mirror-consistency.py is gone or trivial; each of B-E is either done and verified or recorded in its own item with a reason; the paused kernel
   item is picked up on or after 2026-11-25.
