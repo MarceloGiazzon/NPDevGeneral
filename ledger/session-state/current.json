@@ -1,20 +1,19 @@
 {
-  "closedAt": "2026-11-24T02:30:10.3853118Z",
+  "closedAt": "2026-11-24T03:35:41.2776587Z",
   "branch": "main",
-  "head": "e7d06b9e",
-  "headSubject": "fix(samples): the approvals digest in the conformance fixture's npdev.lock was computed over CRLF bytes; recompute it over the LF blob the repo stores",
-  "summary": "Owner decisions executed: (1) conformance pack (conformance + conformance-ext, npdev.lock) exercises 11 pack keywords in dsl-conformance-max; (2) the 5 'validator-only' keywords were already implemented -- the scanner was blind, reviewed evidence now in scripts/policy/dsl-keyword-evidence.json; (3) the browser gates DO run locally (run-shell-scenarios.ps1): they were red since REG-357 batches 1-3, fixed (modal moved, tab moved, geo data source repointed, routines use state waits) and a REAL BUG fixed: PanelRuntime never bound panelDataSource.params (PanelRuntimeQueryParamsTest). Verified: validateModel 0 errors, 163/163 probes (log 20261124T020032Z), 12 routines green across the final runs (last single full run 11/12, theme-switch flaked on a fixed wait and passed alone after widening). Catalogue 732/745. Findings in REG-359. Commits 791b153d, c8dbef1b, e7d06b9e. NOT run: run-all-gates, full beta release gate, CI on the new commits.",
-  "nextStep": "Owner decisions on REG-359 item 4 (delete or fix each): pack:signature (embedded signature can never verify: circular digest), pack:propertyScopes (pack scope lands after the root scope), autoPanel.name/concept/aggregate (unreachable), transactionHooks.onCommit/onValidate (shadowed by aggregate-level hooks), capability.specializes (plugin-manifest binding). Then: watch CI on main for the new commits (the conformance pack lock digests were recomputed over LF blobs; check the Linux checkout agrees).",
+  "head": "61a0e3fa",
+  "headSubject": "fix(pack-signing): the signing digest is line-ending-insensitive for every JSON file of the pack, so a Windows checkout cannot invalidate a signature; conformance pack re-signed",
+  "summary": "Owner answered the 6 open items. (1) pack:signature: PackSigningDigest (canonical JSON of every pack *.json, signature removed), PackAddMain verifies LOCAL packs too (they were skipped), packSign Gradle task, conformance pack really signed (key outside repo). (2) pack:propertyScopes: pack scope with from goes in front of the root scope. (3,4) autoPanel.name/concept/aggregate and transactionHooks.onCommit/onValidate DELETED (budget 718->713). (5) capability.specializes: kernel StaticCapabilityBindingResolver + runtimehost RuntimePluginAdapterRegistry fall back to the built-in of the same type. (6) samples for allowSideBySide (conformance v2), renamedFrom, panelLayout.children, guidePage, customWidgetRef. Catalogue 740/740 complete; generate_dsl_capabilities.py --check now fails on any incomplete keyword. Verified: DSL, generator, runtimehost-core, kernel tests; validateModel 0 errors; 163/163 probes; 12/12 browser routines in ONE run; T1 fast gate. REG-357 and REG-359 closed DONE with guards. NOT run: run-all-gates, the beta release gate, CI on these commits.",
+  "nextStep": "Watch CI on main for commits 7222529e and 61a0e3fa (the conformance lock digests and the pack signature are checked on a Linux checkout; the signing digest is line-ending-insensitive but pack.json raw bytes feed the lock, pinned LF by .gitattributes). Then decide whether to run the full local beta release gate (over 1 h; keep scripts/reports/out/docker-linux-parity-report.json from the CI run, valid until 2026-11-24T21:47Z, from being overwritten).",
   "plan": "",
   "blocked": "",
   "verified": "none",
   "dirtyCount": 0,
   "dirtyFiles": [],
-  "unpushed": 3,
+  "unpushed": 2,
   "landedCommits": [
-    "e7d06b9e fix(samples): the approvals digest in the conformance fixture's npdev.lock was computed over CRLF bytes; recompute it over the LF blob the repo stores",
-    "c8dbef1b fix(samples): conformance pack lock digest computed over the LF bytes .gitattributes pins pack.json to, so it matches a checkout on any OS",
-    "791b153d fix+feat: browser gates run locally; PanelRuntime now binds panelDataSource.params; conformance packs; keyword evidence (REG-357, REG-359)",
-    "f9780b64 docs(ledger): session handoff after REG-357 batches 8-12"
+    "61a0e3fa fix(pack-signing): the signing digest is line-ending-insensitive for every JSON file of the pack, so a Windows checkout cannot invalidate a signature; conformance pack re-signed",
+    "7222529e fix+feat: every keyword is now complete (740/740) -- pack signature verifies, scopes order, 5 dead keywords deleted, built-in types under other names (REG-357, REG-359)",
+    "974ad438 docs(ledger): session handoff after browser gates, conformance pack and PanelRuntime params fix"
   ]
 }
