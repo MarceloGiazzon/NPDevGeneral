@@ -537,7 +537,7 @@ public final class ModelCompiler {
         orderedAggregates.sort(Comparator.comparing(aggregate -> normalize(aggregate.name())));
         List<CompiledAggregate> aggregates = new ArrayList<>();
         for (AggregateAst aggregateAst : orderedAggregates) {
-            aggregates.add(compileAggregate(aggregateAst, modelAst.getAutoPanels()));
+            aggregates.add(compileAggregate(aggregateAst));
         }
 
         List<AutoPanelAst> orderedAutoPanels = new ArrayList<>(modelAst.getAutoPanels());
@@ -1255,23 +1255,17 @@ public final class ModelCompiler {
         if (hooks == null) {
             return null;
         }
-        return new CompiledTransactionHooks(
-                hooks.onLoad(), hooks.onFieldChange(), hooks.beforeAction(), hooks.onValidate(), hooks.onCommit());
+        return new CompiledTransactionHooks(hooks.onLoad(), hooks.onFieldChange(), hooks.beforeAction());
     }
 
-    private static CompiledAggregate compileAggregate(AggregateAst aggregateAst, List<AutoPanelAst> autoPanels) {
-        TransactionHooksAst hooks = transactionHooksFor(aggregateAst.name(), autoPanels);
-        String onValidate = hasText(aggregateAst.onValidate())
-                ? aggregateAst.onValidate() : (hooks == null ? null : hooks.onValidate());
-        String onCommit = hasText(aggregateAst.onCommit())
-                ? aggregateAst.onCommit() : (hooks == null ? null : hooks.onCommit());
+    private static CompiledAggregate compileAggregate(AggregateAst aggregateAst) {
         return new CompiledAggregate(
                 aggregateAst.name(),
                 aggregateAst.root(),
                 compileAggregateCollections(aggregateAst.collections()),
-                onCommit,
+                aggregateAst.onCommit(),
                 sortObjectMap(aggregateAst.metadata()),
-                onValidate,
+                aggregateAst.onValidate(),
                 // npdev-aggregate-invariant-four-place (R4.4): parser -> HERE -> canonical writer+reader.
                 compileAggregateInvariants(aggregateAst.invariants()),
                 // npdev-aggregate-balance-four-place (Session 1): parser -> HERE -> canonical writer+reader.
@@ -1312,21 +1306,6 @@ public final class ModelCompiler {
         return compiled;
     }
 
-    /** Move 6 Move B: an aggregate-bound AutoPanel's transaction.hooks.onValidate/onCommit is an
-     * alternate spelling for the aggregate's own onValidate/onCommit fields (unifying the two
-     * dialects, docs/MOVE6_TYPED_SURFACE_PLAN.md §B.2) -- a direct aggregate.onValidate/onCommit
-     * always wins when both are declared. */
-    private static TransactionHooksAst transactionHooksFor(String aggregateName, List<AutoPanelAst> autoPanels) {
-        if (aggregateName == null) {
-            return null;
-        }
-        for (AutoPanelAst autoPanel : autoPanels) {
-            if (aggregateName.equalsIgnoreCase(autoPanel.aggregate()) && autoPanel.transaction() != null) {
-                return autoPanel.transaction().hooks();
-            }
-        }
-        return null;
-    }
 
     private static boolean hasText(String value) {
         return value != null && !value.isBlank();

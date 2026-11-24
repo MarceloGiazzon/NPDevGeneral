@@ -1103,6 +1103,18 @@ public final class ModelSourceResolver {
                 } else {
                     rewritePackLocalConceptReferencesInPlace(rewritten, rewriteMaps, ambiguousNames, key, qualifiedReferenceValidator);
                 }
+                // REG-359: propertyScopes' declared order IS the cascade precedence (most specific first) and the root
+                // scope (no `from`) must be last (PropertyValidation). A pack's scope used to be appended after the
+                // model's own root scope, which the ordering rule then refused, so no pack could contribute a scope to
+                // an app that declares its root scope. A pack scope that carries a `from` is more specific than the
+                // root, so it goes in front of it.
+                if ("propertyScopes".equals(key) && rewritten.isObject() && rewritten.has("from") && target.size() > 0) {
+                    int last = target.size() - 1;
+                    if (target.get(last).isObject() && !target.get(last).has("from")) {
+                        target.insert(last, rewritten);
+                        continue;
+                    }
+                }
                 target.add(rewritten);
             }
             resolved.set(key, target);
@@ -1326,7 +1338,7 @@ public final class ModelSourceResolver {
             // action and every transaction hook name a flow, and a surface may name a declared panel -- the same keys the
             // autoPanels branch above rewrites at any depth. They are this shape's own field names, so they mean nothing
             // else on a screen (a text `panel` is the surface override; an object `panel` is not text and is left alone).
-            for (String flowKey : List.of("procedure", "onLoad", "onFieldChange", "beforeAction", "onValidate", "onCommit", "afterAction")) {
+            for (String flowKey : List.of("procedure", "onLoad", "onFieldChange", "beforeAction", "afterAction")) {
                 rewriteTextField(object, flowKey, resolverFor(rewriteMaps, ambiguousNames, "flows"), qualifiedReferenceValidator);
             }
             rewriteTextField(object, "panel", resolverFor(rewriteMaps, ambiguousNames, "screens"), qualifiedReferenceValidator);

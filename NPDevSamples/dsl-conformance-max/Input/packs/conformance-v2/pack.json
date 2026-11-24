@@ -1,0 +1,43 @@
+{
+  "$schema": "../../../../../NPDevContract/schemas/pack.schema.json",
+  "dslVersion": "3.0.0",
+  "pack": "conformance",
+  "version": "2.0.0",
+  "namespace": "com.npdev.conformancev2",
+  "description": "REG-357 conformance pack: the SAME pack id as `conformance` at the next MAJOR version, imported next to it with packRef.allowSideBySide (the escape hatch for a direct import whose real pack id collides with one resolved transitively). Real apps must not import it.",
+  "category": "other",
+  "author": "NPDev",
+  "concepts": [
+    {
+      "name": "ConformanceNoteV2",
+      "truthLevel": "T2",
+      "ui": {
+        "label": "Conformance note (v2)"
+      },
+      "access": {
+        "read": "true",
+        "write": "true"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true,
+          "ui": {
+            "label": "Id"
+          }
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": false,
+          "maxLength": 80,
+          "ui": {
+            "label": "Title"
+          }
+        }
+      ]
+    }
+  ]
+}

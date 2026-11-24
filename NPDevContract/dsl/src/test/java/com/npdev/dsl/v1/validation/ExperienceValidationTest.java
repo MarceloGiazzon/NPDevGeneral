@@ -349,14 +349,6 @@ class ExperienceValidationTest {
     }
 
     @Test
-    void adminDoesNotRepeatTheScreensNameConceptOrAggregate() throws Exception {
-        for (String own : List.of("name", "concept", "aggregate")) {
-            assertHas(errorsFor(root -> ((ObjectNode) adminScreen(root).get("admin")).put(own, "Ride")),
-                    "'admin." + own + "' is not allowed", "suggestedFix");
-        }
-    }
-
-    @Test
     void anExperienceCannotLandOnOrNavigateToAnAdminScreen() throws Exception {
         assertHas(errorsFor(root -> {
             adminScreen(root);

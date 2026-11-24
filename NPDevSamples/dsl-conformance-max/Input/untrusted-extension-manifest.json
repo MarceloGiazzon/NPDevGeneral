@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "npdev-untrusted-extension-manifest.v1",
+  "entries": [
+    {
+      "entryId": "widget-star-rating",
+      "kind": "widget",
+      "relativePath": "widgets/star-rating.js",
+      "language": "javascript",
+      "sha256": "1d4c9e010416fd60383cab7fff323e9593d0bf3b60fd9f05b21b6444d56b7d5b"
+    }
+  ]
+}

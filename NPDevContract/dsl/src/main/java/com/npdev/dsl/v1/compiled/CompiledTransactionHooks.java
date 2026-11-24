@@ -4,8 +4,6 @@ package com.npdev.dsl.v1.compiled;
 public record CompiledTransactionHooks(
         String onLoad,
         String onFieldChange,
-        String beforeAction,
-        String onValidate,
-        String onCommit
+        String beforeAction
 ) {
 }

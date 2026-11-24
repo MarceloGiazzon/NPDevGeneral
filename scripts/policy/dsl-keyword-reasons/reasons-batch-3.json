@@ -54,7 +54,6 @@
     "aggregateBalance.discriminatorField": "A balance such as 'debits equal credits' sums two sides of the same rows; naming the box that tells the sides apart lets the platform check the rule without the author writing the grouping.",
     "aggregateCollection.name": "A tree of an order and its lines needs each child collection addressed; the name is that address, and a nested collection is addressed through its parent, so a path inside a draft is never ambiguous.",
     "aggregateInvariant.expression": "A rule across a whole order, such as 'no line has a zero quantity and the lines do not exceed the total', cannot be checked one row at a time; an expression over the draft tree, run before the commit, is the smallest form that sees everything.",
-    "autoPanel.concept": "A generated panel has to know what it lists; naming the concept (or the aggregate) is the one input from which columns, forms and permissions follow.",
     "capability.type": "Tools and packs sometimes need to find 'every payment connector'; a free-form kind label groups capabilities without a closed list that every new kind of integration would have to extend.",
     "cellGrid.colField": "A seating plan or a shelf layout is a grid whose cells are stored as rows; naming the integer box that holds the column tells the grid where each row sits.",
     "concept.satelliteOf": "A pack that adds boxes to another pack's user must not edit that pack; a satellite concept links to its base by a unique, required reference, so the base stays untouched and can be upgraded on its own.",
@@ -84,7 +83,6 @@
     "referenceDefinition.displayField": "A reference to a customer should show 'Maria Silva', not an identifier; naming the display box gives every dropdown and list the readable text.",
     "root:version": "A model needs its own version so that one change can be told from the one before; it is required, as a plain string such as 1.0.0.",
     "seed.concept": "Sample rows must say which concept they fill; inside a pack the name must be one that same pack declares, and it is rewritten to its pack-qualified form when the pack is composed.",
-    "transactionHooks.onValidate": "Before a receipt is saved a rule such as 'quantities match the order' may need to look at several rows; a flow run before the commit can veto it, where a rule on a single field sees only one row.",
     "workbenchBandPicker.selectorRef": "Two panels that need the same picker should not copy its columns and filters; pointing at a picker screen adopts it wholesale, and the band's own filter is combined with it."
   }
 }

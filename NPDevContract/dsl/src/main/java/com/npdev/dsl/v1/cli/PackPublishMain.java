@@ -9,6 +9,7 @@ import com.npdev.dsl.v1.pack.PackDiffFinding;
 import com.npdev.dsl.v1.pack.PackPublishGate;
 import com.npdev.dsl.v1.pack.PackSignature;
 import com.npdev.dsl.v1.pack.PackSigner;
+import com.npdev.dsl.v1.pack.PackSigningDigest;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -213,7 +214,11 @@ public final class PackPublishMain {
                 // Detect algorithm from the key files
                 String algorithm = detectAlgorithm(keypairBase);
                 KeyPair keyPair = PackSigner.readKeyPair(keypairBase, algorithm);
-                signature = PackSigner.createSignature(algorithm, digest, keyPair);
+                // REG-359: what is signed is PackSigningDigest, not the storage digest above -- the storage digest
+                // covers pack.json's bytes, signature included, so a signature inside that very file could never match it.
+                String signingDigest = PackSigningDigest.of(packDir);
+                report.put("signingDigest", signingDigest);
+                signature = PackSigner.createSignature(algorithm, signingDigest, keyPair);
                 report.put("signed", true);
                 report.put("signatureAlgorithm", algorithm);
             } else {

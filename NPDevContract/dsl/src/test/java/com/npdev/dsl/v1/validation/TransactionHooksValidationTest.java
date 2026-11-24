@@ -15,11 +15,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.2): an aggregate-bound AutoPanel's
- * transaction.hooks.onValidate/onCommit/onLoad/onFieldChange/beforeAction is validated against
- * declared procedures the same way the pre-existing aggregate.onValidate/onCommit fields already
- * were (AggregateValidation), and folds onto the aggregate's own onValidate/onCommit at compile
- * time when the aggregate itself declares neither directly.
+ * Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.2): an aggregate-bound screen's
+ * transaction.hooks.onLoad/onFieldChange/beforeAction is validated against declared procedures the same way
+ * the aggregate's own composition.onValidate/onCommit are (AggregateValidation). REG-359: the screen-side
+ * spelling of onValidate/onCommit was removed -- the concept-level one always won, so it could never take
+ * effect and a sample of it proved nothing -- which leaves composition.onValidate/onCommit as the only way.
  */
 class TransactionHooksValidationTest {
 
@@ -64,9 +64,8 @@ class TransactionHooksValidationTest {
     }
 
     @Test
-    void hooksOnValidateAndOnCommitResolveWhenAggregateDeclaresNeitherDirectly() throws Exception {
-        String json = modelWithHooks(
-                "{\"onValidate\": \"ValidateMovimento\", \"onCommit\": \"SyncOcupacao\"}", null, null);
+    void compositionOnValidateAndOnCommitReachTheCompiledAggregate() throws Exception {
+        String json = modelWithHooks("{}", "ValidateMovimento", "SyncOcupacao");
 
         List<String> errors = validate(json);
         assertTrue(errors.isEmpty(), "expected no validation errors, got: " + errors);
@@ -77,22 +76,8 @@ class TransactionHooksValidationTest {
     }
 
     @Test
-    void directAggregateOnValidateAndOnCommitWinOverHooks() throws Exception {
-        String json = modelWithHooks(
-                "{\"onValidate\": \"ValidateMovimento\", \"onCommit\": \"SyncOcupacao\"}",
-                "DirectValidate", "DirectCommit");
-
-        List<String> errors = validate(json);
-        assertTrue(errors.isEmpty(), "expected no validation errors, got: " + errors);
-
-        CompiledAggregate aggregate = compileAggregate(json, "Movimento");
-        assertEquals("DirectValidate", aggregate.onValidate());
-        assertEquals("DirectCommit", aggregate.onCommit());
-    }
-
-    @Test
-    void hooksOnValidateNamingAnUndeclaredProcedureIsRejected() throws Exception {
-        String json = modelWithHooks("{\"onValidate\": \"NoSuchProcedure\"}", null, null);
+    void compositionOnValidateNamingAnUndeclaredProcedureIsRejected() throws Exception {
+        String json = modelWithHooks("{}", "NoSuchProcedure", null);
 
         List<String> errors = validate(json);
         assertTrue(errors.stream().anyMatch(e -> e.contains("onValidate names a procedure not found")
@@ -101,8 +86,8 @@ class TransactionHooksValidationTest {
     }
 
     @Test
-    void hooksOnCommitNamingAnUndeclaredProcedureIsRejected() throws Exception {
-        String json = modelWithHooks("{\"onCommit\": \"NoSuchProcedure\"}", null, null);
+    void compositionOnCommitNamingAnUndeclaredProcedureIsRejected() throws Exception {
+        String json = modelWithHooks("{}", null, "NoSuchProcedure");
 
         List<String> errors = validate(json);
         assertTrue(errors.stream().anyMatch(e -> e.contains("onCommit names a procedure not found")

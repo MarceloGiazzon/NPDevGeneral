@@ -328,6 +328,44 @@ class ModelSourceResolverTest {
     }
 
     @Test
+    void aPackScopeWithAFromGoesInFrontOfTheModelsRootScope() throws Exception {
+        // REG-359: propertyScopes' order is the cascade precedence and the root scope (no `from`) must be last.
+        // A pack's scope used to be appended AFTER the app's own root scope, which PropertyValidation then refused,
+        // so no pack could contribute a scope to an app that declares its root scope.
+        write("pack/desks.json", """
+                {
+                  "dslVersion": "3.0.0",
+                  "pack": "desks",
+                  "version": "1.0.0",
+                  "propertyScopes": [{ "name": "desk", "from": "$user.deskId" }],
+                  "properties": [
+                    { "name": "pack.deskLabel", "type": "string", "default": "none", "settableAt": ["desk"] }
+                  ]
+                }
+                """);
+        Path model = write("model.json", """
+                {
+                  "namespace": "demo",
+                  "dslVersion": "3.0.0",
+                  "version": "1.0",
+                  "packs": [{ "$ref": "pack/desks.json" }],
+                  "concepts": [
+                    { "name": "RootOnly", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
+                  ],
+                  "propertyScopes": [{ "name": "user", "from": "$user.id" }, { "name": "tenant" }]
+                }
+                """);
+
+        JsonNode scopes = new ModelSourceResolver().resolve(model).resolvedRoot().get("propertyScopes");
+
+        assertEquals(3, scopes.size());
+        assertEquals("user", scopes.get(0).get("name").asText());
+        assertEquals("desks::desk", scopes.get(1).get("name").asText(), "the pack's scope is more specific than the root scope");
+        assertEquals("tenant", scopes.get(2).get("name").asText(), "the root scope stays last");
+        assertTrue(scopes.get(2).path("from").isMissingNode());
+    }
+
+    @Test
     void packAliasOverridesPackIdentifier() throws Exception {
         write("pack/catalog.json", """
                 {

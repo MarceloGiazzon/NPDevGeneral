@@ -47,6 +47,12 @@
       "scope": "tenant"
     }
   ],
+  "propertyScopes": [
+    {
+      "name": "conformanceDesk",
+      "from": "$user.desk"
+    }
+  ],
   "roles": [
     {
       "name": "ConformanceReader",
@@ -161,5 +167,11 @@
     {
       "$ref": "fragments/conformance-queries.json"
     }
-  ]
+  ],
+  "signature": {
+    "algorithm": "Ed25519",
+    "digest": "sha256:bd9e0f046baf54a445fa0d9745f8a6b3be33ffdba1dd11a52e87b0d564071788",
+    "value": "REYToeSNHJ+CuDnR+kzoDaYNBvE9doryiqMkAgec9x20ElUU2RJVAe/03tfKVOsM/IeiWFUQxJTAwFa9o9KiDQ==",
+    "publicKey": "MCowBQYDK2VwAyEAmPKkdGkDgSrOyc5BurabUPRUa5LF5Uwz5BjFUNER8XM="
+  }
 }

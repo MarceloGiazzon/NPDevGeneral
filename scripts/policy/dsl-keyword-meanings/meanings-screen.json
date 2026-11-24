@@ -197,9 +197,6 @@
     "panelAction.permissionRequirements": "Permissions the user must hold to see and run the action.",
     "panelAction.explainability": "Free-form object describing why the action exists, for AI and audit tools.",
     "panelAction.metadata": "Free-form notes carried into the compiled model unchanged.",
-    "autoPanel.name": "The panel's name. Defaults to one derived from the concept or aggregate.",
-    "autoPanel.concept": "The concept the panel is generated for. Give `concept` or `aggregate`.",
-    "autoPanel.aggregate": "The aggregate root concept the panel is generated for (opens the aggregate workbench).",
     "autoPanel.route": "The URL segment the panel is served at.",
     "autoPanel.surfaces": "Which surfaces to generate: `selection`, `detail`, `transaction`, `prompt`. Defaults to the usual ones for the kind of panel.",
     "autoPanel.selection": "Settings of the selection surface (the list of rows).",
@@ -219,8 +216,6 @@
     "workbenchBandPicker.multiSelect": "True: several rows may be picked at once.",
     "regionMount.cellGrid": "With `render: cellGrid`: the board configuration.",
     "cellGrid.palette": "Where the paintable values come from.",
-    "transactionHooks.onValidate": "Name of a procedure or flow run before the commit; a failure vetoes it.",
-    "transactionHooks.onCommit": "Name of a procedure or flow run after the commit.",
     "transactionDerivedField.label": "Caption of the derived value.",
     "transactionDerivedField.expression": "For the `client` tier: the expression evaluated in the browser over the draft.",
     "transactionDerivedField.procedure": "For the `server` tier: the procedure invoked over the draft."

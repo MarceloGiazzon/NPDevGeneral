@@ -74,7 +74,7 @@ public final class CapabilityAdapterResolver {
         }
 
         RuntimePluginAdapterRegistry.RegisteredAdapterContribution contribution =
-                runtimePluginAdapterRegistry.requireContribution(capability.getName(), operation, adapterId);
+                runtimePluginAdapterRegistry.requireContribution(capability.getName(), capability.getType(), operation, adapterId);
         RuntimePluginPackageRealizationService.RealizedAdapter realizedAdapter =
                 runtimePluginPackageRealizationService.realize(contribution);
         Object sandboxedHandler = new SandboxedCapabilityAdapter(

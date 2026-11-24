@@ -3,12 +3,20 @@ title: >-
   The capabilities catalogue (docs/DSL_CAPABILITIES.html) exists and lists all 785 keywords with their evidence, but 677 keywords have no written justification, 104 no example, 105 no official sample, and nothing yet teaches them to a non-specialist
 type: GAP
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-11-22
 source: >-
   Owner, 2026-11-22: "Esse docto e muito importante. De certa forma sao as capacidades de NPDev. Tudo deve estar justificado. Nao pode haver pecas sobrando. Tambem para cada ha que haver la
   presenca em um json de exemplo ... O publico sao especialistas e nao especialistas. Temos que ensinar e ser didaticos. Por outro lado, 725 ainda e bastante. Por isso ter partes programadas
   manualmente e importante, porque o sistema nao pode prever tudo, sob risco de super inchar. Com a possibilidade de criar seu codigo, pode ser abrir mao de termos mais especificos."
+guard:
+  kind: script
+  ref: scripts/docs/generate_dsl_capabilities.py
+  asserts: >-
+    its --check fails when any keyword of the schema lacks code that acts on it, an official sample, a test, an example, a story or a written reason (the fixture-only gap is not counted)
+  provenRed: false
+verification: UNIT_TESTED
+closed: 2026-11-24
 surface: docs, contract/schemas, keyword-budget
 files:
   - scripts/docs/generate_dsl_capabilities.py
@@ -136,6 +144,14 @@ detail: |
   STILL OPEN: 0 written reasons, 0 tests, 13 official samples, 13 examples. Catalogue completeness 732 of 745 (all six pieces; the fixture-only gap not counted).
   The catalogue's Implemented column was rebuilt (layers: parser / plumbing / validated / build / runtime / tooling, accessor calls counted, a Real models
   column that leaves out the coverage fixture): the old "parser only" label was wrong for keywords the code reads through accessors (9 of the first 14 "unsupported" keywords were live).
+  BATCH 14, 2026-11-24 (owner, answering the six open items: "1) corrigir o digest. 2)-6) Conserte a causa do problema, como for necessario"): EVERY keyword is now complete (740 of 740 rows; the schema has 740
+  keywords, frozenCount 713). What was done, by cause (details and the code in REG-359): pack:signature -- the signed digest is now PackSigningDigest (the tree with pack.json canonical and its signature member
+  removed), `pack add|update` verifies LOCAL packs too (it skipped them), `gradlew :NPDevContract:dsl:packSign` signs a pack in place, and the conformance pack carries a real signature (key kept outside the repo);
+  pack:propertyScopes -- a pack scope with a `from` is inserted in front of the app's root scope; autoPanel.name/concept/aggregate and transactionHooks.onCommit/onValidate -- DELETED from the language (5 keywords,
+  713 slots, BREAKING.md 2026-11-24); capability.specializes -- a capability of a built-in type under another name now takes the built-in's binding and adapter contribution (kernel
+  StaticCapabilityBindingResolver and RuntimePluginAdapterRegistry); packRef.allowSideBySide, concept.renamedFrom, panelLayout.children, screenPanel.guidePage, presentationMetadata.customWidgetRef -- samples in
+  dsl-conformance-max (a second pack `conformance` at major 2, a widget script with its untrusted-extension manifest). generate_dsl_capabilities.py --check now FAILS when any keyword is incomplete, so the state holds.
+  VERIFIED: validateModel 0 errors; 163/163 behaviour probes; 12/12 browser routines in ONE run; DSL, kernel capability and runtimehost-core tests (see REG-359).
 done_when: >-
   Every row of docs/DSL_CAPABILITIES.html is complete (implemented, used by an official sample, tested, exemplified, justified, explained in plain language) or the keyword is gone from the schema;
   the budget frozenCount is below 725 or the owner has restated the target.

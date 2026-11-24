@@ -880,12 +880,6 @@ public final class CompiledModelCanonicalJson {
         if (hooks.beforeAction() != null) {
             node.put("beforeAction", safe(hooks.beforeAction()));
         }
-        if (hooks.onValidate() != null) {
-            node.put("onValidate", safe(hooks.onValidate()));
-        }
-        if (hooks.onCommit() != null) {
-            node.put("onCommit", safe(hooks.onCommit()));
-        }
         return node;
     }
 

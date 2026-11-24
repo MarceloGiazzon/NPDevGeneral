@@ -44,6 +44,10 @@ Dockerfile.*    text eol=lf
 # stale on a default Git-for-Windows clone even with zero real edits. REG-164.
 pack.json       text eol=lf
 
+# A custom widget script is pinned by sha256 in untrusted-extension-manifest.json and the generator refuses a
+# build whose script bytes differ, so its line endings must not depend on the checkout (REG-359, same reason as pack.json).
+NPDevSamples/*/Input/widgets/*.js text eol=lf
+
 # ---------------------------------------------------------------------------------------------
 # WINDOWS-NATIVE -- CRLF is correct here. PowerShell in particular is happiest with it, and these
 # are never executed by a Linux kernel.

@@ -196,6 +196,28 @@ tasks.register('packAdd', JavaExec) {
     args cliArgs
 }
 
+// REG-359: sign a pack directory in place (writes the `signature` member of its pack.json).
+//   gradlew :NPDevContract:dsl:packSign -PpackDir=<dir holding pack.json> -PkeyBase=<keypair base path> [-PgenerateKey=true]
+// Keep the private key (<keyBase>.key) OUTSIDE the repository; re-run after ANY edit of the pack.
+tasks.register('packSign', JavaExec) {
+    group = 'verification'
+    description = 'Sign a pack directory in place (embedded pack.json signature over the canonical signing digest).'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.npdev.dsl.v1.cli.PackSignMain'
+    ignoreExitValue = true
+    def cliArgs = []
+    if (project.hasProperty('packDir')) {
+        cliArgs << '--pack-dir' << project.getProperty('packDir')
+    }
+    if (project.hasProperty('keyBase')) {
+        cliArgs << '--key' << project.getProperty('keyBase')
+    }
+    if (project.hasProperty('generateKey')) {
+        cliArgs << '--generate-key'
+    }
+    args cliArgs
+}
+
 tasks.register('packUpdate', JavaExec) {
     group = 'verification'
     description = 'Re-resolve a model\'s transitive pack graph and rewrite npdev.lock.'

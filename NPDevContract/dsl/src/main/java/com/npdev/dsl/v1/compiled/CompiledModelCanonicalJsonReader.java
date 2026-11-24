@@ -702,9 +702,7 @@ public final class CompiledModelCanonicalJsonReader {
         return new CompiledTransactionHooks(
                 optionalText(node, "onLoad"),
                 optionalText(node, "onFieldChange"),
-                optionalText(node, "beforeAction"),
-                optionalText(node, "onValidate"),
-                optionalText(node, "onCommit"));
+                optionalText(node, "beforeAction"));
     }
 
     /** Move 6 Move B: reads transaction.derivedFields, an object keyed by field name. */

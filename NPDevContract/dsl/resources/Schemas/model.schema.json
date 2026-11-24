@@ -597,7 +597,7 @@
         },
         "admin": {
           "$ref": "#/$defs/autoPanel",
-          "description": "kind \"list\" or \"workbench\" only (D-1): the generated back-office pages of this screen's concept (what an autoPanel declared): route, surfaces, selection, detail, transaction, prompt, metadata. On kind \"workbench\" the screen's concept is the aggregate root (its composition tree is the workbench) and the settings of the workbench (regions, bandPickers, derivedFields, uiState, hooks, computed, visibleWhen, actions) live under admin.transaction. The screen supplies name and concept, so admin must not repeat name, concept or aggregate. A pack's admin screen is pack-qualified (pack::Name) like the autoPanel it replaces."
+          "description": "kind \"list\" or \"workbench\" only (D-1): the generated back-office pages of this screen's concept (what an autoPanel declared): route, surfaces, selection, detail, transaction, prompt, metadata. On kind \"workbench\" the screen's concept is the aggregate root (its composition tree is the workbench) and the settings of the workbench (regions, bandPickers, derivedFields, uiState, hooks, computed, visibleWhen, actions) live under admin.transaction. The screen supplies the name and the concept; admin has no name, concept or aggregate of its own. A pack's admin screen is pack-qualified (pack::Name) like the autoPanel it replaces."
         },
         "panel": {
           "$ref": "#/$defs/screenPanel",
@@ -1705,18 +1705,6 @@
     "autoPanel": {
       "type": "object",
       "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "concept": {
-          "type": "string",
-          "minLength": 1
-        },
-        "aggregate": {
-          "type": "string",
-          "minLength": 1
-        },
         "route": {
           "type": "string",
           "minLength": 1
@@ -2064,7 +2052,7 @@
     "transactionHooks": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md): closed-enum lifecycle hooks for an aggregate-bound AutoPanel's Aggregate Workbench transaction surface. onValidate/onCommit here are an alternate spelling of the aggregate-level onValidate/onCommit fields (a direct aggregate.onValidate/onCommit always wins if both are declared).",
+      "description": "Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md): closed-enum lifecycle hooks for an aggregate-bound AutoPanel's Aggregate Workbench transaction surface. The pre-commit and post-commit hooks are declared on the root concept (composition.onValidate / composition.onCommit), not here.",
       "properties": {
         "onLoad": {
           "type": "string",
@@ -2080,14 +2068,6 @@
           "type": "string",
           "minLength": 1,
           "description": "A guard invoked before any declared workbench action's flow runs; a non-ok result aborts the action with no invoke."
-        },
-        "onValidate": {
-          "type": "string",
-          "minLength": 1
-        },
-        "onCommit": {
-          "type": "string",
-          "minLength": 1
         }
       }
     },

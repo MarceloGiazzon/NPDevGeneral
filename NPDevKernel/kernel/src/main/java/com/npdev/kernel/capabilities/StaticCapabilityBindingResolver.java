@@ -36,6 +36,31 @@ public final class StaticCapabilityBindingResolver implements CapabilityBindingR
         String tenant = normalizeOptional(tenantId);
         String env = normalizeOptional(environment);
 
+        Optional<CapabilityBindingDescriptor> byName = resolveByName(cap, type, tenant, env);
+        if (byName.isPresent()) {
+            return byName;
+        }
+        // REG-359: a capability of a built-in TYPE under another name -- a second notification channel, or one that
+        // `specializes` another -- has no binding of its own in the manifest, which lists the built-ins by their own
+        // name ("notification", "persistence", ...). It is served by the built-in's adapter, so it takes the
+        // built-in's binding. The caller keeps addressing the capability by its own name.
+        String builtIn = builtInCapabilityOfType(type);
+        if (!builtIn.isEmpty() && !builtIn.equals(cap)) {
+            return resolveByName(builtIn, type, tenant, env);
+        }
+        return Optional.empty();
+    }
+
+    /** {@code notificationcapability} -> {@code notification} (inputs are already lower-cased); empty when not of that form. */
+    static String builtInCapabilityOfType(String normalizedType) {
+        String suffix = "capability";
+        if (normalizedType == null || normalizedType.length() <= suffix.length() || !normalizedType.endsWith(suffix)) {
+            return "";
+        }
+        return normalizedType.substring(0, normalizedType.length() - suffix.length());
+    }
+
+    private Optional<CapabilityBindingDescriptor> resolveByName(String cap, String type, String tenant, String env) {
         List<CapabilityBindingDescriptor> bindings = manifest.bindings();
 
         // 1) exact cap+type+tenant+env

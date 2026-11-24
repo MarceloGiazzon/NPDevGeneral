@@ -231,8 +231,8 @@ final class ExperienceValidation {
 
     /**
      * D-1 phase 1: {@code admin} turns a {@code list} screen into the generated back-office pages of its concept (what an
-     * autoPanel used to declare). The screen names the concept; {@code admin} holds the pages' own settings, so it never
-     * repeats {@code name}/{@code concept}/{@code aggregate}. Its inner shape is the autoPanel schema and
+     * autoPanel used to declare). The screen names the concept; {@code admin} holds the pages' own settings and has no
+     * {@code name}/{@code concept}/{@code aggregate} of its own (the schema refuses them). Its inner shape is the autoPanel schema and
      * {@code PanelValidation.validateAutoPanels} checks it.
      */
     private static void validateAdminBlock(String here, JsonNode screen, String kind, String conceptName, List<String> errors) {
@@ -253,12 +253,6 @@ final class ExperienceValidation {
         if (!hasText(conceptName)) {
             errors.add(here + ": 'admin' needs the screen's 'concept' -- suggestedFix: set \"concept\" to the concept whose "
                     + "back-office pages these are");
-        }
-        for (String own : List.of("name", "concept", "aggregate")) {
-            if (admin.has(own)) {
-                errors.add(here + ": 'admin." + own + "' is not allowed -- suggestedFix: remove it; the screen's own '" + own
-                        + "' is used");
-            }
         }
     }
 

@@ -1020,8 +1020,6 @@ public final class ReferenceIndex {
                 hook(owner, base + ".hooks.onLoad", hooks.onLoad());
                 hook(owner, base + ".hooks.onFieldChange", hooks.onFieldChange());
                 hook(owner, base + ".hooks.beforeAction", hooks.beforeAction());
-                hook(owner, base + ".hooks.onValidate", hooks.onValidate());
-                hook(owner, base + ".hooks.onCommit", hooks.onCommit());
             }
             if (surface.dataSource() != null) {
                 named(KIND_AUTO_PANEL, owner, SITE_AUTOPANEL_SURFACE_DATASOURCE_PROCEDURE,

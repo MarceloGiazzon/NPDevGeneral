@@ -4,8 +4,9 @@ title: >-
   panel runtime (fixed), and four keywords turned out unusable or unverifiable (pack:signature, pack:propertyScopes, autoPanel.name/concept/aggregate, the screen spelling of transactionHooks.onValidate/onCommit)
 type: GAP
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-11-24
+closed: 2026-11-24
 source: >-
   Owner, 2026-11-24: "os gates de navegador nao rodam localmente. Porque nao? Tente outra vez". They do run: the ScrapForAI engine is installed at D:\WorkSpace\ScrapForAI (npdev monitor engine --json says
   installed-stopped) and scripts/quality/run-shell-scenarios.ps1 drives 12 routines against NPDevSamples/dsl-conformance-max, the fixture every REG-357 batch edited. The earlier claim that they could not run locally
@@ -31,18 +32,24 @@ detail: |
      PanelRuntime test classes pass inside the regenerated app.
   3. list-verify-routine waited a fixed 600 ms after Search; the page issues one list request per concept (about 55) when it opens, so the search queues behind them and the page still said Loading. The routine
      now waits for the "match" message. Consequence worth a decision: the business UI's per-concept fetch on open grows with the model.
-  4. NOT FIXED, platform defects found while exercising the pack keywords with a conformance pack (NPDevSamples/dsl-conformance-max/Input/packs/conformance, conformance-ext):
-     a. pack:signature can never verify. The signature is embedded in the pack.json whose tree digest (PackCache.sha256OfTree, PackLockFile.sha256) it signs, so the digest changes when the signature is
-        added; PackAddMain.verifyPackSignatures compares signature.digest with the lock digest and PackPublishTest only proves the signature verifies "against its own digest". The CLI's working path is the
-        detached .sig under the catalogue root (npdev pack publish --sign-with). Options: delete pack:signature, or hash pack.json with the signature member removed (Java PackCache + PackLockFile and the Python
-        mirror _pack_content_digest in npdev_cli.py move together, twin-pair rule).
-     b. pack:propertyScopes is unusable next to a model that declares a root scope: pack members are appended after the model's, and the ordering rule wants the root scope (no from) last; moving the root
-        scope into the pack makes the compiler call it conformance::tenant, so the property cascade stops finding "tenant" and the theme preference breaks (theme-switch-verify-routine failed).
-     c. autoPanel.name, autoPanel.concept, autoPanel.aggregate are unreachable: autoPanel is only used as screen.admin, the screen supplies name and concept, and ExperienceValidation refuses an admin that
-        repeats them. Candidates for deletion from the schema.
-     d. transactionHooks.onValidate/onCommit are the screen spelling of the aggregate-level hooks and "a direct aggregate.onValidate/onCommit always wins"; the fixture's WidgetOrder declares both directly, so
-        a sample on the screen would be shadowed and prove nothing. Needs a second workbench aggregate without direct hooks.
-     e. capability.specializes needs an adapter binding in the plugin manifest (boot failed: Adapter 'notification-inproc' for capability 'notificationAudit' is not declared in the active plugin manifest).
+  4. FIXED IN THE SECOND ROUND (owner: "corrigir o digest" for pack:signature, "conserte a causa do problema" for the rest), each at its cause:
+     a. pack:signature -- PackSigningDigest (NPDevContract/dsl/.../pack/PackSigningDigest.java) hashes the pack tree with pack.json canonical (sorted keys, compact) and its `signature` member removed;
+        PackPublishMain signs it, PackAddMain recomputes it, so signing no longer changes what is signed and re-formatting does not break it. PackAddMain also resolved a LOCAL pack's sourcePath against the
+        working directory instead of the model's directory, so every local pack skipped the check; fixed. PackSignMain / `gradlew :NPDevContract:dsl:packSign -PpackDir=<dir> -PkeyBase=<base> [-PgenerateKey=true]`
+        writes the signature in place keeping the file's text. The conformance pack is signed for real (private key in NPDev_General__OutsideRepo/pack-signing, never in the repo; re-sign after ANY edit of the
+        pack, `pack update` refuses a stale signature). Tests: PackSigningDigestTest (4), PackAddSignatureTest (signed local pack verifies, tampered one is refused).
+     b. pack:propertyScopes -- ModelSourceResolver.mergeQualifiedNonConceptArrays now inserts a pack scope that has a `from` in front of the app's root scope (root-last is the cascade rule), instead of after it.
+        Test: ModelSourceResolverTest.aPackScopeWithAFromGoesInFrontOfTheModelsRootScope. The conformance pack contributes conformanceDesk ($user.desk).
+     c. autoPanel.name/concept/aggregate and transactionHooks.onCommit/onValidate -- deleted from the language (schema and its three mirrors, JsonModelParser, TransactionHooksAst, CompiledTransactionHooks, ModelCompiler,
+        the canonical JSON writer/reader, AggregateValidation, ReferenceIndex, ExperienceValidation, the budget 718 -> 713, BREAKING.md 2026-11-24). composition.onValidate/onCommit stay. No corpus model used them.
+     d. capability.specializes -- the compiler binds a capability of a built-in TYPE under another name to the built-in's adapter, but the binding manifest, the plugin manifest and the runtime registry are all keyed by
+        capability NAME, so boot failed. StaticCapabilityBindingResolver (kernel) and RuntimePluginAdapterRegistry/CapabilityAdapterResolver (runtimehost-core) now fall back to the built-in of the same type
+        (NotificationCapability -> notification). A generator-side alias in the plugin manifest was tried first and is the wrong layer: the runtimeRef resolver checks the handler's own capability name.
+        Tests: StaticCapabilityBindingResolverTest (2 new), RuntimePluginAdapterRegistryBuiltInTypeTest (5).
+     e. packRef.allowSideBySide (a second pack `conformance` at major 2, imported as conformancev2), concept.renamedFrom (WidgetBondAnchorDemo), panelLayout.children (WidgetCatalogGalleryPanel),
+        screenPanel.guidePage (WidgetGuideHostedPanel on WidgetOrderGuide) and presentationMetadata.customWidgetRef (widgets/star-rating.js with its untrusted-extension-manifest.json; the script is pinned to LF in
+        .gitattributes because the manifest holds its sha256) are samples in dsl-conformance-max.
+     STILL TRUE and worth knowing: a pack's own concept names are not qualified in `roles[].concepts` (write conformance::ConformanceNote); pack concepts must declare truthLevel or they count as T1 in the rollup.
   5. The catalogue's "only a validator names it" label was a scanner defect for externalAi.prompts, flow.crossAggregateReason, screen.grandTotal, screen.subtotals and workbenchBandPicker.selectorRef: all five
      are implemented (ExternalAiPromptRunner, FlowValidation's waiver, ListReport, SelectorPickerResolver). scripts/policy/dsl-keyword-evidence.json now records the reviewed evidence and
      generate_dsl_capabilities.py verifies it on every run; the generator also reads the pack files and context fragments a sample ships beside its model.
@@ -50,5 +57,13 @@ detail: |
      The last single full run was 11/12 (theme-switch-verify-routine waited a fixed 1.2 s for the theme to load; it passed on its own after the waits were widened to 4 s and 4.5 s). Routine edits: list (wait for
      the message and the new row), longrunning (wait for the form to close), mob2 (wait for the pending-sync banner to hide), theme-switch (wider waits). The pack concepts declare truthLevel T2: an undeclared
      level counted as T1 in the truth rollup and failed the probe truth-declared-levels-reach-the-rollup-and-block-nothing.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/PanelRuntimeQueryParamsTest.java
+  asserts: >-
+    a panel data source's params bind the named query's declared parameters (the 500 is gone), and an unsupplied parameter the where uses is refused by name;
+    the other fixes are guarded by PackSigningDigestTest, PackAddSignatureTest, ModelSourceResolverTest, StaticCapabilityBindingResolverTest and RuntimePluginAdapterRegistryBuiltInTypeTest
+  provenRed: false
+verification: UNIT_TESTED
 done_when: >-
-  A decision on 4a-4e (delete or fix each), and run-shell-scenarios.ps1 plus run-behavior-probes.ps1 green on a clean tree after every further edit of dsl-conformance-max.
+  Met: 4a-4e are fixed at their causes, run-shell-scenarios.ps1 (12 of 12 in one run) and run-behavior-probes.ps1 (163 of 163) are green on the committed fixture.

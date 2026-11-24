@@ -106,13 +106,12 @@ final class AggregateValidation {
                     queriesByLower,
                     new HashSet<>(),
                     errors);
-            // Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.2): an aggregate-bound AutoPanel's
-            // transaction.hooks is an alternate spelling for onValidate/onCommit -- validate whichever
-            // one actually takes effect (a direct aggregate.onValidate/onCommit always wins), and
-            // separately validate the three hook positions with no aggregate-level equivalent.
+            // onValidate/onCommit are the aggregate's own (composition.onValidate/onCommit); a screen-side spelling of
+            // them was removed (REG-359). The three hook positions an aggregate-bound screen declares are validated
+            // separately.
             TransactionHooksAst hooks = transactionHooksFor(aggregate.name(), modelAst.getAutoPanels());
-            validateOnCommit(aggregate, hooks, flowNamesByLower, errors);
-            validateOnValidate(aggregate, hooks, flowNamesByLower, errors);
+            validateOnCommit(aggregate, flowNamesByLower, errors);
+            validateOnValidate(aggregate, flowNamesByLower, errors);
             validateHookProcedure(aggregate.name(), "onLoad",
                     hooks == null ? null : hooks.onLoad(), flowNamesByLower, errors);
             validateHookProcedure(aggregate.name(), "onFieldChange",
@@ -267,10 +266,8 @@ final class AggregateValidation {
      * nesting limit guards recursion at run time.
      */
     private static void validateOnCommit(
-            AggregateAst aggregate, TransactionHooksAst hooks,
-            Set<String> flowNamesByLower, List<String> errors) {
-        String onCommit = hasText(aggregate.onCommit())
-                ? aggregate.onCommit() : (hooks == null ? null : hooks.onCommit());
+            AggregateAst aggregate, Set<String> flowNamesByLower, List<String> errors) {
+        String onCommit = aggregate.onCommit();
         if (!hasText(onCommit)) {
             return;
         }
@@ -288,10 +285,8 @@ final class AggregateValidation {
      * same direct-self-recursion linting check as {@code onCommit}, for the same reason.
      */
     private static void validateOnValidate(
-            AggregateAst aggregate, TransactionHooksAst hooks,
-            Set<String> flowNamesByLower, List<String> errors) {
-        String onValidate = hasText(aggregate.onValidate())
-                ? aggregate.onValidate() : (hooks == null ? null : hooks.onValidate());
+            AggregateAst aggregate, Set<String> flowNamesByLower, List<String> errors) {
+        String onValidate = aggregate.onValidate();
         if (!hasText(onValidate)) {
             return;
         }

@@ -10,6 +10,36 @@ class StaticCapabilityBindingResolverTest {
     // static binding wins when no runtime override exists
 
     @Test
+    void aCapabilityOfABuiltInTypeUnderAnotherNameTakesTheBuiltInsBinding() {
+        // REG-359: "notificationAudit" (type NotificationCapability) has no binding of its own; the manifest lists
+        // the built-in "notification".
+        CapabilityBindingManifest manifest = new CapabilityBindingManifest(List.of(
+                new CapabilityBindingDescriptor(
+                        "notification", "notificationcapability", "notification-inproc",
+                        "com.example.InProcNotificationAdapter", "", "")
+        ));
+        StaticCapabilityBindingResolver resolver = new StaticCapabilityBindingResolver(manifest);
+
+        assertEquals("notification-inproc",
+                resolver.require("notificationAudit", "NotificationCapability", "", "dev").adapterId());
+        assertEquals("notification-inproc",
+                resolver.require("notification", "NotificationCapability", "", "dev").adapterId());
+    }
+
+    @Test
+    void aCapabilityWhoseTypeIsNotOfTheBuiltInFormStaysUnresolved() {
+        CapabilityBindingManifest manifest = new CapabilityBindingManifest(List.of(
+                new CapabilityBindingDescriptor(
+                        "notification", "notificationcapability", "notification-inproc",
+                        "com.example.InProcNotificationAdapter", "", "")
+        ));
+        StaticCapabilityBindingResolver resolver = new StaticCapabilityBindingResolver(manifest);
+
+        assertEquals(java.util.Optional.empty(), resolver.resolve("vault", "VaultCapability", "", "dev"));
+        assertEquals(java.util.Optional.empty(), resolver.resolve("selfApi", "HttpConnector", "", "dev"));
+    }
+
+    @Test
     void shouldResolveMostSpecificBindingFirst() {
         CapabilityBindingManifest manifest = new CapabilityBindingManifest(List.of(
                 new CapabilityBindingDescriptor(

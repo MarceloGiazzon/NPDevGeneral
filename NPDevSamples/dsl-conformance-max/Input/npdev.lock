@@ -8,13 +8,18 @@
     },
     "conformance" : {
       "resolvedVersion" : "1.0.0",
-      "digest" : "sha256:a8bbc93d05fda906b01898b92139b588ac62194adcae7000f1089d43de355d78",
+      "digest" : "sha256:1c52b526e9b555b85f6b9ecccdb4c507df50e2aaca634199e4341b5f2367fbd7",
       "sourcePath" : "packs/conformance/pack.json"
     },
     "conformance-ext" : {
       "resolvedVersion" : "1.0.0",
       "digest" : "sha256:79d313b9708ec57c731aef654d27363d02bc32c45fb91cd9da56d98452935755",
       "sourcePath" : "packs/conformance-ext/pack.json"
+    },
+    "conformancev2" : {
+      "resolvedVersion" : "2.0.0",
+      "digest" : "sha256:92f07f75b3e11753462a04081456476627497e11504e22e1dbeae31ce8c980e6",
+      "sourcePath" : "packs/conformance-v2/pack.json"
     },
     "labeling" : {
       "resolvedVersion" : "1.1.0",

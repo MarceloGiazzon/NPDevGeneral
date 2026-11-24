@@ -2294,9 +2294,7 @@ public final class JsonModelParser {
         return new TransactionHooksAst(
                 readText(node, "onLoad"),
                 readText(node, "onFieldChange"),
-                readText(node, "beforeAction"),
-                readText(node, "onValidate"),
-                readText(node, "onCommit")
+                readText(node, "beforeAction")
         );
     }
 

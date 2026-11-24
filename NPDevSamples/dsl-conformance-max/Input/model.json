@@ -328,6 +328,11 @@
       "as": "conformance"
     },
     {
+      "$ref": "packs/conformance-v2/pack.json",
+      "as": "conformancev2",
+      "allowSideBySide": true
+    },
+    {
       "$ref": "packs/conformance-ext/pack.json",
       "as": "conformanceext"
     }
@@ -2160,6 +2165,7 @@
     },
     {
       "name": "WidgetBondAnchorDemo",
+      "renamedFrom": "LegacyBondAnchorDemo",
       "access": {
         "read": "true",
         "write": "true"
@@ -2193,6 +2199,16 @@
           "required": false,
           "ui": {
             "label": "Label"
+          }
+        },
+        {
+          "name": "stars",
+          "type": "integer",
+          "required": false,
+          "ui": {
+            "label": "Stars",
+            "widget": "custom",
+            "customWidgetRef": "widgets/star-rating.js"
           }
         }
       ]
@@ -2707,6 +2723,10 @@
       "operations": [
         "send"
       ]
+    },
+    {
+      "name": "notificationAudit",
+      "specializes": "notification"
     },
     {
       "name": "externalAi",
@@ -6153,6 +6173,21 @@
             "displayName",
             "unitPrice"
           ],
+          "children": [
+            {
+              "type": "table",
+              "fields": [
+                "sku",
+                "displayName"
+              ]
+            },
+            {
+              "type": "grid",
+              "fields": [
+                "unitPrice"
+              ]
+            }
+          ],
           "metadata": {
             "note": "Cards, not a table: ask the catalog owner before changing the fields."
           }
@@ -6165,6 +6200,24 @@
         ],
         "metadata": {
           "purpose": "panelLayout.type grid (Pigmentampas G1d): a read-only panel whose rows render as cards, not a table."
+        }
+      }
+    },
+    {
+      "name": "WidgetGuideHostedPanel",
+      "kind": "custom",
+      "panel": {
+        "route": "/widget-guide-hosted",
+        "title": "Widget guide hosted",
+        "guidePage": "WidgetOrderGuide",
+        "dataSources": [
+          {
+            "name": "entries",
+            "concept": "WidgetCatalogEntry"
+          }
+        ],
+        "metadata": {
+          "purpose": "screenPanel.guidePage: this panel is hosted by the WidgetOrderGuide back-office page, not served as a page of its own."
         }
       }
     },

@@ -33,6 +33,43 @@ public final class RuntimePluginAdapterRegistry {
         throw unregisteredAdapter(capability, "", adapterId);
     }
 
+    /**
+     * REG-359: the contribution for a capability, falling back to the built-in capability of the same TYPE when the
+     * manifest has none under this capability's own name. The static manifest lists a built-in adapter under the
+     * built-in's name ("notification", "persistence", "mail", ...); a second capability of that type under another
+     * name -- a second notification channel, or one that {@code specializes} another -- is bound by the compiler to
+     * the same adapter and used to fail at boot with "Adapter 'notification-inproc' for capability 'notificationAudit'
+     * ... is not declared in active plugin manifest". The adapter code is the built-in's; the capability keeps its own
+     * name in the registry, so calls, audit and policy still address {@code notificationAudit}.
+     */
+    public RegisteredAdapterContribution requireContribution(
+            String capability, String capabilityType, String operation, String adapterId) {
+        try {
+            return requireContribution(capability, operation, adapterId);
+        } catch (IllegalStateException unregistered) {
+            String builtIn = builtInCapabilityOfType(capabilityType);
+            if (!builtIn.isBlank() && !builtIn.equals(normalize(capability))) {
+                try {
+                    return requireContribution(builtIn, operation, adapterId);
+                } catch (IllegalStateException noBuiltInEither) {
+                    // the original message names the capability the model actually declares
+                }
+            }
+            throw unregistered;
+        }
+    }
+
+    /** {@code NotificationCapability} -> {@code notification}; blank when the type is not of the {@code XCapability} form. */
+    static String builtInCapabilityOfType(String capabilityType) {
+        String type = capabilityType == null ? "" : capabilityType.trim();
+        String suffix = "Capability";
+        if (type.length() <= suffix.length() || !type.endsWith(suffix)) {
+            return "";
+        }
+        String base = type.substring(0, type.length() - suffix.length());
+        return normalize(Character.toLowerCase(base.charAt(0)) + base.substring(1));
+    }
+
     public RegisteredAdapterContribution requireContribution(String capability, String operation, String adapterId) {
         String normalizedCapability = normalize(capability);
         String normalizedAdapterId = normalize(adapterId);

@@ -4,7 +4,7 @@
 
 The complete list of keywords an NPDev model (`model.json`) or pack (`pack.json`) may use: what each one means, where it may appear, whether it is required, and which values it accepts. Every keyword of the DSL is here; a key that is not here is rejected by the schema (`additionalProperties: false`).
 
-Schema version `1.0.0`, DSL version `3.0.0`. **718 keywords** are documented: 681 declared by the model schema (99 object kinds) and 37 by the pack schema, counted exactly as `scripts/quality/check-dsl-keyword-budget.py` counts them. The model root keys are listed separately in section 0.
+Schema version `1.0.0`, DSL version `3.0.0`. **713 keywords** are documented: 676 declared by the model schema (99 object kinds) and 37 by the pack schema, counted exactly as `scripts/quality/check-dsl-keyword-budget.py` counts them. The model root keys are listed separately in section 0.
 
 ## How to read this reference
 
@@ -1615,7 +1615,7 @@ One screen of the app, of one archetype chosen by `kind`: `list` (rows of a conc
 |---|---|---|---|
 | `name` | `string` (min length 1) | required | The screen's name: its URL segment and what experiences and `picker.selectorRef` refer to it by. Starts with a letter; a picker keeps the PascalCase name its selectorRef already uses. A screen that carries an `admin` block (a generated back-office page) or a `panel` block (a hand-written panel), neither served as a URL segment, may use any non-empty name, as the autoPanel or panel it replaces could ("Trace Viewer"). |
 | `title` | `string` | optional | Heading shown on the screen and in navigation. |
-| `admin` | [`autoPanel`](#autopanel) | optional | Kind "list" or "workbench" only (D-1): the generated back-office pages of this screen's concept (what an autoPanel declared): route, surfaces, selection, detail, transaction, prompt, metadata. On kind "workbench" the screen's concept is the aggregate root (its composition tree is the workbench) and the settings of the workbench (regions, bandPickers, derivedFields, uiState, hooks, computed, visibleWhen, actions) live under admin.transaction. The screen supplies name and concept, so admin must not repeat name, concept or aggregate. A pack's admin screen is pack-qualified (pack::Name) like the autoPanel it replaces. |
+| `admin` | [`autoPanel`](#autopanel) | optional | Kind "list" or "workbench" only (D-1): the generated back-office pages of this screen's concept (what an autoPanel declared): route, surfaces, selection, detail, transaction, prompt, metadata. On kind "workbench" the screen's concept is the aggregate root (its composition tree is the workbench) and the settings of the workbench (regions, bandPickers, derivedFields, uiState, hooks, computed, visibleWhen, actions) live under admin.transaction. The screen supplies the name and the concept; admin has no name, concept or aggregate of its own. A pack's admin screen is pack-qualified (pack::Name) like the autoPanel it replaces. |
 | `panel` | [`screenPanel`](#screenpanel) | optional | Kind "custom" only (D-1): a hand-written panel -- the old panels[] entry -- declared on a screen instead of a root key: route, title, dataSources, layout, fieldBindings, visibility, enabledWhen, actions, explainability, metadata, guidePage. The screen supplies the panel's name, so panel must not repeat name. Not a screen an experience can navigate to (the panel is served at its own route), and not combined with `component`. |
 | `kind` | one of `list`, `detail`, `form`, `status`, `inbox`, `board`, `map`, `dashboard`, `workbench`, `document`, `picker`, `custom` | required | The archetype of the screen (see the summary above). It decides which of the other keywords apply. |
 | `concept` | `string` | optional | The concept whose rows the screen shows or edits. |
@@ -1948,9 +1948,6 @@ A panel generated from a concept or an aggregate: up to four surfaces (selection
 
 | Keyword | Type | Required | Meaning |
 |---|---|---|---|
-| `name` | `string` (min length 1) | optional | The panel's name. Defaults to one derived from the concept or aggregate. |
-| `concept` | `string` (min length 1) | optional | The concept the panel is generated for. Give `concept` or `aggregate`. |
-| `aggregate` | `string` (min length 1) | optional | The aggregate root concept the panel is generated for (opens the aggregate workbench). |
 | `route` | `string` (min length 1) | optional | The URL segment the panel is served at. |
 | `surfaces` | array of one of `selection`, `detail`, `transaction`, `prompt` (items one of `selection`, `detail`, `transaction`, `prompt`) | optional | Which surfaces to generate: `selection`, `detail`, `transaction`, `prompt`. Defaults to the usual ones for the kind of panel. |
 | `selection` | [`autoPanelSurface`](#autopanelsurface) | optional | Settings of the selection surface (the list of rows). |
@@ -2079,8 +2076,6 @@ Closed set of hooks around the aggregate workbench: when the draft loads, when a
 | `onLoad` | `string` (min length 1) | optional | Invoked once after the workbench draft is first loaded, before the first render; the returned state becomes the initial draft. |
 | `onFieldChange` | `string` (min length 1) | optional | Retires transaction.metadata.recompute. Invoked (debounced) on every cell edit; the returned state patches the draft. |
 | `beforeAction` | `string` (min length 1) | optional | A guard invoked before any declared workbench action's flow runs; a non-ok result aborts the action with no invoke. |
-| `onValidate` | `string` (min length 1) | optional | Name of a procedure or flow run before the commit; a failure vetoes it. |
-| `onCommit` | `string` (min length 1) | optional | Name of a procedure or flow run after the commit. |
 
 ### `transactionDerivedField`
 
@@ -2320,7 +2315,7 @@ The app's opt-in to delegating work to an outside AI. Absent means denied: no co
 
 ## Coverage
 
-- Keywords documented: 718 (681 model + 37 pack), the same set the keyword budget freezes.
+- Keywords documented: 713 (676 model + 37 pack), the same set the keyword budget freezes.
 - Meaning taken from the schema's own `description`: 256.
-- Meaning written in `scripts/policy/dsl-keyword-meanings/`: 462.
+- Meaning written in `scripts/policy/dsl-keyword-meanings/`: 457.
 - `scripts/quality/check-dsl-keyword-reference.py` fails when a keyword has no meaning, when the meanings data names a keyword the schema no longer has, or when this page is stale against the schema.

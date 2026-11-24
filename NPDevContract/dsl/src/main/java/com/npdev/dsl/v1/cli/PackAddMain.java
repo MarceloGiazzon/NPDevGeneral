@@ -7,6 +7,7 @@ import com.npdev.dsl.v1.pack.NetworkPolicy;
 import com.npdev.dsl.v1.pack.PackLockFile;
 import com.npdev.dsl.v1.pack.PackSignature;
 import com.npdev.dsl.v1.pack.PackSigner;
+import com.npdev.dsl.v1.pack.PackSigningDigest;
 import com.npdev.dsl.v1.parser.ModelSourceResolver;
 
 import java.io.IOException;
@@ -124,8 +125,10 @@ public final class PackAddMain {
     private static List<String> verifyPackSignatures(ModelSourceResolver.PackCliResolution resolution) {
         List<String> results = new ArrayList<>();
         resolution.lockEntries().forEach((packId, locked) -> {
+            // REG-359: a local pack's sourcePath is relative to the MODEL's directory, not to the working directory;
+            // opened relative to the working directory it was never found and every local pack skipped this check.
             Path packJsonPath = locked.from().isEmpty()
-                    ? Path.of(locked.sourcePath())
+                    ? resolution.rootDirectory().resolve(locked.sourcePath())
                     : com.npdev.dsl.v1.pack.PackCache.atDefaultRoot().resolveLockSourcePath(locked.sourcePath());
             if (!Files.isRegularFile(packJsonPath)) {
                 return; // local packs without a source path in the cache are not checked
@@ -149,7 +152,10 @@ public final class PackAddMain {
                 }
 
                 PackSignature signature = new PackSignature(algorithm, digest, value, publicKey);
-                String expectedDigest = "sha256:" + locked.digest();
+                // REG-359: recompute what the publisher signed (PackSigningDigest: the tree with pack.json canonical and
+                // its signature member removed). The lock digest cannot be used: it covers pack.json's bytes, signature
+                // included, so it never equals a digest taken before the signature existed.
+                String expectedDigest = PackSigningDigest.of(packJsonPath.getParent());
 
                 if (PackSigner.verify(signature, expectedDigest)) {
                     results.add("OK: pack '" + packId + "' signature verified (" + algorithm + ")");

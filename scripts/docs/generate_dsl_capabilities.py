@@ -833,7 +833,22 @@ def main(argv: list[str]) -> int:
             print(f"DSL capabilities page is stale against the schema: missing {missing}, extra {extra}. "
                   "Run python scripts/docs/generate_dsl_capabilities.py")
             return 1
-        print(f"DSL capabilities page: OK ({len(found)} keywords match the schema)")
+        # REG-357: a keyword enters the language complete -- code that acts on it, an official sample, a test, an example,
+        # an everyday story and a written reason. (The fixture-only gap is not counted: the coverage fixture is a sample.)
+        rows, _ = build_rows()
+        incomplete = {
+            row["id"]: [gap for gap in row["gaps"] if not gap.startswith("only the coverage fixture")]
+            for row in rows
+        }
+        incomplete = {slot: gaps for slot, gaps in incomplete.items() if gaps}
+        if incomplete:
+            first = sorted(incomplete)[:5]
+            print(f"DSL capabilities page: {len(incomplete)} keyword(s) are not complete, e.g. "
+                  + "; ".join(f"{slot}: {incomplete[slot][0]}" for slot in first)
+                  + ". Add what is missing (sample in dsl-conformance-max, test, written reason in "
+                  "scripts/policy/dsl-keyword-reasons, story, meaning) or take the keyword out of the schema.")
+            return 1
+        print(f"DSL capabilities page: OK ({len(found)} keywords match the schema, all complete)")
         return 0
     html = render()
     OUT.write_text(html, encoding="utf-8", newline="\n")
