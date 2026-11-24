@@ -39,6 +39,7 @@ pwsh -NoProfile -File scripts/quality/run-docker-linux-proof.ps1 `
     -RunId $RunId `
     -ReportPath $missingDockerReportPath `
     -DockerExecutable "__npdev_missing_docker_for_test__" `
+    -Force `
     -BuildTimeoutSeconds 1 `
     -RunTimeoutSeconds 1 2>$null | Out-Null
 $missingDockerExit = $LASTEXITCODE

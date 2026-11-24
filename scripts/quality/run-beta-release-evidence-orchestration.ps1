@@ -133,11 +133,10 @@ $producers = @(
         script = "scripts/quality/run-docker-linux-proof.ps1"
         requiresDocker = $true
         reports = @("docker-linux-parity-report.json") }
-    # REG-358: this test drives run-docker-linux-proof.ps1 itself, which skips (and writes nothing) when
-    # local-test-profile.json disables docker, so it needs docker exactly like docker-linux-parity above.
+    # REG-358: this test drives run-docker-linux-proof.ps1 with a fake docker executable and a temp report path
+    # (5 s, no Docker needed). It passes -Force so the proof does not skip under local-test-profile.json.
     [pscustomobject]@{ name = "docker-linux-proof-tests"; stage = 2
         script = "scripts/quality/run-docker-linux-proof-tests.ps1"
-        requiresDocker = $true
         reports = @("docker-linux-proof-tests-report.json") }
     # ~30 s: generates a sample, drifts it, regenerates over it (docs/architecture/APP_UPGRADE_CONTRACT.md DoD).
     [pscustomobject]@{ name = "app-upgrade-contract"; stage = 2

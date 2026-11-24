@@ -69,6 +69,31 @@ detail: |
      expose ui plus a kind "custom" screen. VERIFIED: the proof passes, all five real-generated-* checks (about 90 s). final-regression-coverage-audit: VERIFIED that 13 of its 18 items failed because the producers of
      eight *-tests reports and of app-upgrade-contract-gate-report.json were never in the orchestration (only run-beta0-final-release-check.ps1 ran them); they are in run-beta-release-evidence-orchestration.ps1 now
      (2 s to 138 s each; docker-linux-proof-tests is requiresDocker because the proof skips under local-test-profile.json). After that 1 of 18 fails: docker-linux-proof-blocking-behavior, i.e. item 2.
+  4c. RE-CHECKED ONE AT A TIME 2026-11-24 (item 4), each producer alone through the digest runner, never the full gate:
+     doc-entrypoint-validation PASSES (run-doc-entrypoint-validation.ps1, 10 s). trusted-source-beta0-proof PASSES (run-untrusted-extension-beta0-proof.ps1, 237 s). final-regression-coverage-audit FAILS with exactly ONE
+     item of 18: docker-linux-proof-blocking-behavior, and only because scripts/reports/out/docker-linux-proof-tests-report.json is missing (the docker-linux-parity-report.json half of that item is "passed").
+     CAUSE of the missing report (read from the scripts, the test itself was NOT run, see below): run-docker-linux-proof-tests.ps1:37 calls run-docker-linux-proof.ps1 with a fake docker executable and a temp -ReportPath
+     but WITHOUT -Force, and run-docker-linux-proof.ps1:197-204 exits 0 with no report when local-test-profile.json lacks postgres/mysql, so the test's next line (Read-Json of the temp report) throws. The test
+     never needs Docker, so adding -Force to that one call should make it pass locally and make requiresDocker on docker-linux-proof-tests in run-beta-release-evidence-orchestration.ps1 unnecessary. APPLIED AND
+     VERIFIED later the same day (see 4d).
+     expanded-schema-validation: producer is run-expanded-beta0-evidence.ps1 (writes schema-validation-report.json plus 17 sibling reports); it reads scripts/reports/out/ai-beta-gate-report.json, which is ABSENT now
+     (needs a fresh run-ai-beta-gate.ps1, about 15 min). The on-disk schema-validation-report.json (generatedAt 2026-11-22T21:17Z) says passed with no failures but is older than maxReportAgeHours 24, so it is not a verdict
+     for today. NOT re-run.
+     Item 2 correction: scripts/reports/out/docker-linux-parity-report.json on disk is no longer the local "failed" report; it is the CI report (host Ubuntu 26.04.1, workspace /home/runner/work/NPDevGeneral, run id
+     docker-linux-proof-20261123-213253099, overallStatus passed, generatedAt 2026-11-23T21:47Z), i.e. the CI artifact was copied in by hand. It ages out under maxReportAgeHours 24 at 2026-11-24T21:47Z; the durable
+     way for the gate to accept a CI report is still the open owner choice.
+  4d. FIXED AND VERIFIED 2026-11-24 (item 4): run-docker-linux-proof-tests.ps1 now passes -Force to its run-docker-linux-proof.ps1 call, so the profile skip no longer hides the temp report; the test passes in 5 s with
+     the real docker-linux-parity-report.json untouched (mtime compared before and after), and requiresDocker is gone from docker-linux-proof-tests in run-beta-release-evidence-orchestration.ps1 (the test needs no Docker).
+     final-regression-coverage-audit then PASSES, 18 of 18. run-ai-beta-gate.ps1 alone: PASSED, 31 scenarios (23 expected-fail as designed, 8 expected-pass passed, incl. the three tenant-* ones), 40 min wall-clock
+     while another session's browser scenarios shared the machine (about 15 min alone); its log stays silent until the end, progress is visible only as new directories under NPDev_General__OutsideRepo/temp/ai-beta-gate.
+     run-expanded-beta0-evidence.ps1 alone, on that fresh report: expanded-schema-validation (schema-validation-report.json) PASSES together with scope-policy, normalization, the five *-validation reports, build, boot,
+     the five smoke reports, and provenance (16 s). All four checks named in item 4 are therefore green on a piecemeal run. Two derived reports from the same run are red and are NOT among the four:
+     stale-report-check (reports older than 24 h, e.g. json-schema-validator-tests 34 h: expected on a piecemeal run, a full orchestrated gate regenerates them) and workspace-cleanliness: "scripts is 10.42 MB; limit is
+     10 MB". The second is a REAL leftover of item 3: Test-WorkspaceSlimness.ps1:200 subtracts scripts/reports/out from the scripts FILE COUNT, but :204 still compares the scripts SIZE including it (scripts/reports about
+     4.3 MB of the 10.4 MB; scripts/reports/out has its own 15 MB limit at :208). FIXED the same day (owner said yes): the size is now measured without scripts/reports/out, like the file count, and
+     docs/WORKSPACE_CLEANUP_POLICY.md says so. VERIFIED: Test-WorkspaceSlimness.ps1 passes on the real tree (scripts own files 6.37 MB), still fails with -MaxScriptsSizeMB 1 ("scripts is 6.37 MB
+     (scripts/reports/out excluded); limit is 1 MB"), and a re-run of run-expanded-beta0-evidence.ps1 now writes workspace-cleanliness-report.json as passed; only stale-report-check stays red (report age).
+     doc-inventory and no-markdown-reads checkers: clean.
   5b. ROOT CAUSE FOUND AND FIXED 2026-11-22 (item 5): NPDevSamples/scripts/generate-sample-app.ps1 ran gradle :generator:run WITHOUT --no-daemon, leaving a persistent Gradle daemon that inherits the caller's redirected
      stdout/stderr pipes and holds them open after the generation is done (live repro: an idle daemon kept a caller blocked 7 min after the work ended, released the moment it was killed). Now --no-daemon, like
      run-ai-beta-gate.ps1 and the proof. Also: run-sample-matrix.ps1's Invoke-ProcessEvidence redirects to files and polls HasExited instead of pipe + ReadToEnd (A/B with a lingering grandchild: 40.7 s -> 0.7 s); and the

@@ -201,8 +201,12 @@ $scriptsOwnFileCount = [int]$scriptsSummary.fileCount - [int]$reportsOutSummary.
 if ($scriptsOwnFileCount -gt $MaxScriptsFileCount) {
     Add-Violation $violations "scripts-file-count-limit" ("scripts contains " + $scriptsOwnFileCount + " files (scripts/reports/out excluded); limit is " + $MaxScriptsFileCount + ".") $scriptsSummary
 }
-if ($scriptsSummary.sizeMB -gt $MaxScriptsSizeMB) {
-    Add-Violation $violations "scripts-size-limit" ("scripts is " + $scriptsSummary.sizeMB + " MB; limit is " + $MaxScriptsSizeMB + " MB.") $scriptsSummary
+# The same exclusion for the size limit (REG-358 item 3, finished 2026-11-24): the file count above already left
+# scripts/reports/out out, but the size still counted it, so the evidence the gate wrote (about 4 MB) pushed
+# scripts/ from under 10 MB to 10.42 MB. scripts/reports/out keeps its own limit just below.
+$scriptsOwnSizeMB = [decimal]$scriptsSummary.sizeMB - [decimal]$reportsOutSummary.sizeMB
+if ($scriptsOwnSizeMB -gt $MaxScriptsSizeMB) {
+    Add-Violation $violations "scripts-size-limit" ("scripts is " + $scriptsOwnSizeMB + " MB (scripts/reports/out excluded); limit is " + $MaxScriptsSizeMB + " MB.") $scriptsSummary
 }
 
 if ($reportsOutSummary.sizeMB -gt $MaxReportsOutSizeMB) {
