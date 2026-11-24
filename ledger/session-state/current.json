@@ -1,20 +1,20 @@
 {
-  "closedAt": "2026-11-24T00:19:43.6094394Z",
+  "closedAt": "2026-11-24T02:30:10.3853118Z",
   "branch": "main",
-  "head": "b449c8fe",
-  "headSubject": "feat(catalogue): REG-357 batches 8-12 -- every keyword now has a written reason",
-  "summary": "REG-357 finished as far as it can go without owner decisions: reasons batches 8-12 (all 745 keywords now have a written reason), 5 new fixture samples (conceptRef, baseUrl, usernameEnvVar via a second uncalled connector selfApiBasic, queryParameter.schema), validateModel 0 errors, behaviour probes 163/163 (log 20261124T001425Z), committed b449c8fe. Catalogue completeness 709 of 745. Removed the stale generated scripts/reports/out/ai-beta-gate-report.json (scripts was 10.37 MB, limit 10); the CI docker-linux-parity-report.json copy is kept (valid until 2026-11-24T21:47Z). NOT run: full beta release gate, run-all-gates, any browser gate on the fixture changes.",
-  "nextStep": "Owner decision first, no work before it: (1) 17 pack-file keywords need a dedicated conformance pack + a model importing it (own task, signed built-in packs must not be edited for a catalogue tick); (2) 5 validator-only keywords (externalAi.prompts, flow.crossAggregateReason, screen.grandTotal, screen.subtotals, workbenchBandPicker.selectorRef): implement or delete; (3) whether to run the full local beta release gate (over 1 h; do not let its docker-linux-parity producer overwrite the CI copy in scripts/reports/out). The rest of REG-357 is in ledger/items/REG-357.yml under BATCH 12 / DECIDED NOT TO DO.",
+  "head": "e7d06b9e",
+  "headSubject": "fix(samples): the approvals digest in the conformance fixture's npdev.lock was computed over CRLF bytes; recompute it over the LF blob the repo stores",
+  "summary": "Owner decisions executed: (1) conformance pack (conformance + conformance-ext, npdev.lock) exercises 11 pack keywords in dsl-conformance-max; (2) the 5 'validator-only' keywords were already implemented -- the scanner was blind, reviewed evidence now in scripts/policy/dsl-keyword-evidence.json; (3) the browser gates DO run locally (run-shell-scenarios.ps1): they were red since REG-357 batches 1-3, fixed (modal moved, tab moved, geo data source repointed, routines use state waits) and a REAL BUG fixed: PanelRuntime never bound panelDataSource.params (PanelRuntimeQueryParamsTest). Verified: validateModel 0 errors, 163/163 probes (log 20261124T020032Z), 12 routines green across the final runs (last single full run 11/12, theme-switch flaked on a fixed wait and passed alone after widening). Catalogue 732/745. Findings in REG-359. Commits 791b153d, c8dbef1b, e7d06b9e. NOT run: run-all-gates, full beta release gate, CI on the new commits.",
+  "nextStep": "Owner decisions on REG-359 item 4 (delete or fix each): pack:signature (embedded signature can never verify: circular digest), pack:propertyScopes (pack scope lands after the root scope), autoPanel.name/concept/aggregate (unreachable), transactionHooks.onCommit/onValidate (shadowed by aggregate-level hooks), capability.specializes (plugin-manifest binding). Then: watch CI on main for the new commits (the conformance pack lock digests were recomputed over LF blobs; check the Linux checkout agrees).",
   "plan": "",
   "blocked": "",
   "verified": "none",
-  "dirtyCount": 2,
-  "dirtyFiles": [
-    " M ledger/session-state/current.json",
-    " M ledger/session-state/history.jsonl"
-  ],
-  "unpushed": 1,
+  "dirtyCount": 0,
+  "dirtyFiles": [],
+  "unpushed": 3,
   "landedCommits": [
-    "b449c8fe feat(catalogue): REG-357 batches 8-12 -- every keyword now has a written reason"
+    "e7d06b9e fix(samples): the approvals digest in the conformance fixture's npdev.lock was computed over CRLF bytes; recompute it over the LF blob the repo stores",
+    "c8dbef1b fix(samples): conformance pack lock digest computed over the LF bytes .gitattributes pins pack.json to, so it matches a checkout on any OS",
+    "791b153d fix+feat: browser gates run locally; PanelRuntime now binds panelDataSource.params; conformance packs; keyword evidence (REG-357, REG-359)",
+    "f9780b64 docs(ledger): session handoff after REG-357 batches 8-12"
   ]
 }
