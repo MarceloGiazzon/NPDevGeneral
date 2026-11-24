@@ -29,9 +29,11 @@ import java.util.List;
  * <p>This digest is the same shape as {@code PackCache.sha256OfTree} (every regular file under the tree, sorted by
  * normalised path, {@code path NUL bytes NUL}, {@code .git} skipped) with ONE difference: the root
  * {@code pack.json} contributes the bytes of its CANONICAL JSON with the top-level {@code signature} member removed
- * (object keys sorted, compact, UTF-8). Two things follow: the signature does not change what it signs, and
- * re-formatting {@code pack.json} (an editor, a pretty printer, the publisher that injects the signature) does not
- * invalidate it, while any change of a value or of any other file in the pack does.
+ * (object keys sorted, compact, UTF-8), and every other {@code *.json} file of the pack (a fragment) contributes its
+ * canonical JSON too. Two things follow: the signature does not change what it signs, and re-formatting or
+ * re-ending a JSON file (an editor, a pretty printer, the publisher that injects the signature, a Windows checkout
+ * that turns LF into CRLF) does not invalidate it, while any change of a value or of any other file in the pack does.
+ * Files that are not JSON are hashed as they are.
  */
 public final class PackSigningDigest {
 
@@ -59,7 +61,12 @@ public final class PackSigningDigest {
                 digest.update(relative.getBytes(StandardCharsets.UTF_8));
                 digest.update((byte) 0);
                 byte[] bytes = Files.readAllBytes(file);
-                digest.update(ENTRY_FILE.equals(relative) ? canonicalWithoutSignature(bytes) : bytes);
+                if (ENTRY_FILE.equals(relative)) {
+                    bytes = canonical(bytes, true);
+                } else if (relative.endsWith(".json")) {
+                    bytes = canonical(bytes, false);
+                }
+                digest.update(bytes);
                 digest.update((byte) 0);
             }
             StringBuilder hex = new StringBuilder("sha256:");
@@ -72,16 +79,16 @@ public final class PackSigningDigest {
         }
     }
 
-    /** The canonical bytes of a pack.json with its {@code signature} member removed; unparseable input stays raw. */
-    static byte[] canonicalWithoutSignature(byte[] packJson) {
+    /** The canonical bytes of a JSON file, with the root {@code signature} member removed when asked; unparseable input stays raw. */
+    static byte[] canonical(byte[] json, boolean withoutSignature) {
         try {
-            JsonNode tree = MAPPER.readTree(packJson);
-            if (tree instanceof ObjectNode object) {
+            JsonNode tree = MAPPER.readTree(json);
+            if (withoutSignature && tree instanceof ObjectNode object) {
                 object.remove(SIGNATURE_MEMBER);
             }
             return MAPPER.writeValueAsBytes(canonical(tree));
         } catch (IOException notJson) {
-            return packJson;
+            return json;
         }
     }
 

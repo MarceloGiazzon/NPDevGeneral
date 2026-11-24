@@ -60,6 +60,17 @@ class PackSigningDigestTest {
     }
 
     @Test
+    void lineEndingsOfAJsonFileDoNotChangeTheDigest(@TempDir Path root) throws Exception {
+        // a Windows checkout (core.autocrlf=true) turns the LF of every file into CRLF; a signature must survive it
+        Path lf = pack(root.resolve("lf"), PACK);
+        Path crlf = pack(root.resolve("crlf"), PACK.replace("\n", "\r\n"));
+        Files.writeString(crlf.resolve("fragments/extra.json"), "{\r\n  \"queries\": []\r\n}", StandardCharsets.UTF_8);
+        Files.writeString(lf.resolve("fragments/extra.json"), "{\n  \"queries\": []\n}", StandardCharsets.UTF_8);
+
+        assertEquals(PackSigningDigest.of(lf), PackSigningDigest.of(crlf));
+    }
+
+    @Test
     void aChangedValueOrAChangedFragmentChangesTheDigest(@TempDir Path root) throws Exception {
         Path dir = pack(root.resolve("p"), PACK);
         String before = PackSigningDigest.of(dir);
