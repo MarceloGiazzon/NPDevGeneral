@@ -15,7 +15,7 @@
 
     { "action": "fill", "selector": "#concept-WidgetCatalogEntry .filters input[type=\"search\"]", "value": "NO-SUCH-SKU-ANYWHERE", "label": "Filter to something that cannot match" },
     { "action": "click", "selector": "#concept-WidgetCatalogEntry .filters button:has-text(\"Search\")" },
-    { "action": "waitForTimeout", "timeoutMs": 600 },
+    { "action": "waitForSelector", "selector": "#concept-WidgetCatalogEntry:has-text(\"match\")", "state": "visible", "label": "Wait for the filtered-to-empty message, not a fixed 600 ms: the search queues behind the per-concept loads" },
     { "action": "screenshot", "name": "list_filtered_empty" },
     { "action": "assertTextContains", "selector": "#concept-WidgetCatalogEntry", "text": "match", "label": "Filtered-to-empty message reads differently from the unfiltered one (no create/seed CTA offered for a filter miss)" },
 
@@ -28,7 +28,7 @@
     { "action": "fill", "selector": "#concept-WidgetCatalogEntry [name=\"displayName\"]", "valueFromVariable": "name" },
     { "action": "fill", "selector": "#concept-WidgetCatalogEntry [name=\"unitPrice\"]", "value": "10" },
     { "action": "click", "selector": "#concept-WidgetCatalogEntry button:has-text(\"Create\")", "label": "Submit the create form" },
-    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "waitForSelector", "selector": "#concept-WidgetCatalogEntry:has-text(\"LIST-SCENARIO-SKU\")", "state": "visible", "label": "Wait for the new row, not a fixed 800 ms" },
     { "action": "assertTextContains", "selector": "#concept-WidgetCatalogEntry", "text": "LIST-SCENARIO-SKU", "label": "The new row renders in the grid" },
 
     { "action": "fill", "selector": "#concept-WidgetCatalogEntry .filters input[type=\"search\"]", "valueFromVariable": "sku", "label": "Filter down to just this run's row" },

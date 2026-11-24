@@ -100,8 +100,10 @@
       "label": "Restore the network: the page gets its online event and replays the queue"
     },
     {
-      "action": "waitForTimeout",
-      "timeoutMs": 2500
+      "action": "waitForSelector",
+      "selector": ".offline-banner.pending-sync",
+      "state": "hidden",
+      "label": "Wait until the queue has replayed, not a fixed 2.5 s"
     },
     {
       "action": "assertCount",

@@ -357,6 +357,17 @@ def official_usage(model: dict, pack: dict, slots: set[str], root_slots: set[str
         if role in OFFICIAL_ROLES:
             labels.append(label)
         _walk(data, model, defs, "", label, usage, "root", set(), top=True)
+        if role in OFFICIAL_ROLES:
+            # The pack files and context fragments a sample ships beside its model are pack-schema files (pack.schema.json
+            # keys such as `experiences`, `seeds`, `imports`) and the sample really uses them. Until 2026-11-24 only the
+            # built-in packs were read, so 13 pack keywords showed "no official sample" although the fixture exercises them.
+            for extra in sorted(list((path.parent / "packs").glob("*/pack.json")) + list((path.parent / "contexts").glob("*.json"))):
+                try:
+                    extra_data = json.loads(extra.read_text(encoding="utf-8-sig"))
+                except (OSError, ValueError):
+                    continue
+                if isinstance(extra_data, dict):
+                    _walk(extra_data, pack, defs, "", label, usage, "pack", set(), top=True)
     for path in sorted(ROOT.glob("NPDevContract/packs/*/pack.json")):
         label = f"pack:{path.parent.name}"
         try:
@@ -455,6 +466,43 @@ def load_reasons() -> dict[str, dict]:
     return reasons
 
 
+EVIDENCE = ROOT / "scripts" / "policy" / "dsl-keyword-evidence.json"
+
+
+def load_evidence(nodes: set[str] | None = None) -> dict[str, dict]:
+    """slot id -> {layer, files, why} for keywords whose acting code the token scan cannot see (REG-357).
+
+    The scan above looks for the keyword's own name (or its getX/isX/hasX/.x() accessor). It is blind to code that reads a
+    keyword through an accessor with another name (`document.subtotalsEnabled()` for `screen.subtotals`, `findPrompt(name)`
+    for `externalAi.prompts`) and to a rule whose whole effect is that a model compiles or not (`flow.crossAggregateReason`
+    waives a check). Each entry here is a reviewed claim, and it is verified on every run: the file must exist, hold the
+    symbol, and the slot must be a keyword the schema has -- so a rename or a deletion makes the page fail, never go stale."""
+    if not EVIDENCE.exists():
+        return {}
+    data = json.loads(EVIDENCE.read_text(encoding="utf-8"))
+    out: dict[str, dict] = {}
+    for slot, entry in (data.get("evidence") or {}).items():
+        if nodes is not None and slot not in nodes:
+            raise SystemExit(f"{EVIDENCE.name}: evidence for a keyword the schema does not have: {slot}")
+        layer = entry.get("layer")
+        if layer not in LAYERS:
+            raise SystemExit(f"{EVIDENCE.name}: {slot}: layer must be one of {LAYERS}, got {layer!r}")
+        if not entry.get("why", "").strip():
+            raise SystemExit(f"{EVIDENCE.name}: {slot}: a reviewed claim needs a 'why'")
+        files = []
+        for item in entry.get("files") or []:
+            path = ROOT / item["path"]
+            if not path.is_file():
+                raise SystemExit(f"{EVIDENCE.name}: {slot}: file not found: {item['path']}")
+            if item["symbol"] not in path.read_text(encoding="utf-8", errors="ignore"):
+                raise SystemExit(f"{EVIDENCE.name}: {slot}: symbol {item['symbol']!r} not in {item['path']}")
+            files.append(item["path"])
+        if not files:
+            raise SystemExit(f"{EVIDENCE.name}: {slot}: at least one file with a symbol is required")
+        out[slot] = {"layer": layer, "files": files, "why": entry["why"].strip()}
+    return out
+
+
 def build_rows() -> tuple[list[dict], dict]:
     model, pack = REF.load_schemas()
     meanings = REF.load_meanings()
@@ -490,6 +538,7 @@ def build_rows() -> tuple[list[dict], dict]:
     orphan_reasons = sorted(set(reasons) - set(nodes))
     if orphan_reasons:
         raise SystemExit(f"reasons for keywords the schema does not have: {orphan_reasons[:5]}")
+    evidence = load_evidence(set(nodes))
     rows = []
     for slot in sorted(nodes):
         node, noun = nodes[slot]
@@ -501,6 +550,9 @@ def build_rows() -> tuple[list[dict], dict]:
         used = {k: v for k, v in everywhere.items() if k not in usage.other_models}
         elsewhere = len(everywhere) - len(used)
         by_layer = {layer: sorted(files) for layer, files in main_tokens.get(prop, {}).items()}
+        if slot in evidence:
+            claimed = evidence[slot]
+            by_layer[claimed["layer"]] = sorted(set(by_layer.get(claimed["layer"], [])) | set(claimed["files"]))
         support = support_of(prop, by_layer)
         test_files = sorted(test_tokens.get(prop, set()))
         real_models = [k for k in used if k != CORPUS_MODEL]
@@ -531,6 +583,7 @@ def build_rows() -> tuple[list[dict], dict]:
             "support": support,
             "layers": {layer: len(by_layer.get(layer, [])) for layer in LAYERS},
             "layerFiles": {layer: [short_path(f) for f in by_layer[layer][:3]] for layer in LAYERS if by_layer.get(layer)},
+            "evidence": evidence[slot]["why"] if slot in evidence else "",
             "tests": len(test_files),
             "testFiles": test_files[:5],
             "samples": len(used),
@@ -711,6 +764,7 @@ function tail(r,parent){
  c.appendChild(el('div',null,'Official samples: '+(r.samples?r.sampleList.join(', ')+(r.samples>r.sampleList.length?' ...':'')+' ('+r.uses+' uses)':'none')));
  c.appendChild(el('div',null,'Real models: '+(r.real?r.real+' (leaving out the coverage fixture)':'none: only the coverage fixture uses it')));
  [['parser','Parser reads it'],['carried','Copied along by'],['checked','Checked by'],['build','Acts while the model is built, in'],['runtime','Acts when the app runs, in'],['tooling','Tooling names it in']].forEach(function(p){var n=r.layers[p[0]],f=r.layerFiles[p[0]]||[];c.appendChild(el('div',null,p[1]+': '+(n?f.join(', ')+(n>f.length?' (+'+(n-f.length)+' more)':''):'no file')))});
+ if(r.evidence)c.appendChild(el('div',null,'Reviewed evidence (verified on every build of this page): '+r.evidence));
  c.appendChild(el('div',null,'Tests: '+(r.tests?r.testFiles.join(', ')+(r.tests>r.testFiles.length?' (+'+(r.tests-r.testFiles.length)+' more)':''):'none found')));
  if(r.shared>1)c.appendChild(el('div','w','The name "'+r.prop+'" is shared by '+r.shared+' keywords, so code and test evidence is only indicative.'));
  g.appendChild(c);
@@ -770,6 +824,7 @@ def main(argv: list[str]) -> int:
             return 1
         model, pack = REF.load_schemas()
         expected = REF.measure_slots(model, pack) | {f"root:{p}" for p in (model.get("properties") or {})}
+        load_evidence(expected)  # a reviewed claim whose file or symbol vanished fails the check, never goes stale
         text = OUT.read_text(encoding="utf-8")
         found = set(re.findall(r'"id":"([^"]+)"', text))
         if found != expected:

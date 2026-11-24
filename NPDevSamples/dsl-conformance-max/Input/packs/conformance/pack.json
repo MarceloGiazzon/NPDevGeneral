@@ -1,0 +1,165 @@
+{
+  "$schema": "../../../../../NPDevContract/schemas/pack.schema.json",
+  "dslVersion": "3.0.0",
+  "pack": "conformance",
+  "version": "1.0.0",
+  "namespace": "com.npdev.conformance",
+  "description": "REG-357 conformance pack: a dedicated pack that exists only to exercise every pack-level keyword once, in a pack the dsl-conformance-max model really imports. Real apps must not import it.",
+  "category": "other",
+  "author": "NPDev",
+  "firstPublishedVersion": "1.0.0",
+  "deprecated": {
+    "since": "1.0.0",
+    "reason": "A conformance fixture that exists only to exercise the pack keywords; no app should depend on it."
+  },
+  "private": [
+    "ConformanceInternal"
+  ],
+  "extensionPoints": [
+    "ConformanceInternal"
+  ],
+  "fieldConventions": [
+    {
+      "match": "*Ref",
+      "defaults": {
+        "type": "string",
+        "maxLength": 40
+      }
+    }
+  ],
+  "domainTypes": [
+    {
+      "name": "NoteTag",
+      "baseType": "string",
+      "examples": [
+        "urgent",
+        "later"
+      ],
+      "ui": {
+        "label": "Tag"
+      }
+    }
+  ],
+  "sequences": [
+    {
+      "name": "conformanceNoteNumber",
+      "format": "CN-{seq:4}",
+      "scope": "tenant"
+    }
+  ],
+  "roles": [
+    {
+      "name": "ConformanceReader",
+      "concepts": {
+        "conformance::ConformanceNote": [
+          "read"
+        ],
+        "conformance::ConformanceInternal": [
+          "read"
+        ]
+      }
+    }
+  ],
+  "concepts": [
+    {
+      "name": "ConformanceNote",
+      "truthLevel": "T2",
+      "ui": {
+        "label": "Conformance note"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true,
+          "ui": {
+            "label": "Id"
+          }
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": true,
+          "maxLength": 80,
+          "ui": {
+            "label": "Title"
+          }
+        },
+        {
+          "name": "slug",
+          "type": "string",
+          "required": false,
+          "maxLength": 80,
+          "ui": {
+            "label": "Slug"
+          }
+        },
+        {
+          "name": "tag",
+          "type": "string",
+          "domainType": "NoteTag",
+          "required": false,
+          "ui": {
+            "label": "Tag"
+          }
+        },
+        {
+          "name": "externalRef",
+          "ui": {
+            "label": "ExternalRef"
+          }
+        }
+      ],
+      "access": {
+        "read": "true",
+        "write": "true"
+      }
+    },
+    {
+      "name": "ConformanceInternal",
+      "truthLevel": "T2",
+      "ui": {
+        "label": "Conformance internal"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true,
+          "ui": {
+            "label": "Id"
+          }
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "required": false,
+          "maxLength": 80,
+          "ui": {
+            "label": "Text"
+          }
+        }
+      ],
+      "access": {
+        "read": "true",
+        "write": "true"
+      }
+    }
+  ],
+  "conversions": [
+    {
+      "id": "0001-copy-conformance-title",
+      "concept": "conformance::ConformanceNote",
+      "op": "copy",
+      "from": "title",
+      "to": "slug"
+    }
+  ],
+  "fragments": [
+    {
+      "$ref": "fragments/conformance-queries.json"
+    }
+  ]
+}

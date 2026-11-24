@@ -11,12 +11,14 @@ import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPanelDataSource;
 import com.npdev.dsl.v1.compiled.CompiledPanelFieldBinding;
 import com.npdev.dsl.v1.compiled.CompiledQuery;
+import com.npdev.dsl.v1.compiled.CompiledQueryParameter;
 import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.generated.runtime.service.KernelFacade;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.ExecutionResult;
 import com.npdev.kernel.ports.PermissionEvaluator;
 import com.npdev.kernel.i18n.LabelResolver;
+import com.finalexec.api.NamedQueryBinding;
 import com.finalexec.api.NamedQueryPermissions;
 import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.ConceptGatewayAccessDeniedException;
@@ -555,7 +557,14 @@ public class PanelRuntime {
             if (hasText(filterField)) {
                 filters.add(new ConceptQuery.Filter(filterField, ConceptQuery.Operator.EQ, filterValue));
             }
-            filters.addAll(ConceptQueryPredicateCompiler.compile(query.map(CompiledQuery::where).orElse(null)));
+            // REG-357: the data source's declared params[] bind the query's own parameters[]. Before this the
+            // query's where was compiled with no parameters at all, so every query using $params.x answered 500
+            // when a panel read it, and panelDataSource.params was declared and carried but never acted on.
+            List<CompiledQueryParameter> declaredParameters = query.map(CompiledQuery::parameters).orElse(List.of());
+            filters.addAll(ConceptQueryPredicateCompiler.compile(
+                    query.map(CompiledQuery::where).orElse(null),
+                    declaredParameters,
+                    bindPanelParameters(declaredParameters, dataSource.params())));
             List<ConceptQuery.Sort> sorts = ConceptQueryPredicateCompiler.compileOrderBy(
                     query.map(CompiledQuery::orderBy).orElse(List.of()));
             Integer declaredLimit = query.map(CompiledQuery::limit).orElse(null);
@@ -573,6 +582,33 @@ public class PanelRuntime {
                 "Panel data source has no supported concept, query, or procedure binding.",
                 ""
         );
+    }
+
+    /**
+     * The values a panel data source supplies for its named query's declared parameters, coerced the way
+     * {@code GET /api/queries/{name}} coerces them ({@link NamedQueryBinding}). A parameter the data source does
+     * not supply and that has no {@code defaultExpression} is simply left unbound: {@code ConceptQueryPredicateCompiler}
+     * then refuses it by name only when the query's {@code where} actually uses it, so a query that declares an
+     * optional parameter the panel never fills keeps working exactly as before.
+     */
+    private static Map<String, Object> bindPanelParameters(
+            List<CompiledQueryParameter> declared, Map<String, Object> supplied) {
+        Map<String, Object> bound = new LinkedHashMap<>();
+        for (CompiledQueryParameter parameter : declared) {
+            try {
+                bound.putAll(NamedQueryBinding.bind(name -> {
+                    for (Map.Entry<String, Object> entry : supplied.entrySet()) {
+                        if (entry.getKey().equalsIgnoreCase(name) && entry.getValue() != null) {
+                            return String.valueOf(entry.getValue());
+                        }
+                    }
+                    return null;
+                }, List.of(parameter)));
+            } catch (IllegalArgumentException notSupplied) {
+                // left unbound on purpose: refused by name later, and only if the where uses it
+            }
+        }
+        return bound;
     }
 
     /**

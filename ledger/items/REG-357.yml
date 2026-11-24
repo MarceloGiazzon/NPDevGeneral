@@ -120,17 +120,20 @@ detail: |
   written reason. 2 more keywords gained an official sample and an example in dsl-conformance-max, taken by hand (cheapest safe ones): httpConnectorAuth.usernameEnvVar (a second connector, selfApiBasic, with basic auth
   and a GET /actuator/health operation that no flow calls, so no env var is read) and queryParameter.schema (`{"type": "string"}` on CatalogEntriesOwnedBy.owner, trivially satisfied by every value). Model validates
   with 0 errors (4 warnings, as before); 163/163 behaviour probes green (2026-11-24, log 20261124T001425Z).
-  DECIDED NOT TO DO (not skipped by oversight; each needs an owner decision or a fixture that proves more than a catalogue tick): (a) 17 pack-file keywords (pack:augments/conversions/deprecated/domainTypes/
-  experiences/extensionPoints/fieldConventions/firstPublishedVersion/fragments/functions/imports/private/propertyScopes/roles/seeds/sequences/signature): the catalogue counts them from NPDevContract/packs/*/pack.json,
-  the signed built-in packs, whose edits trip the pack-diff gate, the digests and the replayed Gradle pack tests; the honest fix is a dedicated conformance pack plus a model that imports it, a task of its own.
-  (b) 5 validator-only keywords (externalAi.prompts, flow.crossAggregateReason, screen.grandTotal, screen.subtotals, workbenchBandPicker.selectorRef): no code acts on them -- implement or delete is the owner's call
-  (the shrink analysis of 2026-11-22 closed with "cut nothing"). (c) referenceDefinition.multiple (multi-select picker + list column: the browser gates are not run locally), panelAction.permissionRequirements (hides the
-  button the browser gate clicks), screenPanel.guidePage (moves a panel into the guide page), transactionHooks.onCommit/onValidate (flow contract over the draft unknown, probes assert commit behaviour),
-  capability.specializes/event.specializes (resolved in ModelResolver at boot), autoPanel.aggregate/concept/name, concept.renamedFrom (needs the restart-revision probe), packRef.allowSideBySide (needs a real major-version
-  id collision), panelLayout.children, presentationMetadata.customWidgetRef (an app-supplied widget file the browser gates would load).
-  STILL OPEN: 0 written reasons, 0 tests, 31 official samples, 31 examples, 5 validator-only keywords, 175 used only by the coverage fixture (no real model). Catalogue completeness 709 of 745 (all six pieces; the
-  fixture-only gap not counted). Earlier notes on what was left out on purpose as complex: concept.renamedFrom (needs the restart-revision probe), pack:signature, pack:fieldConventions/propertyScopes
-  (pack files), transactionHooks.onValidate, queryParameter.schema, panel bindings/layout children (they change served panel metadata that probes assert), autoPanel.name (admin may not repeat the name).
+  BATCH 13, 2026-11-24 (owner: "1) Faca. 2) Implementar. 3) os gates de navegador nao rodam localmente -- porque nao? Tente outra vez"): the browser gates DO run locally (ScrapForAI is installed at
+  D:\WorkSpace\ScrapForAI; scripts/quality/run-shell-scenarios.ps1, 12 routines on dsl-conformance-max). They had been red since REG-357 batches 1-3 -- see REG-359 for the damage and the fixes (modal form moved off
+  WidgetCatalogEntry, tab moved off ShelfLayout.rows/cols, a geo data source repointed, and a REAL BUG fixed: PanelRuntime never bound panelDataSource.params). (1) A dedicated conformance pack
+  (NPDevSamples/dsl-conformance-max/Input/packs/conformance, conformance-ext, imported by the fixture, npdev.lock written by `npdev pack update`) now exercises pack:augments, conversions, deprecated, domainTypes,
+  extensionPoints, fieldConventions, firstPublishedVersion, fragments, private, roles and sequences; the generator also reads the pack files and context fragments a sample ships (experiences, functions, seeds, imports
+  were already used there). Fixture samples added by hand: referenceDefinition.multiple (StockLocation.relatedEntries), event.specializes (WidgetReviewApprovedForSupplier, version 1.1.0 because the payload changed),
+  queryParameter.schema, httpConnectorAuth.usernameEnvVar, httpConnector.baseUrl, capabilityContractSchemaRef.conceptRef. (2) The 5 "validator-only" keywords were already implemented; the scanner could not see
+  it. scripts/policy/dsl-keyword-evidence.json records reviewed evidence (verified on every generation). Nothing was deleted.
+  NOT DONE, each with the reason in REG-359 item 4: pack:signature (the embedded signature can never verify: circular digest), pack:propertyScopes (a pack scope lands after the model's root scope; the root scope
+  cannot move into a pack), autoPanel.name/concept/aggregate (unreachable: screen.admin supplies them), transactionHooks.onCommit/onValidate (shadowed by the aggregate-level hooks), capability.specializes (needs a
+  plugin-manifest adapter binding), packRef.allowSideBySide (three packs of two majors plus a lock), concept.renamedFrom, panelLayout.children, screenPanel.guidePage, presentationMetadata.customWidgetRef.
+  VERIFIED (2026-11-24, fixture as committed): validateModel 0 errors (4 warnings, as before); 163/163 behaviour probes (log 20261124T020032Z); the 12 browser routines of run-shell-scenarios.ps1 (the last full run is
+  recorded in REG-359); the pack concepts declare truthLevel T2 because an undeclared level counted as T1 in the truth rollup and failed truth-declared-levels-reach-the-rollup-and-block-nothing.
+  STILL OPEN: 0 written reasons, 0 tests, 13 official samples, 13 examples. Catalogue completeness 732 of 745 (all six pieces; the fixture-only gap not counted).
   The catalogue's Implemented column was rebuilt (layers: parser / plumbing / validated / build / runtime / tooling, accessor calls counted, a Real models
   column that leaves out the coverage fixture): the old "parser only" label was wrong for keywords the code reads through accessors (9 of the first 14 "unsupported" keywords were live).
 done_when: >-

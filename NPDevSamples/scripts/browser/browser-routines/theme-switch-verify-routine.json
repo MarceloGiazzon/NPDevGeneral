@@ -71,8 +71,8 @@
     },
     {
       "action": "waitForTimeout",
-      "timeoutMs": 1200,
-      "label": "Let the theme load and apply"
+      "timeoutMs": 4000,
+      "label": "Let the theme load and apply (the page loads one list per concept at the same time)"
     },
     {
       "action": "evaluate",
@@ -100,7 +100,8 @@
     },
     {
       "action": "waitForTimeout",
-      "timeoutMs": 1500
+      "timeoutMs": 4500,
+      "label": "Let the remembered theme load again (the page loads one list per concept at the same time)"
     },
     {
       "action": "evaluate",

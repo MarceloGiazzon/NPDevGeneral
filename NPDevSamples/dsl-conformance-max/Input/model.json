@@ -322,6 +322,14 @@
     {
       "$ref": "packs/approvals/pack.json",
       "as": "approvals"
+    },
+    {
+      "$ref": "packs/conformance/pack.json",
+      "as": "conformance"
+    },
+    {
+      "$ref": "packs/conformance-ext/pack.json",
+      "as": "conformanceext"
     }
   ],
   "provides": {
@@ -416,8 +424,7 @@
           "min": 1,
           "ui": {
             "label": "Rows",
-            "listColumnOrder": 2,
-            "tab": "Dimensions"
+            "listColumnOrder": 2
           }
         },
         {
@@ -428,7 +435,6 @@
           "ui": {
             "label": "Columns",
             "listColumnOrder": 3,
-            "tab": "Dimensions",
             "enabledWhen": "rows > 0"
           }
         },
@@ -464,7 +470,8 @@
           "type": "date",
           "required": false,
           "ui": {
-            "label": "Window start"
+            "label": "Window start",
+            "tab": "Dimensions"
           }
         },
         {
@@ -472,7 +479,8 @@
           "type": "date",
           "required": false,
           "ui": {
-            "label": "Window end"
+            "label": "Window end",
+            "tab": "Dimensions"
           }
         },
         {
@@ -1030,8 +1038,7 @@
       "name": "WidgetCatalogEntry",
       "truthLevel": "T4",
       "ui": {
-        "label": "Widget catalog entry",
-        "formPresentation": "modal"
+        "label": "Widget catalog entry"
       },
       "rollups": [
         {
@@ -1664,6 +1671,7 @@
       "truthLevel": "T2",
       "ui": {
         "label": "Stock location",
+        "formPresentation": "modal",
         "selectionTools": false
       },
       "fields": [
@@ -1687,6 +1695,19 @@
           "required": true,
           "ui": {
             "label": "Available quantity"
+          }
+        },
+        {
+          "name": "relatedEntries",
+          "type": "reference",
+          "required": false,
+          "ui": {
+            "label": "Related catalogue entries"
+          },
+          "reference": {
+            "target": "WidgetCatalogEntry",
+            "multiple": true,
+            "displayField": "displayName"
           }
         }
       ],
@@ -2857,6 +2878,17 @@
       "payload": [
         {
           "name": "approvedNote",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "WidgetReviewApprovedForSupplier",
+      "specializes": "WidgetReviewApproved",
+      "version": "1.1.0",
+      "payload": [
+        {
+          "name": "supplierName",
           "type": "string"
         }
       ]
@@ -6353,12 +6385,10 @@
             "concept": "WidgetCatalogEntry"
           },
           {
-            "name": "nearbyPlaces",
-            "query": "GeoPlacesWithinKm",
+            "name": "ownedEntries",
+            "query": "CatalogEntriesOwnedBy",
             "params": {
-              "lat": "-23.55",
-              "lng": "-46.63",
-              "km": "10"
+              "owner": "owner@example.com"
             }
           }
         ],

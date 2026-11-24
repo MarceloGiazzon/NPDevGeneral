@@ -1,0 +1,48 @@
+{
+  "$schema": "../../../../../NPDevContract/schemas/pack.schema.json",
+  "dslVersion": "3.0.0",
+  "pack": "conformance-ext",
+  "version": "1.0.0",
+  "namespace": "com.npdev.conformanceext",
+  "description": "REG-357 conformance pack: additively augments conformance::ConformanceNote with one field, through the `augments` keyword. Real apps must not import it.",
+  "category": "other",
+  "author": "NPDev",
+  "augments": {
+    "pack": "conformance",
+    "concept": "ConformanceNote"
+  },
+  "packs": [
+    {
+      "$ref": "../conformance/pack.json"
+    }
+  ],
+  "concepts": [
+    {
+      "name": "ConformanceNote",
+      "truthLevel": "T2",
+      "ui": {
+        "label": "Conformance note"
+      },
+      "access": {
+        "read": "true",
+        "write": "true"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "priority",
+          "type": "int",
+          "required": false,
+          "ui": {
+            "label": "Priority"
+          }
+        }
+      ]
+    }
+  ]
+}

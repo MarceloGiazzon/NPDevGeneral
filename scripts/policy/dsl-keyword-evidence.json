@@ -1,0 +1,41 @@
+{
+  "$comment": "Reviewed evidence for the capabilities catalogue (docs/DSL_CAPABILITIES.html), REG-357, 2026-11-24. The catalogue's token scan finds a keyword by its own name or its getX/isX/hasX/.x() accessor. It cannot see code that reads a keyword through an accessor with another name, nor a rule whose whole effect is whether a model compiles. Each entry below was read in the code and is a reviewed claim: scripts/docs/generate_dsl_capabilities.py verifies on every run (and in --check) that the file exists and holds the symbol, and that the slot is a keyword the schema has, so a rename or a deletion fails the page and the claim cannot go stale. Key = slot id exactly as the catalogue shows it. layer = where the acting code sits (build: acts while the model is built; runtime: acts when the app runs).",
+  "schemaVersion": "npdev-keyword-evidence.v1",
+  "evidence": {
+    "externalAi.prompts": {
+      "layer": "runtime",
+      "files": [
+        { "path": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/ai/ExternalAiPromptRunner.java", "symbol": "findPrompt" }
+      ],
+      "why": "ExternalAiPromptRunner looks the prompt up by name (CompiledExternalAi.findPrompt) every time a flow runs capabilityCall externalAi.generate, applies the declared vendor, model and limits, and answers UNKNOWN_PROMPT for a name that is not declared; the token scan misses it because the accessor is findPrompt, not prompts."
+    },
+    "screen.grandTotal": {
+      "layer": "runtime",
+      "files": [
+        { "path": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/api/ListReport.java", "symbol": "grandTotalEnabled" }
+      ],
+      "why": "ListReport adds the Grand total line after the last group when the document's grandTotalEnabled() is true and a column carries a total; the token scan misses it because the accessor is grandTotalEnabled, not grandTotal."
+    },
+    "screen.subtotals": {
+      "layer": "runtime",
+      "files": [
+        { "path": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/api/ListReport.java", "symbol": "subtotalsEnabled" }
+      ],
+      "why": "ListReport emits a subtotal line per group when the document's subtotalsEnabled() is true, there is a groupBy and a column carries a total; the token scan misses it because the accessor is subtotalsEnabled, not subtotals."
+    },
+    "flow.crossAggregateReason": {
+      "layer": "build",
+      "files": [
+        { "path": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/FlowValidation.java", "symbol": "getCrossAggregateReason" }
+      ],
+      "why": "Its whole effect is a rule about whether the model compiles: FlowValidation.validateAggregateTransactionalBoundary refuses a flow that writes concepts of more than one aggregate unless the flow carries a non-blank reason, which waives the one-aggregate-one-transaction rule for that flow only. A rule that decides whether the model builds acts while the model is built, even though it lives in a validator."
+    },
+    "workbenchBandPicker.selectorRef": {
+      "layer": "build",
+      "files": [
+        { "path": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/SelectorPickerResolver.java", "symbol": "selectorsByName.get(selectorRef)" }
+      ],
+      "why": "SelectorPickerResolver.resolve, called from ModelCompiler.compileAutoPanelSurface, replaces the picker's columns, filters and order with those of the named picker screen and ANDs its own filter on top, so the compiled model already carries the adopted columns; the token scan sees the name only in the compiler's constructor calls."
+    }
+  }
+}

@@ -1,0 +1,54 @@
+id: REG-359
+title: >-
+  Findings from running the browser gates locally for the first time (2026-11-24): REG-357 fixture batches had broken five browser scenarios unnoticed, panelDataSource.params was never bound by the
+  panel runtime (fixed), and four keywords turned out unusable or unverifiable (pack:signature, pack:propertyScopes, autoPanel.name/concept/aggregate, the screen spelling of transactionHooks.onValidate/onCommit)
+type: GAP
+severity: MEDIUM
+status: PARTIAL
+opened: 2026-11-24
+source: >-
+  Owner, 2026-11-24: "os gates de navegador nao rodam localmente. Porque nao? Tente outra vez". They do run: the ScrapForAI engine is installed at D:\WorkSpace\ScrapForAI (npdev monitor engine --json says
+  installed-stopped) and scripts/quality/run-shell-scenarios.ps1 drives 12 routines against NPDevSamples/dsl-conformance-max, the fixture every REG-357 batch edited. The earlier claim that they could not run locally
+  was wrong, and it hid the damage below.
+surface: samples/dsl-conformance-max, browser-routines, RuntimeHost PanelRuntime, pack signing, property scopes
+files:
+  - NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/PanelRuntime.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/PanelRuntimeQueryParamsTest.java
+  - NPDevSamples/dsl-conformance-max/Input/model.json
+  - NPDevSamples/dsl-conformance-max/Input/packs/conformance/pack.json
+  - NPDevSamples/dsl-conformance-max/Input/packs/conformance-ext/pack.json
+  - NPDevSamples/scripts/browser/browser-routines/list-verify-routine.json
+  - scripts/policy/dsl-keyword-evidence.json
+  - scripts/docs/generate_dsl_capabilities.py
+detail: |
+  1. DAMAGE FOUND AND FIXED (all from REG-357 batches 1-6, never run in a browser): batch 3 put formPresentation "modal" on WidgetCatalogEntry, which moves the create form into a modal OUTSIDE
+     #concept-WidgetCatalogEntry, so 5 routines timed out filling [name="sku"] (moved to StockLocation, no routine touches it). Batch 1 put tab "Dimensions" on ShelfLayout.rows/cols (required fields the
+     selection-tools routine fills on the first tab; moved to ShelfLayout.windowStart/windowEnd). Batch 3 gave the review panel a data source calling GeoPlacesWithinKm, whose withinKm predicate the panel runtime
+     cannot compile, so the whole panel answered "The server had a problem" (repointed to CatalogEntriesOwnedBy).
+  2. REAL BUG FIXED: PanelRuntime compiled a query data source's where with ConceptQueryPredicateCompiler.compile(where) -- no parameters -- so panelDataSource.params was declared, carried into the compiled model
+     and never acted on; any panel reading a query that uses $params.x answered 500. PanelRuntime.bindPanelParameters now binds the declared parameters through NamedQueryBinding (the same coercion as
+     GET /api/queries/{name}); a declared parameter the data source does not supply is left unbound and refused by name only when the where uses it. PanelRuntimeQueryParamsTest (3 tests) and the 8 other
+     PanelRuntime test classes pass inside the regenerated app.
+  3. list-verify-routine waited a fixed 600 ms after Search; the page issues one list request per concept (about 55) when it opens, so the search queues behind them and the page still said Loading. The routine
+     now waits for the "match" message. Consequence worth a decision: the business UI's per-concept fetch on open grows with the model.
+  4. NOT FIXED, platform defects found while exercising the pack keywords with a conformance pack (NPDevSamples/dsl-conformance-max/Input/packs/conformance, conformance-ext):
+     a. pack:signature can never verify. The signature is embedded in the pack.json whose tree digest (PackCache.sha256OfTree, PackLockFile.sha256) it signs, so the digest changes when the signature is
+        added; PackAddMain.verifyPackSignatures compares signature.digest with the lock digest and PackPublishTest only proves the signature verifies "against its own digest". The CLI's working path is the
+        detached .sig under the catalogue root (npdev pack publish --sign-with). Options: delete pack:signature, or hash pack.json with the signature member removed (Java PackCache + PackLockFile and the Python
+        mirror _pack_content_digest in npdev_cli.py move together, twin-pair rule).
+     b. pack:propertyScopes is unusable next to a model that declares a root scope: pack members are appended after the model's, and the ordering rule wants the root scope (no from) last; moving the root
+        scope into the pack makes the compiler call it conformance::tenant, so the property cascade stops finding "tenant" and the theme preference breaks (theme-switch-verify-routine failed).
+     c. autoPanel.name, autoPanel.concept, autoPanel.aggregate are unreachable: autoPanel is only used as screen.admin, the screen supplies name and concept, and ExperienceValidation refuses an admin that
+        repeats them. Candidates for deletion from the schema.
+     d. transactionHooks.onValidate/onCommit are the screen spelling of the aggregate-level hooks and "a direct aggregate.onValidate/onCommit always wins"; the fixture's WidgetOrder declares both directly, so
+        a sample on the screen would be shadowed and prove nothing. Needs a second workbench aggregate without direct hooks.
+     e. capability.specializes needs an adapter binding in the plugin manifest (boot failed: Adapter 'notification-inproc' for capability 'notificationAudit' is not declared in the active plugin manifest).
+  5. The catalogue's "only a validator names it" label was a scanner defect for externalAi.prompts, flow.crossAggregateReason, screen.grandTotal, screen.subtotals and workbenchBandPicker.selectorRef: all five
+     are implemented (ExternalAiPromptRunner, FlowValidation's waiver, ListReport, SelectorPickerResolver). scripts/policy/dsl-keyword-evidence.json now records the reviewed evidence and
+     generate_dsl_capabilities.py verifies it on every run; the generator also reads the pack files and context fragments a sample ships beside its model.
+  6. VERIFIED (2026-11-24): validateModel 0 errors; behaviour probes 163/163 (log 20261124T020032Z); PanelRuntime tests 11 classes green in the regenerated app; browser routines: 12 of 12 green across the last runs.
+     The last single full run was 11/12 (theme-switch-verify-routine waited a fixed 1.2 s for the theme to load; it passed on its own after the waits were widened to 4 s and 4.5 s). Routine edits: list (wait for
+     the message and the new row), longrunning (wait for the form to close), mob2 (wait for the pending-sync banner to hide), theme-switch (wider waits). The pack concepts declare truthLevel T2: an undeclared
+     level counted as T1 in the truth rollup and failed the probe truth-declared-levels-reach-the-rollup-and-block-nothing.
+done_when: >-
+  A decision on 4a-4e (delete or fix each), and run-shell-scenarios.ps1 plus run-behavior-probes.ps1 green on a clean tree after every further edit of dsl-conformance-max.

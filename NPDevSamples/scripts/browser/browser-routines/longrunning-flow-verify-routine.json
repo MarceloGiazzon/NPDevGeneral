@@ -19,7 +19,7 @@
     { "action": "fill", "selector": "#concept-WidgetCatalogEntry [name=\"displayName\"]", "valueFromVariable": "name" },
     { "action": "fill", "selector": "#concept-WidgetCatalogEntry [name=\"unitPrice\"]", "value": "10" },
     { "action": "click", "selector": "#concept-WidgetCatalogEntry button:has-text(\"Create\")", "label": "Submit" },
-    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "waitForSelector", "selector": "#concept-WidgetCatalogEntry [name=\"sku\"]", "state": "hidden", "label": "Wait until the save closed the form: navigating while it is still dirty raises the unsaved-changes dialog" },
 
     { "action": "goto", "url": "http://127.0.0.1:8099/npdev-business-ui/#concept-__panel-WidgetCatalogReviewPanel__", "label": "Open the review panel" },
     { "action": "waitForSelector", "selector": "#concept-__panel-WidgetCatalogReviewPanel__", "state": "visible" },

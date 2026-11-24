@@ -1,0 +1,19 @@
+{
+  "queries": [
+    {
+      "name": "ConformanceNotesByTag",
+      "concept": "ConformanceNote",
+      "where": "tag == $params.tag",
+      "orderBy": [
+        "title"
+      ],
+      "parameters": [
+        {
+          "name": "tag",
+          "type": "string",
+          "required": true
+        }
+      ]
+    }
+  ]
+}
