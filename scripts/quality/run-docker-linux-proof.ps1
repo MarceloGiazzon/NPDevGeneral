@@ -7,7 +7,12 @@ param(
     [int]$BuildTimeoutSeconds = 1800,
     [int]$RunTimeoutSeconds = 3600,
     [int]$ProgressIntervalSeconds = 30,
-    [switch]$Force
+    [switch]$Force,
+    # REG-358 item 2 (owner decision 2026-11-24, "import"): take the report of the latest GREEN CI job
+    # "Docker/Linux blocking proof" (ai-beta-gate.yml, ubuntu-latest, which runs THIS script) instead of building
+    # the Linux image here. The 16 GB laptop cannot: the local proof wedged WSL at its 7.6 GB memory cap.
+    [switch]$FromCi,
+    [int]$CiMaxAgeHours = 24
 )
 
 $ErrorActionPreference = "Stop"
@@ -193,6 +198,70 @@ if ([string]::IsNullOrWhiteSpace($WorkspaceRoot)) {
     $WorkspaceRoot = (Resolve-Path ".").Path
 }
 $workspaceRoot = [System.IO.Path]::GetFullPath($WorkspaceRoot)
+
+if ($FromCi) {
+    # Provenance stays honest: generatedAt is the CI run's own (so the gate's freshness rule applies and a report
+    # older than -CiMaxAgeHours is refused), the CI run id, URL and commit are recorded under importedFromCi, and
+    # ONLY runId is replaced by this run's -RunId, because the gate requires every required report to share
+    # exactly one (the original id is kept in importedFromCi.originalRunId). Nothing is written on any failure, so
+    # an earlier report is never half-overwritten.
+    $fromCiReportFull = Resolve-UnderRoot -Root $workspaceRoot -PathValue $ReportPath
+    $fromCiDownload = Join-Path ([System.IO.Path]::GetTempPath()) ("npdev-ci-docker-" + [guid]::NewGuid().ToString("N"))
+    $fromCiError = $null
+    try {
+        if ($null -eq (Get-Command gh -ErrorAction SilentlyContinue)) { throw "the GitHub CLI (gh) is not on PATH." }
+        $ciRuns = @(& gh run list --workflow ai-beta-gate.yml --branch main --limit 20 --json databaseId,headSha,url | ConvertFrom-Json)
+        if ($LASTEXITCODE -ne 0) { throw "gh run list failed (is gh signed in? try: gh auth status)." }
+        $ciPicked = $null
+        foreach ($ciRun in $ciRuns) {
+            $ciJobs = & gh run view ([string]$ciRun.databaseId) --json jobs | ConvertFrom-Json
+            $ciDockerJob = @($ciJobs.jobs | Where-Object { [string]$_.name -eq "Docker/Linux blocking proof" -and [string]$_.conclusion -eq "success" })
+            if ($ciDockerJob.Count -gt 0) { $ciPicked = $ciRun; break }
+        }
+        if ($null -eq $ciPicked) { throw "none of the last 20 ai-beta-gate.yml runs on main has a green 'Docker/Linux blocking proof' job. Dispatch one: gh workflow run ai-beta-gate.yml --ref main" }
+        & gh run download ([string]$ciPicked.databaseId) --name docker-linux-proof-reports --dir $fromCiDownload | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw ("could not download the artifact docker-linux-proof-reports of CI run " + $ciPicked.databaseId + " (artifacts expire after 14 days; dispatch a new run: gh workflow run ai-beta-gate.yml --ref main).") }
+        $ciReportFiles = @(Get-ChildItem -LiteralPath $fromCiDownload -Recurse -File -Filter "docker-linux-parity-report.json")
+        if ($ciReportFiles.Count -ne 1) { throw ("expected exactly one docker-linux-parity-report.json in the artifact, found " + $ciReportFiles.Count + ".") }
+        $ciNode = [System.Text.Json.Nodes.JsonNode]::Parse((Get-Content -Raw -LiteralPath $ciReportFiles[0].FullName))
+        if ($ciNode["schemaVersion"].ToString() -ne "npdev-docker-linux-parity-report.v1") { throw ("unexpected schemaVersion " + $ciNode["schemaVersion"].ToString() + ".") }
+        if ($ciNode["overallStatus"].ToString() -ne "passed") { throw ("the CI report says overallStatus " + $ciNode["overallStatus"].ToString() + ", not passed.") }
+        $ciGeneratedAt = [DateTimeOffset]::Parse($ciNode["generatedAt"].ToString(), [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::AssumeUniversal)
+        $ciAgeHours = ([DateTimeOffset]::UtcNow - $ciGeneratedAt).TotalHours
+        if ($ciAgeHours -gt $CiMaxAgeHours) { throw ("the latest green CI proof (run " + $ciPicked.databaseId + ") is " + [math]::Round($ciAgeHours, 1) + " h old, over the " + $CiMaxAgeHours + " h freshness rule. Dispatch a new one: gh workflow run ai-beta-gate.yml --ref main (about 27 min).") }
+        $ciOriginalRunId = $ciNode["runId"].ToString()
+        $ciProvenance = [pscustomobject]@{
+            workflow = ".github/workflows/ai-beta-gate.yml"
+            job = "Docker/Linux blocking proof"
+            workflowRunId = [string]$ciPicked.databaseId
+            url = [string]$ciPicked.url
+            headSha = [string]$ciPicked.headSha
+            originalRunId = $ciOriginalRunId
+            importedAt = (Get-Date).ToUniversalTime().ToString("o")
+            note = "Imported by run-docker-linux-proof.ps1 -FromCi. generatedAt is the CI run's own; only runId was replaced with the importing run's id (the gate needs one shared runId)."
+        }
+        $ciNode["importedFromCi"] = [System.Text.Json.Nodes.JsonNode]::Parse(($ciProvenance | ConvertTo-Json -Depth 5 -Compress))
+        if (-not [string]::IsNullOrWhiteSpace($RunId)) { $ciNode["runId"] = [System.Text.Json.Nodes.JsonValue]::Create($RunId) }
+        $ciJsonOptions = [System.Text.Json.JsonSerializerOptions]::new()
+        $ciJsonOptions.WriteIndented = $true
+        $ciJsonOptions.Encoder = [System.Text.Encodings.Web.JavaScriptEncoder]::UnsafeRelaxedJsonEscaping
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $fromCiReportFull) | Out-Null
+        $ciNode.ToJsonString($ciJsonOptions) | Set-Content -LiteralPath $fromCiReportFull -Encoding UTF8
+        Write-DockerProofMessage ("imported the CI proof (run " + $ciPicked.databaseId + ", commit " + ([string]$ciPicked.headSha).Substring(0, 8) + ", " + [math]::Round($ciAgeHours, 1) + " h old, original runId " + $ciOriginalRunId + ").")
+    }
+    catch {
+        $fromCiError = $_.Exception.Message
+    }
+    finally {
+        if (Test-Path -LiteralPath $fromCiDownload) { Remove-Item -LiteralPath $fromCiDownload -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    if ($null -ne $fromCiError) {
+        Write-DockerProofMessage ("from-ci FAILED: " + $fromCiError)
+        exit 1
+    }
+    Write-Host ("Docker/Linux proof imported from CI. Report: " + (Convert-ToRepoPath -Root $workspaceRoot -PathValue $fromCiReportFull))
+    exit 0
+}
 
 if ($env:CI -ne "true" -and -not $Force) {
     $localProfilePath = Join-Path $workspaceRoot "scripts\policy\local-test-profile.json"

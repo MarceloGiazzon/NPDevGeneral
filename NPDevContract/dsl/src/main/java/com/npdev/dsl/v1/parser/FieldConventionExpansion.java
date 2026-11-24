@@ -105,7 +105,7 @@ final class FieldConventionExpansion {
                 for (int f = 0; f < fields.size(); f++) {
                     if (fields.get(f).isObject() && !fields.get(f).has("type")) {
                         expand((ObjectNode) fields.get(f), concepts.get(c).path("name").asText("?"),
-                                "/concepts/" + c + "/fields/" + f, rules, notes);
+                                "/concepts/" + c + "/fields/" + f, rules, notes, resolved.path("domainTypes"));
                     }
                 }
             }
@@ -125,8 +125,39 @@ final class FieldConventionExpansion {
     }
 
     private static void expand(ObjectNode field, String conceptName, String path, List<Rule> rules,
-                               List<ValidationDiagnostic> notes) {
+                               List<ValidationDiagnostic> notes, JsonNode domainTypes) {
         String fieldName = field.path("name").asText("");
+        // A field that names its own domainType and no type takes the type from the domain type's baseType (owner,
+        // 2026-11-24, REG-356 B3): the author already said what the value is, and that beats guessing from the field's
+        // name. A name that matches no rule is no longer an error for such a field.
+        JsonNode namedDomainType = field.get("domainType");
+        if (namedDomainType != null && namedDomainType.isTextual()) {
+            String baseType = baseTypeOf(domainTypes, namedDomainType.asText());
+            if (baseType == null) {
+                throw new Problem(path, "Field '" + fieldName + "' of concept '" + conceptName + "' declares no type and names "
+                        + "domainType '" + namedDomainType.asText() + "', which this model does not declare in domainTypes "
+                        + "(domain type not found: " + namedDomainType.asText() + "). Declare the domain type, or the field's type.");
+            }
+            field.put("type", baseType);
+            if (notes != null) {
+                notes.add(new ValidationDiagnostic(
+                        ValidationLayer.SEMANTIC,
+                        ValidationSeverity.INFO,
+                        NOTE_CODE,
+                        "Field '" + fieldName + "' of concept '" + conceptName + "' declares no type; its domainType '"
+                                + namedDomainType.asText() + "' typed it (type " + baseType + "). Write \"type\" on the "
+                                + "field to override it.",
+                        "NPDevContract",
+                        path,
+                        conceptName,
+                        fieldName,
+                        null,
+                        null,
+                        null,
+                        null));
+            }
+            return;
+        }
         Rule best = null;
         for (Rule rule : rules) {
             if (!rule.matches(fieldName)) {
@@ -167,6 +198,20 @@ final class FieldConventionExpansion {
                     null,
                     null));
         }
+    }
+
+    /** The {@code baseType} of the named entry of {@code domainTypes}, or null when the model declares no such type. */
+    private static String baseTypeOf(JsonNode domainTypes, String name) {
+        if (domainTypes == null || !domainTypes.isArray()) {
+            return null;
+        }
+        for (JsonNode domainType : domainTypes) {
+            if (name.equals(domainType.path("name").asText(null))) {
+                String baseType = domainType.path("baseType").asText("");
+                return baseType.isBlank() ? null : baseType;
+            }
+        }
+        return null;
     }
 
     /** True when {@code candidate} is strictly more specific than {@code current}; equals keep the earlier rule. */

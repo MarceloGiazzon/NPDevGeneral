@@ -46,6 +46,18 @@ detail: |
      tauri.conf.json and main.rs); the render-check scenario "Studio: a failed check lists the errors, not the info notes or the warnings" fails on the old line (403/404) and passes on the new one
      (404/404). REBUILT 2026-11-23: Build\manager-target\release\npdev-manager.exe is now 0.13.45 (cargo build --release, 3m17s, nothing running so no rename was needed; the render checker passed 404/404 against the repo ui). B2-B4 untouched.
   PAUSED BY THE OWNER until 2026-11-25: the kernel coverage-floor root cause (floor 73.4185 -> 73.4139) -- "ignore this problem completely for the next 3 days"; do not investigate or let that ratchet drive work before then.
+  OWNER DECISIONS 2026-11-24 ("all recommended" to the open questions of this item), with what was done the same day:
+     3. kernel coverage floor: the pause ends 2026-11-25; pick it up first thing that day. NOT started (not before the date).
+     4. single-source schema, last step: NO. The generated copies stay in git, refreshed by check-schema-mirror-consistency.py --fix, so item A is complete.
+     5. B3 DONE: a field that names a domainType and no type takes the type from the domain type's baseType (FieldConventionExpansion.expand; an explicit type is never touched; an unknown domain type is
+        the error "domain type not found: X"; the info note FIELD_CONVENTION_APPLIED says where the type came from). FieldConventionsTest 14/14, two of them new. NOT added to the AI briefing: the B4
+        measurement (tokens per app) is still owed before teaching it.
+     6. B2 DONE: validator output stays English only; recorded as englishOnlyDiagnostics in scripts/policy/ui-i18n-policy.json (check-ui-i18n OK).
+     7. ride-hailing gallery (C): capture the en/pt screenshots LOCALLY only and publish nothing. NOT done.
+     8. wave-2 delivery request (D): payments -> reuse pix-charge, the kitchen requirement is dropped; applied to wave2-delivery-request.json and roadmap.json in
+        NPDev_General__OutsideRepo/PACK_AUTHORING_BROWSER_AI_2026-11-12 (delivery requires shipping, person, pix-charge; food-delivery requires delivery). Sending the request to a chat AI stays the owner's step.
+     9. bench-023 (blocked on the Gemini quota): run it on another free provider, as the T12 bench did with nemotron. NOT done.
+     10. overdue freshness checks (E): small batches of 15 min or less across sessions. NOT done.
 done_when: >-
   The four schema copies are one source and check-schema-mirror-consistency.py is gone or trivial; each of B-E is either done and verified or recorded in its own item with a reason; the paused kernel
   item is picked up on or after 2026-11-25.

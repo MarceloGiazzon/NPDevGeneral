@@ -55,6 +55,10 @@ detail: |
   (each id is a literal NPDevI18n.t call whose English equals the catalogue), BusinessUiEmitter/Experience/PageI18n generator tests, AutoPanel dsl tests. Exercised in node against sample server
   sentences. NOT done: error bodies other than field validation (admin controllers' "... is required."), batch-row messages beyond what fieldViolations already carries, and the server's
   flow/kernel messages -- by the 2026-11-21 decision only the common ones are translated; and NOT yet seen in a browser (the i18n-pt browser routine was not run after these edits).
+  OWNER DECISION 2026-11-24 ("all recommended"): run the i18n-pt browser routine, then close this item as done; the remaining server texts (admin-controller error bodies, batch rows beyond field validation,
+  flow/kernel messages) stay English by the 2026-11-21 decision. ATTEMPT 2026-11-24: `run-shell-scenarios.ps1 -Only i18n-pt` did NOT reach a verdict -- its generator step failed with "the file is being used
+  by another process: D:\WorkSpace\NPDev\Build\samples\dsl-conformance-max\App\shell-scenarios-boot.stdout.log", held by ANOTHER session's run-shell-scenarios.ps1 (pwsh pid 21640, started 00:21, still alive
+  and writing 3 h later, its app on the same sample). Not a product failure. Re-run once that process is gone; then close this item.
 done_when: >-
   The owner decides each of the five (translate, or declare English-only); the translated ones are covered by check-ui-i18n.py or the
   i18n-pt-verify-routine browser routine.

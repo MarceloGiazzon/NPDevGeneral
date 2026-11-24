@@ -94,6 +94,15 @@ detail: |
      docs/WORKSPACE_CLEANUP_POLICY.md says so. VERIFIED: Test-WorkspaceSlimness.ps1 passes on the real tree (scripts own files 6.37 MB), still fails with -MaxScriptsSizeMB 1 ("scripts is 6.37 MB
      (scripts/reports/out excluded); limit is 1 MB"), and a re-run of run-expanded-beta0-evidence.ps1 now writes workspace-cleanliness-report.json as passed; only stale-report-check stays red (report age).
      doc-inventory and no-markdown-reads checkers: clean.
+  2b. OWNER DECISIONS 2026-11-24 ("all recommended"): the local gate IMPORTS the CI Docker/Linux report (not "read the CI result", not a waiver), and one full run-beta-release-gate.ps1 -GenerateReports
+     is run once, in the background, after that. BUILT AND VERIFIED the same day: run-docker-linux-proof.ps1 -FromCi finds the latest GREEN job "Docker/Linux blocking proof" of ai-beta-gate.yml on main (gh),
+     downloads the artifact docker-linux-proof-reports, refuses a report that is not passed or older than -CiMaxAgeHours (24), and writes the report with an importedFromCi block (workflow run id, URL, head sha,
+     the original runId). FINDING: the gate requires every required report to share exactly ONE runId (run-beta-release-gate.ps1:619-626), and a CI report carries its own, so a plain copy would add a
+     "must share exactly one runId" blocker even when fresh; -FromCi therefore replaces ONLY runId with the importing run's (the original is kept in importedFromCi.originalRunId) and leaves generatedAt
+     untouched, so the freshness rule still applies. run-beta-release-evidence-orchestration.ps1: the docker-linux-parity producer declares localArguments = -FromCi, used outside CI (CI=true still runs
+     the real proof) and no longer needs a local Docker. Checked: import to a scratch path (provenance fields right, real report untouched); -CiMaxAgeHours 1 refuses with exit 1 and writes nothing;
+     the orchestrator producer alone passes in 9 s and writes the imported report (this also replaced the hand-copied CI report on disk, which the importer can recreate for 14 days). Trap met on the way:
+     an if-expression returning a one-element array unrolls it to a string and splatting a string passes its characters, hence the @() in the orchestrator.
   5b. ROOT CAUSE FOUND AND FIXED 2026-11-22 (item 5): NPDevSamples/scripts/generate-sample-app.ps1 ran gradle :generator:run WITHOUT --no-daemon, leaving a persistent Gradle daemon that inherits the caller's redirected
      stdout/stderr pipes and holds them open after the generation is done (live repro: an idle daemon kept a caller blocked 7 min after the work ended, released the moment it was killed). Now --no-daemon, like
      run-ai-beta-gate.ps1 and the proof. Also: run-sample-matrix.ps1's Invoke-ProcessEvidence redirects to files and polls HasExited instead of pipe + ReadToEnd (A/B with a lingering grandchild: 40.7 s -> 0.7 s); and the

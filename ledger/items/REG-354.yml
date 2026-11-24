@@ -42,6 +42,8 @@ detail: |
   showed TWO required boxes (code, public), Apply stayed off with none and with one ticked and came on with both, nothing was written before Apply, Apply sent both codes, web/hello.js was byte for byte
   and browser-ai-code.json recorded its sha256, Undo restored model.json byte for byte and removed the page and the record (tour: NPDev_General__OutsideRepo/reg354-355-tour/tour.mjs, 28 of 29 checks; the 29th
   is the generation check described in REG-355). NOT done: a real chat AI asked for a page.
+  OWNER DECISIONS 2026-11-24 ("all recommended"): (12) the Manager gets a remove-code button ONLY; the relay.codeFromBrowserAi setting stays CLI/file, so opening code acceptance remains deliberate in a Manager
+  made for non-experts. NOT built yet. (13) the real chat-AI round for a JS page is one pilot sitting with the owner (prepared prompt and steps, the owner pastes the answer back); it does not block anything.
 guard:
   kind: test
   ref: NPDevCli/tests/test_relay_codepolicy.py

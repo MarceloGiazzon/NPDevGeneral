@@ -55,6 +55,9 @@ detail: |
   window: installed 0.13.44, refusal tour 9 of 9 (R1 ArrayList sent back at paste time, R2 Thread.sleep refused at generation and READ AS A SENTENCE, Undo took every part out). The Portuguese rendering of the sentence was not
   looked at in the window (only the catalogue entries are checked). STILL OPEN: the kernel's bytecode inspector (a boot gate) on a real boot; a real build of an app with the class (the libs were forced missing); a real chat AI asked
   for a class.
+  OWNER DECISIONS 2026-11-24 ("all recommended"): (14) java-capability and conversion-hook are declared UNSUPPORTED from a browser AI -- they have no manifest seam and conversion hooks are SQL/declarative
+  (boundary B13); the relay keeps its sentence for them and nothing is built; only the flow-bound `extensions/<Name>.java` kind is in scope here. (13) the real chat-AI round (a Java class) is one pilot
+  sitting with the owner: a prepared prompt and steps, the owner pastes the AI's answer back; it does not block anything.
 done_when: >-
   With the setting at `all`, a browser AI's answer that adds a Java procedure referenced by the model is confirmed by the owner, written with its manifest entry, generated, and refused in words when
   PluginJavaSourcePolicy or the bytecode inspector rejects it; Undo and remove-code take every part out; proven on the real Manager window.

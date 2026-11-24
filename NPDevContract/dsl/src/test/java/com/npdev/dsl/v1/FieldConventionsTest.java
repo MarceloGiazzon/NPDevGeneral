@@ -228,4 +228,45 @@ class FieldConventionsTest {
         assertEquals("string", ast.getConcepts().get(0).getFields().get(1).getType());
         assertEquals("date", ast.getConcepts().get(0).getFields().get(2).getType());
     }
+
+    private String namedDomainTypeModel(String domainTypes, String fields) {
+        return """
+                {
+                  "namespace": "demo", "dslVersion": "3.0.0", "version": "1.0",
+                  %s
+                  "concepts": [ { "name": "Customer", "fields": [ %s, %s ] } ]
+                }
+                """.formatted(domainTypes, ID, fields);
+    }
+
+    @Test
+    void aFieldNamingADomainTypeTakesItsTypeFromTheBaseTypeEvenWhenItsNameMatchesNoRule() throws Exception {
+        // REG-356 B3: `balance` matches no rule and names no type, but it names a domain type, which already says
+        // what the value is. An explicit type is never overwritten.
+        Path file = write("model.json", namedDomainTypeModel(
+                "\"domainTypes\": [ { \"name\": \"Email\", \"baseType\": \"string\" }, { \"name\": \"Cents\", \"baseType\": \"long\" } ],",
+                """
+                { "name": "balance", "domainType": "Cents" }, { "name": "contact", "domainType": "Email" },
+                { "name": "alt", "domainType": "Email", "type": "string" }
+                """));
+        var source = new ModelSourceResolver().resolve(file);
+        assertEquals("long", field(source.resolvedRoot(), "balance").get("type").asText());
+        assertEquals("string", field(source.resolvedRoot(), "contact").get("type").asText());
+        var notes = source.diagnostics();
+        var balance = notes.stream().filter(n -> "balance".equals(n.getField())).findFirst().orElseThrow();
+        assertEquals("FIELD_CONVENTION_APPLIED", balance.getCode());
+        assertEquals(com.npdev.dsl.v1.validation.ValidationSeverity.INFO, balance.getSeverity());
+        assertTrue(balance.getMessage().contains("its domainType 'Cents' typed it (type long)"), balance.getMessage());
+        assertTrue(notes.stream().noneMatch(n -> "alt".equals(n.getField())), "an explicit type leaves no note");
+        // The expanded model validates like a fully typed one.
+        var errors = new com.npdev.dsl.v1.validation.SemanticValidator().validate(new JsonModelParser().parse(source));
+        assertTrue(errors.isEmpty(), errors.toString());
+    }
+
+    @Test
+    void aFieldNamingADomainTypeTheModelDoesNotDeclareIsAnErrorThatSaysSo() {
+        IOException e = assertThrows(IOException.class, () -> resolve(namedDomainTypeModel("",
+                "{ \"name\": \"balance\", \"domainType\": \"Cents\" }")));
+        assertTrue(e.getMessage().contains("domain type not found: Cents") && e.getMessage().contains("'balance'"), e.getMessage());
+    }
 }

@@ -112,6 +112,11 @@
     "npdev-expr.js.mustache",
     "npdev-sw.js.mustache"
   ],
+  "englishOnlyDiagnostics": {
+    "decision": "owner, 2026-11-24 (REG-356 B2, answered 'all recommended')",
+    "scope": "The message text of every diagnostic the DSL validator emits (ModelValidatorMain, SemanticValidator, the info notes FIELD_CONVENTION_APPLIED and IMPLICIT_ID_ADDED). Diagnostic codes and field paths are identifiers and never translated.",
+    "why": "Validator output is developer/AI tooling output read by model authors and chat AIs, like the developer pages in englishOnlyDeveloperTools. The Manager shows it as the validator wrote it."
+  },
   "uiMustacheFiles": [
     "business-ui-app.mustache",
     "business-ui-index.mustache",

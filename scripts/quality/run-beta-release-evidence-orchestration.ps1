@@ -129,9 +129,13 @@ $producers = @(
     [pscustomobject]@{ name = "sample-matrix"; stage = 2
         script = "scripts/quality/run-sample-matrix.ps1"
         reports = @("sample-matrix-report.json") }
+    # REG-358 item 2 (owner decision 2026-11-24): outside CI this laptop cannot run the Linux image (the proof wedged
+    # WSL at its memory cap), so the producer IMPORTS the report of the latest green CI job instead (-FromCi, which
+    # refuses a report over 24 h old and records the CI run in importedFromCi). On CI (CI=true) the real proof runs.
     [pscustomobject]@{ name = "docker-linux-parity"; stage = 2
         script = "scripts/quality/run-docker-linux-proof.ps1"
         requiresDocker = $true
+        localArguments = @("-FromCi")
         reports = @("docker-linux-parity-report.json") }
     # REG-358: this test drives run-docker-linux-proof.ps1 with a fake docker executable and a temp report path
     # (5 s, no Docker needed). It passes -Force so the proof does not skip under local-test-profile.json.
@@ -216,7 +220,12 @@ foreach ($producer in $selected) {
         continue
     }
 
-    if ([bool]$producer.requiresDocker) {
+    # Outside CI a producer may declare localArguments (docker-linux-parity: -FromCi). It then needs no local Docker.
+    # The outer @() matters: an if-expression unrolls a one-element array to a bare string, and splatting a string
+    # passes its CHARACTERS as separate arguments.
+    [string[]]$producerLocalArguments = @(if ($env:CI -ne "true" -and $null -ne $producer.localArguments) { $producer.localArguments })
+
+    if ([bool]$producer.requiresDocker -and $producerLocalArguments.Count -eq 0) {
         if ($null -eq $dockerAvailable) { $dockerAvailable = Test-DockerAvailable }
         if (-not $dockerAvailable) {
             $results += [pscustomobject]@{ name = $name; stage = [int]$producer.stage; script = $scriptRelative
@@ -230,7 +239,7 @@ foreach ($producer in $selected) {
     Write-Host ("[stage " + [string]$producer.stage + "] " + $name + " ...")
     $startedAt = (Get-Date).ToUniversalTime()
     $ErrorActionPreference = "Continue"
-    $output = & pwsh -NoProfile -File $scriptFull -RunId $RunId 2>&1
+    $output = & pwsh -NoProfile -File $scriptFull -RunId $RunId @producerLocalArguments 2>&1
     $exitCode = $LASTEXITCODE
     $ErrorActionPreference = "Stop"
     $completedAt = (Get-Date).ToUniversalTime()
