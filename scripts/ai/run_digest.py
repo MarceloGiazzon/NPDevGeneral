@@ -276,6 +276,39 @@ def clock(seconds: float) -> str:
     return f"{s // 3600}:{(s % 3600) // 60:02d}:{s % 60:02d}" if s >= 3600 else f"{s // 60:02d}:{s % 60:02d}"
 
 
+def tracker_installed() -> bool:
+    """True when a ptrack executable exists on this machine (twin: ptrack_installed() in scripts/hooks/require-digest.py).
+    Without one there is nothing to be invisible to, so the tracker guard stays off."""
+    if shutil.which("ptrack"):
+        return True
+    local = os.environ.get("LOCALAPPDATA")
+    found = [Path(local) / "Programs" / "ptrack" / "ptrack.exe"] if local else []
+    found.append(Path.home() / ".local" / "bin" / "ptrack")
+    return any(p.is_file() for p in found)
+
+
+def tracker_refusal(policy: dict, command: str, env: dict | None = None, installed: bool | None = None) -> str | None:
+    """Why this run must not start: inside an agent session, a long run that is not a ptrack job (no PTRACK_JOB_ID
+    in its environment) is invisible to the owner -- no `ptrack list / tail / stop`, and nobody is told when the
+    session ends and kills it (2026-11-24: a one-hour beta gate died that way).
+
+    This is the SECOND layer behind scripts/hooks/require-digest.py. It does not care which tool or terminal started
+    the run, so a hook that is missing, mis-wired or not yet updated cannot let an untracked run through.
+    Policy: output-digest-policy.json -> enforcement.tracker. Pure (env and `installed` injected) for the tests."""
+    env = os.environ if env is None else env
+    tracker = (policy.get("enforcement") or {}).get("tracker") or {}
+    if not tracker or not env.get(tracker.get("appliesWhen") or "CLAUDECODE"):
+        return None  # not an agent session (a human at a terminal, CI)
+    if env.get("PTRACK_JOB_ID") or env.get(tracker.get("bypassEnv") or "NPDEV_TRACKER_BYPASS"):
+        return None  # already a tracked job, or the owner's deliberate bypass
+    low = command.lower()
+    if any(q.lower() in low for q in tracker.get("quickSubstrings", [])):
+        return None
+    if not (tracker_installed() if installed is None else installed):
+        return None
+    return str(tracker.get("runnerMessage") or "REFUSED: this long run is not a ptrack job; start it from the Bash tool.")
+
+
 def opening_line(shown: str, pid: int, logpath: Path, cfg: dict, cpu_on: bool) -> str:
     return (f"[run] {shown[:80]} | pid={pid} | log={logpath} | heartbeat={cfg['stdoutSeconds']:g}s "
             f"quiet={cfg['quietAfterSeconds']:g}s stalled={cfg['stalledAfterSeconds']:g}s cpu={'on' if cpu_on else 'off'}")
@@ -342,6 +375,10 @@ def main() -> int:
         return 127
     policy = load_policy()
     joined = " ".join(cmd)  # as typed: family matching and the echo must not see the resolved path
+    refused = tracker_refusal(policy, joined)
+    if refused:
+        print(refused, file=sys.stderr)
+        return 3  # nothing was started: exit 3 = "not tracked", distinct from the command's own codes and 127
     argv = [resolved] + cmd[1:]
     fam = pick_family(policy, joined, args.family)
     defaults = policy["defaults"]

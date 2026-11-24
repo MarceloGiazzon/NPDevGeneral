@@ -48,7 +48,7 @@ fired and Claude waited with no independent check, then guessed a script name (`
    before invoking anything from it (a generated app's `_ops` has `Build-FinalApp.ps1`, the one recipe, and
    `Build-App.ps1`, a thin wrapper — still: list, then invoke).
 2. **A background-task completion notification is NOT guaranteed to fire promptly.** For anything the user is
-   waiting on, pair `run_in_background` with a `Monitor` poll on the real log path (or a short bounded re-check).
+   waiting on, pair `run_in_background` with a `Monitor` poll on the real log path (or a short bounded re-check) AND confirm the job in `ptrack list`.
 
 ## Session economics
 
@@ -68,6 +68,13 @@ context. Cost is `requests × average context`; both are yours to control.
   `scripts/policy/output-digest-policy.json` that is not wrapped. Add a command family to that JSON, never to the
   hook. Bypass: `-DryRun`/`-ListOnly`, or `NPDEV_DIGEST_BYPASS=1`. The hook, status line and `SessionStart`
   handoff hook are wired by `.claude/settings.json`, which is gitignored and per-machine.
+- **A long run starts ONLY from the Bash tool, with `run_in_background`, through the digest runner.** ptrack — the
+  owner's tracker, which exists so no long process is ever blind — hooks only Bash; a run started from PowerShell is
+  invisible to the owner and dies silently with the session (2026-11-24: a 1 h beta gate). **Enforced in three
+  layers:** `require-digest.py` BLOCKS a long PowerShell launch; `run_digest.py` REFUSES (exit 3) a run that is not a
+  ptrack job (`PTRACK_JOB_ID` unset); the `SessionStart` hook lists running jobs and warns when ptrack's hook is blind
+  to a tool. After launching, `ptrack list` must show the job; stop it with `ptrack stop`, never taskkill.
+  `NPDEV_TRACKER_BYPASS=1` is the owner's call, never an agent's.
 - **Ask before spawning a subagent** unless the user requested one (subagents were 42% of spend).
 
 The status line (`scripts/ai/session_meter.py`) shows the live context size and tells the *user* when to `/clear`;
@@ -198,7 +205,7 @@ still refuses a too-small bump. Restore the codemod rule and drop `--advisory` w
 
 ## Environment notes
 
-- Windows. Prefer **PowerShell** and the dedicated Grep/Glob/Read tools. Git Bash coreutils are on PATH via
+- Windows. Prefer **PowerShell** for short commands and the dedicated Grep/Glob/Read tools; long runs go through the Bash tool (Session economics). Git Bash coreutils are on PATH via
   `C:\Program Files\Git\usr\bin`.
 - Regenerating an app can hit a transient **VS Code Java/Gradle file lock** on the fresh build dir — bump the
   build-root suffix (`-alt`/`-hNN`); a reboot clears it.

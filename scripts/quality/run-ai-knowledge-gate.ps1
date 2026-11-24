@@ -1111,6 +1111,20 @@ try {
         $failures += "a generated-app UI text is missing, untranslated or unrouted: see scripts/quality/check-ui-i18n.py output above (catalogue: NPDevGenerator/generator/src/main/resources/npdev-i18n/, policy: scripts/policy/ui-i18n-policy.json)"
     }
 
+    # 2026-11-24: the hooks that keep a long run from being invisible to the owner (require-digest.py BLOCKS a long
+    # PowerShell launch; run_digest.py REFUSES a run that is not a ptrack job) were declared manual-runbook, so no gate
+    # ran their tests and a later edit could break them silently. Only the tracker tests of the runner run here: its
+    # older tests (cp1252 console, forked daemon) have never run on Linux CI.
+    Write-Host '[58/58] Checking the long-run enforcement hooks (require-digest.py, run_digest.py tracker guard) against their self-tests...'
+    & $py "scripts/hooks/test_require_digest.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "scripts/hooks/test_require_digest.py failed: the hook that blocks a long PowerShell run and unwrapped expensive commands is broken -- see the output above"
+    }
+    & $py "scripts/ai/test_run_digest.py" "TrackerGuard"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "scripts/ai/test_run_digest.py TrackerGuard failed: the digest runner no longer refuses an untracked long run -- see the output above"
+    }
+
     if ($failures.Count -gt 0) {
         Write-Host ""
         Write-Host "AI knowledge gate FAILED:" -ForegroundColor Red

@@ -36,8 +36,12 @@ orientation is appended -- the separate /prep becomes unnecessary.
 from __future__ import annotations
 
 import json
+import os
+import re
+import shutil
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -65,7 +69,72 @@ def prep_output() -> str:
         return ""
 
 
+def ptrack_exe() -> str | None:
+    """The ptrack executable, or None when this machine has none (then there is nothing to report)."""
+    found = shutil.which("ptrack")
+    if found:
+        return found
+    local = os.environ.get("LOCALAPPDATA")
+    for cand in ([Path(local) / "Programs" / "ptrack" / "ptrack.exe"] if local else []) + [Path.home() / ".local" / "bin" / "ptrack"]:
+        if cand.is_file():
+            return str(cand)
+    return None
+
+
+def ptrack_coverage_gap(settings: dict, tool: str = "PowerShell") -> str | None:
+    """Why the ptrack hook in this settings.json would NOT see `tool`, or None when it does (or none is installed
+    here -- another settings file may carry it). Claude Code matchers are regexes over the tool name."""
+    entries = [e for e in ((settings.get("hooks") or {}).get("PreToolUse") or [])
+               if any("ptrack" in str(h.get("command", "")).lower() for h in (e.get("hooks") or []))]
+    for entry in entries:
+        matcher = entry.get("matcher")
+        if matcher is None or matcher == "" or re.search(rf"^(?:{matcher})$", tool):
+            return None
+    if entries:
+        return f"its matcher {entries[0].get('matcher')!r} does not match the {tool} tool"
+    return None
+
+
+def tracker_notice() -> str:
+    """What ptrack -- the owner's 'never be blind on a long process' tracker -- knows RIGHT NOW, so a new session starts
+    informed instead of rediscovering it (2026-11-24: a 13 h 50 min run burned CPU unseen and the next session found it
+    by accident). Silent when there is nothing to say: this text is billed on every request."""
+    exe = ptrack_exe()
+    if not exe:
+        return ""
+    lines = []
+    try:
+        jobs = json.loads(subprocess.run([exe, "list", "--json"], capture_output=True, text=True, timeout=8).stdout or "[]")
+        now_ms = time.time() * 1000
+        for job in [j for j in jobs if j.get("state") in ("running", "paused")][:6]:
+            hours = max(0.0, (now_ms - float(job.get("started_ms") or now_ms)) / 3.6e6)
+            lines.append(f"  RUNNING {job.get('id')} [{job.get('activity') or job.get('state')}] {hours:.1f} h  "
+                         f"{str(job.get('label') or job.get('command') or '')[:70]}")
+    except Exception:
+        pass
+    gaps = []
+    for path in (Path.home() / ".claude" / "settings.json", REPO / ".claude" / "settings.json", REPO / ".claude" / "settings.local.json"):
+        try:
+            gap = ptrack_coverage_gap(json.loads(path.read_text(encoding="utf-8")))
+        except Exception:
+            continue
+        if gap:
+            gaps.append(f"  WARNING ({path.name}): the ptrack hook is blind to the PowerShell tool -- {gap}. "
+                        "A long run started from PowerShell is invisible to the owner.")
+    if not lines and not gaps:
+        return ""
+    head = ["ptrack (the owner's tracker -- never be blind on a long process):"] + lines + gaps
+    head.append("  Long runs: Bash tool + run_in_background + scripts/ai/run_digest.py; `ptrack list` must show the job.")
+    return "\n".join(head)
+
+
 def main() -> int:
+    try:
+        notice = tracker_notice()
+    except Exception:
+        notice = ""
+    if notice:
+        sys.stdout.write(notice + "\n\n")
     from_clear = started_by_clear()
     if not STATE.exists():
         return 0

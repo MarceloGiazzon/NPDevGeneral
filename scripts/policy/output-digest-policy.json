@@ -163,6 +163,25 @@
       "npm run test"
     ],
     "warnMessage": "'{hit}' can run for minutes. Prefer: python scripts/ai/run_digest.py -- <your command>  (full log on disk, a [hb] heartbeat every 30 s shows RUNNING/QUIET/STALLED?, so the job is never blind). Silence: NPDEV_DIGEST_WARN=off.",
+    "tracker": {
+      "why": "ptrack (the owner's tracker, so that no long run is ever blind) hooks ONLY the Bash tool. A long run started with the PowerShell tool is invisible to the owner: no ptrack list / tail / ui / stop, and when the session ends nobody is told. 2026-11-24: a one-hour beta gate was started from PowerShell, died with the session, and nobody knew; earlier that day another session's run burned 13 h 40 min of CPU unseen. Prose did not prevent it; this block does.",
+      "appliesWhen": "CLAUDECODE",
+      "blockedTool": "PowerShell",
+      "launchTool": "Bash",
+      "longRunCommands": [
+        "run_digest.py"
+      ],
+      "quickSubstrings": [
+        "--version",
+        "--help",
+        "-ListOnly",
+        "-DryRun",
+        "tasks --all"
+      ],
+      "bypassEnv": "NPDEV_TRACKER_BYPASS",
+      "hookMessage": "Start long runs from the Bash tool, never from PowerShell. ptrack's hook watches only Bash, so this launch would be invisible to the owner (no ptrack list / tail -f / ui / stop, and nobody is told if this session ends). Re-issue it with the Bash tool and run_in_background: true:\n  python scripts/ai/run_digest.py -- pwsh -NoProfile -File <script> <args>\nThen run `ptrack list`: the job MUST be there. Bash can call pwsh, so nothing is lost. A deliberate bypass is the owner's call: NPDEV_TRACKER_BYPASS=1.",
+      "runnerMessage": "REFUSED: this long run is not a ptrack job (PTRACK_JOB_ID is not set), so the owner cannot see it and nobody is told if it dies. Launch it from the Bash tool with run_in_background: true (ptrack's hook then wraps it), or prefix it: ptrack run -- python scripts/ai/run_digest.py -- <command>. Then `ptrack list` MUST show the job. A deliberate bypass is the owner's call: NPDEV_TRACKER_BYPASS=1."
+    },
     "exemptSubstrings": [
       "run_digest.py",
       "--version",

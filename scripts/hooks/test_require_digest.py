@@ -126,5 +126,81 @@ class WarnOnlyCommands(unittest.TestCase):
         self.assertEqual(json.loads(POLICY_FILE.read_text(encoding="utf-8"))["enforcement"]["warnMode"], "warn")
 
 
+class LongRunsOnlyFromTheToolPtrackWatches(unittest.TestCase):
+    """enforcement.tracker (2026-11-24): ptrack hooks only the Bash tool, so a long run started with the PowerShell
+    tool is invisible to the owner. The rule is pure (env + `installed` injected) so it is tested without ptrack."""
+
+    ENFORCE = json.loads(POLICY_FILE.read_text(encoding="utf-8"))["enforcement"]
+    AGENT = {"CLAUDECODE": "1"}
+    # The exact launch that went wrong: the one-hour beta gate, digest-wrapped, started from PowerShell.
+    THE_MISTAKE = "python scripts/ai/run_digest.py -- pwsh -NoProfile -File scripts/quality/run-beta-release-gate.ps1 -GenerateReports"
+
+    def refusal(self, command, tool="PowerShell", env=None, installed=True, **tool_input):
+        return hook.tracker_refusal(tool, {"command": command, **tool_input}, command, self.ENFORCE,
+                                    self.AGENT if env is None else env, installed)
+
+    def test_the_mistake_itself_is_blocked_and_the_message_says_what_to_do(self):
+        said = self.refusal(self.THE_MISTAKE)
+        self.assertIsNotNone(said)
+        self.assertIn("Bash tool", said)
+        self.assertIn("run_in_background", said)
+        self.assertIn("ptrack list", said)
+
+    def test_every_background_powershell_call_is_blocked_whatever_it_runs(self):
+        self.assertIsNotNone(self.refusal("Start-Sleep 600", run_in_background=True))
+
+    def test_a_declared_expensive_or_warn_program_is_blocked_in_powershell(self):
+        for command in ["pwsh -NoProfile -File scripts/quality/run-fast-gate.ps1 -Tier T1",
+                        "./gradlew test", "python scripts/ai/bench/run_bench.py run --run-id x"]:
+            with self.subTest(command=command):
+                self.assertIsNotNone(self.refusal(command))
+
+    def test_the_same_commands_from_the_bash_tool_are_not_this_rules_business(self):
+        self.assertIsNone(self.refusal(self.THE_MISTAKE, tool="Bash"))
+        self.assertIsNone(self.refusal("sleep 600", tool="Bash", run_in_background=True))
+
+    def test_short_powershell_commands_still_run(self):
+        for command in ["git status --short", "Get-Date", "Get-Content notes.txt -Tail 5",
+                        "python scripts/quality/check-twin-pair-consistency.py"]:
+            with self.subTest(command=command):
+                self.assertIsNone(self.refusal(command))
+
+    def test_quick_forms_of_a_long_command_are_exempt(self):
+        for command in ["pwsh -NoProfile -File scripts/quality/run-beta-release-gate.ps1 -DryRun",
+                        "pwsh -NoProfile -File scripts/quality/run-all-gates.ps1 -ListOnly",
+                        "python scripts/ai/run_digest.py --help"]:
+            with self.subTest(command=command):
+                self.assertIsNone(self.refusal(command))
+
+    def test_it_only_binds_agent_sessions_that_have_a_tracker_and_no_bypass(self):
+        self.assertIsNone(self.refusal(self.THE_MISTAKE, env={}), "a human at a terminal or CI is not an agent session")
+        self.assertIsNone(self.refusal(self.THE_MISTAKE, installed=False), "no ptrack on the machine = nothing to hide from")
+        self.assertIsNone(self.refusal(self.THE_MISTAKE, env={"CLAUDECODE": "1", "NPDEV_TRACKER_BYPASS": "1"}))
+
+    def test_the_shipped_policy_declares_the_rule(self):
+        tracker = self.ENFORCE["tracker"]
+        self.assertEqual(tracker["blockedTool"], "PowerShell")
+        self.assertEqual(tracker["launchTool"], "Bash")
+        self.assertIn("run_digest.py", tracker["longRunCommands"])
+
+    def test_end_to_end_exit_2_with_a_ptrack_on_the_path_and_0_with_the_bypass(self):
+        import os
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            for fake in ("ptrack", "ptrack.exe"):
+                path = Path(td) / fake
+                path.write_text("", encoding="utf-8")
+                path.chmod(0o755)
+            base = {k: v for k, v in os.environ.items() if k not in ("NPDEV_DIGEST_BYPASS", "NPDEV_TRACKER_BYPASS", "PTRACK_JOB_ID")}
+            env = dict(base, CLAUDECODE="1", PATH=td + os.pathsep + base.get("PATH", ""))
+            stdin = json.dumps({"tool_name": "PowerShell", "tool_input": {"command": self.THE_MISTAKE, "run_in_background": True}})
+            blocked_run = subprocess.run([sys.executable, str(HOOK)], input=stdin, text=True, capture_output=True, env=env)
+            self.assertEqual(blocked_run.returncode, 2, blocked_run.stderr)
+            self.assertIn("Bash tool", blocked_run.stderr)
+            bypassed = subprocess.run([sys.executable, str(HOOK)], input=stdin, text=True, capture_output=True,
+                                      env=dict(env, NPDEV_TRACKER_BYPASS="1"))
+            self.assertEqual(bypassed.returncode, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

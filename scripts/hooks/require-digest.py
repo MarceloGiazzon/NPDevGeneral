@@ -30,9 +30,17 @@ Everything it knows lives in scripts/policy/output-digest-policy.json under
 A second, softer list, `warnCommands`, only WARNS (exit 0, JSON on stdout) -- for long-running commands that
 are not worth blocking.  `enforcement.warnMode` (warn | block | off) or $NPDEV_DIGEST_WARN tunes it.
 
+A THIRD rule, `enforcement.tracker`: a long run started with the PowerShell tool is BLOCKED (exit 2) inside an
+agent session.  ptrack -- the owner's "never be blind on a long process" tracker -- hooks only the Bash tool, so a
+PowerShell launch is invisible to the owner and dies silently with the session (2026-11-24).  "Long run" = a
+background call, or a declared expensive / warn / longRunCommands program.  Only applies when $CLAUDECODE is set and
+a ptrack executable exists on the machine.  scripts/ai/run_digest.py enforces the same thing from the other side
+(it refuses an untracked long run whatever tool started it), so neither layer is the only one.
+
 Escape hatches, in order of preference:
   * add -DryRun / -ListOnly / --help  (declared in exemptSubstrings)
   * set NPDEV_DIGEST_BYPASS=1         (deliberate, visible, per-shell)
+  * set NPDEV_TRACKER_BYPASS=1        (the tracker rule only; the owner's call, never an agent's habit)
 
 Fails OPEN.  A hook that blocks work because it itself broke is worse than no
 hook, so any unexpected error exits 0 and lets the command through.
@@ -148,6 +156,44 @@ def first_expensive(command: str, patterns: list[str]) -> str | None:
     return None
 
 
+def ptrack_installed() -> bool:
+    """True when a ptrack executable exists on this machine (twin: tracker_installed() in scripts/ai/run_digest.py).
+    Without one there is nothing to be invisible to, so the tracker rule stays off."""
+    import shutil
+    if shutil.which("ptrack"):
+        return True
+    local = os.environ.get("LOCALAPPDATA")
+    found = [Path(local) / "Programs" / "ptrack" / "ptrack.exe"] if local else []
+    found.append(Path.home() / ".local" / "bin" / "ptrack")
+    return any(p.is_file() for p in found)
+
+
+def tracker_refusal(tool: str, tool_input: dict, command: str, enforce: dict, env: dict,
+                    installed: bool | None = None) -> str | None:
+    """The block message when a LONG run is started with a shell tool ptrack does not watch, else None.
+
+    Pure on purpose (env and `installed` are injected) so the rule is unit-tested without a machine that has ptrack."""
+    tracker = enforce.get("tracker") or {}
+    if not tracker or tool != tracker.get("blockedTool"):
+        return None
+    if not env.get(tracker.get("appliesWhen") or "CLAUDECODE"):
+        return None  # a human at a terminal, or CI: not an agent session
+    if env.get(tracker.get("bypassEnv") or "NPDEV_TRACKER_BYPASS"):
+        return None
+    if not (ptrack_installed() if installed is None else installed):
+        return None
+    low = command.lower()
+    if any(q.lower() in low for q in tracker.get("quickSubstrings", [])):
+        return None
+    patterns = [*enforce.get("expensiveCommands", []), *enforce.get("warnCommands", []), *tracker.get("longRunCommands", [])]
+    why = "run_in_background" if tool_input.get("run_in_background") is True else first_expensive(command, patterns)
+    if not why:
+        return None
+    return (f"BLOCKED: '{why}' is a long run started with the {tool} tool, and ptrack watches only the "
+            f"{tracker.get('launchTool', 'Bash')} tool.\n\n{tracker.get('hookMessage', '')}\n\n"
+            f"(policy: scripts/policy/output-digest-policy.json -> enforcement.tracker)\n")
+
+
 def warn_mode(enforce: dict) -> str:
     """`warn` (default: the command runs, the agent is told), `block` (treated like expensiveCommands) or `off`.
     $NPDEV_DIGEST_WARN overrides the policy's enforcement.warnMode for one shell."""
@@ -187,6 +233,13 @@ def main() -> int:
         enforce = policy["enforcement"]
     except Exception:
         return 0  # fail open
+
+    # Before the exemptions below: run_digest.py is on that list, and a digest-wrapped gate is exactly the long run
+    # that must not be started from PowerShell.
+    refusal = tracker_refusal(tool, tool_input, command, enforce, os.environ)
+    if refusal:
+        sys.stderr.write(refusal)
+        return 2
 
     for ok in enforce.get("exemptSubstrings", []):
         if ok.lower() in command.lower():

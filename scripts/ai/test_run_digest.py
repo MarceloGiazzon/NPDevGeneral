@@ -13,6 +13,11 @@ from pathlib import Path
 
 RUNNER = Path(__file__).resolve().parent / "run_digest.py"
 
+# These tests spawn the runner with a copy of os.environ. Inside an agent session ($CLAUDECODE) the runner refuses an
+# untracked long run (enforcement.tracker), which is not what they test -- so they start with the owner's bypass set.
+# TrackerGuard below controls the environment explicitly and does NOT rely on this.
+os.environ["NPDEV_TRACKER_BYPASS"] = "1"
+
 
 def run_under_cp1252(child_code: str, exit_code: int) -> subprocess.CompletedProcess:
     script = f"import sys; sys.stdout.buffer.write({child_code!r}.encode('utf-8')); sys.exit({exit_code})"
@@ -195,6 +200,62 @@ class SilentCommandIsNeverABlackBox(unittest.TestCase):
         self.assertTrue(beats, spinner.stdout)
         self.assertNotIn("STALLED?", spinner.stdout, "a command burning CPU is slow, not stuck")
         self.assertIn("QUIET", spinner.stdout)
+
+
+class TrackerGuard(unittest.TestCase):
+    """enforcement.tracker (2026-11-24): inside an agent session a long run that is not a ptrack job is REFUSED
+    (exit 3, nothing started), whichever tool launched it. The decision is pure, so it needs no ptrack."""
+
+    POLICY = json.loads((RUNNER.parents[1] / "policy" / "output-digest-policy.json").read_text(encoding="utf-8"))
+    GATE = "pwsh -NoProfile -File scripts/quality/run-beta-release-gate.ps1 -GenerateReports"
+
+    def module(self):
+        spec = importlib.util.spec_from_file_location("run_digest_under_test", RUNNER)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def refusal(self, env, installed=True, command=None):
+        return self.module().tracker_refusal(self.POLICY, command or self.GATE, env, installed)
+
+    def test_an_untracked_run_in_an_agent_session_is_refused_with_the_policy_message(self):
+        said = self.refusal({"CLAUDECODE": "1"})
+        self.assertIsNotNone(said)
+        self.assertEqual(said, self.POLICY["enforcement"]["tracker"]["runnerMessage"])
+        self.assertIn("Bash tool", said)
+
+    def test_a_tracked_job_a_human_a_bypass_or_no_ptrack_all_pass(self):
+        self.assertIsNone(self.refusal({"CLAUDECODE": "1", "PTRACK_JOB_ID": "abc123"}), "already a ptrack job")
+        self.assertIsNone(self.refusal({}), "a human at a terminal / CI")
+        self.assertIsNone(self.refusal({"CLAUDECODE": "1", "NPDEV_TRACKER_BYPASS": "1"}), "the owner's bypass")
+        self.assertIsNone(self.refusal({"CLAUDECODE": "1"}, installed=False), "no ptrack on the machine")
+
+    def test_quick_forms_are_not_long_runs(self):
+        for command in [self.GATE + " -DryRun", "pwsh -File scripts/quality/run-all-gates.ps1 -ListOnly", "python x.py --help"]:
+            with self.subTest(command=command):
+                self.assertIsNone(self.refusal({"CLAUDECODE": "1"}, command=command))
+
+    def test_end_to_end_exit_3_and_nothing_started_without_a_job_then_runs_with_one(self):
+        with __import__("tempfile").TemporaryDirectory() as td:
+            for fake in ("ptrack", "ptrack.exe"):
+                path = Path(td) / fake
+                path.write_text("", encoding="utf-8")
+                path.chmod(0o755)
+            base = {k: v for k, v in os.environ.items() if k not in ("NPDEV_TRACKER_BYPASS", "PTRACK_JOB_ID")}
+            env = dict(base, CLAUDECODE="1", PATH=td + os.pathsep + base.get("PATH", ""), NPDEV_BUILD_ROOT=td,
+                       PYTHONIOENCODING="utf-8")
+            marker = Path(td) / "started.txt"
+            code = f"import pathlib; pathlib.Path({str(marker)!r}).write_text('x')"
+            refused = subprocess.run([sys.executable, str(RUNNER), "--label", "guard-test", "--", sys.executable, "-c", code],
+                                     capture_output=True, text=True, env=env, timeout=60, encoding="utf-8")
+            self.assertEqual(refused.returncode, 3, refused.stdout + refused.stderr)
+            self.assertIn("REFUSED", refused.stderr)
+            self.assertFalse(marker.exists(), "a refused run must not start the command")
+            tracked = subprocess.run([sys.executable, str(RUNNER), "--label", "guard-test", "--", sys.executable, "-c", code],
+                                     capture_output=True, text=True, env=dict(env, PTRACK_JOB_ID="abc123"), timeout=60,
+                                     encoding="utf-8")
+            self.assertEqual(tracked.returncode, 0, tracked.stdout + tracked.stderr)
+            self.assertTrue(marker.exists())
 
 
 if __name__ == "__main__":

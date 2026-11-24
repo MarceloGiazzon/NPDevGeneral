@@ -132,8 +132,7 @@
       "documentedIn": "CLAUDE.md"
     },
     "scripts/ai/test_run_digest.py": {
-      "invocation": "manual-runbook",
-      "documentedIn": "CLAUDE.md"
+      "invocation": "ci-gate"
     },
     "scripts/ai/session_meter.py": {
       "invocation": "manual-runbook",
@@ -237,8 +236,7 @@
       "documentedIn": "CLAUDE.md"
     },
     "scripts/hooks/test_require_digest.py": {
-      "invocation": "manual-runbook",
-      "documentedIn": "CLAUDE.md"
+      "invocation": "ci-gate"
     },
     "scripts/hooks/session-start-handoff.py": {
       "invocation": "manual-runbook",
