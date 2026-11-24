@@ -1,19 +1,20 @@
 {
-  "closedAt": "2026-11-24T03:35:41.2776587Z",
+  "closedAt": "2026-11-24T05:44:50.6783718Z",
   "branch": "main",
-  "head": "61a0e3fa",
-  "headSubject": "fix(pack-signing): the signing digest is line-ending-insensitive for every JSON file of the pack, so a Windows checkout cannot invalidate a signature; conformance pack re-signed",
-  "summary": "Owner answered the 6 open items. (1) pack:signature: PackSigningDigest (canonical JSON of every pack *.json, signature removed), PackAddMain verifies LOCAL packs too (they were skipped), packSign Gradle task, conformance pack really signed (key outside repo). (2) pack:propertyScopes: pack scope with from goes in front of the root scope. (3,4) autoPanel.name/concept/aggregate and transactionHooks.onCommit/onValidate DELETED (budget 718->713). (5) capability.specializes: kernel StaticCapabilityBindingResolver + runtimehost RuntimePluginAdapterRegistry fall back to the built-in of the same type. (6) samples for allowSideBySide (conformance v2), renamedFrom, panelLayout.children, guidePage, customWidgetRef. Catalogue 740/740 complete; generate_dsl_capabilities.py --check now fails on any incomplete keyword. Verified: DSL, generator, runtimehost-core, kernel tests; validateModel 0 errors; 163/163 probes; 12/12 browser routines in ONE run; T1 fast gate. REG-357 and REG-359 closed DONE with guards. NOT run: run-all-gates, the beta release gate, CI on these commits.",
-  "nextStep": "Watch CI on main for commits 7222529e and 61a0e3fa (the conformance lock digests and the pack signature are checked on a Linux checkout; the signing digest is line-ending-insensitive but pack.json raw bytes feed the lock, pinned LF by .gitattributes). Then decide whether to run the full local beta release gate (over 1 h; keep scripts/reports/out/docker-linux-parity-report.json from the CI run, valid until 2026-11-24T21:47Z, from being overwritten).",
+  "head": "89c108d6",
+  "headSubject": "fix(beta-gate): docker proof test no longer skips under the local profile; the scripts size limit stops counting generated reports (REG-358)",
+  "summary": "REG-358 item 4 done: re-ran the four red beta-gate checks one at a time and all pass (doc-entrypoint-validation, trusted-source-beta0-proof, final-regression-coverage-audit 18/18, expanded-schema-validation on a fresh run-ai-beta-gate.ps1: 31 scenarios passed). Fixes landed in 89c108d6: run-docker-linux-proof-tests.ps1 passes -Force (it skipped under the local profile; requiresDocker dropped from the orchestration entry), and Test-WorkspaceSlimness.ps1 no longer counts scripts/reports/out in the 10 MB scripts size limit (docs/WORKSPACE_CLEANUP_POLICY.md updated). Found that the Docker parity report on disk is the CI report copied in by hand. REG-358 items 4c/4d record it; the item stays PARTIAL.",
+  "nextStep": "REG-358 now needs only owner decisions, so do not start it blind: (a) how the local beta gate accepts the CI-produced Docker/Linux parity report (item 2); the copy at D:\\WorkSpace\\NPDev\\NPDev_General\\scripts\\reports\\out\\docker-linux-parity-report.json ages out under maxReportAgeHours 24 at 2026-11-24T21:47Z, and (b) whether one full run-beta-release-gate.ps1 -GenerateReports (over 1 h, owner limit is 15 min per gate) is accepted, since only it can settle the item done_when. Meanwhile from 2026-11-25 the owner pause on the kernel coverage floor (73.4185 -> 73.4139, REG-356) ends: read D:\\WorkSpace\\NPDev\\NPDev_General\\ledger\\items\\REG-356.yml first. Ask the owner which of these to take; REG-353/354/355 are the other open items (D:\\WorkSpace\\NPDev\\NPDev_General\\ledger\\session-state\\open-state.md).",
   "plan": "",
-  "blocked": "",
-  "verified": "none",
-  "dirtyCount": 0,
-  "dirtyFiles": [],
-  "unpushed": 2,
+  "blocked": "REG-358 item 2 (how the local gate accepts a CI-produced Docker parity report) and the full release gate run both wait on owner choices.",
+  "verified": "CI on main for HEAD 89c108d6: Security scan, F6 showcase (browser), Identity journeys, AI Knowledge Gate, Engine support (application level) and NPDev CI Validation all completed with success (6 of 6; Kernel quality gate did not trigger for this commit). Locally: run-ai-beta-gate.ps1 31/31 scenarios, run-expanded-beta0-evidence.ps1 passed, final-regression-coverage-audit 18/18, Test-WorkspaceSlimness passes and still fires at a 1 MB limit. The full beta release gate was NOT run.",
+  "dirtyCount": 2,
+  "dirtyFiles": [
+    " M ledger/session-state/current.json",
+    " M ledger/session-state/history.jsonl"
+  ],
+  "unpushed": 0,
   "landedCommits": [
-    "61a0e3fa fix(pack-signing): the signing digest is line-ending-insensitive for every JSON file of the pack, so a Windows checkout cannot invalidate a signature; conformance pack re-signed",
-    "7222529e fix+feat: every keyword is now complete (740/740) -- pack signature verifies, scopes order, 5 dead keywords deleted, built-in types under other names (REG-357, REG-359)",
-    "974ad438 docs(ledger): session handoff after browser gates, conformance pack and PanelRuntime params fix"
+    "89c108d6 fix(beta-gate): docker proof test no longer skips under the local profile; the scripts size limit stops counting generated reports (REG-358)"
   ]
 }
