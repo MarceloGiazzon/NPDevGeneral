@@ -223,6 +223,9 @@ try {
         Remove-Item Env:\NPDEV_PROBE_PASSWORD -ErrorAction SilentlyContinue
         $report.stages.exposure = if ($exposureExit -eq 0) { "passed" } else { "failed (see $exposureOut)" }
         if ($exposureExit -ne 0) { $driveExit = $exposureExit; $report.status = "failed" }
+        # verification-cadence.json declares this script as the runner of `exposure-matrix` too, but only
+        # ride-hailing-s2 was ever recorded, so the matrix read as permanently overdue although it ran every time.
+        & $py (Join-Path $repoRoot "scripts\quality\cadence_state.py") record --id "exposure-matrix" --tier T1 --result $(if ($exposureExit -eq 0) { "passed" } else { "failed" }) 2>&1 | Out-Null
         Write-JsonReport
     }
     if ($Stages -eq "all") {

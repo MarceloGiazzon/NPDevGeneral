@@ -3,8 +3,9 @@ title: >-
   A generated app is now translatable end to end, but five edges still show English in a Portuguese session: the language switch, model and pack labels, server text, the developer pages and the picker label
 type: GAP
 severity: LOW
-status: PARTIAL
+status: DONE
 opened: 2026-11-20
+closed: 2026-11-24
 source: >-
   REG-349 closing notes (owner decision 2026-11-20: a supported language is supported integrally, except field names, commands and docs).
 surface: generator/business-ui, contract/dsl, runtimehost
@@ -59,6 +60,12 @@ detail: |
   flow/kernel messages) stay English by the 2026-11-21 decision. ATTEMPT 2026-11-24: `run-shell-scenarios.ps1 -Only i18n-pt` did NOT reach a verdict -- its generator step failed with "the file is being used
   by another process: D:\WorkSpace\NPDev\Build\samples\dsl-conformance-max\App\shell-scenarios-boot.stdout.log", held by ANOTHER session's run-shell-scenarios.ps1 (pwsh pid 21640, started 00:21, still alive
   and writing 3 h later, its app on the same sample). Not a product failure. Re-run once that process is gone; then close this item.
+  CLOSED 2026-11-24: that run was hung (13 h, vs ~9 min normally) and the owner told me to stop it; stopped (python digest pid 7016 + pwsh 21640 + the app below it, no survivors). Then
+  `run-shell-scenarios.ps1 -Only i18n-pt` PASSED (231 s): i18n-pt-verify-routine green, 26 steps, 0 page/console/external errors; accessibility baseline unchanged
+  (critical 0, serious 0, moderate 1, minor 0); "All five golden browser scenarios green against dsl-conformance-max". NOTE the harness lists 173 non-strict network failures, all same-origin
+  (0 external): 102 are 401s (44 on /api/v1/runtime/metadata/ui/bundle, 8 on /api/queries/ShippedUnitsByWarehouseMonth, ...), 59 aborted, 10 are 404s (4 the documented-benign /theme.css, plus
+  /api/admin/seeds, /api/workspace_menus, /api/queries/ShellCompanyName), 2 are 503 on /api/admin/promotion. NOT compared with an earlier run -- if a future reader wants to know whether the bundle
+  401s are new, diff the evidence JSON at Build\samples\dsl-conformance-max\RunOutput\browser\i18n-pt-verify-routine.json against an older one. The remaining server texts stay English (decision above).
 done_when: >-
   The owner decides each of the five (translate, or declare English-only); the translated ones are covered by check-ui-i18n.py or the
   i18n-pt-verify-routine browser routine.

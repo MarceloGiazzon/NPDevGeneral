@@ -52,12 +52,36 @@ detail: |
      5. B3 DONE: a field that names a domainType and no type takes the type from the domain type's baseType (FieldConventionExpansion.expand; an explicit type is never touched; an unknown domain type is
         the error "domain type not found: X"; the info note FIELD_CONVENTION_APPLIED says where the type came from). FieldConventionsTest 14/14, two of them new. NOT added to the AI briefing: the B4
         measurement (tokens per app) is still owed before teaching it.
+        B4 MEASURED 2026-11-24 (build_core_context.build_bundle(detail="standard") = 21,431 bytes; bench-023 on nvidia: 10,780 prompt tokens, so ~2 bytes/token for this JSON-heavy text). (a) "omit id" is ALREADY
+        taught, at 0 extra cost: Non-negotiable 2 says "Every concept has exactly one id field, and you do NOT write it". But the three golden examples still WRITE 6 explicit `{"name":"id","type":"uuid",
+        "id":true,"required":true}` fields (1 in golden-contact-intake, 2 in golden-expense-approval, 3 in simple-workorder-workflow; 53 bytes each, ~318 B, ~160 tokens, 1.4% of a bench-023 run) -- the examples
+        contradict the rule and cost bytes; removing them saves tokens and teaches by demonstration. (b) "a field naming a domainType needs no type" would be NEW: the bundle mentions domainType 0 times, so the
+        144-byte sentence (~72 tokens, 0.6% of 11,247) is meaningless without a definition (>= ~300 B, ~150 tokens, 1.3%), and the saving only exists for models that use domain types; bench-023 produced just
+        467 completion tokens, so there is little to save. RECOMMENDATION: do NOT add (b); do (a) as a separate small change (it touches the golden example models the bundle is built from -- check what else reads them first). Nothing changed in the bundle.
      6. B2 DONE: validator output stays English only; recorded as englishOnlyDiagnostics in scripts/policy/ui-i18n-policy.json (check-ui-i18n OK).
-     7. ride-hailing gallery (C): capture the en/pt screenshots LOCALLY only and publish nothing. NOT done.
+     7. ride-hailing gallery (C): capture the en/pt screenshots LOCALLY only and publish nothing. DONE 2026-11-24, nothing published: 16 PNGs in NPDev_General__OutsideRepo\ride-hailing-gallery\artifacts
+        (en + pt x admin: Driver/Zone/Rider list, Ride list, Rider create form; x disp1 (Dispatcher): Driver/Ride/Payment lists) from a live app (run-ride-hailing.ps1 -ReuseBuild -Stages setup,offer,pay
+        -KeepRunning; setup 20/20, drive passed), driven by make_routines.py + capture.ps1 in that folder; artifacts-setup-only-run1 holds the earlier empty-state set. The C re-checks: the Zone list shows no
+        `none`; the Rider form has no lat/lng boxes; the Driver label renders ("Driver 1 / driver1 / ABC-1001b6", status "Offline"/"Completed"); the English left in a pt session is model field and concept names
+        ("Payment Token", "Riders") = the English-labels policy. TRAPS: (1) admin sees EMPTY Driver and Ride lists ("seu perfil so ve os registros que pertencem a ele"), so a gallery needs the disp1 login;
+        (2) the locale picker offers the SHIPPED tags en / pt-BR -- a bare localStorage "pt" renders Portuguese but the picker shows "Automatico" (the repo's i18n-pt routine does that too, harmlessly).
+        OBSERVED IN THE SCREENSHOTS, NOT INVESTIGATED: (a) the Ride list's Rider column and the Payment "Source" show the payment token ("Rider1 / rider1 / tok_ok") -- a credential-shaped value in a label;
+        (b) Payment "Amount Cents" = 1039.2474, a fractional cent amount; (c) the Payment's Ride label id (be72085e-...) is not one of the two Ride ids listed; (d) the top-bar title still says "Drivers" on the
+        Rides and Payments pages in the disp1 captures (correct in the admin captures); (e) "Created At" mixes "...Z" and "...-03:00" formats; (f) the Rider create form offers the system-kept stats
+        (Rating Avg, Rides Requested, Cancels By Rider, Cancel Rate) as editable inputs. NOT exercised: the flaky "driver2 stayed OFFLINE" check (stage experience, drive_s2.py ~559 -- stages run were setup,offer,pay).
      8. wave-2 delivery request (D): payments -> reuse pix-charge, the kitchen requirement is dropped; applied to wave2-delivery-request.json and roadmap.json in
         NPDev_General__OutsideRepo/PACK_AUTHORING_BROWSER_AI_2026-11-12 (delivery requires shipping, person, pix-charge; food-delivery requires delivery). Sending the request to a chat AI stays the owner's step.
-     9. bench-023 (blocked on the Gemini quota): run it on another free provider, as the T12 bench did with nemotron. NOT done.
-     10. overdue freshness checks (E): small batches of 15 min or less across sessions. NOT done.
+     9. bench-023 (blocked on the Gemini quota): run it on another free provider, as the T12 bench did with nemotron. DONE 2026-11-24 on nvidia (run_bench.py run --prompt bench-023 --provider nvidia, run id
+        20261124T045844 under Build\ai-bench): PASSED on the FIRST attempt, no repair loop, 204 s wall; author 6 s, validate 0 errors (6 warnings), generate 41 s, build 98 s, boot 53 s, acceptance probes 6 of 6 and
+        rules 4 of 4. Tokens: 10,780 prompt + 467 completion = 11,247, i.e. about twice the 5k-per-app target (the prompt, i.e. the AI bundle, is 96% of it); the target was met only on Gemini (about 5.0k).
+        So bench-023 no longer waits on the Gemini quota, but it does not show the 5k target met on nvidia.
+     10. overdue freshness checks (E): small batches of 15 min or less across sessions. DONE 2026-11-24 for everything that can be recorded on its own: run-fast-gate.ps1 -Tier T1 PASSED (406 s);
+        run-weekly-paperwork-checks.ps1 PASSED (177 s; records check-adr-decision-implementation + check-doc-references); check-twin-pair-consistency 60/60 (a --changed-from run checks 0 rules when no
+        rule is touched, so the full run was recorded); run-journeys.ps1 PASSED (471 s); run-f6-showcase.ps1 PASSED (244 s). T1 blocking-overdue went 13 -> 8. The 8 left are all T0 `every-run`
+        checks (concept-map, keyword-budget, keyword-reference, manager-version-bump, ui-i18n, schema-mirror, dsl-test-touched-area, model-validate-touched): their window is 5 min, so they count only
+        when run by their invoker (run-ai-knowledge-gate.ps1) right before the report -- recording them alone proves nothing. FOUND: check-schema-mirror-consistency passes at the START of a T1
+        gate and shows overdue at its END, because cadence_state.py STALENESS_TO_TIMEDELTA["every-run"] = 5 min while a T1 run takes ~6.8 min (the code comment says no T0 pass spans 5 min).
+        OWNER CALL, not changed: widen that window to ~15 min, or have the gate record its T0 checks last.
 done_when: >-
   The four schema copies are one source and check-schema-mirror-consistency.py is gone or trivial; each of B-E is either done and verified or recorded in its own item with a reason; the paused kernel
   item is picked up on or after 2026-11-25.
