@@ -66,6 +66,13 @@ detail: |
   (0 external): 102 are 401s (44 on /api/v1/runtime/metadata/ui/bundle, 8 on /api/queries/ShippedUnitsByWarehouseMonth, ...), 59 aborted, 10 are 404s (4 the documented-benign /theme.css, plus
   /api/admin/seeds, /api/workspace_menus, /api/queries/ShellCompanyName), 2 are 503 on /api/admin/promotion. NOT compared with an earlier run -- if a future reader wants to know whether the bundle
   401s are new, diff the evidence JSON at Build\samples\dsl-conformance-max\RunOutput\browser\i18n-pt-verify-routine.json against an older one. The remaining server texts stay English (decision above).
+guard:
+  kind: script
+  ref: scripts/quality/check-ui-i18n.py
+  asserts: >-
+    every platform text a generated app shows is a catalogue id with English AND Portuguese (accented) and the English in the call equals the catalogue entry (aiKnowledge gate step 57); the
+    i18n-pt-verify-routine browser routine (run-shell-scenarios.ps1 -Only i18n-pt) shows no English platform text in a Portuguese session -- it passed 2026-11-24, 26 steps, 0 errors.
+  provenRed: false
 done_when: >-
   The owner decides each of the five (translate, or declare English-only); the translated ones are covered by check-ui-i18n.py or the
   i18n-pt-verify-routine browser routine.
