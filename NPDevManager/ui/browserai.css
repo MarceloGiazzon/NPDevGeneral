@@ -88,3 +88,10 @@
 .ba-offer input { flex: none; margin-top: 0.25em; }
 .ba-offers-note { margin: 0.6em 0 0.2em; }
 .ba-progress { margin: 0.4em 0; font-weight: 600; }
+
+/* Code a browser AI added to the picked app (REG-354): one Remove button per file. */
+.ba-code { margin: 0.75rem 0; }
+.ba-code h2 { font-size: 1rem; margin: 0 0 0.25rem; }
+.ba-code-list { list-style: none; padding: 0; margin: 0.25rem 0; }
+.ba-code-list li { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; flex-wrap: wrap; }
+.ba-code-name { font-family: var(--mono, ui-monospace, Consolas, monospace); overflow-wrap: anywhere; }

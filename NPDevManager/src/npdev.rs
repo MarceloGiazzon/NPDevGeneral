@@ -1235,6 +1235,39 @@ pub async fn run_relay_undo(
     run_relay_json(python_exe, npdev_cli, java_home, &args, "undo").await
 }
 
+/// The shape of one file name taken from an app's `browser-ai-code.json` (`web/hello.js`, `extensions/Greeter.java`):
+/// relative, no empty / `.` / `..` part, only letters, digits and `_ - . /`, and never a flag. The Tauri command also
+/// requires the name to be IN the record; this keeps the argument harmless on its own.
+pub(crate) fn check_relay_code_path(path: &str) -> Result<(), String> {
+    let shape_ok = !path.is_empty()
+        && path.len() <= 200
+        && !path.starts_with('/')
+        && !path.starts_with('-')
+        && !path.split('/').any(|part| part.is_empty() || part == "." || part == "..")
+        && path.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '_' | '-' | '.'));
+    if shape_ok { Ok(()) } else { Err("that file name is not valid".to_string()) }
+}
+
+/// `npdev ai relay remove-code --app <model folder> --path <file>` -- take ONE file a browser AI added (with its
+/// record and, for a Java class, its manifest entry) out of an app (REG-354 / REG-355).
+pub async fn run_relay_remove_code(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    model_dir: &str,
+    path: &str,
+) -> Result<Value, String> {
+    check_relay_code_path(path)?;
+    if model_dir.is_empty() || model_dir.contains('\0') || model_dir.starts_with('-') {
+        return Err("the app's folder is not valid".to_string());
+    }
+    if fake_mode() {
+        return Ok(serde_json::json!({ "ok": true, "removed": [path], "missing": [], "kept": [] }));
+    }
+    let args: Vec<&str> = vec!["ai", "relay", "remove-code", "--app", model_dir, "--path", path, "--json"];
+    run_relay_json(python_exe, npdev_cli, java_home, &args, "remove-code").await
+}
+
 /// REG-321: the removals the owner ticked, as the `--ack-items` list the upgrade itemizes its acknowledgment by.
 /// A preview warning's code is `REMOVAL:concept:Customer` or `REMOVAL:field:Customer.lastName`; any other code
 /// (a rename, a settings change) is not a removal and is left out. The names are the CLI's own, copied, never made up.
@@ -3335,6 +3368,13 @@ mod relay_pipe_tests {
         assert_eq!(undo, ["ai", "relay", "undo", "--code", "K7Q2", "--json"]);
         let forced = argv_of(&run_relay_undo(&python, &script, None, "K7Q2", true).await.unwrap());
         assert_eq!(forced, ["ai", "relay", "undo", "--code", "K7Q2", "--force", "--json"]);
+
+        let removed = argv_of(&run_relay_remove_code(&python, &script, None, "C:/apps/Shop", "web/hello.js").await.unwrap());
+        assert_eq!(removed, ["ai", "relay", "remove-code", "--app", "C:/apps/Shop", "--path", "web/hello.js", "--json"]);
+        for bad in ["", "../x", "/etc/passwd", "a//b", "-rf", "web/hello js", "web\\hello.js", "web/./x.js", "x;y"] {
+            assert!(run_relay_remove_code(&python, &script, None, "C:/apps/Shop", bad).await.is_err(), "remove-code accepted {bad:?}");
+        }
+        assert!(run_relay_remove_code(&python, &script, None, "-app", "web/hello.js").await.is_err());
 
         let confirmed = vec!["REMOVAL:field:Customer.lastName".to_string(), "RENAME:field:Order.situação".to_string()];
         let apply = argv_of(&run_relay_apply(&python, &script, None, "K7Q2", Some(2), &confirmed, Some("apps")).await.unwrap());

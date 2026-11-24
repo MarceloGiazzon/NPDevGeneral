@@ -231,6 +231,12 @@ window.__TAURI__ = {
           return window.__removalAnswer || { ok: true, code: args.code, round: 1, intent: "change", created: false, appDir: args.appDir, backupPath: "/x/model.before.json",
             upgrade: { ok: true, outcome: "UPGRADED", phase: "READY", baseUrl: "http://127.0.0.1:8299", openUrl: "http://127.0.0.1:8299/", backupDir: "/x/data/backups/pre-upgrade-1" } };
         case "relay_undo": window.__relayUndos = (window.__relayUndos || []).concat([args]); return window.__undoAnswer || F.relay.undo;
+        // REG-354: the code a browser AI added to the picked app (the Rust side reads browser-ai-code.json) and its Remove button.
+        case "relay_code_list": return { files: window.__codeFiles || [] };
+        case "relay_remove_code":
+          window.__codeRemovals = (window.__codeRemovals || []).concat([args]);
+          window.__codeFiles = (window.__codeFiles || []).filter((f) => f.path !== args.path);
+          return window.__removeCodeAnswer || { ok: true, removed: [args.path], missing: [], kept: [] };
         case "relay_abort": window.__relayAborts = (window.__relayAborts || []).concat([args]); return F.relay.abort;
         // The watchers (F3 T3.1 clipboard, T3.2 Downloads): there is no clipboard or Downloads folder here, so a check
         // plays the Rust side by firing the "relay-watch-state" and "relay-answer" listeners itself; these only record
@@ -1008,6 +1014,57 @@ await page.screenshot({ path: path.join(OUT, "workspace.png"), fullPage: false }
   check("browser AI: opens on step 1 only, as 'create a new app'",
     (await shown("#browserai-step-1")) && !(await shown("#browserai-step-2")) && !(await shown("#browserai-step-4")) &&
     (await page.$eval("#browserai-intent-create", (e) => e.checked)) && (await shown("#browserai-newname")), "");
+
+  // REG-354 (owner, 2026-11-24): the code a browser AI added to the picked app is listed under the picker, one Remove
+  // button per file; Remove asks first, names exactly that file to the Rust side and lists what is left.
+  check("browser AI: no list of added code before an app is picked", !(await shown("#browserai-code")), "");
+  const codeApp = await page.$eval("#browserai-app", (e) => [...e.options].map((o) => o.value).find((v) => v) || "");
+  check("browser AI: the check has an app to pick", codeApp !== "", codeApp);
+  await page.evaluate((app) => {
+    window.__codeFiles = [
+      { path: "web/hello.js", kind: "js-page", acceptedAt: "2026-11-24T10:00:00Z" },
+      { path: "extensions/Greeter.java", kind: "java-extension", acceptedAt: "2026-11-24T10:05:00Z" } ];
+    window.__codeRemovals = []; window.__removeCodeAnswer = null;
+    window.__confirmAsked = []; window.__confirmAnswer = true; window.__realConfirm = window.confirm;
+    window.confirm = (m) => { window.__confirmAsked.push(m); return window.__confirmAnswer; };
+    const picker = document.getElementById("browserai-app");
+    picker.value = app;
+    picker.dispatchEvent(new Event("change", { bubbles: true }));
+  }, codeApp);
+  await page.waitForTimeout(300);
+  check("browser AI: the added code is listed, one Remove button per file, each with its kind",
+    (await shown("#browserai-code")) &&
+    (await page.$$eval("#browserai-code-list li .ba-code-name", (n) => n.map((x) => x.textContent).join())) === "web/hello.js,extensions/Greeter.java" &&
+    (await page.$$eval("#browserai-code-list li button", (b) => b.length)) === 2 &&
+    /JavaScript page/.test(await text("#browserai-code-list li:nth-child(1)")) && /Java class/.test(await text("#browserai-code-list li:nth-child(2)")),
+    String(await text("#browserai-code-list")));
+  await page.evaluate(() => { window.__confirmAnswer = false; });
+  await page.click("#browserai-code-list li:nth-child(1) button");
+  await page.waitForTimeout(150);
+  check("browser AI: Remove asks first, and 'no' removes nothing",
+    (await page.evaluate(() => window.__confirmAsked.length)) === 1 && /web\/hello\.js/.test(await page.evaluate(() => window.__confirmAsked[0])) &&
+    (await page.evaluate(() => window.__codeRemovals.length)) === 0 && (await page.$$eval("#browserai-code-list li", (l) => l.length)) === 2, "");
+  await page.evaluate(() => { window.__confirmAnswer = true; });
+  await page.click("#browserai-code-list li:nth-child(1) button");
+  await page.waitForTimeout(300);
+  const codeRemovals = await page.evaluate(() => window.__codeRemovals);
+  check("browser AI: Remove names exactly that one file to the Rust side, says so, and lists what is left",
+    codeRemovals.length === 1 && codeRemovals[0].path === "web/hello.js" && codeRemovals[0].appDir === codeApp &&
+    /^Removed web\/hello\.js\./.test(await text("#browserai-code-status")) &&
+    (await page.$$eval("#browserai-code-list li .ba-code-name", (n) => n.map((x) => x.textContent).join())) === "extensions/Greeter.java", String(await text("#browserai-code-status")));
+  await page.evaluate(() => { window.__removeCodeAnswer = { ok: true, removed: ["extensions/Greeter.java"], missing: [], kept: [], javaExtensions: { "extensions/Greeter.java": { manifest: "removed", stillNamedBy: ["model.json"] } } }; });
+  await page.click("#browserai-code-list li:nth-child(1) button");
+  await page.waitForTimeout(300);
+  check("browser AI: removing a Java class a flow still names says where, and the list empties and hides",
+    /still names this class in model\.json/.test(await text("#browserai-code-status")) && !(await shown("#browserai-code")), String(await text("#browserai-code-status")));
+  await page.evaluate(() => {
+    window.confirm = window.__realConfirm; window.__codeFiles = [];
+    const picker = document.getElementById("browserai-app");
+    picker.value = "";
+    picker.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await page.waitForTimeout(150);
+  check("browser AI: back on 'a new app' the list of added code is gone", !(await shown("#browserai-code")), "");
   await page.click("#browserai-continue");
   check("browser AI: Continue with nothing typed says what is missing, in a sentence",
     (await text("#browserai-step1-note")) === "Describe what you want first." && (await page.evaluate(() => window.__relayStarts.length)) === 0, String(await text("#browserai-step1-note")));

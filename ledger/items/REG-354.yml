@@ -43,7 +43,13 @@ detail: |
   and browser-ai-code.json recorded its sha256, Undo restored model.json byte for byte and removed the page and the record (tour: NPDev_General__OutsideRepo/reg354-355-tour/tour.mjs, 28 of 29 checks; the 29th
   is the generation check described in REG-355). NOT done: a real chat AI asked for a page.
   OWNER DECISIONS 2026-11-24 ("all recommended"): (12) the Manager gets a remove-code button ONLY; the relay.codeFromBrowserAi setting stays CLI/file, so opening code acceptance remains deliberate in a Manager
-  made for non-experts. NOT built yet. (13) the real chat-AI round for a JS page is one pilot sitting with the owner (prepared prompt and steps, the owner pastes the answer back); it does not block anything.
+  made for non-experts. BUILT AND VERIFIED 2026-11-24 (Manager 0.13.46): under the app picker of "Use a browser AI" a list "Code a browser AI added to this app" (from browser-ai-code.json, read by the new Tauri command
+  relay_code_list, which lists only well-formed relative names) with one Remove button per file; Remove asks first, then relay_remove_code runs the CLI's own `remove-code --app <model folder> --path <file>` (only a path the record
+  names is accepted, and its shape is checked again in npdev.rs check_relay_code_path); a Java class says which files still name it. pt-BR entries added (check-manager-i18n 421 strings OK). Checks: check-manager-ui-render
+  411/411 (7 new), cargo test the_session_verbs_reach_the_cli_with_their_own_flags (argv and refused names), and the REAL window (the release exe built to Build\manager-target, NOT the installed one; throw-away profile,
+  scratch app, real CLI; NPDev_General__OutsideRepo/reg354-remove-button-tour/tour.mjs 10/10: list of two, Remove asks and 'no' keeps the file, the real CLI deletes one file and its record entry, the last removal deletes
+  browser-ai-code.json and hides the list, a path the record does not list and a path leaving the folder are refused, model.json byte for byte). The INSTALLED Manager is still the older build until the owner installs one
+  (New-ManagerInstaller.ps1 -Install). Not exercised: removing a Java class on the real window (the render check covers its sentence; the CLI's forget() is covered by test_relay_extensions). (13) the real chat-AI round for a JS page is one pilot sitting with the owner (prepared prompt and steps, the owner pastes the answer back); it does not block anything.
 guard:
   kind: test
   ref: NPDevCli/tests/test_relay_codepolicy.py

@@ -123,6 +123,7 @@
     S.expanded = {};
     render();
     syncWatch();
+    refreshCodeList(); // an Apply or an Undo adds or takes out accepted code
   }
 
   function render() {
@@ -268,12 +269,79 @@
     }
   };
 
+  // ------------------------------------------------------------------ code a browser AI added (REG-354)
+  // The list under the app picker: what `browser-ai-code.json` beside the model records (the Rust side reads it and
+  // lists only well-formed names), one Remove button per file. This file decides nothing: `npdev ai relay remove-code`
+  // deletes the file and its record (a Java class also leaves with its manifest entry) and says what it left behind.
+
+  const CODE_KINDS = { "js-page": "JavaScript page", "java-extension": "Java class" };
+
+  async function refreshCodeList() {
+    const appDir = $("browserai-app").value;
+    if (!appDir) {
+      renderCodeList("", []);
+      return;
+    }
+    let files = [];
+    try {
+      files = ((await invoke("relay_code_list", { appDir })) || {}).files || [];
+    } catch (e) {
+      files = []; // an unreadable record is simply not listed; nothing here may block the screen
+    }
+    if ($("browserai-app").value !== appDir) return; // another app was picked while this was reading
+    renderCodeList(appDir, files);
+  }
+
+  function renderCodeList(appDir, files) {
+    const list = $("browserai-code-list");
+    list.replaceChildren();
+    $("browserai-code").hidden = files.length === 0;
+    for (const file of files) {
+      const item = document.createElement("li");
+      const name = document.createElement("span");
+      name.className = "ba-code-name";
+      name.textContent = file.path; // a file name, shown as it is on disk
+      name.setAttribute("translate", "no");
+      const kind = document.createElement("span");
+      kind.className = "ba-code-kind dim";
+      kind.textContent = " - " + (CODE_KINDS[file.kind] ? tr(CODE_KINDS[file.kind]) : file.kind || "");
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "btn ghost";
+      remove.textContent = tr("Remove");
+      remove.setAttribute("aria-label", tr("Remove {file}", { file: file.path }));
+      remove.addEventListener("click", () => removeCode(appDir, file));
+      item.append(name, kind, remove);
+      list.append(item);
+    }
+  }
+
+  async function removeCode(appDir, file) {
+    if (S.busy || S.launching) return; // a build or an apply is using the app's folder right now
+    if (!window.confirm(tr("Remove {file} from this app? It is deleted from the app's folder.", { file: file.path }))) return;
+    const status = $("browserai-code-status");
+    status.textContent = tr("Removing...");
+    try {
+      const r = (await invoke("relay_remove_code", { appDir, path: file.path })) || {};
+      const java = (r.javaExtensions || {})[file.path];
+      const still = java && Array.isArray(java.stillNamedBy) ? java.stillNamedBy : [];
+      status.textContent = still.length
+        ? tr("Removed {file}. Your model still names this class in {where}, so the next build will refuse until you take that out or ask the AI for another class.", { file: file.path, where: still.join(", ") })
+        : tr("Removed {file}. A running copy of the app keeps it until you update the app.", { file: file.path });
+    } catch (e) {
+      status.textContent = tr("Could not remove {file}: {why}", { file: file.path, why: String(e) });
+    }
+    await refreshCodeList();
+  }
+
   // Picking an app means "change this app"; picking "a new app" means create. The person can still flip
   // the choice with the two buttons above the request. `userPicked` is false for the workspace putting its app back
   // in the picker and for this window re-reading its list: neither is a decision (REG-325).
   function onAppChanged(userPicked) {
     const has = !!$("browserai-app").value;
     $("browserai-intent-change").disabled = !has;
+    $("browserai-code-status").textContent = "";
+    refreshCodeList();
     // A finished conversation (applied, nothing building any more) is over: picking an app is the person asking for something
     // new, so step 1 opens again by itself -- without this its choices stay folded away under the finished steps and the
     // person must find "Ask for something else" first. A build or an apply still running keeps its screen.
