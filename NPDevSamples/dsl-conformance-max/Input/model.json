@@ -2705,6 +2705,9 @@
         },
         {
           "name": "describe",
+          "input": {
+            "conceptRef": "WidgetOrder"
+          },
           "output": {
             "schemaRef": "#/concepts/WidgetOrder"
           }
@@ -2717,6 +2720,7 @@
       "type": "HttpConnector",
       "adapter": "http-connector",
       "http": {
+        "baseUrl": "http://127.0.0.1:8099",
         "baseUrlProperty": "selfApiBaseUrl",
         "auth": {
           "type": "apiKeyHeader",
@@ -2753,6 +2757,28 @@
             "body": {
               "note": "probe"
             }
+          }
+        }
+      ]
+    },
+    {
+      "name": "selfApiBasic",
+      "type": "HttpConnector",
+      "adapter": "http-connector",
+      "http": {
+        "baseUrl": "http://127.0.0.1:8099",
+        "auth": {
+          "type": "basic",
+          "usernameEnvVar": "NPDEV_CONNECTOR_SELFAPIBASIC_USER",
+          "secretEnvVar": "NPDEV_CONNECTOR_SELFAPIBASIC_KEY"
+        }
+      },
+      "operations": [
+        {
+          "name": "health",
+          "http": {
+            "method": "GET",
+            "path": "/actuator/health"
           }
         }
       ]
@@ -3108,7 +3134,10 @@
         {
           "name": "owner",
           "type": "string",
-          "required": true
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
         }
       ],
       "metadata": {
