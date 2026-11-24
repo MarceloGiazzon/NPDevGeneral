@@ -8,7 +8,7 @@
     },
     "conformance" : {
       "resolvedVersion" : "1.0.0",
-      "digest" : "sha256:48ea99fb797ea6b1ee9f9b3a1117df0fa8706144d997a99759fa7aab40818825",
+      "digest" : "sha256:a8bbc93d05fda906b01898b92139b588ac62194adcae7000f1089d43de355d78",
       "sourcePath" : "packs/conformance/pack.json"
     },
     "conformance-ext" : {
