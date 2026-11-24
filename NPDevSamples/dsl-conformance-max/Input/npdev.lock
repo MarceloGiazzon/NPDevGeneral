@@ -3,7 +3,7 @@
   "packs" : {
     "approvals" : {
       "resolvedVersion" : "3.0.0",
-      "digest" : "sha256:5e6ce4998b90851511d1b7f60f2cd9aaaadd1a23730687a5484f26cb13073bcc",
+      "digest" : "sha256:f67f3cf3cc700b1d5942e1aa2e0abde42c71358af96063118cdf0bda9f3ecc5f",
       "sourcePath" : "packs/approvals/pack.json"
     },
     "conformance" : {
