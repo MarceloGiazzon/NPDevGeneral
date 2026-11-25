@@ -336,6 +336,9 @@ def stage_pay(r: Run):
     s, p = r.get("payments", pid) if pid else (0, {})
     p = p.get("data", p)
     r.check("pay: tok_ok -> Payment CAPTURED, amount = fare", p.get("status") == "CAPTURED" and float(p.get("amountCents") or 0) > 0, p)
+    # REG-360 (b): a payment amount in cents is a whole number (fareFor rounds); it was once 1039.2474.
+    amt = p.get("amountCents")
+    r.check("pay: Payment.amountCents is a whole number of cents", amt is not None and float(amt) == round(float(amt)), amt)
     s, lg = r.call("GET", "/mock/log", base=r.psp)
     keys = [i.get("idempotencyKey") for i in lg.get("items", []) if i.get("path") == "/v1/charges"]
     r.check("pay: the charge carried Idempotency-Key charge-<paymentId>", keys and keys[0] == f"charge-{pid}", keys)

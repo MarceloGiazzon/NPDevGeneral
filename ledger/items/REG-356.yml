@@ -79,7 +79,7 @@ detail: |
         (b) Payment "Amount Cents" = 1039.2474, a fractional cent amount; (c) the Payment's Ride label id (be72085e-...) is not one of the two Ride ids listed; (d) the top-bar title still says "Drivers" on the
         Rides and Payments pages in the disp1 captures (correct in the admin captures); (e) "Created At" mixes "...Z" and "...-03:00" formats; (f) the Rider create form offers the system-kept stats
         (Rating Avg, Rides Requested, Cancels By Rider, Cancel Rate) as editable inputs. NOT exercised: the flaky "driver2 stayed OFFLINE" check (stage experience, drive_s2.py ~559 -- stages run were setup,offer,pay).
-        2026-11-25: the six observations (a)-(f) now have their own item, REG-360 (causes found for (a), (b), (f); (b) fixed in the model and validated at T0, not run live; (c), (d), (e) not investigated).
+        2026-11-25: the six observations (a)-(f) now have their own item, REG-360 (causes found for (a), (b), (f); (b) fixed in the model and proven live by the pay stage, red on the old model and green on the new; (c), (d), (e) not investigated).
      8. wave-2 delivery request (D): payments -> reuse pix-charge, the kitchen requirement is dropped; applied to wave2-delivery-request.json and roadmap.json in
         NPDev_General__OutsideRepo/PACK_AUTHORING_BROWSER_AI_2026-11-12 (delivery requires shipping, person, pix-charge; food-delivery requires delivery). Sending the request to a chat AI stays the owner's step.
      9. bench-023 (blocked on the Gemini quota): run it on another free provider, as the T12 bench did with nemotron. DONE 2026-11-24 on nvidia (run_bench.py run --prompt bench-023 --provider nvidia, run id

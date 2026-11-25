@@ -1,20 +1,21 @@
 {
-  "closedAt": "2026-11-25T08:24:50.5306430Z",
+  "closedAt": "2026-11-25T09:34:52.1986929Z",
   "branch": "main",
-  "head": "22c20673",
-  "headSubject": "docs(ledger)+fix(ride-hailing): close REG-358, round the fare to whole cents, give the six gallery observations their own item (REG-360)",
-  "summary": "2026-11-25. Second full beta gate PASSED (pg42am, 1 h 29 m, three verdict fields true, blockers []) and the kernel floor raised itself to 73.45 (job 5bnmfr, root cause of the 73.6069 drop recorded as an estimate: REG-342 deleted ~363 lines at 80-85 percent coverage); both in 4d37cf1b. This session (22c20673): REG-358 closed DONE with a guard (its done_when was met by that gate); fareFor in NPDevSamples/ride-hailing/Input/model.json now rounds to a whole cent (round(...,0)) so Payment.amountCents is not 1039.2474; the six gallery oddities a-f have their own item REG-360 (causes found for a, b, f; c, d, e not investigated); REG-356 item C points to it and records why the B4(a) golden-example id cleanup was not done (under 1 percent of tokens, blast radius not measured). Open ledger items now: REG-354, REG-355, REG-356, REG-360.",
-  "nextStep": "Nothing is left that the owner has not reserved. OWNER side: (1) the pilot with a real chat AI (PILOT.md); (2) send the wave-2 pack request (D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PACK_AUTHORING_BROWSER_AI_2026-11-12\\wave2-delivery-request.json). OPTIONAL, owner's call, none started: (a) live proof of the fare rounding: run-ride-hailing.ps1 stage pay, check Payment.amountCents is an integer (the earlier full real-app run took 35 min, so start it only in the background through run_digest.py from the Bash tool); (b) REG-360 f: make the generated form render derivedExpression and rollup-target fields read-only (BusinessUiEmitter.java lines 453 and 759 use readOnly = field.isId()), with a generator test; (c) REG-356 item E: widen the T0 every-run window in cadence_state.py from 5 to about 15 min, or record T0 checks last in the gate; (d) lift the kernel floor back toward 73.6069 (about 34 covered lines; KernelRunner has 132 missed, ScheduleEventStep 30 missed). A bare 'continue' after this: say there is no reserved work left and ask which optional item to take.",
-  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General\\ledger\\items\\REG-356.yml",
+  "head": "a08ff9dc",
+  "headSubject": "docs(ledger): session handoff after closing REG-358 and opening REG-360",
+  "summary": "2026-11-25. Beta gate #2 passed and kernel floor raised to 73.45 (4d37cf1b). REG-358 closed DONE with a guard; fareFor rounds to a whole cent; the six gallery oddities a-f are REG-360 (22c20673, a08ff9dc). Then the live proof of the fare rounding, run-ride-hailing.ps1 -Stages setup,offer,pay from a fresh generate+build+boot (3-4 min each): drive_s2.py stage pay now asserts Payment.amountCents is a whole number of cents; on the fixed model 42 PASS / 0 FAIL (job 1d3qb8), on the pre-fix model passed through -ModelFile 41 PASS and exactly that check FAILS with 1039.2474 (job bvqyjv); the committed model was restored (git diff empty). REG-360 (b) is DONE; (a), (c), (d), (e), (f) stay open. Open ledger items: REG-354, REG-355, REG-356, REG-360.",
+  "nextStep": "Nothing is left that the owner has not reserved. OWNER side: (1) the pilot with a real chat AI (PILOT.md); (2) send the wave-2 pack request (D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PACK_AUTHORING_BROWSER_AI_2026-11-12\\wave2-delivery-request.json). OPTIONAL, owner's call, none started: (a) REG-360 f: make the generated form render derivedExpression and rollup-target fields read-only (BusinessUiEmitter.java lines 453 and 759 use readOnly = field.isId()), with a generator test; (b) REG-360 a: add picker.previewFields [name] to Ride.rider so the label stops carrying the payment token, then re-check in the live app (run-ride-hailing.ps1 -Stages setup,offer,pay -KeepRunning, about 4 min, from the Bash tool in the background through run_digest.py); (c) REG-360 c, d, e: reproduce on a live app first; (d) REG-356 item E: widen the T0 every-run window in cadence_state.py from 5 to about 15 min, or record T0 checks last in the gate; (e) lift the kernel floor back toward 73.6069 (about 34 covered lines; KernelRunner 132 missed, ScheduleEventStep 30 missed). TRAP: run-ride-hailing.ps1 -ModelFile OVERWRITES NPDevSamples/ride-hailing/Input/model.json; restore it with git checkout afterwards. A bare 'continue' after this: say there is no reserved work left and ask which optional item to take.",
+  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General\\ledger\\items\\REG-360.yml",
   "blocked": "Owner only: the real-chat-AI pilot and sending the wave-2 request. Not blocked on anything else.",
-  "verified": "check-done-item-guards (0 blocking, --no-baseline-ok), check-ledger-status-reverse-freshness OK, run-fast-gate T0 on the ride-hailing model (job wvx8cx, passed), run-portable-tooling-check (job etrx2h, passed 2m14s), clean-workspace-state before the commit. NOT run: a live ride-hailing app (the fare rounding is validated, not exercised), the full aiKnowledge unit-test discovery.",
-  "dirtyCount": 0,
-  "dirtyFiles": [],
-  "unpushed": 1,
+  "verified": "Live: run-ride-hailing.ps1 setup,offer,pay, fixed model 42 PASS 0 FAIL (1d3qb8), pre-fix model 41 PASS 1 FAIL on the new check (bvqyjv). Also check-done-item-guards 0 blocking, ledger reverse-freshness OK, T0 on the model (wvx8cx), portable-tooling check (etrx2h). NOT run: the other ride-hailing stages (paymore, price, rate, cancel, notify, route, experience), the full aiKnowledge unit-test discovery.",
+  "dirtyCount": 3,
+  "dirtyFiles": [
+    " M NPDevSamples/ride-hailing/drive_s2.py",
+    " M ledger/items/REG-356.yml",
+    " M ledger/items/REG-360.yml"
+  ],
+  "unpushed": 0,
   "landedCommits": [
-    "22c20673 docs(ledger)+fix(ride-hailing): close REG-358, round the fare to whole cents, give the six gallery observations their own item (REG-360)",
-    "4d37cf1b docs(ledger)+chore(coverage): second full beta gate PASSED; kernel floor root cause recorded (REG-356 items 2a and 3)",
-    "6aa8efec fix(beta-gate): the three blockers of the failed full run, each with a test (REG-356 item 2a)",
-    "c48dc727 docs(ledger): the one full beta gate ran tracked and FAILED on 3 recorded blockers; handoff"
+    "a08ff9dc docs(ledger): session handoff after closing REG-358 and opening REG-360"
   ]
 }

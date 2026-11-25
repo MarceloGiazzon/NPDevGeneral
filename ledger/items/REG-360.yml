@@ -16,11 +16,14 @@ files:
   - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java
 detail: |
   Evidence: 16 PNGs in NPDev_General__OutsideRepo/ride-hailing-gallery/artifacts (not in the repo). Each letter says what is MEASURED and what is only a HYPOTHESIS.
-  (b) FIXED IN THE MODEL 2026-11-25, NOT RUN IN A LIVE APP. Payment.amountCents showed 1039.2474. Cause (read from the model): the function fareFor returned `(300 + 120 * km + 25 * minutes) * surge` with no
+  (b) FIXED AND VERIFIED LIVE 2026-11-25. Payment.amountCents showed 1039.2474. Cause (read from the model): the function fareFor returned `(300 + 120 * km + 25 * minutes) * surge` with no
      rounding, Ride.fareCents is derived from it, and the flow copies it into Payment.amountCents, which is then sent to the payment provider as `amountCents`. Now `round((300 + 120 * km + 25 * minutes) * surge, 0)`
      (round(decimal, integer), half away from zero, is a stdlib function; surgeFactor already uses it). The model validates (run-fast-gate.ps1 -Tier T0 -ModelPath, tracked job wvx8cx, passed). The one
-     acceptance check that recomputes the fare (drive_s2.py ~389) allows a difference below 1, and rounding moves it by at most 0.5, so it should still pass. NOT done: the live check (run-ride-hailing.ps1
-     stage pay); the earlier full real-app run took 35 minutes, which is why it was not started for a one-line change.
+     acceptance check that recomputes the fare (drive_s2.py ~389) allows a difference below 1, and rounding moves it by at most 0.5, so it still passes.
+     LIVE PROOF (run-ride-hailing.ps1 -Stages setup,offer,pay, each from a fresh generate + build + boot; each run took 3 to 4 minutes, not the 35 of the earlier all-stage run): drive_s2.py stage pay now
+     asserts "pay: Payment.amountCents is a whole number of cents". With the fixed model (tracked job 1d3qb8, exit 0) 42 checks PASS, 0 FAIL. With the pre-fix model passed through -ModelFile (job bvqyjv,
+     exit 1) 41 PASS and exactly one FAIL, that check, with the value 1039.2474 -- the number seen in the screenshots; the committed model was restored afterwards (git diff empty). So the check
+     goes red on the defect and green on the fix. Only the pay-stage amount was proven; the price stage's fare formula check allows a difference below 1 and was not run.
   (f) CAUSE FOUND, PLATFORM FIX NOT MADE. The Rider create form offers Rating Avg, Rides Requested, Cancels By Rider (rollup targets) and Cancel Rate (a derivedExpression field) as editable inputs. The
      generator marks a form field read-only only for the id: BusinessUiEmitter.java lines 453 and 759 are `readOnly = field.isId()`. So a field the platform computes (derivedExpression, or the target of a
      concept `rollups[]` entry) is shown as an input a person can type into. What the server does with a value typed there was NOT checked. Proposed: read-only when the field has a derivedExpression or is a
@@ -37,5 +40,5 @@ detail: |
   (e) NOT INVESTIGATED: "Created At" mixes "...Z" and "...-03:00" in one list. createdAt has `defaultExpression: now()`; where the other form comes from (a flow write, the browser, the seed) is not known.
   Also still unexercised: the flaky acceptance check "driver2 stayed OFFLINE" (drive_s2.py ~559, stage experience), see REG-356 item C.
 done_when: >-
-  (b) is confirmed by a live run-ride-hailing.ps1 pay stage showing an integer amount; (f) either the generator renders derived and rollup fields read-only (with a test) or the owner decides it stays; (a) the
+  (b) is DONE (live proof above); (f) either the generator renders derived and rollup fields read-only (with a test) or the owner decides it stays; (a) the
   Ride list shows a name, not the payment token; (c), (d) and (e) are each reproduced and fixed, or shown not to be defects.
