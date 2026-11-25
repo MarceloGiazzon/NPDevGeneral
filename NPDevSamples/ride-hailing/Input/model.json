@@ -2745,7 +2745,7 @@
     },
     {
       "name": "fareFor",
-      "description": "Base R$3.00 + R$1.20/km + R$0.25/min, times the surge (all in cents).",
+      "description": "Base R$3.00 + R$1.20/km + R$0.25/min, times the surge (all in cents, rounded to a whole cent).",
       "params": [
         {
           "name": "km",
@@ -2761,7 +2761,7 @@
         }
       ],
       "returns": "decimal",
-      "body": "(300 + 120 * km + 25 * minutes) * surge"
+      "body": "round((300 + 120 * km + 25 * minutes) * surge, 0)"
     }
   ],
   "roles": [

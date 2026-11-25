@@ -64,6 +64,10 @@ detail: |
         contradict the rule and cost bytes; removing them saves tokens and teaches by demonstration. (b) "a field naming a domainType needs no type" would be NEW: the bundle mentions domainType 0 times, so the
         144-byte sentence (~72 tokens, 0.6% of 11,247) is meaningless without a definition (>= ~300 B, ~150 tokens, 1.3%), and the saving only exists for models that use domain types; bench-023 produced just
         467 completion tokens, so there is little to save. RECOMMENDATION: do NOT add (b); do (a) as a separate small change (it touches the golden example models the bundle is built from -- check what else reads them first). Nothing changed in the bundle.
+        (a) NOT DONE, 2026-11-25, with the reason: only the two slim twins (golden-contact-intake, golden-expense-approval) are free to change; simple-workorder-workflow is a real sample that generator and kernel tests pin,
+        so about half of the 318 bytes (about 80 tokens, under 1% of a bench-023 run) is reachable. (The Manager's NPDevManager/fixtures/relay-prompt.json is a frozen capture from 2026-11-09 served in
+        demo mode, NPDevManager/src/npdev.rs:674 and :776, so it does NOT have to follow the examples.) Not checked: what else reads the golden models (scripts/ai/bench/test_bench.py, the generated knowledge
+        artifacts, NPDevMcp tests). Under 1% for an unmeasured blast radius; left unless the owner wants it.
      6. B2 DONE: validator output stays English only; recorded as englishOnlyDiagnostics in scripts/policy/ui-i18n-policy.json (check-ui-i18n OK).
      7. ride-hailing gallery (C): capture the en/pt screenshots LOCALLY only and publish nothing. DONE 2026-11-24, nothing published: 16 PNGs in NPDev_General__OutsideRepo\ride-hailing-gallery\artifacts
         (en + pt x admin: Driver/Zone/Rider list, Ride list, Rider create form; x disp1 (Dispatcher): Driver/Ride/Payment lists) from a live app (run-ride-hailing.ps1 -ReuseBuild -Stages setup,offer,pay
@@ -75,6 +79,7 @@ detail: |
         (b) Payment "Amount Cents" = 1039.2474, a fractional cent amount; (c) the Payment's Ride label id (be72085e-...) is not one of the two Ride ids listed; (d) the top-bar title still says "Drivers" on the
         Rides and Payments pages in the disp1 captures (correct in the admin captures); (e) "Created At" mixes "...Z" and "...-03:00" formats; (f) the Rider create form offers the system-kept stats
         (Rating Avg, Rides Requested, Cancels By Rider, Cancel Rate) as editable inputs. NOT exercised: the flaky "driver2 stayed OFFLINE" check (stage experience, drive_s2.py ~559 -- stages run were setup,offer,pay).
+        2026-11-25: the six observations (a)-(f) now have their own item, REG-360 (causes found for (a), (b), (f); (b) fixed in the model and validated at T0, not run live; (c), (d), (e) not investigated).
      8. wave-2 delivery request (D): payments -> reuse pix-charge, the kitchen requirement is dropped; applied to wave2-delivery-request.json and roadmap.json in
         NPDev_General__OutsideRepo/PACK_AUTHORING_BROWSER_AI_2026-11-12 (delivery requires shipping, person, pix-charge; food-delivery requires delivery). Sending the request to a chat AI stays the owner's step.
      9. bench-023 (blocked on the Gemini quota): run it on another free provider, as the T12 bench did with nemotron. DONE 2026-11-24 on nvidia (run_bench.py run --prompt bench-023 --provider nvidia, run id

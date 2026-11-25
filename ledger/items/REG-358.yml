@@ -3,8 +3,10 @@ title: >-
   The beta release gate (run-beta-release-gate.ps1 -GenerateReports) is red: the AI beta scenario fleet predates the removal of procedures[], the Docker/Linux parity evidence is missing, and generating the evidence breaks the scripts/ file-count limit
 type: GAP
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-11-22
+closed: 2026-11-25
+verification: LOCAL_PROOF_DONE
 source: >-
   Owner, 2026-11-22: "rode os gates, incluindo os demorados. Em caso de erro, corrija". The four T2 gates, the paperwork gate and every GitHub Actions workflow were made green in that session;
   the release gate was run last with evidence generation (about 1 h) and could not be made green in the session. Findings below are measured, not guessed.
@@ -116,6 +118,19 @@ detail: |
      generates, builds and boots an app). The proof's reads of `$json.procedures` / `$json.panels` (Get-TrustedReferencesFromJson) are NOT stale: they read the AI-authoring contract
      (NPDevSamples/ai-scenarios/*/ai-model.json, schemaVersion/entities/panels/procedures), a separate format from the DSL model; only the model the proof GENERATES had used the removed keys (fixed in 8841cc37).
   Not caused by the DSL shrink: the failing surface is procedures[], removed earlier; the shrink touched none of the three scenarios.
+  CLOSED 2026-11-25: every numbered cause above (1, 1b, 2, 2b, 3, 3b, 3c, 4, 4b-4d, 5, 5b) has its fix recorded, and the done_when below was met by a real run. The second full
+     run-beta-release-gate.ps1 -GenerateReports (tracked ptrack job pg42am, 1 h 29 m, exit 0, RunId beta-release-gate-20261125-014954857) ended gateOutcome passed with candidateReady /
+     releaseReady / officialReleaseEligible all true and blockers [], read back from scripts/reports/out/beta-release-gate-report.json on 2026-11-25; Docker/Linux parity was produced
+     (the imported CI proof 45490868311) and workspace-cleanliness passed. The FIRST full run (q9dcbe, 2026-11-24) was red on three flake/order defects; they are fixed in 6aa8efec and
+     tested in NPDevCli/tests/test_beta_gate_flake_fixes.py (REG-356 item 2a has the account). NOT proven, and not needed for the close: the cause of the silent Gradle exit seen once,
+     and the Gradle retry itself, which no real run has exercised (only its unit tests). A red gate on a future run is a new item.
+guard:
+  kind: script
+  ref: scripts/quality/run-beta-release-gate.ps1 (-GenerateReports; the three fixes are tested in NPDevCli/tests/test_beta_gate_flake_fixes.py)
+  asserts: >-
+    the full beta release gate ends gateOutcome passed with candidateReady, releaseReady and officialReleaseEligible true and no blockers, with the Docker/Linux parity report imported from a
+    green CI job and the workspace-cleanliness check passing; the retry of a silent Gradle build exit, the stale-report check running last and the rebuildable-directory cleanup are pinned by 19 unit tests
+  provenRed: true
 done_when: >-
   pwsh -NoProfile -File scripts/quality/run-beta-release-gate.ps1 -GenerateReports ends with gateOutcome passed (or the owner restates which surfaces the beta covers and the policy is updated), with the
   workspace clean and Docker parity evidence either produced or explicitly waived in beta-release-gate-policy.json.
