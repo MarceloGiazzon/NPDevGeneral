@@ -168,6 +168,31 @@ class LadderTest(unittest.TestCase):
         self.assertEqual(verdict["status"], "rejected")
         self.assertIn("version conflict", verdict["feedbackForAi"][0])
 
+    def test_a_schema_refusal_reaches_the_authoring_ai_with_its_real_problems(self):
+        # REG-361: `npdev pack update` answers with a JSON document; the workshop used to keep its last line ("}")
+        # and tell the AI only "the dependencies could not be resolved together". (The wave-1 packs themselves are
+        # not yet re-authored: REG-361 stays open for that; this pins only the feedback text.)
+        refusal = json.dumps({
+            "status": "failed",
+            "error": "Model schema validation failed for X:\r\n"
+                     " - $.concepts[1]: $.concepts[1]: property 'truthLevel' is not defined in the schema and the schema "
+                     "does not allow additional properties Suggested fix: Adjust the 'truthLevel' property so it matches the canonical schema.\r\n"
+                     " - $.dslVersion: $.dslVersion: must be the constant value '3.0.0' Suggested fix: Update the model so it satisfies the schema.\r\n"
+                     " - $: $: property 'autoPanels' is not defined in the schema",
+        }, indent=2)
+        _put(self.root, _pack("base-thing"))
+        _put(self.root, _pack("leads", packs=[{"pack": "base-thing", "version": "1.0.0"}]))
+        verdict = self.run_ladder(update=lambda model: (False, refusal))
+        self.assertEqual(verdict["status"], "rejected")
+        feedback = verdict["feedbackForAi"]
+        self.assertEqual(len(feedback), 3, feedback)
+        self.assertTrue(feedback[0].startswith("$.concepts[1] - property 'truthLevel' is not defined"), feedback[0])
+        self.assertIn("Adjust the 'truthLevel' property", feedback[0])
+        self.assertIn("must be the constant value '3.0.0'", feedback[1])
+        self.assertIn("'autoPanels'", feedback[2])
+        self.assertFalse(any("could not be resolved together" in line for line in feedback),
+                         "a schema refusal must not be reported as an unresolvable dependency")
+
     def test_unqualified_rollup_is_a_lint_error(self):
         doc = _pack()
         doc["concepts"][0]["rollups"] = [{"field": "total", "from": "LeadLine"}]

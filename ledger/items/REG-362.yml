@@ -1,0 +1,28 @@
+id: REG-362
+title: >-
+  The R9 nightly scale ladder was red on every rung for at least three nights (2026-11-23, 24, 25): the synthesized model still carried the root procedures[] key that REG-342 removed, so generation failed in 6 seconds
+type: BUG
+severity: MEDIUM
+status: PARTIAL
+opened: 2026-11-25
+source: >-
+  GitHub Actions "R9 Nightly Scale Ladder" (schedule), runs 45187590196 (c78c52fc), 45413454127 (10c211bb) and 45626134458 (0148d177), all failure, all five rungs (26, 50, 100, 260, 520) at the step
+  "Run scale proof"; found while checking CI after the REG-360 push, then fixed on the owner's instruction to finish everything that does not need them (2026-11-25).
+surface: scripts/proofs, ci/nightly-scale-ladder
+files:
+  - scripts/proofs/synthesize_scale_model.py
+  - scripts/proofs/run-scale-proof.ps1
+  - .github/workflows/nightly-scale-ladder.yml
+detail: |
+  CAUSE: every rung's log ends `Task :generator:run FAILED ... DeprecationException: Root 'procedures' was removed (REG-342): every procedure is a flow` and `generate failed 6335 ms`. synthesize_scale_model.py
+  emitted a root `procedures[]` entry (Save<anchor>Procedure) next to its `flows[]`. REG-342 (2026-11-19) removed the key and JsonModelParser refuses it. The nightly is the only caller, so nothing else noticed.
+  WHY IT SURVIVED: REG-358 item 3c edited run-scale-proof.ps1 on 2026-11-22 and recorded it as "PowerShell parse-checked, NOT run" (a rung generates, builds and boots an app), so the synthesizer was never executed
+  after REG-342; and 8841cc37, which that item cites for a "model the proof generates", fixed the untrusted-extension proof, not this synthesizer.
+  FIX: the former procedure is now a second flow, Save<anchor> (`updateConcept` on the anchor concept, then `return`, the shape dsl-conformance-max's ConfirmWidgetOrder uses), in the same `flows[]` as Create<anchor>; the
+  docstring no longer says "procedure". The output stays deterministic (two runs byte-identical).
+  VERIFIED 2026-11-25: the 26-concept model validates (run-fast-gate.ps1 -Tier T0 -ModelPath, 0 errors), and `run-scale-proof.ps1 -Concepts 26` ran synthesize, generate, ddl-count, build, boot, firstRequest, latency and memory
+  and ended "SCALE PROOF PASSED (26 concepts)" in 5 m 08 s (ptrack job 2025jz).
+  NOT VERIFIED: rungs 50, 100, 260 and 520 (they use the same synthesizer at a larger N; each takes longer and 520 needs a larger boot timeout); the workflow is dispatched by hand after the push (workflow_dispatch is
+  enabled) and this item stays PARTIAL until a run on main is green on all five rungs; the dispatched run's result is added below when it finishes. A rung failing later in the pipeline (build, boot, a measurement against scripts/policy/scale-proof-baseline.json) would be a NEW finding hidden until now, because generation failed first.
+done_when: >-
+  The scheduled "R9 Nightly Scale Ladder" ends green on all five rungs on main.

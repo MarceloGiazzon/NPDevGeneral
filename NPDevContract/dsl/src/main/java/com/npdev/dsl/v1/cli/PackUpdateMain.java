@@ -12,10 +12,16 @@ public final class PackUpdateMain {
     }
 
     public static void main(String[] args) {
+        // Diagnostics feed an English-language authoring loop -- pin the locale so the underlying
+        // schema validator emits English messages regardless of the host machine's locale.
+        java.util.Locale.setDefault(java.util.Locale.ENGLISH);
         System.exit(run(args));
     }
 
     static int run(String[] args) {
+        // Diagnostics feed an English-language authoring loop -- pin the locale so the underlying
+        // schema validator emits English messages regardless of the host machine's locale.
+        java.util.Locale.setDefault(java.util.Locale.ENGLISH);
         return PackAddMain.run(args);
     }
 }

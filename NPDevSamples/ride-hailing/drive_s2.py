@@ -564,10 +564,16 @@ def stage_experience(r: Run):
     r.check("experience: ...and the Driver row is AVAILABLE", (d.get("data", d)).get("status") == "AVAILABLE", d)
     s, b = xflow(r, "SetDriverStatus", {"id": r.ids["driver1"], "status": "BUSY"}, "driver1")
     r.check("experience: a driver can NOT mark self BUSY through it (lifecycle guard)", s in (400, 403, 409, 422), f"{s} {str(b)[:200]}")
+    # REG-360: compare driver2's status BEFORE and AFTER the attempt. It used to assert OFFLINE outright, which failed once
+    # and passed on re-run: a task left by an earlier stage (an expired offer releasing a driver) can flip driver2 after the
+    # reset above, and that says nothing about whether driver1 changed it. "Untouched by driver1" is what the check means.
+    _, d_before = r.get("drivers", r.ids["driver2"])
+    status_before = (d_before.get("data", d_before)).get("status")
     s, b = xflow(r, "SetDriverStatus", {"id": r.ids["driver2"], "status": "AVAILABLE"}, "driver1")
     r.check("experience: driver1 can NOT change driver2's status through it", s in (403, 404, 422), f"{s} {str(b)[:200]}")
     s, d = r.get("drivers", r.ids["driver2"])
-    r.check("experience: ...driver2 stayed OFFLINE", (d.get("data", d)).get("status") == "OFFLINE", d)
+    r.check("experience: ...driver2's status was not changed by it", (d.get("data", d)).get("status") == status_before,
+            {"before": status_before, "after": (d.get("data", d)).get("status")})
 
     # ---- 3b. the dispatcher's status board (kind board, drag-to-column = SetDriverStatus) and the driver's query screen
     s, b = r.call("GET", "/api/x/me", None, "disp1")

@@ -6,12 +6,12 @@ generator itself is unchanged by the full-ladder extension, since --concepts alr
 positive integer; only the driver script and its measurement phases grew.
 
 Produces an N-concept schema-valid model, structurally modeled on the frozen
-NPDevSamples/npdev-canary/Input/model.json fixture (same capability/binding/query/procedure/
+NPDevSamples/npdev-canary/Input/model.json fixture (same capability/binding/query/
 panel/flow shape) so generation exercises the same pipeline shape at a larger concept count,
 not a novel one. Deterministic by construction -- no randomness, no timestamps -- so the same
 --concepts value always produces byte-identical output.
 
-Only the FIRST synthesized concept gets a query/procedure/panel/flow (mirroring canary's own
+Only the FIRST synthesized concept gets a query/panel/flow (mirroring canary's own
 "minimal, pipeline-complete" scope, R9's job is generate/build/boot SCALE, not DSL breadth --
 dsl-conformance-max already covers that). The other N-1 concepts exist purely to scale
 concept/table/entity count through the compiler and schema-realization path.
@@ -78,28 +78,6 @@ def build_model(concept_count: int) -> dict:
                 "orderBy": ["sequence"],
             }
         ],
-        "procedures": [
-            {
-                "name": f"Save{anchor}Procedure",
-                "description": f"Saves a {anchor} through the Concept Gateway and returns the governed record.",
-                "parameters": [
-                    {"name": "id", "type": "uuid", "required": True}
-                ],
-                "steps": [
-                    {
-                        "name": "save-through-gateway",
-                        "type": "saveConcept",
-                        "concept": anchor,
-                        "id": "$id",
-                        "data": {"input": "$input"},
-                        "target": "saved",
-                        "trace": True,
-                        "audit": True,
-                    },
-                    {"name": "return-saved", "type": "return", "value": "$saved", "trace": True},
-                ],
-            }
-        ],
         "screens": [
             {
                 "name": "ScaleProofPanel",
@@ -145,7 +123,23 @@ def build_model(concept_count: int) -> dict:
                     },
                     {"name": "return", "type": "return", "value": "$saved"},
                 ],
-            }
+            },
+            # REG-342: the root `procedures[]` array was removed; every procedure is a flow. This is the former
+            # Save<anchor>Procedure (save a record through the Concept Gateway, return it), as a flow.
+            {
+                "name": f"Save{anchor}",
+                "input": {"concept": anchor, "mode": "update"},
+                "steps": [
+                    {
+                        "name": "save-through-gateway",
+                        "type": "updateConcept",
+                        "scope": anchor,
+                        "input": "$input",
+                        "output": "$saved",
+                    },
+                    {"name": "return-saved", "type": "return", "value": "$saved"},
+                ],
+            },
         ],
     }
 

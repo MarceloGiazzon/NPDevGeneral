@@ -433,7 +433,37 @@ def _default_update(cli, model_path: Path) -> tuple[bool, str]:
     """`npdev pack update --allow-unsigned`: resolves the composed packs and writes npdev.lock next to the model."""
     command = [sys.executable, str(Path(cli.__file__).resolve()), "pack", "update", "--model", str(model_path), "--allow-unsigned"]
     done = subprocess.run(command, capture_output=True, text=True)
-    return done.returncode == 0, (done.stdout + done.stderr)[-1500:]
+    # The refusal lists EVERY schema problem of the composed model (3,100 characters for one real pack), and
+    # _update_problems needs the whole document, so keep a generous tail rather than the last 1,500 characters.
+    return done.returncode == 0, (done.stdout + done.stderr)[-20000:]
+
+
+def _update_problems(output: str) -> list[str]:
+    """Why `npdev pack update` refused a composition, one `where - what - how to fix` line each (the shape of every
+    other feedback line). The CLI answers with a JSON document whose `error` lists the schema problems as
+    ` - <path>: <path>: <message> Suggested fix: <fix>` lines. The workshop used to keep only the LAST line of the
+    text, which is the closing brace, so the authoring AI was told "the dependencies could not be resolved together"
+    and nothing else (REG-361). Returns [] when the output is not that document, so the caller can fall back."""
+    text = (output or "").strip()
+    start = text.find("{")
+    error = ""
+    if start >= 0:
+        try:
+            doc = json.loads(text[start:])
+            error = str(doc.get("error") or "") if isinstance(doc, dict) else ""
+        except ValueError:
+            error = ""
+    problems: list[str] = []
+    for raw in re.split(r"\r?\n", error):
+        raw = raw.strip()
+        if not raw.startswith("- "):
+            continue
+        body = raw[2:].strip()
+        m = re.match(r"^(\S+): \1: (.*?)(?: Suggested fix: (.*))?$", body)
+        line = " - ".join(part.strip() for part in m.groups() if part and part.strip()) if m else body
+        if line and line not in problems:
+            problems.append(line)
+    return problems[:20]
 
 
 def _diagnostic_lines(report: dict, severity: str = "error") -> list[str]:
@@ -687,8 +717,12 @@ def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stam
         if not ok:
             (run / "compose.txt").write_text("\n".join(log) + "\n", encoding="utf-8")
             _step(steps, "compose", started, "fail", "npdev pack update refused the composition", "compose.txt")
-            tail = output.strip().splitlines()[-1][:300] if output.strip() else ""
-            feedback.append("pack.json packs - the dependencies could not be resolved together" + (f" - {tail}" if tail else ""))
+            problems = _update_problems(output)
+            if problems:
+                feedback.extend(problems)
+            else:
+                tail = output.strip().splitlines()[-1][:300] if output.strip() else ""
+                feedback.append("pack.json packs - the dependencies could not be resolved together" + (f" - {tail}" if tail else ""))
             return finish("rejected")
     report = validate(model_path, run / "validate.json")
     if report is None:

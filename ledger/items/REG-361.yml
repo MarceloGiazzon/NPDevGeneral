@@ -1,0 +1,38 @@
+id: REG-361
+title: >-
+  None of the 19 wave-1 workshop pack versions passes the platform's validator any more (written for DSL 1.0 and the keywords the 22 Nov shrink removed) while the workshop table still showed "secure", and the
+  feedback built for the authoring AI named no error for 13 of them (the validator answered in Portuguese and the extractor kept the closing brace)
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-11-25
+source: >-
+  REG-356 item D (two more packs `probed`; the wave-2 request that reuses pix-charge), followed up on the owner's instruction of 2026-11-25 to do everything that does not need them. `npdev pack workshop test cep`
+  was REJECTED already at the first rung, which prompted re-testing the whole workshop.
+surface: pack-workshop, contract/dsl, cli/pack
+files:
+  - NPDevCli/npdev_pack_workshop.py
+  - NPDevCli/tests/test_pack_workshop_test.py
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/cli/PackUpdateMain.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/cli/PackAddMain.java
+  - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/cli/CliEnglishLocaleTest.java
+detail: |
+  MEASURED 2026-11-25 (every pack@version in the workshop re-tested with `npdev pack workshop test`, 2 min in total, workshop root PackWorkshop next to the Build root, outside the repo): all 19 are REJECTED today
+  (17 at compose, 2 at static: nfe-issuer@1.0.0 and pix-charge@1.0.0). The table before showed `secure` as the highest rung for 12 of them (6 more were `delivered`, one `valid`); those verdicts predate the 22 Nov keyword shrink and the 3.0.0 line.
+  CAUSES, read from the verdicts: (1) `dslVersion` 1.0.0 against the constant 3.0.0 (6 packs report it at static or compose); (2) keywords the shrink removed: `domainTypes[].validation.pattern` is now `regex`,
+  `domainTypes[].ui.helpText` is gone (cep, cpf-cnpj, phone-br, pix-key); (3) `customCapabilities` was merged into `capabilities` on 18 Nov (nfe-issuer, pix-charge) and inside it the schema `enum` is now `enumValues`
+  (not yet reached: the validator stops at the root key); (4) the 13 module packs (audit-log, documents, leads, messaging, multi-company, payables, quotes, two versions of several) compose a model that still carries
+  `autoPanels`, `truthLevel`, `invariants[].expression` and the old `lifecycle`/`ui`/concept shape (read in full for leads@1.0.1; the others fail the same compose rung and were not read one by one). (4) is a rewrite, not a rename.
+  NOT TOUCHED: no delivered pack was edited. The workshop's own rule is that a delivered version is immutable and a fix ships as a HIGHER version in a new zip; that re-authoring is the authoring AI's (or the owner's) step.
+  FIXED HERE, two defects that made the feedback useless: (a) PackUpdateMain, PackAddMain and five sibling CLIs (PackSeal, PackSign, ModelCanonicalize, PackWhy, PackList) did not pin Locale.ENGLISH, which ModelValidatorMain and
+  four others do, so on this pt-BR machine `npdev pack update` answered in Portuguese and, through the Windows console, with corrupted accents; PackUpdateMain calls PackAddMain.run directly, so the pin is at the start of
+  every main AND run. CliEnglishLocaleTest (2 tests) was RED on the old code ("PackUpdateMain must pin the English locale ... expected: <en> but was: <pt...>") and is green; the whole dsl cli package passes (23 classes,
+  105 tests). (b) npdev_pack_workshop kept the LAST line of the refusal (the closing brace) and called it "the dependencies could not be resolved together"; it now reads the JSON `error`, turns each schema problem into a
+  `where - what - how to fix` line, and keeps the old sentence only as a fallback. test_a_schema_refusal_reaches_the_authoring_ai_with_its_real_problems was RED on the old code ("1 != 3 : ['pack.json packs - the
+  dependencies could not be resolved together - }']") and is green; the workshop suite passes (61 tests).
+  FEEDBACK TEXT for the authoring AI, regenerated with `npdev pack workshop feedback <batch>` after both fixes, in the workshop's feedback folder (outside the repo): w1-foundations__20261125.md and w1-modules__20261125.md.
+  IMPACT ON WAVE 2: the delivery request reuses pix-charge (REG-356 item 8). pix-charge@1.0.0 is rejected at the first rung, so a wave-2 pack that requires it cannot compose until a higher pix-charge version exists.
+  The owner decides whether the request asks for that fix first or carries it in the same batch; the request was NOT sent.
+  ALSO STILL OPEN from REG-356 item D: two packs reaching `probed` on a booted consumer (blocked by this item) and the bench step "a clinic app from packs only under 2k output tokens" (blocked by wave 2 and provider quota).
+done_when: >-
+  The wave-1 pack versions the owner still wants reach at least `secure` against the current schema, as higher versions delivered by the authoring AI, and `npdev pack workshop status` says so.

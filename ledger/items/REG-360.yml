@@ -22,6 +22,8 @@ files:
   - NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/BusinessUiEmitterShellLogoTest.java
   - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java
   - NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/H2DialectReadValueTest.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/SqlServerDialectReadValueTest.java
   - BREAKING.md
 detail: |
   Evidence: 16 PNGs of the first capture and the verification routines (make_verify.py, verify-reg360-*.json, the per-job result.json) in NPDev_General__OutsideRepo/ride-hailing-gallery (not in the repo). Every fix below was
@@ -44,8 +46,10 @@ detail: |
      JVM's -03:00, one written another way in Z); the single-record path normalises to UTC. Which write path produced which offset was NOT identified; the fix does not need it. FIX: H2Dialect.readValue respells every
      OffsetDateTime in UTC (same instant). PROOF: H2DialectReadValueTest, 3 tests, including a real in-memory H2 that writes one row with -03:00 and one with Z, shows the driver returns them with different offsets, and
      shows both read back in UTC. Not run red (the default readValue is the identity, so the first test cannot pass without the override). LIVE: for Ride and RideOffer, list and item are now identical and all in Z.
-     NOT measured: SQL Server's DATETIMEOFFSET (SqlServerDialect.readValue returns the driver's offset as is) may have the same mixed spelling. The Created At cell still shows the raw ISO string; formatting it for the
-     reader is a separate UI matter.
+     SQL Server, MEASURED AND FIXED 2026-11-25 (owner away, "do what is needed"): SqlServerDialectReadValueTest builds the REAL mssql-jdbc class (microsoft.sql.DateTimeOffset.valueOf, no container) and shows the driver
+     keeps the offset it is given (-180 min comes back as -03:00); the normalisation test was RED on the old dialect ("offset -180 min ==> expected Z but was -03:00") and is green after SqlServerDialect.readValue
+     respells it in UTC (3 tests, same instant). Postgres and MySQL were not touched (MySQL's zoneless DATETIME is already restored as UTC; Postgres's driver was not measured). The Created At cell still shows the
+     raw ISO string; formatting it for the reader is a separate UI matter.
   (d) The top-bar title said "Drivers" on the Rides, Payments and RideOffers pages of the dispatcher, and "Riders" on the Rider page of the admin. CAUSE: shell.js painted the logo from document.title, which the host rewrites to
      "<page> - <app>" on every render, at shell mount (a render that ran first fixed the wrong page into the logo) AND again in applyStaticTranslations() after the catalogue loads. FIX: business-ui-app.mustache passes
      `appName: state.manifest.appName` to NPDevShell.mount; shell.js keeps it and uses it at both places, falling back to document.title only when no host named the app (a hand-written page). PROOF: BusinessUiEmitterShellLogoTest,

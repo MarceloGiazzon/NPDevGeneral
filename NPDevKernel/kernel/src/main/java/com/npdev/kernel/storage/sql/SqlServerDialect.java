@@ -244,7 +244,13 @@ public final class SqlServerDialect implements SqlDialect {
         }
         if ("microsoft.sql.DateTimeOffset".equals(value.getClass().getName())) {
             try {
-                return value.getClass().getMethod("getOffsetDateTime").invoke(value);
+                Object converted = value.getClass().getMethod("getOffsetDateTime").invoke(value);
+                // REG-360 (e): DATETIMEOFFSET keeps the offset a row was written with (measured in
+                // SqlServerDialectReadValueTest), so respell it in UTC -- the same instant -- exactly as
+                // H2Dialect does; otherwise one list mixes "...Z" and "...-03:00".
+                return converted instanceof java.time.OffsetDateTime offsetDateTime
+                        ? offsetDateTime.withOffsetSameInstant(java.time.ZoneOffset.UTC)
+                        : converted;
             } catch (ReflectiveOperationException | RuntimeException unavailable) {
                 // Never swallow into a wrong value: if the driver's own accessor is gone, the caller
                 // gets the driver object it would have got before, and the DTO binding fails loudly

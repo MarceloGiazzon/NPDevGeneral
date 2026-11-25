@@ -47,10 +47,13 @@ TIER_ORDER = ["T0", "T1", "T2", "T3"]
 
 STALENESS_TO_TIMEDELTA = {
     # "every-run" checks are meant to run fresh every invocation, but record+report happen
-    # seconds apart within the SAME gate script run -- a 5-minute buffer treats that run as
-    # fresh without weakening the "must run every time you invoke the tier" intent (nobody's
-    # T0 pass spans anywhere near 5 minutes).
-    "every-run": timedelta(minutes=5),
+    # seconds apart within the SAME gate script run -- a buffer treats that run as fresh without
+    # weakening the "must run every time you invoke the tier" intent. It was 5 minutes on the
+    # assumption that no gate pass spans that long; a T1 run takes ~6.8 minutes, so a T0 check that
+    # passed at the START of a T1 gate showed as overdue at its END (REG-356 item E, found
+    # 2026-11-24). 15 minutes covers a T1 run with margin and still sits under the longest
+    # single gate the owner accepts (15 min), so it can never make a stale pass look fresh across gates.
+    "every-run": timedelta(minutes=15),
     "1-wave": timedelta(days=2),
     "1-move": timedelta(days=7),
     "7-days": timedelta(days=7),
