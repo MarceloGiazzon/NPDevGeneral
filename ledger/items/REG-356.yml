@@ -92,6 +92,11 @@ detail: |
         were fresh and passed minutes later. It can only pass when the previous full run was under 24 h earlier. (3) workspace-cleanliness: the check ran 28 s after ai-beta-gate, which leaves NPDevGenerator/.gradle
         (8 files, 0 MB: "rebuildable directory must not remain in the workspace"). Evidence kept at NPDev_General__OutsideRepo/beta-gate-2026-11-24-failure (17 files). Another full run (about 1.5 h) is the owner's call;
         before it, three gate fixes: retry a silent Gradle build exit once, evaluate the stale check after all producers (or at the end), and clean rebuildable directories before the cleanliness check.
+        THE THREE FIXES ARE WRITTEN AND TESTED (2026-11-24, NPDevCli/tests/test_beta_gate_flake_fixes.py, 19 tests; the second full gate has NOT been run): (a) invoke-ai-beta-app-smoke.ps1 retries the generated app's Gradle
+        build once, only when it exits non-zero with no error text (Invoke-GradleBuildWithSilentRetry; the first attempt's logs are kept as *.attempt1; a build that printed an error is never retried). (b) The stale check
+        is its own producer, scripts/quality/run-stale-report-check.ps1, orchestration stage 4 (last; the sort is now stable and -PlanOnly prints the plan), also last in run-beta0-final-release-check.ps1; expanded-beta0-evidence
+        no longer writes it. (c) Test-WorkspaceSlimness.ps1 -CleanRebuildable runs clean-workspace-state.ps1 before measuring, and run-expanded-beta0-evidence.ps1 passes it; off everywhere else. Not changed, and not proven:
+        the cause of the silent Gradle exit; the workspace-cleanliness check still runs mid-stage-2, so a rebuildable directory left by a LATER producer (sample-matrix, app-upgrade-contract) is not measured by it.
 done_when: >-
   The four schema copies are one source and check-schema-mirror-consistency.py is gone or trivial; each of B-E is either done and verified or recorded in its own item with a reason; the paused kernel
   item is picked up on or after 2026-11-25.

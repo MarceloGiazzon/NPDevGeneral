@@ -170,6 +170,52 @@ function Ensure-NpdevApiKey {
     return $fallbackApiKey
 }
 
+# A `gradlew --no-daemon` build that exits non-zero but wrote NO error text is not a build failure the model caused: a real
+# failure always prints "FAILURE: Build failed with an exception" / "BUILD FAILED" / "What went wrong" / a compiler
+# "error:". 2026-11-24 (REG-356 item 2a): one scenario of 31 exited 1 after 16 s with only the single-use-daemon notice in
+# stdout and an empty stderr, then PASSED when re-run alone; that one transient failed a 1 h 33 m full beta gate.
+# The cause was never proven (a VS Code Java/Gradle file lock on the fresh build dir is the known suspect), so the
+# remedy is the one thing that is safe whatever the cause: run the build ONCE more, and only for this shape of exit.
+# A build that printed any error text is never retried -- that would hide a real defect behind a second run.
+function Test-SilentGradleFailure {
+    param([int]$ExitCode, [string[]]$LogPaths)
+    if ($ExitCode -eq 0) { return $false }
+    foreach ($logPath in @($LogPaths)) {
+        if ([string]::IsNullOrWhiteSpace($logPath) -or -not (Test-Path -LiteralPath $logPath -PathType Leaf)) { continue }
+        foreach ($line in @(Get-Content -LiteralPath $logPath)) {
+            if ([string]$line -match '(?i)FAILURE:|BUILD FAILED|What went wrong|error:|exception|> Task \S+ FAILED') { return $false }
+        }
+    }
+    return $true
+}
+
+function Invoke-GradleBuildWithSilentRetry {
+    param(
+        [string]$Executable,
+        [string[]]$ArgumentList,
+        [string]$WorkingDirectory,
+        [string]$StdoutPath,
+        [string]$StderrPath,
+        [int]$RetryDelaySeconds = 5
+    )
+    $attempts = 0
+    $retried = $false
+    while ($true) {
+        $attempts++
+        $process = Start-Process -FilePath $Executable -ArgumentList $ArgumentList -WorkingDirectory $WorkingDirectory -NoNewWindow -Wait -PassThru -RedirectStandardOutput $StdoutPath -RedirectStandardError $StderrPath
+        if ($retried -or -not (Test-SilentGradleFailure -ExitCode $process.ExitCode -LogPaths @($StdoutPath, $StderrPath))) {
+            return [pscustomobject]@{ ExitCode = $process.ExitCode; Attempts = $attempts; RetriedAfterSilentExit = $retried }
+        }
+        $retried = $true
+        # Keep the first attempt's logs: the second overwrites the live ones, and the first is the only evidence of the transient.
+        foreach ($logPath in @($StdoutPath, $StderrPath)) {
+            if (Test-Path -LiteralPath $logPath -PathType Leaf) { Move-Item -LiteralPath $logPath -Destination ($logPath + ".attempt1") -Force }
+        }
+        Write-Host ("Gradle build exited " + $process.ExitCode + " with no error text; retrying once after " + $RetryDelaySeconds + " s.")
+        if ($RetryDelaySeconds -gt 0) { Start-Sleep -Seconds $RetryDelaySeconds }
+    }
+}
+
 function Resolve-GradleWrapper {
     param(
         [string]$PrimaryRoot,
@@ -220,10 +266,12 @@ $report = [ordered]@{
 $buildStdout = Join-Path $appRootFull "ai-beta-build.stdout.log"
 $buildStderr = Join-Path $appRootFull "ai-beta-build.stderr.log"
 $buildWatch = [System.Diagnostics.Stopwatch]::StartNew()
-$build = Start-Process -FilePath $gradlew -ArgumentList @("--no-daemon", "clean", "build", "-x", "test", "--console=plain") -WorkingDirectory $appRootFull -NoNewWindow -Wait -PassThru -RedirectStandardOutput $buildStdout -RedirectStandardError $buildStderr
+$build = Invoke-GradleBuildWithSilentRetry -Executable $gradlew -ArgumentList @("--no-daemon", "clean", "build", "-x", "test", "--console=plain") -WorkingDirectory $appRootFull -StdoutPath $buildStdout -StderrPath $buildStderr
 $buildWatch.Stop()
-$report.build = New-StageResult -Status ($(if ($build.ExitCode -eq 0) { "passed" } else { "failed" })) -Message ("Gradle build exited " + $build.ExitCode + ".") -Evidence ([pscustomobject]@{
+$report.build = New-StageResult -Status ($(if ($build.ExitCode -eq 0) { "passed" } else { "failed" })) -Message ("Gradle build exited " + $build.ExitCode + $(if ($build.RetriedAfterSilentExit) { " (after one retry of a silent exit)" } else { "" }) + ".") -Evidence ([pscustomobject]@{
     exitCode = $build.ExitCode
+    attempts = $build.Attempts
+    retriedAfterSilentExit = $build.RetriedAfterSilentExit
     durationMs = [int]$buildWatch.ElapsedMilliseconds
     stdoutTail = if (Test-Path $buildStdout) { (Get-Content -Tail 40 -LiteralPath $buildStdout) -join "`n" } else { "" }
     stderrTail = if (Test-Path $buildStderr) { (Get-Content -Tail 40 -LiteralPath $buildStderr) -join "`n" } else { "" }

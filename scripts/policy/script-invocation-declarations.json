@@ -830,6 +830,9 @@
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"
     },
+    "scripts/quality/run-stale-report-check.ps1": {
+      "invocation": "orchestrated"
+    },
     "scripts/quality/run-structured-command-surface-alignment.ps1": {
       "invocation": "orchestrated"
     },

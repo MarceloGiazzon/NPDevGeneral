@@ -158,7 +158,10 @@ $orderedGates = @(
     [pscustomobject]@{ name = "final-regression-coverage-audit-tests"; command = "scripts/quality/run-final-regression-coverage-audit-tests.ps1" },
     [pscustomobject]@{ name = "final-regression-coverage-audit"; command = "scripts/quality/run-final-regression-coverage-audit.ps1" },
     [pscustomobject]@{ name = "report-schema-validation-final"; command = "scripts/quality/run-report-schema-validation.ps1" },
-    [pscustomobject]@{ name = "report-provenance-tests"; command = "scripts/quality/run-report-provenance-tests.ps1" }
+    [pscustomobject]@{ name = "report-provenance-tests"; command = "scripts/quality/run-report-provenance-tests.ps1" },
+    # Last of the producers: it judges the age of every required report, so it must run after all of them (REG-356 2a;
+    # run-expanded-beta0-evidence.ps1 used to write it mid-chain and measured reports the chain had not regenerated yet).
+    [pscustomobject]@{ name = "stale-report-check"; command = "scripts/quality/run-stale-report-check.ps1" }
 )
 
 try {

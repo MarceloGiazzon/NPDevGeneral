@@ -21,7 +21,9 @@
 #   stage 2  build/boot/container work - slow, and the source of the scenario evidence stage 3 reads
 #   stage 3  derived reports that READ the reports produced above (schema validation, coverage audit,
 #            command-surface alignment) - these are meaningless if run first
-# Within a stage, order is not significant.
+#   stage 4  the stale-report check, which judges the age of every report above and so must be the last thing that runs
+# Within a stage, the declared order is the run order (the sort is stable) - stage 2 relies on it: ai-beta-gate writes
+# the scenario report that expanded-beta0-evidence reads.
 #
 # A producer that fails does NOT stop the run. A failing producer usually still writes a report saying
 # it failed - which is exactly the "check failed" evidence the gate should evaluate, and is
@@ -33,7 +35,8 @@ param(
     [string[]]$SkipProducers = @(),
     [string[]]$OnlyProducers = @(),
     [string[]]$Stages = @(),
-    [int]$ProducerTimeoutSeconds = 5400
+    [int]$ProducerTimeoutSeconds = 5400,
+    [switch]$PlanOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -125,7 +128,7 @@ $producers = @(
             "rest-smoke-report.json", "ui-panel-smoke-report.json", "procedure-smoke-report.json",
             "workflow-smoke-report.json", "tenant-isolation-smoke-report.json",
             "auth-role-smoke-report.json", "provenance-report.json",
-            "stale-report-check-report.json", "workspace-cleanliness-report.json") }
+            "workspace-cleanliness-report.json") }
     [pscustomobject]@{ name = "sample-matrix"; stage = 2
         script = "scripts/quality/run-sample-matrix.ps1"
         reports = @("sample-matrix-report.json") }
@@ -160,6 +163,15 @@ $producers = @(
         script = "scripts/quality/run-final-regression-coverage-audit.ps1"
         reads = @("sample-matrix-report.json", "beta-release-gate-report.json")
         reports = @("final-regression-coverage-audit-report.json") }
+
+    # ---- stage 4: judges ALL the reports above - it must be the last thing that runs ---------------
+    # The age of every required report can only be measured after the last producer has written its report. This check
+    # used to be written by expanded-beta0-evidence (stage 2) and measured three reports before the run regenerated
+    # them (49-51 h old after a gate two days earlier), failing a 1 h 33 m run on fresh, passing evidence (REG-356 2a).
+    [pscustomobject]@{ name = "stale-report-check"; stage = 4
+        script = "scripts/quality/run-stale-report-check.ps1"
+        reads = @("<every required report>")
+        reports = @("stale-report-check-report.json") }
 )
 
 # ai-beta-reproducibility-report.json is deliberately absent from this map: run-beta-release-gate.ps1
@@ -190,7 +202,15 @@ if (@($Stages).Count -gt 0) {
     $stageFilter = @($Stages | ForEach-Object { [int]$_ })
     $selected = @($selected | Where-Object { $stageFilter -contains [int]$_.stage })
 }
-$selected = @($selected | Sort-Object -Property stage)
+# -Stable: within a stage the DECLARED order is the run order (expanded-beta0-evidence reads the report ai-beta-gate wrote
+# just before it). Sort-Object makes no such promise without it.
+$selected = @($selected | Sort-Object -Property stage -Stable)
+
+# -PlanOnly prints what would run, in order, and exits before running anything, so a test can pin the ordering rules.
+if ($PlanOnly) {
+    @($selected | ForEach-Object { [pscustomobject]@{ name = [string]$_.name; stage = [int]$_.stage; script = [string]$_.script; reports = @($_.reports) } }) | ConvertTo-Json -Depth 5 -AsArray
+    exit 0
+}
 
 $dockerAvailable = $null
 $results = @()

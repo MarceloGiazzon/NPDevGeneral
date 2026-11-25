@@ -200,35 +200,11 @@ $workspaceSlimnessScript = Join-Path $workspaceRoot "scripts/hygiene/Test-Worksp
 & $workspaceSlimnessScript `
     -WorkspaceRoot $workspaceRoot `
     -ReportPath "scripts/reports/out/workspace-cleanliness-report.json" `
-    -RunId $RunId | Out-Null
-# stale-report-check is COMPUTED from the reports on disk. It used to be a hard-coded $true carrying three claims
-# nothing measured, and the release gate lists it as a required report. Missing reports are not judged here (the
-# release gate reports those itself); the rejection of stale narrow reports is not something this script can show,
-# so it is no longer claimed.
-$betaGatePolicy = Get-Content -LiteralPath "scripts/policy/beta-release-gate-policy.json" -Raw | ConvertFrom-Json
-$maxReportAgeHours = [double]$betaGatePolicy.maxReportAgeHours
-$staleReportFailures = New-Object System.Collections.Generic.List[string]
-$checkedReportCount = 0
-foreach ($requiredReport in @($betaGatePolicy.requiredReports)) {
-    $requiredReportPath = [string]$requiredReport.path
-    if ($requiredReportPath -like "*stale-report-check-report.json" -or $requiredReportPath -like "*provenance-report.json") { continue }
-    if (-not (Test-Path -LiteralPath $requiredReportPath)) { continue }
-    $checkedReportCount++
-    $ageHours = ((Get-Date) - (Get-Item -LiteralPath $requiredReportPath).LastWriteTime).TotalHours
-    if ($ageHours -gt $maxReportAgeHours) {
-        Add-Failure $staleReportFailures ("Report is older than " + $maxReportAgeHours + "h (" + [math]::Round($ageHours, 1) + "h): " + $requiredReportPath)
-    }
-    try {
-        $reportJson = Get-Content -LiteralPath $requiredReportPath -Raw | ConvertFrom-Json
-        $declaredContract = $reportJson.PSObject.Properties["expandedBeta0ContractVersion"]
-        if ($null -ne $declaredContract -and [string]$declaredContract.Value -ne [string]$scope.expandedBeta0ContractVersion) {
-            Add-Failure $staleReportFailures ("Report declares contract " + [string]$declaredContract.Value + ", expected " + [string]$scope.expandedBeta0ContractVersion + ": " + $requiredReportPath)
-        }
-    } catch {
-        Add-Failure $staleReportFailures ("Report is not parseable JSON: " + $requiredReportPath)
-    }
-}
-New-Report "stale-report-check-report.json" "npdev-stale-report-check-report.v1" ($staleReportFailures.Count -eq 0) ([pscustomobject]@{ checkedReports = $checkedReportCount; maxReportAgeHours = $maxReportAgeHours; blockingReportsFresh = ($staleReportFailures.Count -eq 0); expandedBeta0ContractVersion = $scope.expandedBeta0ContractVersion }) @($staleReportFailures) | Out-Null
+    -RunId $RunId `
+    -CleanRebuildable | Out-Null
+# stale-report-check-report.json is NOT written here any more: it judges the age of every required report, so it must run
+# after the last producer, and this step runs in the middle of stage 2 (it measured three reports before the run had
+# regenerated them -- REG-356 item 2a). scripts/quality/run-stale-report-check.ps1 is its producer, the last orchestration stage.
 New-Report "provenance-report.json" "npdev-provenance-report.v1" $true ([pscustomobject]@{ commit = $commit; officialEvidencePlatform = $scope.officialEvidencePlatform; expandedBeta0ContractVersion = $scope.expandedBeta0ContractVersion }) @() | Out-Null
 
 $overallFailures = @($scopeFailures + $scenarioFailures + $negativeFailures + $panelFailures + $procedureFailures + $workflowFailures + $securityFailures)

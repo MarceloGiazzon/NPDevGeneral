@@ -66,7 +66,13 @@ param(
     [int]$MaxScriptsFileCount = 500,
     [decimal]$MaxScriptsSizeMB = 10,
     [decimal]$MaxReportsOutSizeMB = 15,
-    [bool]$CleanTransientReportTemp = $true
+    [bool]$CleanTransientReportTemp = $true,
+    # Remove rebuildable directories (.gradle, build, target, dist, coverage, node_modules, RunOutput, bin, sample Output)
+    # BEFORE measuring, with the same clean-workspace-state.ps1 the owner runs before every commit. Only the beta gate's own
+    # evidence step passes it: a producer that ran moments earlier (2026-11-24: NPDevGenerator/.gradle, 8 files, 28 s before
+    # the check) leaves a directory that is rebuildable by definition, and failing a 1.5 h release gate on it measures
+    # nothing about the repo. Off by default, so the pre-commit hook and the standalone check still report such a directory.
+    [switch]$CleanRebuildable
 )
 
 Set-StrictMode -Version Latest
@@ -154,6 +160,22 @@ if ($CleanTransientReportTemp) {
     if (Test-Path -LiteralPath $transientReportsTmp -PathType Container) {
         Remove-Item -LiteralPath $transientReportsTmp -Recurse -Force
         $cleanedTransientDirectories += "scripts\reports\tmp"
+    }
+}
+
+$cleanedRebuildableDirectories = @()
+if ($CleanRebuildable) {
+    $cleanerScript = Join-Path $PSScriptRoot "clean-workspace-state.ps1"
+    $cleanerReportPath = Join-Path ([System.IO.Path]::GetTempPath()) ("npdev-slimness-clean-" + [guid]::NewGuid().ToString("N") + ".json")
+    try {
+        & $cleanerScript -WorkspaceRoot $WorkspaceRoot -ReportPath $cleanerReportPath | Out-Null
+        if (Test-Path -LiteralPath $cleanerReportPath -PathType Leaf) {
+            $cleanerReport = Get-Content -LiteralPath $cleanerReportPath -Raw | ConvertFrom-Json
+            $cleanedRebuildableDirectories = @($cleanerReport.removedTargets | ForEach-Object { [string]$_.relativePath })
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $cleanerReportPath -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -301,6 +323,7 @@ $report = [pscustomobject]@{
         reportsOut = $reportsOutSummary
         topLevel = $topLevel
         cleanedTransientDirectories = $cleanedTransientDirectories
+        cleanedRebuildableDirectories = @($cleanedRebuildableDirectories)
     }
     violations = @($violations)
     failures = @($violations | ForEach-Object { $_.message })
