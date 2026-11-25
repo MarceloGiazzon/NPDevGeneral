@@ -4,7 +4,7 @@ title: >-
   feedback built for the authoring AI named no error for 13 of them (the validator answered in Portuguese and the extractor kept the closing brace)
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: PARTIAL
 opened: 2026-11-25
 source: >-
   REG-356 item D (two more packs `probed`; the wave-2 request that reuses pix-charge), followed up on the owner's instruction of 2026-11-25 to do everything that does not need them. `npdev pack workshop test cep`
@@ -33,6 +33,17 @@ detail: |
   FEEDBACK TEXT for the authoring AI, regenerated with `npdev pack workshop feedback <batch>` after both fixes, in the workshop's feedback folder (outside the repo): w1-foundations__20261125.md and w1-modules__20261125.md.
   IMPACT ON WAVE 2: the delivery request reuses pix-charge (REG-356 item 8). pix-charge@1.0.0 is rejected at the first rung, so a wave-2 pack that requires it cannot compose until a higher pix-charge version exists.
   The owner decides whether the request asks for that fix first or carries it in the same batch; the request was NOT sent.
+  OWNER DECISIONS 2026-11-25 (asked in the session): (a) the six foundation packs are fixed on this side; (b) the seven module packs are rewritten by the authoring AI TOGETHER WITH wave 2.
+  DONE 2026-11-25 (a): cep, cpf-cnpj, phone-br, pix-key, nfe-issuer and pix-charge are re-issued as 1.0.1 (the 1.0.0 folders untouched) through the workshop's own path -- a zip with batch.json + handoff.json,
+  `npdev pack workshop ingest`, then `npdev pack workshop test`: ALL SIX reach `secure` (static, compose, access-lint pass; behavior-probes SKIPPED because a data-type or contract-only pack has none to derive).
+  The conversion is mechanical and recorded in the script that did it (outside the repo, with the zip it produced: NPDev_General__OutsideRepo/reg361-reissue/convert_wave1_foundations.py, run as `python convert_wave1_foundations.py <workshop packs root> <out dir> "<validator evidence text>"`, then zipit.py): dslVersion 3.0.0; validation.pattern -> regex; ui.helpText -> ui.description; customCapabilities -> capabilities; a capability
+  property `type: string` + `enum` -> `type: enum` + `enumValues`; capabilityOperation.sideEffects dropped (removed 22 Nov, acted on by nothing); the few Portuguese words that the English-only lint now sees
+  (it reads ui.description, which helpText never was) rewritten ("Chave Aleatória", "Carta de Correção", "Inutilização", "devolução", "Pix Automático"). Three of the six (pix-key, nfe-issuer, pix-charge) needed the last
+  three rules (English-only, enum, sideEffects), found only by running the ladder after the first fix, not by reading the feedback: a pack rejected at one rung reports only that rung, so the feedback for the
+  seven modules is a FIRST list, not the whole list; expect a second round.
+  NOT DONE (b): the seven module packs (audit-log@1.0.1, documents@1.0.1, leads@1.0.1, messaging@1.0.0, multi-company@1.0.1, payables@1.0.1, quotes@1.0.1) fail in their SHAPE (concept access/fields/ui/indexes/lifecycle,
+  invariants[].expression -> expr, autoPanels, rollups), not by a rename; they are in the revised wave-2 request (reworkFromWave1, second zip with batchId w1-modules), which is still the owner's to send.
   ALSO STILL OPEN from REG-356 item D: two packs reaching `probed` on a booted consumer (blocked by this item) and the bench step "a clinic app from packs only under 2k output tokens" (blocked by wave 2 and provider quota).
 done_when: >-
-  The wave-1 pack versions the owner still wants reach at least `secure` against the current schema, as higher versions delivered by the authoring AI, and `npdev pack workshop status` says so.
+  The six foundation packs are secure at 1.0.1 (DONE 2026-11-25), and the seven module packs reach at least `secure` against the current schema as higher versions delivered by the authoring AI (wave-2 request, second
+  zip), and `npdev pack workshop status` says so.

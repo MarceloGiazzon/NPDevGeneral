@@ -62,6 +62,12 @@ detail: |
      (emitPluginBytecodeGateManifestIfNeeded). The relay's `extensions/<Name>.java` is a flow-bound trusted class (TrustedJavaSourcePolicy, emitted as generated/trusted/<Name>.java and compiled with the app), so whether
      that gate ever sees it was NOT established; it may not apply to this kind at all. A real boot of an app built with a relay-written class (generate, build, boot, call the flow) would settle it; it needs a full app
      definition (config, db, smoke plan) around the fixture and was not built in the 2026-11-25 session. Not the owner's pilot: no chat AI is needed for it.
+  ANSWERED 2026-11-25 by reading the code that builds the gate's list (no boot): the manifest is fed from exactly two sources, `emitJavaSourceMounts` and `emitJavaControllerMounts` (RuntimeApiEmitter lines 296-298),
+  both PLUGIN mount plans; a flow-bound `extensions/<Name>.java` is never in it, so PluginBytecodeBootGate does NOT see this kind of class. The safeguard for it is the generation-time `TrustedJavaSourcePolicy`, which is
+  stricter than the bytecode denylist: a CLOSED import list (List, Map, Set, Optional, UUID, BigDecimal, Instant; no static or wildcard import) plus forbidden identifiers (Runtime, Process, ProcessBuilder, Class, ClassLoader,
+  ServiceLoader, Thread, File, Path, URL, URI, Socket, HttpClient, Method, Field, MethodHandles, ScriptEngine, Executor, CompletableFuture), the java.io/nio.file/net/reflect/invoke/concurrent/script prefixes, and System.exit/
+  getenv/getProperty-style calls. So the done_when's "or the bytecode inspector rejects it" does not apply to a flow-bound class: it is refused by the source policy (seen on the real window, R1/R2 above). Open as an OPTIONAL
+  hardening, an owner call: also list the flow-bound class resources in the gate's manifest (defense in depth, one more refusal path; it needs a real boot to prove). Nothing was changed for it.
 done_when: >-
   With the setting at `all`, a browser AI's answer that adds a Java procedure referenced by the model is confirmed by the owner, written with its manifest entry, generated, and refused in words when
   PluginJavaSourcePolicy or the bytecode inspector rejects it; Undo and remove-code take every part out; proven on the real Manager window.

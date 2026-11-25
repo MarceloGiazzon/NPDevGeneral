@@ -54,8 +54,10 @@ detail: |
      "<page> - <app>" on every render, at shell mount (a render that ran first fixed the wrong page into the logo) AND again in applyStaticTranslations() after the catalogue loads. FIX: business-ui-app.mustache passes
      `appName: state.manifest.appName` to NPDevShell.mount; shell.js keeps it and uses it at both places, falling back to document.title only when no host named the app (a hand-written page). PROOF: BusinessUiEmitterShellLogoTest,
      2 tests (content of the emitted assets); and live, a first build with only the mount-time half still showed "Drivers" (the second writer undid it), the complete fix shows "sample.ridehailing" on every page for both users.
-     The name shown is manifest.appName, which BusinessUiEmitter (line 492) always sets from the model's namespace ("sample.ridehailing" for the sample). No model keyword sets a display name for the shell; a role
-     experience's theme.logoText overrides the logo text (shell.js), which was not tried. A display-name keyword would be a DSL feature (it costs a keyword and a corpus example), NOT done and not decided.
+     The name shown is manifest.appName, which BusinessUiEmitter (line 492) always sets from the model's namespace ("sample.ridehailing" for the sample). No model keyword sets a display name for the shell. The only logo word is
+     `theme.logoText`, which is a PAGE theme (a dashboard/guide page declares it; the pigmentampas sample does), applied by shell.js at page render; applyStaticTranslations() writes the logo again after the catalogue
+     loads (before and after the REG-360 (d) fix alike), so whether a page's logoText survives it was not tried. OWNER DECISION 2026-11-25: NO new display-name keyword (a keyword costs a corpus example and a row in the capabilities table, and the language
+     stays small on purpose); the logo keeps showing the namespace. If an app-wide name is wanted later, try `theme.logoText` on the app's pages first.
   Checks: check-ui-i18n OK (957 ids, no new literal), twin-pair 60/60, check-done-item-guards and ledger freshness clean, portable-tooling check passed. BREAKING.md has the entry.
 guard:
   kind: test
