@@ -66,8 +66,14 @@ detail: |
   both PLUGIN mount plans; a flow-bound `extensions/<Name>.java` is never in it, so PluginBytecodeBootGate does NOT see this kind of class. The safeguard for it is the generation-time `TrustedJavaSourcePolicy`, which is
   stricter than the bytecode denylist: a CLOSED import list (List, Map, Set, Optional, UUID, BigDecimal, Instant; no static or wildcard import) plus forbidden identifiers (Runtime, Process, ProcessBuilder, Class, ClassLoader,
   ServiceLoader, Thread, File, Path, URL, URI, Socket, HttpClient, Method, Field, MethodHandles, ScriptEngine, Executor, CompletableFuture), the java.io/nio.file/net/reflect/invoke/concurrent/script prefixes, and System.exit/
-  getenv/getProperty-style calls. So the done_when's "or the bytecode inspector rejects it" does not apply to a flow-bound class: it is refused by the source policy (seen on the real window, R1/R2 above). Open as an OPTIONAL
-  hardening, an owner call: also list the flow-bound class resources in the gate's manifest (defense in depth, one more refusal path; it needs a real boot to prove). Nothing was changed for it.
+  getenv/getProperty-style calls. So the done_when's "or the bytecode inspector rejects it" does not apply to a flow-bound class: it is refused by the source policy (seen on the real window, R1/R2 above). Considered as an OPTIONAL
+  hardening (also list the flow-bound class resources in the gate's manifest) and NOT BUILT, after reading the inspector (2026-11-25, owner said yes to "the optionals", then the code said no): UntrustedExtensionBytecodeInspector bans
+  java/lang/invoke/LambdaMetafactory (its own javadoc, "the denylist's intended ..."), while neither TrustedJavaSourcePolicyVisitor nor PluginJavaSourcePolicyVisitor mentions lambdas, so a lambda or method reference in a flow
+  class (`list.forEach(x -> ...)`, with java.util.List allowed) passes the source policy today and WORKS; with the class in the gate's manifest the app would refuse to BOOT (B30) with no sentence for the person, a regression for a
+  benefit that is mostly redundant (the source policy is an import allow-list, and the identifiers the two lists share -- Runtime, Process, ProcessBuilder, Class, ClassLoader, ServiceLoader, Thread, ThreadLocal, Timer, the
+  executors -- are forbidden in both; the one thing only the inspector bans is the lambda machinery). To build it right, one of two changes comes first: an inspector mode that lets a flow-bound class use LambdaMetafactory (kernel +
+  generator + RuntimeHost, three modules and the twin-pair rule), or a source rule that says "no lambdas" up front (breaks authors). Neither is worth it without a real incident; leave as is unless a flow class ever gets past
+  the source policy.
 done_when: >-
   With the setting at `all`, a browser AI's answer that adds a Java procedure referenced by the model is confirmed by the owner, written with its manifest entry, generated, and refused in words when
   PluginJavaSourcePolicy or the bytecode inspector rejects it; Undo and remove-code take every part out; proven on the real Manager window.
