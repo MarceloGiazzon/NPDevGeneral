@@ -3994,7 +3994,10 @@
     // any hand-authored page, just told about business concepts/declared Panels via
     // deriveNativeGroups since those have no natural home in the shell's own generic sections.
     if (window.NPDevShell) {
-      window.NPDevShell.mount({ deriveNativeGroups: deriveNativeGroups });
+      window.NPDevShell.mount({
+        deriveNativeGroups: deriveNativeGroups,
+        appName: state.manifest.appName || platformString("app.page.title", "Business Data")
+      });
     }
     // UI-5: page-level features registered through NPDevViews.registerGlobal (views/search.js).
     (window.NPDevViews ? window.NPDevViews.globals() : []).forEach(function (g) {

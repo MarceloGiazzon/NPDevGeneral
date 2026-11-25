@@ -111,6 +111,23 @@ public final class H2Dialect implements SqlDialect {
         return sqlTypeName != null && JSON_TYPE_NAMES.contains(sqlTypeName.trim().toLowerCase(Locale.ROOT));
     }
 
+    /**
+     * REG-360 (e): H2's {@code TIMESTAMP WITH TIME ZONE} keeps the offset a row was WRITTEN with, so one
+     * list returned the same kind of instant as {@code ...Z} for a row written through one path and as
+     * {@code ...-03:00} (the JVM's zone) for a row written through another, and the single-record read,
+     * which normalises to UTC, disagreed with both. H2 is the engine a generated app boots on by default,
+     * so what a person reads must not depend on the zone of the machine or on which write path made the
+     * row: the value is now always spelled in UTC, as {@code now()} and the single-record read already do.
+     * The instant is unchanged -- only its spelling. (Not changed here: SQL Server's DATETIMEOFFSET also
+     * keeps the written offset; not measured.)
+     */
+    @Override
+    public Object readValue(Object value) {
+        return value instanceof java.time.OffsetDateTime offsetDateTime
+                ? offsetDateTime.withOffsetSameInstant(java.time.ZoneOffset.UTC)
+                : value;
+    }
+
     /** H2 indexes VARCHAR happily and has no key-length restriction; bounded anyway so every
      *  engine realizes the SAME column type and a later schema diff has nothing to explain. */
     @Override

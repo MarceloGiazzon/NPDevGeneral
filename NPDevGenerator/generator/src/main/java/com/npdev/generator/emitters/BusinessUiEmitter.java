@@ -434,6 +434,24 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         return out;
     }
 
+    /**
+     * REG-360 (f): a field the platform keeps is never an input. A {@code derivedExpression} field is
+     * recomputed on every write and the target of a concept {@code rollups[]} entry is maintained from the
+     * child rows, so a generated create/edit form (and a CSV import or a bulk edit, which use the same
+     * filter) must not offer it -- a value typed there is either overwritten or silently ignored. The id
+     * has always been read-only for the same reason. List and detail views are not affected: they show it.
+     */
+    private static boolean isReadOnlyInForms(CompiledConcept concept, CompiledField field) {
+        if (field.isId()) {
+            return true;
+        }
+        CompiledSchema schema = field.getSchema();
+        if (schema != null && schema.getDerivedExpression() != null && !schema.getDerivedExpression().isBlank()) {
+            return true;
+        }
+        return concept.getRollups().stream().anyMatch(rollup -> field.getName().equals(rollup.field()));
+    }
+
     private static List<Map<String, Object>> fieldTemplateModels(
             CompiledConcept concept,
             Map<String, CompiledConcept> conceptsByName,
@@ -450,7 +468,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             view.put("type", javaString(manifestType(field)));
             view.put("required", field.isRequired());
             view.put("id", field.isId());
-            view.put("readOnly", field.isId());
+            view.put("readOnly", isReadOnlyInForms(concept, field));
             view.put("sortable", isSortable(field));
             view.put("filterable", isFilterable(field));
             view.put("widget", javaString(widget(field, conceptsByName, concept, settingResolver, contexts)));
@@ -756,7 +774,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             }
             node.put("required", field.isRequired());
             node.put("id", field.isId());
-            node.put("readOnly", field.isId());
+            node.put("readOnly", isReadOnlyInForms(concept, field));
             node.put("sortable", isSortable(field));
             node.put("filterable", isFilterable(field));
             // R5.5/GAP-2: R5.5 shipped SERVER enforcement of `field.access {read, write}` -- a

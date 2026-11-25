@@ -545,7 +545,7 @@
 
     var logo = document.createElement("span");
     logo.className = "npdev-shell-logo";
-    logo.textContent = (document.title || "NPDev App").split(" - ")[0];
+    logo.textContent = state.appName || (document.title || "NPDev App").split(" - ")[0];
     bar.appendChild(logo);
     el.logo = logo;
 
@@ -2060,7 +2060,9 @@
     try {
       window.NPDevI18n.apply(document);
       var title = (document.title || "").split(" - ")[0];
-      if (el.logo && !el.logo.querySelector("img") && title) el.logo.textContent = title;
+      // REG-360 (d): in host mode the logo is the name the host gave, never whichever page document.title names now.
+      var logoText = state.appName || title;
+      if (el.logo && !el.logo.querySelector("img") && logoText) el.logo.textContent = logoText;
       if (el.pageTitle && title && !(contextState.path && contextState.path.length) && !contextState.title) {
         el.pageTitle.textContent = title;
       }
@@ -2739,6 +2741,10 @@
     mount: function (options) {
       state.hostMode = true;
       state.deriveNativeGroups = options && options.deriveNativeGroups;
+      // REG-360 (d): the host names the app. The logo used to be read from document.title at mount, but the
+      // host rewrites document.title to "<page> - <app>" on every render, so a render that ran before the
+      // mount left the logo showing whichever page happened to be open ("Drivers" on the Rides page).
+      state.appName = options && options.appName;
       init();
     }
   };

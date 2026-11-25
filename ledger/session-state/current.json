@@ -1,21 +1,29 @@
 {
-  "closedAt": "2026-11-25T09:34:52.1986929Z",
+  "closedAt": "2026-11-25T16:02:15.0047116Z",
   "branch": "main",
-  "head": "a08ff9dc",
-  "headSubject": "docs(ledger): session handoff after closing REG-358 and opening REG-360",
-  "summary": "2026-11-25. Beta gate #2 passed and kernel floor raised to 73.45 (4d37cf1b). REG-358 closed DONE with a guard; fareFor rounds to a whole cent; the six gallery oddities a-f are REG-360 (22c20673, a08ff9dc). Then the live proof of the fare rounding, run-ride-hailing.ps1 -Stages setup,offer,pay from a fresh generate+build+boot (3-4 min each): drive_s2.py stage pay now asserts Payment.amountCents is a whole number of cents; on the fixed model 42 PASS / 0 FAIL (job 1d3qb8), on the pre-fix model passed through -ModelFile 41 PASS and exactly that check FAILS with 1039.2474 (job bvqyjv); the committed model was restored (git diff empty). REG-360 (b) is DONE; (a), (c), (d), (e), (f) stay open. Open ledger items: REG-354, REG-355, REG-356, REG-360.",
-  "nextStep": "Nothing is left that the owner has not reserved. OWNER side: (1) the pilot with a real chat AI (PILOT.md); (2) send the wave-2 pack request (D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PACK_AUTHORING_BROWSER_AI_2026-11-12\\wave2-delivery-request.json). OPTIONAL, owner's call, none started: (a) REG-360 f: make the generated form render derivedExpression and rollup-target fields read-only (BusinessUiEmitter.java lines 453 and 759 use readOnly = field.isId()), with a generator test; (b) REG-360 a: add picker.previewFields [name] to Ride.rider so the label stops carrying the payment token, then re-check in the live app (run-ride-hailing.ps1 -Stages setup,offer,pay -KeepRunning, about 4 min, from the Bash tool in the background through run_digest.py); (c) REG-360 c, d, e: reproduce on a live app first; (d) REG-356 item E: widen the T0 every-run window in cadence_state.py from 5 to about 15 min, or record T0 checks last in the gate; (e) lift the kernel floor back toward 73.6069 (about 34 covered lines; KernelRunner 132 missed, ScheduleEventStep 30 missed). TRAP: run-ride-hailing.ps1 -ModelFile OVERWRITES NPDevSamples/ride-hailing/Input/model.json; restore it with git checkout afterwards. A bare 'continue' after this: say there is no reserved work left and ask which optional item to take.",
-  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General\\ledger\\items\\REG-360.yml",
+  "head": "0148d177",
+  "headSubject": "test(ride-hailing)+docs(ledger): the pay stage asserts a whole-cent amount, proven red on the old model and green on the fixed one (REG-360 b)",
+  "summary": "2026-11-25. After 0148d177 the owner asked to finish the REG-360 topic. All six gallery oddities a-f were found, fixed and SEEN fixed in a live ride-hailing app (fresh generate+build+boot, 42 PASS / 0 FAIL each time, browser routines + REST probes): (b) fare rounding (pay-stage check red on the old model, green on the new); (f) BusinessUiEmitter.isReadOnlyInForms makes derivedExpression and rollups[] target fields read-only in forms (BusinessUiEmitterSystemKeptFieldsTest red then green); (a)+(c) one cause, the reference label is the target's first three filterable fields (system fields, a payment token, an offer id), fixed in the sample with reference.previewFields; (e) H2Dialect.readValue respells OffsetDateTime in UTC (H2DialectReadValueTest, real H2); (d) the shell logo is manifest.appName at mount AND in applyStaticTranslations (BusinessUiEmitterShellLogoTest). REG-360 is DONE with a guard; BREAKING.md has the entry. Tests: generator BusinessUi group 38 classes / 140 tests / 0 failed, kernel storage 286 tests / 0 failed (18 skipped). Open ledger items: REG-354, REG-355, REG-356.",
+  "nextStep": "Nothing is left that the owner has not reserved. OWNER side: (1) the pilot with a real chat AI (PILOT.md); (2) send the wave-2 pack request (D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PACK_AUTHORING_BROWSER_AI_2026-11-12\\wave2-delivery-request.json). OPTIONAL, owner's call, none started: (a) measure whether SQL Server DATETIMEOFFSET also mixes offsets (SqlServerDialect.readValue returns the driver offset as is); (b) the flaky check 'driver2 stayed OFFLINE' in drive_s2.py ~559 (stage experience) was never reproduced; (c) the reference-label inference still picks the first three filterable fields for a model that declares no previewFields, and nothing forbids a payment token in a label; (d) REG-356 item E: widen the T0 every-run window in cadence_state.py from 5 to about 15 min; (e) lift the kernel floor back toward 73.6069. TRAPS: run-ride-hailing.ps1 -ModelFile OVERWRITES NPDevSamples/ride-hailing/Input/model.json (git checkout it afterwards); the shell logo has TWO writers in shell.js (buildTopbar and applyStaticTranslations). A bare 'continue' after this: say there is no reserved work left and ask which optional item to take.",
+  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General\\ledger\\items\\REG-356.yml",
   "blocked": "Owner only: the real-chat-AI pilot and sending the wave-2 request. Not blocked on anything else.",
-  "verified": "Live: run-ride-hailing.ps1 setup,offer,pay, fixed model 42 PASS 0 FAIL (1d3qb8), pre-fix model 41 PASS 1 FAIL on the new check (bvqyjv). Also check-done-item-guards 0 blocking, ledger reverse-freshness OK, T0 on the model (wvx8cx), portable-tooling check (etrx2h). NOT run: the other ride-hailing stages (paymore, price, rate, cancel, notify, route, experience), the full aiKnowledge unit-test discovery.",
-  "dirtyCount": 3,
+  "verified": "Live (fresh build each): ride-hailing setup,offer,pay 42 PASS 0 FAIL; browser routines for logo, list labels and the Rider form; REST probe list vs item datetime. Unit: generator BusinessUi group 140 tests 0 failed, kernel storage 286 tests 0 failed. Checks: check-done-item-guards 0 blocking, ledger freshness OK, check-ui-i18n OK, twin-pair 60/60, portable-tooling (earlier in the session). NOT run: the full generator and kernel gates, the other ride-hailing stages, the browser gates (run-shell-scenarios), the Docker proof.",
+  "dirtyCount": 11,
   "dirtyFiles": [
-    " M NPDevSamples/ride-hailing/drive_s2.py",
+    " M BREAKING.md",
+    " M NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java",
+    " M NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache",
+    " M NPDevGenerator/generator/src/main/resources/npdev-templates/shell.js.mustache",
+    " M NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java",
+    " M NPDevSamples/ride-hailing/Input/model.json",
     " M ledger/items/REG-356.yml",
-    " M ledger/items/REG-360.yml"
+    " M ledger/items/REG-360.yml",
+    "?? NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/BusinessUiEmitterShellLogoTest.java",
+    "?? NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/BusinessUiEmitterSystemKeptFieldsTest.java",
+    "?? NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/H2DialectReadValueTest.java"
   ],
   "unpushed": 0,
   "landedCommits": [
-    "a08ff9dc docs(ledger): session handoff after closing REG-358 and opening REG-360"
+    "0148d177 test(ride-hailing)+docs(ledger): the pay stage asserts a whole-cent amount, proven red on the old model and green on the fixed one (REG-360 b)"
   ]
 }

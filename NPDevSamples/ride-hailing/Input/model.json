@@ -252,7 +252,8 @@
           "type": "reference",
           "required": true,
           "reference": {
-            "target": "Rider"
+            "target": "Rider",
+            "previewFields": ["name", "account"]
           }
         },
         {
@@ -616,7 +617,8 @@
           "type": "reference",
           "required": true,
           "reference": {
-            "target": "Ride"
+            "target": "Ride",
+            "previewFields": ["riderAccount", "status"]
           }
         },
         {
@@ -719,7 +721,8 @@
           "type": "reference",
           "required": true,
           "reference": {
-            "target": "Ride"
+            "target": "Ride",
+            "previewFields": ["riderAccount", "status"]
           }
         },
         {

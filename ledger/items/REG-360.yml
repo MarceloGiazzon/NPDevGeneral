@@ -1,44 +1,63 @@
 id: REG-360
 title: >-
-  Six things seen in the ride-hailing gallery screenshots (2026-11-24): a payment amount in fractional cents (fixed in the model), system-kept fields offered as editable inputs (cause found, platform fix not made),
-  a payment token used as a record label, a stale top-bar title, mixed date formats and a Payment pointing at a Ride id not in the list (the last three not investigated)
+  Six things seen in the ride-hailing gallery screenshots (2026-11-24): a payment amount in fractional cents, system-kept fields offered as form inputs, a payment token and an offer id used as record labels,
+  a top-bar logo that named the wrong page, and one datetime spelled two ways in one list -- all six fixed and each seen fixed in a live app
 type: GAP
 severity: LOW
-status: PARTIAL
+status: DONE
 opened: 2026-11-25
+closed: 2026-11-25
+verification: VERIFIED_LIVE
 source: >-
   REG-356 item C, owner decision 7 (2026-11-24): the en/pt gallery was captured locally from a live ride-hailing app and six oddities were seen in the PNGs and left uninvestigated. REG-356's done_when
-  says each leftover is "done and verified or recorded in its own item with a reason"; this is that item. Letters (a)-(f) are the ones used in REG-356.
-surface: samples/ride-hailing, generator/business-ui, contract/dsl
+  says each leftover is "done and verified or recorded in its own item with a reason"; this item recorded them, and the owner then asked to finish the topic ("continue until finished") on 2026-11-25. Letters (a)-(f) are the ones used in REG-356.
+surface: samples/ride-hailing, generator/business-ui, kernel/storage, contract/dsl
 files:
   - NPDevSamples/ride-hailing/Input/model.json
   - NPDevSamples/ride-hailing/drive_s2.py
   - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/BusinessUiEmitterSystemKeptFieldsTest.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/shell.js.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/BusinessUiEmitterShellLogoTest.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/H2DialectReadValueTest.java
+  - BREAKING.md
 detail: |
-  Evidence: 16 PNGs in NPDev_General__OutsideRepo/ride-hailing-gallery/artifacts (not in the repo). Each letter says what is MEASURED and what is only a HYPOTHESIS.
-  (b) FIXED AND VERIFIED LIVE 2026-11-25. Payment.amountCents showed 1039.2474. Cause (read from the model): the function fareFor returned `(300 + 120 * km + 25 * minutes) * surge` with no
-     rounding, Ride.fareCents is derived from it, and the flow copies it into Payment.amountCents, which is then sent to the payment provider as `amountCents`. Now `round((300 + 120 * km + 25 * minutes) * surge, 0)`
-     (round(decimal, integer), half away from zero, is a stdlib function; surgeFactor already uses it). The model validates (run-fast-gate.ps1 -Tier T0 -ModelPath, tracked job wvx8cx, passed). The one
-     acceptance check that recomputes the fare (drive_s2.py ~389) allows a difference below 1, and rounding moves it by at most 0.5, so it still passes.
-     LIVE PROOF (run-ride-hailing.ps1 -Stages setup,offer,pay, each from a fresh generate + build + boot; each run took 3 to 4 minutes, not the 35 of the earlier all-stage run): drive_s2.py stage pay now
-     asserts "pay: Payment.amountCents is a whole number of cents". With the fixed model (tracked job 1d3qb8, exit 0) 42 checks PASS, 0 FAIL. With the pre-fix model passed through -ModelFile (job bvqyjv,
-     exit 1) 41 PASS and exactly one FAIL, that check, with the value 1039.2474 -- the number seen in the screenshots; the committed model was restored afterwards (git diff empty). So the check
-     goes red on the defect and green on the fix. Only the pay-stage amount was proven; the price stage's fare formula check allows a difference below 1 and was not run.
-  (f) CAUSE FOUND, PLATFORM FIX NOT MADE. The Rider create form offers Rating Avg, Rides Requested, Cancels By Rider (rollup targets) and Cancel Rate (a derivedExpression field) as editable inputs. The
-     generator marks a form field read-only only for the id: BusinessUiEmitter.java lines 453 and 759 are `readOnly = field.isId()`. So a field the platform computes (derivedExpression, or the target of a
-     concept `rollups[]` entry) is shown as an input a person can type into. What the server does with a value typed there was NOT checked. Proposed: read-only when the field has a derivedExpression or is a
-     rollup target; it touches the emitter, the generated form, the UI contract and the generator tests, so it is its own change.
-  (a) CAUSE FOUND, FIX NOT APPLIED. The Ride list's Rider column and the Payment source show "Rider1 / rider1 / tok_ok", a credential-shaped value in a label. BusinessUiEmitter.effectiveReferenceDisplayFields
-     uses the field's picker previewFields, then the selector's displayFields, and otherwise the target's search fields, which default to the first three filterable non-id fields (here name, account,
-     paymentToken). Ride.rider declares none of them. Proposed: `picker.previewFields: ["name"]` on Ride.rider (the keyword is in the field `picker` object of model.schema.json). The token in the model is a
-     demo value ("tok_ok") and the field's description says a real app stores the provider's customer id, so this is a sample defect, not a leak; but the rule "a label must not carry a payment token" has no
-     check. Not verified in a running app, so not applied.
-  (c) NOT INVESTIGATED: the Payment's Ride label id (be72085e-...) is not one of the two Ride ids listed in the same capture. Possibilities, none checked: the list is scoped or paged, the label shows another
-     field, or the capture mixed two runs.
-  (d) NOT INVESTIGATED: in the Dispatcher (disp1) captures the top-bar title still says "Drivers" on the Rides and Payments pages (correct in the admin captures). Looks like a navigation or title-update
-     path that depends on the role; needs a live repro in generated business-ui.
-  (e) NOT INVESTIGATED: "Created At" mixes "...Z" and "...-03:00" in one list. createdAt has `defaultExpression: now()`; where the other form comes from (a flow write, the browser, the seed) is not known.
-  Also still unexercised: the flaky acceptance check "driver2 stayed OFFLINE" (drive_s2.py ~559, stage experience), see REG-356 item C.
+  Evidence: 16 PNGs of the first capture and the verification routines (make_verify.py, verify-reg360-*.json, the per-job result.json) in NPDev_General__OutsideRepo/ride-hailing-gallery (not in the repo). Every fix below was
+  SEEN in a live ride-hailing app (run-ride-hailing.ps1 -Stages setup,offer,pay -KeepRunning, fresh generate + build + boot, 42 PASS / 0 FAIL each time), read through a browser routine or the REST API.
+  (b) Payment.amountCents showed 1039.2474. CAUSE: fareFor returned `(300 + 120 * km + 25 * minutes) * surge` with no rounding and Ride.fareCents, then Payment.amountCents, inherit it (it is sent to the payment
+     provider as `amountCents`). FIX: `round((300 + 120 * km + 25 * minutes) * surge, 0)` in the sample. PROOF: drive_s2.py stage pay asserts "Payment.amountCents is a whole number of cents"; on the pre-fix model passed
+     through -ModelFile (tracked job bvqyjv) that check FAILS with 1039.2474 and is the only failure (41 PASS); on the fixed model 42 PASS (job 1d3qb8). The list now shows 1039.
+  (f) The Rider create form offered Rating Avg, Rides Requested, Cancels By Rider (rollup targets) and Cancel Rate (a derivedExpression field) as inputs. CAUSE: BusinessUiEmitter marked a field read-only only for the id
+     (`readOnly = field.isId()` at two sites), and the browser's formFields() -- shared by the create/edit form, the CSV import and the bulk edit -- filters on that flag. FIX: isReadOnlyInForms() also answers true for a
+     derivedExpression field and for any field named by the concept's rollups[]; lists and detail views are not affected. PROOF: BusinessUiEmitterSystemKeptFieldsTest, 2 tests, red on the old emitter ("a rollups[] target is
+     kept by the platform, not typed ==> expected true but was false") and green on the new; and live, the Rider form's controls are now exactly name, phone, account, paymentToken.
+  (a) and (c) share ONE cause. A reference field with no declared label shows the target's first three filterable non-id fields (BusinessUiEmitter.effectiveReferenceDisplayFields). For Ride.rider that was name, account,
+     paymentToken -- a credential-shaped value in a label (a). For Payment.ride and RideOffer.ride it was cancelledBy, currentOfferId, distanceMethod -- so the "Ride" cell of a payment showed the id of the OFFER
+     (be72085e-... / road), which is why it matched none of the listed Ride ids (c); the data was right, the label was built from system fields. FIX: `reference.previewFields` in the sample (the keyword lives in the
+     `reference` object of model.schema.json, not in `picker`): Ride.rider ["name","account"], Payment.ride and RideOffer.ride ["riderAccount","status"]. LIVE: the Rides list shows "Rider1 / rider1", a payment's Ride
+     cell "rider1 / COMPLETED", an offer's "rider2 / NO_DRIVER". NOT changed: the inference itself still picks the first three filterable fields for any model that declares nothing; a rule "a label must not carry a
+     payment token" has no check.
+  (e) One list mixed "...Z" and "...-03:00" for the same kind of instant, and the single-record read disagreed with the list (list "12:33:11.08068-03:00", item "15:33:11.08068Z", same row). CAUSE: H2Dialect did not
+     override readValue, so the list path handed back the OffsetDateTime exactly as the driver read it, and H2's TIMESTAMP WITH TIME ZONE keeps the offset a row was written with (a row written one way comes back in the
+     JVM's -03:00, one written another way in Z); the single-record path normalises to UTC. Which write path produced which offset was NOT identified; the fix does not need it. FIX: H2Dialect.readValue respells every
+     OffsetDateTime in UTC (same instant). PROOF: H2DialectReadValueTest, 3 tests, including a real in-memory H2 that writes one row with -03:00 and one with Z, shows the driver returns them with different offsets, and
+     shows both read back in UTC. Not run red (the default readValue is the identity, so the first test cannot pass without the override). LIVE: for Ride and RideOffer, list and item are now identical and all in Z.
+     NOT measured: SQL Server's DATETIMEOFFSET (SqlServerDialect.readValue returns the driver's offset as is) may have the same mixed spelling. The Created At cell still shows the raw ISO string; formatting it for the
+     reader is a separate UI matter.
+  (d) The top-bar title said "Drivers" on the Rides, Payments and RideOffers pages of the dispatcher, and "Riders" on the Rider page of the admin. CAUSE: shell.js painted the logo from document.title, which the host rewrites to
+     "<page> - <app>" on every render, at shell mount (a render that ran first fixed the wrong page into the logo) AND again in applyStaticTranslations() after the catalogue loads. FIX: business-ui-app.mustache passes
+     `appName: state.manifest.appName` to NPDevShell.mount; shell.js keeps it and uses it at both places, falling back to document.title only when no host named the app (a hand-written page). PROOF: BusinessUiEmitterShellLogoTest,
+     2 tests (content of the emitted assets); and live, a first build with only the mount-time half still showed "Drivers" (the second writer undid it), the complete fix shows "sample.ridehailing" on every page for both users.
+     The name shown is manifest.appName, which for a model that names nothing is its namespace; a nicer name is the author's to declare.
+  Checks: check-ui-i18n OK (957 ids, no new literal), twin-pair 60/60, check-done-item-guards and ledger freshness clean, portable-tooling check passed. BREAKING.md has the entry.
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/BusinessUiEmitterSystemKeptFieldsTest.java#aRollupTargetAndADerivedFieldAreReadOnlyInTheForm
+  asserts: >-
+    a concept's rollups[] target and its derivedExpression field are read-only in the emitted manifest while an ordinary field stays editable and the id stays read-only; the other five fixes are pinned by
+    BusinessUiEmitterShellLogoTest, H2DialectReadValueTest and the ride-hailing pay-stage check "Payment.amountCents is a whole number of cents"
+  provenRed: true
 done_when: >-
-  (b) is DONE (live proof above); (f) either the generator renders derived and rollup fields read-only (with a test) or the owner decides it stays; (a) the
-  Ride list shows a name, not the payment token; (c), (d) and (e) are each reproduced and fixed, or shown not to be defects.
+  Each of (a)-(f) is fixed and seen fixed in a live app. Met 2026-11-25.
