@@ -174,7 +174,7 @@ class LadderTest(unittest.TestCase):
         # not yet re-authored: REG-361 stays open for that; this pins only the feedback text.)
         refusal = json.dumps({
             "status": "failed",
-            "error": "Model schema validation failed for X:\r\n"
+            "error": "Model schema validation failed for the composed pack model\r\n"
                      " - $.concepts[1]: $.concepts[1]: property 'truthLevel' is not defined in the schema and the schema "
                      "does not allow additional properties Suggested fix: Adjust the 'truthLevel' property so it matches the canonical schema.\r\n"
                      " - $.dslVersion: $.dslVersion: must be the constant value '3.0.0' Suggested fix: Update the model so it satisfies the schema.\r\n"
