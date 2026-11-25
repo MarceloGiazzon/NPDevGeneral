@@ -3,8 +3,10 @@ title: >-
   The R9 nightly scale ladder was red on every rung for at least three nights (2026-11-23, 24, 25): the synthesized model still carried the root procedures[] key that REG-342 removed, so generation failed in 6 seconds
 type: BUG
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-11-25
+closed: 2026-11-25
+verification: VERIFIED_LIVE
 source: >-
   GitHub Actions "R9 Nightly Scale Ladder" (schedule), runs 45187590196 (c78c52fc), 45413454127 (10c211bb) and 45626134458 (0148d177), all failure, all five rungs (26, 50, 100, 260, 520) at the step
   "Run scale proof"; found while checking CI after the REG-360 push, then fixed on the owner's instruction to finish everything that does not need them (2026-11-25).
@@ -24,5 +26,14 @@ detail: |
   and ended "SCALE PROOF PASSED (26 concepts)" in 5 m 08 s (ptrack job 2025jz).
   NOT VERIFIED: rungs 50, 100, 260 and 520 (they use the same synthesizer at a larger N; each takes longer and 520 needs a larger boot timeout); the workflow is dispatched by hand after the push (workflow_dispatch is
   enabled) and this item stays PARTIAL until a run on main is green on all five rungs; the dispatched run's result is added below when it finishes. A rung failing later in the pipeline (build, boot, a measurement against scripts/policy/scale-proof-baseline.json) would be a NEW finding hidden until now, because generation failed first.
+  CI RESULT 2026-11-25: the workflow was dispatched by hand on main at ae886faa (run 45661004363, the same workflow the schedule runs) and ended success on all five rungs (26, 50, 100, 260, 520 concepts) in
+  4 m 25 s of wall clock. Nothing later in the pipeline (build, boot, the measurements) broke once generation worked, so the "hidden next failure" risk above did not materialise. The next scheduled night is the
+  ordinary confirmation.
+guard:
+  kind: script
+  ref: scripts/proofs/synthesize_scale_model.py
+  asserts: >-
+    the synthesized N-concept model carries no root procedures[] key (the former procedure is a flow) and is byte-identical across runs; the R9 ladder generates, builds, boots and measures it on all five rungs in CI
+  provenRed: true
 done_when: >-
   The scheduled "R9 Nightly Scale Ladder" ends green on all five rungs on main.
