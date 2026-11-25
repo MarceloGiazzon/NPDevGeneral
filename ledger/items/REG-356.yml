@@ -45,9 +45,15 @@ detail: |
      notes (FIELD_CONVENTION_APPLIED, IMPLICIT_ID_ADDED) are listed as problems. FIXED 2026-11-22 in Manager 0.13.45 (`(d.severity || "error") === "error"`; version moved in Cargo.toml, Cargo.lock,
      tauri.conf.json and main.rs); the render-check scenario "Studio: a failed check lists the errors, not the info notes or the warnings" fails on the old line (403/404) and passes on the new one
      (404/404). REBUILT 2026-11-23: Build\manager-target\release\npdev-manager.exe is now 0.13.45 (cargo build --release, 3m17s, nothing running so no rename was needed; the render checker passed 404/404 against the repo ui). B2-B4 untouched.
-  PAUSED BY THE OWNER until 2026-11-25: the kernel coverage-floor root cause (floor 73.4185 -> 73.4139) -- "ignore this problem completely for the next 3 days"; do not investigate or let that ratchet drive work before then.
+  WAS PAUSED BY THE OWNER until 2026-11-25 (resumed and closed that day, see decision 3 below): the kernel coverage-floor root cause (floor 73.4185 -> 73.4139) -- "ignore this problem completely for the next 3 days".
   OWNER DECISIONS 2026-11-24 ("all recommended" to the open questions of this item), with what was done the same day:
-     3. kernel coverage floor: the pause ends 2026-11-25; pick it up first thing that day. NOT started (not before the date).
+     3. kernel coverage floor: the pause ended 2026-11-25. DONE 2026-11-25: run-kernel-quality-gate.ps1 as tracked job 5bnmfr (11 m 40 s, exit 0, no kernel or adapter file edited before or during the run) measured 73.4500% over
+        46 reports (16,112 covered / 5,824 missed of 21,936 lines) and the ratchet raised scripts/policy/coverage-baseline.json 73.4139 -> 73.45 itself; no hand re-pin, no regression. ROOT CAUSE of the 73.6069 -> 73.4185 drop
+        (17 -> 19 Nov), an ESTIMATE and not a proof (the old jacoco reports no longer exist, and rebuilding the old commit was not worth ~12 min of gate plus a detached checkout): REG-342 removed about 363 executable lines
+        from DefaultProcedureExecutor / ProcedureStep / ProcedureStepType (6279b6dc, 415edd6f) that were about 80-85% covered; deleting code above the average of what stays lowers the aggregate, and with those lines at 80-85% the
+        aggregate before the removal computes to 73.56-73.64%, which brackets the recorded 73.6069. Those classes are 91-93% covered today and none of the 11 production files changed since 17 Nov is both large and poorly covered, so it is deleted
+        code, not test debt. The floor stays at the measured 73.45; going back to 73.6069 would take about 34 more covered lines (cheapest places: KernelRunner 132 missed lines, ScheduleEventStep 30 missed at 73.5%), optional and NOT done.
+        Scripts used are in the session scratchpad, not in the repo. The kernel note in coverage-baseline.json carries the same text.
      4. single-source schema, last step: NO. The generated copies stay in git, refreshed by check-schema-mirror-consistency.py --fix, so item A is complete.
      5. B3 DONE: a field that names a domainType and no type takes the type from the domain type's baseType (FieldConventionExpansion.expand; an explicit type is never touched; an unknown domain type is
         the error "domain type not found: X"; the info note FIELD_CONVENTION_APPLIED says where the type came from). FieldConventionsTest 14/14, two of them new. NOT added to the AI briefing: the B4
@@ -97,6 +103,12 @@ detail: |
         is its own producer, scripts/quality/run-stale-report-check.ps1, orchestration stage 4 (last; the sort is now stable and -PlanOnly prints the plan), also last in run-beta0-final-release-check.ps1; expanded-beta0-evidence
         no longer writes it. (c) Test-WorkspaceSlimness.ps1 -CleanRebuildable runs clean-workspace-state.ps1 before measuring, and run-expanded-beta0-evidence.ps1 passes it; off everywhere else. Not changed, and not proven:
         the cause of the silent Gradle exit; the workspace-cleanliness check still runs mid-stage-2, so a rebuildable directory left by a LATER producer (sample-matrix, app-upgrade-contract) is not measured by it.
+        THE SECOND FULL GATE PASSED (2026-11-25, committed fixes 6aa8efec, tracked ptrack job pg42am, 1 h 29 m, exit 0, launched from Bash with run_in_background through run_digest.py, tree clean before and after): candidateReady /
+        releaseReady / officialReleaseEligible all true, blockers [], orchestration 26 passed / 0 failed-with-evidence / 0 failed-no-evidence / 0 skipped, RunId beta-release-gate-20261125-014954857. The three former
+        blockers: ai-beta-gate passed (2101 s; the log has no retry or second attempt, so the silent Gradle exit simply did not recur -- the retry itself was NOT exercised by a real run, only by its 19 unit tests, and the
+        cause of the silent exit stays unproven); stale-report-check passed at stage 4 (2 s, after every report producer); workspace-cleanliness passed (status passed, violations []; whether -CleanRebuildable actually
+        removed anything this run was not looked at). The CI Docker proof used was 45490868311 (about 4 h old). NOT run in this verification: the full aiKnowledge unit-test discovery (~14 min). Evidence: scripts/reports/out/beta-release-gate-report.json
+        and beta-release-evidence-orchestration-report.json; digest log Build\digest-logs\20261125T014953Z-pwsh--NoProfile--File.log.
 done_when: >-
   The four schema copies are one source and check-schema-mirror-consistency.py is gone or trivial; each of B-E is either done and verified or recorded in its own item with a reason; the paused kernel
   item is picked up on or after 2026-11-25.
