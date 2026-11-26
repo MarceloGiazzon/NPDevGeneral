@@ -3,8 +3,9 @@ title: >-
   Code a browser AI writes (a JS page, a Java capability, a conversion hook) is refused outright: there is no safe way yet to accept it, show it, mark where it came from, or remove it in one click
 type: FEATURE
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-11-21
+closed: 2026-11-26
 source: >-
   Split out of REG-323 by the owner's decision of 2026-11-21 ("follow your suggestions"): the F4 answers that are DATA (fragments, element upserts, themes, hand-made
   HTML/CSS/SVG pages, menu, seeds, config proposals) are done and in the Manager; the part that is CODE is security-sensitive and was always meant to be designed WITH the owner, last.
@@ -50,13 +51,22 @@ detail: |
   scratch app, real CLI; NPDev_General__OutsideRepo/reg354-remove-button-tour/tour.mjs 10/10: list of two, Remove asks and 'no' keeps the file, the real CLI deletes one file and its record entry, the last removal deletes
   browser-ai-code.json and hides the list, a path the record does not list and a path leaving the folder are refused, model.json byte for byte). The INSTALLED Manager is still the older build until the owner installs one
   (New-ManagerInstaller.ps1 -Install). Not exercised: removing a Java class on the real window (the render check covers its sentence; the CLI's forget() is covered by test_relay_extensions). (13) the real chat-AI round for a JS page is one pilot sitting with the owner (prepared prompt and steps, the owner pastes the answer back); it does not block anything.
+  DONE 2026-11-26, THE PILOT (owner at the keyboard on the INSTALLED Manager 0.13.44, scratch copy of the canary, machine setting `all`, chat AI = Gemini "Neon" at high effort, real clipboard round trip, no scripted answer):
+  Round A, ask "Show a greeting from a small JavaScript file": ONE answer, outcome READY at round 1 (prompt 38,096 bytes, answer 7,747 bytes, pasted). The AI wrote TWO files, web/greeting.html (with a script tag) and web/greeting.js, plus a pages.json
+  menu entry; the preview asked FOUR required boxes (accept code + public page, per file) and Apply stayed off until all four were ticked. Nothing was written before Apply. After Apply the Manager built and started the app by itself;
+  /greeting.html and /greeting.js answered 200 WITHOUT signing in (982 and 700 bytes, sha256 equal to browser-ai-code.json), the front page answered 302 to login; the owner saw the page ("Boa noite!"). The code only reads the local hour.
+  Undo ("Desfeito. Seu app esta como antes."): web/, pages.json and browser-ai-code.json gone, model.json byte for byte the original (the apply had bumped version 1.0 -> 1.1 and changed CRLF to LF), the other 3 files identical.
+  Evidence kept outside the repo: NPDev_General__OutsideRepo/reg354-355-pilot/evidence (the two conversations) and PILOT_NOTES_2026-11-25.md. Small findings, none blocking: the preview said "A IA devolveu o mesmo app: nada mudaria" although apply bumps the
+  version; the Manager's app picker names a built app by the name the app gives itself (npdev-canary), not by its folder, so two copies of one model look identical; the AI wrote Portuguese because the prompt carries the person's language
+  (session language "Portuguese (Brazil)"). All done_when parts now hold: a program is refused by default (setting never), an accepted one is marked origin browser-ai and removable (Undo, and the 0.13.46 Remove button), a public page needs
+  the second confirmation (seen today).
 guard:
   kind: test
   ref: NPDevCli/tests/test_relay_codepolicy.py
   asserts: >-
     the setting defaults to never and anything unreadable is never; with never code is quarantined and nothing is written; with pages a JS page needs two confirmations, is recorded with its sha256 and goes away with Undo; Java is sent back with a reason; code is never accepted outside phase f4; remove-code never follows a path out of the app.
   provenRed: false
-verification: UNIT_TESTED
+verification: VERIFIED_LIVE
 done_when: >-
   Either the owner decides code is never accepted from a browser AI (WONTFIX, the quarantine list stays), or the six steps are built and proven on the real window: a JS page with a `block`
   pattern and Java the inspector refuses cannot be accepted; an accepted program is marked origin: browser-ai and removable in one click; a JS page never goes public without the second confirmation.

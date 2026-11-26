@@ -3,8 +3,10 @@ title: >-
   Java a browser AI writes (a capability, a conversion hook) is accepted by the relay when the machine's code setting is `all`, but cannot be added to an app from here: nothing writes it into the generator's hash-pinned extension manifest
 type: FEATURE
 severity: LOW
-status: PARTIAL
+status: DONE
 opened: 2026-11-21
+closed: 2026-11-26
+verification: VERIFIED_LIVE
 source: >-
   Split out of REG-354 (owner, 2026-11-21: "default A, but on my environment C -- accept all"). The setting, the confirmation, the provenance record and removal exist and are
   proven for JavaScript pages; Java needs the generator side.
@@ -74,6 +76,21 @@ detail: |
   executors -- are forbidden in both; the one thing only the inspector bans is the lambda machinery). To build it right, one of two changes comes first: an inspector mode that lets a flow-bound class use LambdaMetafactory (kernel +
   generator + RuntimeHost, three modules and the twin-pair rule), or a source rule that says "no lambdas" up front (breaks authors). Neither is worth it without a real incident; leave as is unless a flow class ever gets past
   the source policy.
+  DONE 2026-11-26, THE PILOT (round B; same setup as REG-354's pilot paragraph: installed Manager 0.13.44, scratch copy of the canary, Gemini "Neon" at high effort, real clipboard round trip). Ask "Add a flow written in Java that returns the
+  tenant id": ONE answer, outcome READY at round 1 (prompt 44,853 bytes, answer 7,444 bytes). The briefing question is answered YES: the AI sent the class, the flow that names it (GetTenantId, bound to CanaryTask with the placeholder step)
+  and a role (Operator, full CRUD on the two concepts + EXECUTE_FLOW) in ONE answer. The preview asked ONE box (the class runs on the app's server); Apply stayed off until ticked. The relay wrote extensions/GetTenantId.java, a manifest entry
+  (flow-gettenantid, kind flow, runtimeBinding flow:GetTenantId, requiredRole Operator, sha256 computed by the relay and equal to the file's), browser-ai-code.json (java-extension, origin browser-ai) and three changes in model.json (flow, role,
+  version 1.0 -> 1.1). The platform ACCEPTED the class: the generated app holds npdev-generated/.../trusted/GetTenantId.java and build/classes/.../trusted/GetTenantId.class, and the app BOOTED (health 200). This closes "a real build of an app with
+  the class" and "a real chat AI asked for a class". Undo ("Desfeito. Seu app esta como antes."): class, extensions/, manifest, record gone, model.json and the other 3 files byte for byte the original. The platform's refusal sentence was not
+  seen with a real AI (the AI's class was valid); it is proven with scripted answers on the real window (R1/R2 above). Not exercised: Manager Remove button on a Java class (the CLI's forget() is covered by test_relay_extensions) and calling the flow
+  (the app needs sign-in). The scratch app, its two relay conversations and its process were removed afterwards; the two conversations are kept in NPDev_General__OutsideRepo/reg354-355-pilot/evidence.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_relay_extensions.py
+  asserts: >-
+    a flow-bound extensions/<Name>.java is accepted only with the machine setting at `all` and one confirmation, after the class contract, the closed import list and the flow/role checks; the relay computes the manifest entry's sha256 itself;
+    Undo restores the snapshot and remove-code takes class, manifest entry and record out; UntrustedExtensionRelayWrittenTest generates an app from the relay's own output and refuses a class edited after pinning.
+  provenRed: false
 done_when: >-
   With the setting at `all`, a browser AI's answer that adds a Java procedure referenced by the model is confirmed by the owner, written with its manifest entry, generated, and refused in words when
   PluginJavaSourcePolicy or the bytecode inspector rejects it; Undo and remove-code take every part out; proven on the real Manager window.

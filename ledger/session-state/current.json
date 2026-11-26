@@ -1,21 +1,20 @@
 {
-  "closedAt": "2026-11-25T22:54:40.8535108Z",
+  "closedAt": "2026-11-26T03:16:21.7103726Z",
   "branch": "main",
-  "head": "38c612e8",
-  "headSubject": "docs(ledger): REG-361 partial (six foundation packs re-issued 1.0.1, all secure; seven modules go to the authoring AI with wave 2), REG-355 gate question answered from code, REG-360 logo decision, session handoff",
-  "summary": "2026-11-25 (second stretch, owner said yes to the optionals). Wrote the owner a step-by-step for the two owner tasks (pilot, wave 2) and created the scratch pilot app Reg354355Pilot (+ Reg354355Pilot-app) in the Manager apps folder D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\MonitorGenApps; wrote wave2-paste-prompt.md. OPTIONALS: (1) REG-355 bytecode-gate hardening NOT built, on purpose: UntrustedExtensionBytecodeInspector bans LambdaMetafactory while TrustedJavaSourcePolicy allows lambdas, so listing flow-bound classes in the gate would make apps with an ordinary lambda refuse to boot (B30) with no sentence; recorded in REG-355 with the two ways to build it right. (2) kernel coverage: KernelRunnerScheduleEventFailurePathsTest (10 tests) takes ScheduleEventStep from 30 missed to 0 missed / 113 covered, 40 tests BUILD SUCCESSFUL; expected aggregate about 73.59 (estimate, full gate not re-run; the ratchet raises the floor itself), recorded in REG-356. CI of 38c612e8: all 6 workflows green. Memory: shell traps updated (pwsh -Command and cmd.exe /c gave false passed).",
-  "nextStep": "Nothing is left for Claude that the owner has not reserved. OWNER SIDE, unchanged: (1) the real-chat-AI pilot, steps in the chat and in D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\reg354-355-pilot\\PILOT.md, app Reg354355Pilot already created (delete the folders Reg354355Pilot and Reg354355Pilot-app in the MonitorGenApps folder after the pilot); (2) send wave 2: attach the guide D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PACK_AUTHORING_BROWSER_AI_2026-11-12\\NPDEV_PACK_AUTHORING_GUIDE_FOR_BROWSER_AI.md, wave2-delivery-request.json and the two feedback files in D:\\WorkSpace\\NPDev\\PackWorkshop\\feedback\\, paste wave2-paste-prompt.md as the message; the AI returns TWO zips (w1-modules, w2-delivery); then ask Claude to ingest (npdev pack workshop ingest) and test them, expecting a second round. A bare 'continue': say there is no reserved work; if zips are in Downloads/inbox ingest them; else offer nothing more than the lambda-aware gate design (not recommended).",
+  "head": "c0d4f4be",
+  "headSubject": "test(kernel): the failure and dedupe paths of the scheduleEvent step (ScheduleEventStep 30 missed lines -> 0); docs(ledger): REG-355 bytecode-gate hardening considered and not built (lambdas), REG-356 floor note, handoff",
+  "summary": "2026-11-26. THE REAL-CHAT-AI PILOT IS DONE and REG-354 + REG-355 are closed DONE / VERIFIED_LIVE. The owner ran it on the installed Manager 0.13.44 (Gemini Neon, high effort, scratch copy of the canary): round A (a JS page, 2 files, 4 required boxes) and round B (a Java flow class, 1 box) were both READY on the FIRST answer; the platform accepted the class and the app booted (health 200); every Undo restored the app byte for byte; the public page answered 200 without sign-in while the front page 302. Briefing question answered YES (class + flow + role in one answer). Small findings in the ledger: the preview says nothing would change although apply bumps the version, the picker names a built app by the name it gives itself, the AI wrote Portuguese because the prompt carries the language. Cleanup done: app stopped with its own Stop-App.ps1, scratch folders deleted, the two real conversations archived in NPDev_General__OutsideRepo/reg354-355-pilot/evidence. Open ledger items now: REG-361 only.",
+  "nextStep": "Nothing is left for Claude that the owner has not reserved. OWNER SIDE, the last one: send wave 2 (steps given in chat): attach the guide D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PACK_AUTHORING_BROWSER_AI_2026-11-12\\NPDEV_PACK_AUTHORING_GUIDE_FOR_BROWSER_AI.md, wave2-delivery-request.json (same folder) and the two feedback files in D:\\WorkSpace\\NPDev\\PackWorkshop\\feedback\\, paste wave2-paste-prompt.md as the message; the AI returns TWO zips (w1-modules, w2-delivery); then ask Claude to ingest (npdev pack workshop ingest) and test them, expecting a second round (the checker reports one rung at a time). A bare 'continue': say there is no reserved work; if zips are in Downloads or the workshop inbox ingest and test them.",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General\\ledger\\items\\REG-361.yml",
-  "blocked": "Owner only: the real-chat-AI pilot and sending the wave-2 request to a chat AI.",
-  "verified": "kernel: :kernel:test KernelRunnerScheduleEventFailurePathsTest + KernelRunnerTest, 40 tests, BUILD SUCCESSFUL (read from the Gradle log and the test XML, not from ptrack); ScheduleEventStep jacoco LINE missed 0 covered 113; ledger guards clean; portable-tooling check passed; CI 38c612e8 six of six green. NOT run: the full kernel quality gate (11m40s, so the aggregate coverage number is an estimate), any browser or Docker gate.",
-  "dirtyCount": 3,
+  "blocked": "Owner only: sending the wave-2 request to a chat AI and bringing the zips back.",
+  "verified": "Pilot evidence read from the disk after each step (files, hashes, manifest, generated class, health 200, public 200 vs front 302, byte-for-byte undo); ledger guards clean (check-done-item-guards --no-baseline-ok 0 blocking, 667 DONE); portable-tooling check passed. NOT done: the other six chat AIs, the relay target calibration flags, the Manager Remove button on a Java class, calling the flow (needs sign-in), the full kernel gate.",
+  "dirtyCount": 2,
   "dirtyFiles": [
-    " M ledger/items/REG-355.yml",
-    " M ledger/items/REG-356.yml",
-    "?? NPDevKernel/kernel/src/test/java/com/npdev/kernel/KernelRunnerScheduleEventFailurePathsTest.java"
+    " M ledger/items/REG-354.yml",
+    " M ledger/items/REG-355.yml"
   ],
   "unpushed": 0,
   "landedCommits": [
-    "38c612e8 docs(ledger): REG-361 partial (six foundation packs re-issued 1.0.1, all secure; seven modules go to the authoring AI with wave 2), REG-355 gate question answered from code, REG-360 logo decision, session handoff"
+    "c0d4f4be test(kernel): the failure and dedupe paths of the scheduleEvent step (ScheduleEventStep 30 missed lines -> 0); docs(ledger): REG-355 bytecode-gate hardening considered and not built (lambdas), REG-356 floor note, handoff"
   ]
 }
