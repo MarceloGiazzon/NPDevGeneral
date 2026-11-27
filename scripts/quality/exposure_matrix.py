@@ -10,7 +10,8 @@ for what a role must NOT see. This tool checks exactly that.
         --user admin --user disp1 --user rider1 --user driver1 --password-env NPDEV_PROBE_PASSWORD \
         [--expect expect.json] [--write-probe] [--out matrix.json]
 
-- Users: `--user name` (password from $NPDEV_PROBE_PASSWORD) or `--user name:password`.
+- Users: `--user name` (password from $NPDEV_PROBE_PASSWORD) or `--user name:password`; `--user-key name:KEY` authenticates with a
+  static X-Api-Key instead (no login: the pack workshop's probe consumer).
 - Concept endpoints are discovered from <app-dir>/npdev-generated/**/*.json ("/api/concepts/<route>" paths).
   Finding none is an error (exit 2), never a silent pass.
 - SYSTEM concepts (identity Credential, reset tokens, MFA secrets, sessions) have no route any more. They are
@@ -46,12 +47,18 @@ FALLBACK_SYSTEM_ROUTES = ["credentials", "password_reset_tokens", "user_sessions
 FALLBACK_TYPED_SYSTEM_ROUTES = ["identity_credentials", "identity_password_reset_tokens", "identity_user_sessions", "identity_user_mfas"]
 
 
+class ApiKey(str):
+    """A static `X-Api-Key` credential (the pack workshop's probe consumer has no password login), as opposed to a bearer token."""
+
+
 def call(method, url, token=None, body=None):
     data = json.dumps(body).encode("utf-8") if body is not None else None
     request = urllib.request.Request(url, data=data, method=method)
     request.add_header("Content-Type", "application/json")
     request.add_header("Accept", "application/json")
-    if token:
+    if isinstance(token, ApiKey):
+        request.add_header("X-Api-Key", str(token))
+    elif token:
         request.add_header("Authorization", "Bearer " + token)
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
@@ -131,17 +138,81 @@ def login(base, user, password):
     return None, f"login failed (HTTP {status}{', ' + str(reason) if reason else ''})"
 
 
+def scan(base, routes, system_routes, typed_system_routes, users, tokens, admins, expect, write_probe=False, heuristic="violation"):
+    """Run the matrix against a RUNNING app. Returns (matrix, violations, warnings).
+
+    `heuristic` decides what a non-admin reading a route whose NAME looks sensitive (credential/password/secret/token/
+    session/mfa) with no expectation set is: "violation" (the CLI's rule) or "warning" (the pack workshop: a pack may
+    legitimately own a `Session` concept, so a name alone must not reject it). Every other finding is a violation."""
+    matrix, violations, warnings = {}, [], []
+    admin_rows = {}
+
+    def read(route, token):
+        status, payload = call("GET", f"{base}/api/concepts/{route}?size={PAGE_CAP}", token)
+        ok = 200 <= status < 300
+        return status, (count_of(payload) if ok else 0), (rows_of(payload) if ok else [])
+
+    for user in users:
+        for route in routes + [r for r in system_routes if r not in routes]:
+            status, total, rows = read(route, tokens[user])
+            matrix.setdefault(route, {})[user] = {"read": status, "rows": total}
+            readable = 200 <= status < 300 and total > 0
+            if user in admins and rows and route not in admin_rows:
+                admin_rows[route] = rows[0]
+            if route in system_routes:
+                if readable:
+                    violations.append(f"{user} reads {total} row(s) of SYSTEM concept {route} (must be closed to everyone)")
+                continue
+            want = (expect.get(route) or {}).get(user)
+            if not want and user not in admins:
+                want = (expect.get("*") or {}).get(user)
+            if want == "none" and readable:
+                violations.append(f"{user} reads {total} row(s) of {route}, expected none")
+            if want == "some" and not readable:
+                violations.append(f"{user} cannot read {route} (HTTP {status}), expected some rows")
+            if not want and user not in admins and readable and SENSITIVE.search(route):
+                (violations if heuristic == "violation" else warnings).append(f"{user} reads {total} row(s) of sensitive {route}")
+
+    for user in users:
+        for route in typed_system_routes:
+            status, _ = call("GET", f"{base}/api/{route}?size=1", tokens[user])
+            matrix.setdefault("/api/" + route, {})[user] = {"read": status, "rows": 0}
+            if 200 <= status < 300:
+                violations.append(f"{user} gets HTTP {status} from the TYPED system route /api/{route} (it must not exist: 404)")
+
+    if write_probe:
+        for user in users:
+            if user in admins:
+                continue
+            for route in routes + system_routes:
+                want = (expect.get(route) or {}).get(user) or (expect.get("*") or {}).get(user)
+                if not (want == "none" or SENSITIVE.search(route) or route in system_routes):
+                    continue
+                row = admin_rows.get(route)
+                if not row or not row.get("id"):
+                    continue
+                body = {k: v for k, v in row.items() if k not in ("id", "tenantId")}
+                status, _ = call("PUT", f"{base}/api/concepts/{route}/{row['id']}", tokens[user], body)
+                matrix.setdefault(route, {}).setdefault(user, {})["write"] = status
+                if 200 <= status < 300:
+                    violations.append(f"{user} may WRITE {route} rows it must not touch (PUT {status})")
+    return matrix, violations, warnings
+
+
 def main(argv):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--base", required=True)
     ap.add_argument("--app-dir", required=True)
-    ap.add_argument("--user", action="append", required=True)
+    ap.add_argument("--user", action="append", default=[])
+    ap.add_argument("--user-key", action="append", default=[], help="name:KEY -- a user that authenticates with a static X-Api-Key (no login)")
     ap.add_argument("--admin-user", action="append", default=None, help="users exempt from '*' (default: admin)")
     ap.add_argument("--password-env", default="NPDEV_PROBE_PASSWORD")
     ap.add_argument("--expect", default=None)
     ap.add_argument("--write-probe", action="store_true")
     ap.add_argument("--out", default=None)
     opts = ap.parse_args(argv[1:])
+    if not opts.user and not opts.user_key:
+        ap.error("give at least one --user or --user-key")
     default_password = os.environ.get(opts.password_env)
     admins = set(opts.admin_user or ["admin"])
     base = opts.base.rstrip("/")
@@ -165,64 +236,19 @@ def main(argv):
             continue
         users.append(name)
         tokens[name] = token
+    for spec in opts.user_key:
+        name, _, key = spec.partition(":")
+        if not name or not key:
+            print(f"--user-key {name or spec!r}: use name:KEY", file=sys.stderr)
+            return 2
+        users.append(name)
+        tokens[name] = ApiKey(key)
     if problems:
         for p in problems:
             print("LOGIN " + p, file=sys.stderr)
         return 2
 
-    matrix, violations = {}, []
-    admin_rows = {}
-
-    def read(name, route, token):
-        status, payload = call("GET", f"{base}/api/concepts/{route}?size={PAGE_CAP}", token)
-        ok = 200 <= status < 300
-        return status, (count_of(payload) if ok else 0), (rows_of(payload) if ok else [])
-
-    for user in users:
-        for route in routes + [r for r in system_routes if r not in routes]:
-            status, total, rows = read(user, route, tokens[user])
-            cell = {"read": status, "rows": total}
-            matrix.setdefault(route, {})[user] = cell
-            readable = 200 <= status < 300 and total > 0
-            if user in admins and rows and route not in admin_rows:
-                admin_rows[route] = rows[0]
-            if route in system_routes:
-                if readable:
-                    violations.append(f"{user} reads {total} row(s) of SYSTEM concept {route} (must be closed to everyone)")
-                continue
-            want = (expect.get(route) or {}).get(user)
-            if not want and user not in admins:
-                want = (expect.get("*") or {}).get(user)
-            if want == "none" and readable:
-                violations.append(f"{user} reads {total} row(s) of {route}, expected none")
-            if want == "some" and not readable:
-                violations.append(f"{user} cannot read {route} (HTTP {status}), expected some rows")
-            if not want and user not in admins and readable and SENSITIVE.search(route):
-                violations.append(f"{user} reads {total} row(s) of sensitive {route}")
-
-    for user in users:
-        for route in typed_system_routes:
-            status, _ = call("GET", f"{base}/api/{route}?size=1", tokens[user])
-            matrix.setdefault("/api/" + route, {})[user] = {"read": status, "rows": 0}
-            if 200 <= status < 300:
-                violations.append(f"{user} gets HTTP {status} from the TYPED system route /api/{route} (it must not exist: 404)")
-
-    if opts.write_probe:
-        for user in users:
-            if user in admins:
-                continue
-            for route in routes + system_routes:
-                want = (expect.get(route) or {}).get(user) or (expect.get("*") or {}).get(user)
-                if not (want == "none" or SENSITIVE.search(route) or route in system_routes):
-                    continue
-                row = admin_rows.get(route)
-                if not row or not row.get("id"):
-                    continue
-                body = {k: v for k, v in row.items() if k not in ("id", "tenantId")}
-                status, _ = call("PUT", f"{base}/api/concepts/{route}/{row['id']}", tokens[user], body)
-                matrix.setdefault(route, {}).setdefault(user, {})["write"] = status
-                if 200 <= status < 300:
-                    violations.append(f"{user} may WRITE {route} rows it must not touch (PUT {status})")
+    matrix, violations, _ = scan(base, routes, system_routes, typed_system_routes, users, tokens, admins, expect, opts.write_probe)
 
     width = max(len(r) for r in routes + system_routes) + 2
     print("endpoint".ljust(width) + "".join(u.rjust(12) for u in users))

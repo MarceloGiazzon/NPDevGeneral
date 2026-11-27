@@ -259,6 +259,26 @@ class ProviderBackendTests(unittest.TestCase):
             backend.complete([{"role": "user", "content": "y"}])
         self.assertEqual(sum("generativelanguage" in url for url in calls), 1)
 
+    def test_profile_backend_hands_the_retry_patience_to_the_client(self):
+        """--patience must also bind the --profile / default path, or a busy free tier blocks the run for the client's ~15 min."""
+        aicfg, client = backends._ai_modules()
+
+        class Reached(Exception):
+            pass
+        seen = []
+
+        def fake_complete(*args, **kwargs):
+            seen.append(kwargs)
+            raise Reached()
+        with mock.patch.object(client, "complete", fake_complete):
+            for patience in ((1.0, 2.0), None):
+                backend = backends.ProfileBackend(aicfg.load(use_mine=False), "fast", False, 5.0,
+                                                  key_resolver=lambda pid, account=None: "k", backoff=patience)
+                with self.assertRaises(Reached):
+                    backend.complete([{"role": "user", "content": "x"}])
+        self.assertEqual(seen[0]["backoff"], (1.0, 2.0))
+        self.assertNotIn("backoff", seen[1], "no --patience given: the client's own default applies")
+
     def test_failover_retires_an_exhausted_provider_for_the_rest_of_the_run(self):
         first = _Stub(backends.BackendInfo("a", "free", "u", "m"), fail=True)
         second = _Stub(backends.BackendInfo("b", "free", "u", "m"))
@@ -524,13 +544,76 @@ class ScorecardAndLoopTests(unittest.TestCase):
                      "knowledge": {"source": "x/bundle-compact.json"}}), encoding="utf-8")
             out = root / "_matrix"
             with contextlib.redirect_stdout(io.StringIO()):
-                run_bench.cmd_matrix(mock.Mock(out_root=str(root), out=str(out)))
+                run_bench.cmd_matrix(mock.Mock(out_root=str(root), out=str(out), workshop=str(root / "no-workshop")))
             runs = json.loads((out / "matrix.json").read_text(encoding="utf-8"))["runs"]
             self.assertEqual([(r["runId"], r["effort"], r["bundle"], r["passed"]) for r in runs],
                              [("real", "high", "compact", 1)])
             log = (out / "logs" / "real.txt").read_text(encoding="utf-8")
             self.assertIn("attempt-0/boot.log", log)
             self.assertIn("Started App ?", log)
+            # the results page: one self-contained file whose embedded data is the items, never the log
+            page = (out / "index.html").read_text(encoding="utf-8")
+            data = json.loads(page.split('<script type="application/json" id="data">', 1)[1].split("</script>", 1)[0])
+            self.assertEqual([(i["run"], i["subject"], i["outcome"], i["provider"], i["effort"]) for i in data["items"]],
+                             [("real", "bench-001", "pass", "groq", "high")])
+            self.assertEqual(data["packs"], [])
+            self.assertNotIn("Started App", page)
+
+    def test_results_page_data_cannot_close_its_script_element(self):
+        import results_page
+        html = results_page.render_html({"items": [{"title": "</script><script>alert(1)</script>"}]})
+        self.assertEqual(html.count("</script>"), 2)  # the data element and the page's own script, nothing more
+        self.assertIn("<\\/script>", html)
+        self.assertEqual(results_page.arm_label("direct-python"), "App without NPDev (direct code)")
+        self.assertEqual(results_page.arm_label("pack-slice"), "Pack authoring (one slice per message)")
+        self.assertEqual(results_page.arm_label("something-new"), "something-new")
+
+    def test_results_page_data_cannot_open_the_script_escaped_state(self):
+        """'<!--' followed by '<script' inside the data would keep the parser from ever closing the data element."""
+        import results_page
+        original = {"items": [{"title": "<!-- <script> still data"}]}
+        html = results_page.render_html(original)
+        data_text = html.split('<script type="application/json" id="data">', 1)[1].split("</script>", 1)[0]
+        self.assertNotIn("<!--", data_text)
+        self.assertEqual(json.loads(data_text), original, "the JSON escape must read back unchanged")
+
+    def test_a_hand_edited_workshop_file_costs_its_tab_never_the_matrix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workshop = Path(tmp) / "PackWorkshop"
+            (workshop / "packs").mkdir(parents=True)
+            (workshop / "batches").mkdir()
+            (workshop / "batches" / "half-written.json").write_text('{"batchId": "b1", "deliveries": [', encoding="utf-8")
+            (workshop / "batches" / "no-pack-key.json").write_text(json.dumps(
+                {"batchId": "b2", "deliveries": [{"packs": [{"version": "1.0.0"}]}]}), encoding="utf-8")
+            (workshop / "hand-edits.json").write_text(json.dumps({"edits": [
+                {"pack": "leads"}, "not an object", {"pack": "leads", "version": "1.0.2", "by": "Claude", "what": "fixed a probe"}]}),
+                encoding="utf-8")
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                self.assertEqual(run_bench.matrix_packs(str(workshop)), [])   # no pack folders: nothing to list, nothing raised
+            warned = stderr.getvalue()
+            self.assertIn("half-written.json skipped", warned)
+            self.assertIn("no-pack-key.json skipped", warned)
+            self.assertEqual(warned.count("an entry without 'pack' and 'version' was skipped"), 2)
+
+    def test_optional_page_data_returns_the_empty_value_and_says_why(self):
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            got = run_bench.optional_page_data("packs", lambda: {}["missing"], [])
+        self.assertEqual(got, [])
+        self.assertIn("the 'packs' tab is empty: KeyError", stderr.getvalue())
+        self.assertEqual(run_bench.optional_page_data("x", lambda: 7, []), 7)
+
+    def test_matrix_items_name_a_pack_by_version_and_mark_infra_apart_from_failure(self):
+        summary = {"startedAt": "2026-11-26T10:00:00", "arm": "pack-slice", "backend": {"id": "openrouter", "kind": "free", "model": "m"}}
+        ok = {**self._res("pack-a", True, 0), "pack": "a", "version": "1.0.2", "reached": "probed"}
+        infra = {**self._res("pack-b", False, 1), "outcome": "infra", "infraKind": "quota", "pack": "b", "version": "1.0.0"}
+        bad = {**self._res("pack-c", False, 2), "outcome": "fail", "failingStage": "compose", "pack": "c", "version": "1.0.0"}
+        rows = run_bench.matrix_items("r1", summary, [ok, infra, bad])
+        self.assertEqual([(r["subject"], r["outcome"], r["infra"], r["stage"], r["provider"]) for r in rows],
+                         [("a@1.0.2", "pass", None, None, "openrouter"), ("b@1.0.0", "infra", "quota", None, "openrouter"),
+                          ("c@1.0.0", "fail", None, "compose", "openrouter")])
+        self.assertEqual({r["armLabel"] for r in rows}, {"Pack authoring (one slice per message)"})
 
     def test_repair_loop_feeds_error_text_back_and_stops_on_pass(self):
         bad = "```json\n{\"concepts\": []}\n```"
@@ -654,6 +737,8 @@ class ScorecardAndLoopTests(unittest.TestCase):
         self.assertEqual(backends.classify_backend_error("HTTP 429 from x: quota"), "quota")
         self.assertEqual(backends.classify_backend_error("HTTP 503 from x: high demand"), "overload")
         self.assertEqual(backends.classify_backend_error("HTTP 404 from x: no model"), "unreachable")
+        self.assertEqual(backends.classify_backend_error(
+            "every target failed: groq: HTTP 413 from api.groq.com: tokens per minute (TPM): Limit 8000, Requested 13964"), "too-large")
         self.assertEqual(backends.classify_backend_error("model call failed: TimeoutError: timed out"), "unreachable")
         self.assertEqual(backends.classify_backend_error("the JSON in the reply does not parse"), "other")
 
@@ -1614,6 +1699,162 @@ class RelayArmTests(unittest.TestCase):
             run_bench.main(["run", "--arm", "direct-python", "--dry-run", "--out-root", td, "--run-id", "d1"])
             summary = json.loads((Path(td) / "d1" / "summary.json").read_text(encoding="utf-8"))
         self.assertNotIn("relay", summary)
+
+
+class PackSliceArmTests(unittest.TestCase):
+    """The `pack-slice` arm: one slice per case, the workshop's own checks as stages, history repair, a run in the bench's
+    shape (so matrix/compare/mine include it). Fake backend and fake ladder: no network, no Java."""
+
+    def setUp(self):
+        import pack_slice_arm
+        import npdev_pack_slice as sl
+        self.arm, self.sl = pack_slice_arm, sl
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name) / "workshop"
+        guide = self.root / "guide"
+        guide.mkdir(parents=True)
+        (guide / "R.md").write_text("r", encoding="utf-8")
+        (guide / "rules.json").write_text(json.dumps({"guideVersion": "t", "file": "R.md", "bytes": 1, "text": "RULES"}),
+                                          encoding="utf-8")
+        folder = self.root / "packs" / "people" / "multi-company" / "1.0.1"
+        folder.mkdir(parents=True)
+        (folder / "pack.json").write_text(json.dumps({"pack": "multi-company", "version": "1.0.1", "concepts": []}), encoding="utf-8")
+        run = self.root / "runs" / "multi-company@1.0.1" / "20261125-100000"
+        run.mkdir(parents=True)
+        (run / "verdict.json").write_text(json.dumps({"status": "rejected", "feedbackForAi": ["$.dslVersion - old - use 3.0.0"],
+                                                      "steps": [{"step": "static", "result": "pass"},
+                                                                {"step": "compose", "result": "fail"}]}), encoding="utf-8")
+        (self.root / "batches").mkdir()
+        (self.root / "batches" / "w1-modules.json").write_text(json.dumps({"batchId": "w1-modules", "deliveries": [
+            {"packs": [{"pack": "multi-company", "version": "1.0.1"}]}]}), encoding="utf-8")
+        self.slice_id = sl.slice_pack(None, self.root, "multi-company")["sliceId"]
+        self.bench = Path(tmp.name) / "ai-bench"
+
+    @staticmethod
+    def answer(summary):
+        body = {"pack": {"pack": "multi-company", "version": "1.0.2", "dslVersion": "3.0.0", "concepts": [], "summary": summary},
+                "handoff": {"schemaVersion": "npdev-pack-handoff.v1", "pack": "multi-company", "version": "1.0.2",
+                            "checklist": [], "limits": []}}
+        return "```json\n" + json.dumps(body) + "\n```"
+
+    @staticmethod
+    def ladder(cli, root, pack, version):
+        """Rejects the first delivery, accepts the second (reads the delivered summary)."""
+        doc = json.loads(next((root / "packs").glob(f"*/{pack}/{version}/pack.json")).read_text(encoding="utf-8"))
+        ok = doc.get("summary") == "fixed"
+        verdict = {"status": "secure" if ok else "rejected", "feedbackForAi": [] if ok else ["concepts - bad - fix it"],
+                   "steps": [{"step": "static", "result": "pass"}, {"step": "compose", "result": "pass" if ok else "fail"}]}
+        run = root / "runs" / f"{pack}@{version}" / "20261126-100000"
+        run.mkdir(parents=True, exist_ok=True)
+        (run / "verdict.json").write_text(json.dumps(verdict), encoding="utf-8")
+        return verdict
+
+    def backend(self, replies):
+        class Fake:
+            info = backends.BackendInfo("fake", "fake", "", "fake-model")
+
+            def __init__(self):
+                self.seen = []
+
+            def complete(self, messages):
+                self.seen.append([dict(m) for m in messages])
+                reply = replies.pop(0)
+                if isinstance(reply, Exception):
+                    raise reply
+                return backends.Completion(reply, 12000, 5000, 30.0)
+        return Fake()
+
+    def test_a_rejected_answer_is_repaired_in_the_same_chat_and_recorded_in_the_bench_shape(self):
+        fake = self.backend([self.answer("first"), self.answer("fixed")])
+        run_dir = self.bench / "pack-slice-api-fake-1"
+        result = self.arm.run_case(None, self.root, self.slice_id, fake, run_dir, max_loops=1, tester=self.ladder)
+        self.assertTrue(result["passed"])
+        self.assertEqual((result["loopsUsed"], result["firstAttemptFailingStage"], result["reached"]), (1, "compose", "secure"))
+        self.assertEqual(result["tokens"], {"prompt": 24000, "completion": 10000, "total": 34000, "estimated": False})
+        # round 2 carries the first answer and the checker's lines, in the same conversation
+        self.assertEqual([m["role"] for m in fake.seen[1]], ["user", "assistant", "user"])
+        self.assertIn("RULES", fake.seen[0][0]["content"])
+        self.assertIn("- concepts - bad - fix it", fake.seen[1][2]["content"])
+        self.assertEqual(result["attempts"][0]["stages"][0]["promptTokens"], 12000)
+        # the real workshop is untouched: every delivery went to the case's scratch copy
+        self.assertFalse((self.root / "packs" / "people" / "multi-company" / "1.0.2").exists())
+        self.assertTrue((run_dir / "bench-pack-multi-company" / "workshop" / "packs" / "people" / "multi-company" / "1.0.2").is_dir())
+        # the shared bench tooling reads it as any other run
+        self.sl.write_bench_run(run_dir, {"runId": run_dir.name, "startedAt": "2026-11-26T10:00:00",
+                                          "backend": fake.info.describe(), "wallSeconds": 60}, [result])
+        loaded = run_bench.load_results(run_dir)
+        self.assertEqual(len(loaded), 1)
+        card = run_bench.scorecard(loaded)
+        self.assertEqual((card["passRateCompleted"], card["firstAttemptPassRate"]), (1.0, 0.0))
+        out = Path(self.bench) / "_m"
+        with contextlib.redirect_stdout(io.StringIO()):
+            run_bench.cmd_matrix(mock.Mock(out_root=str(self.bench), out=str(out), workshop=str(self.bench / "no-workshop")))
+        rows = json.loads((out / "matrix.json").read_text(encoding="utf-8"))["runs"]
+        self.assertEqual([(r["runId"], r["passed"], r["model"]) for r in rows], [("pack-slice-api-fake-1", 1, "fake-model")])
+        self.assertNotIn("PK\x03\x04", (out / "logs" / "pack-slice-api-fake-1.txt").read_text(encoding="utf-8"))  # no zip bytes
+
+    def test_an_unreachable_model_is_infra_not_an_authoring_failure(self):
+        fake = self.backend([backends.BackendError("HTTP 429 quota exceeded")])
+        result = self.arm.run_case(None, self.root, self.slice_id, fake, self.bench / "r", max_loops=1, tester=self.ladder)
+        self.assertEqual((result["outcome"], result["infraKind"], result["loopsUsed"]), ("infra", "quota", 0))
+
+    def test_an_answer_that_used_the_whole_output_budget_is_infra_output_cap(self):
+        class Capped:
+            info = backends.BackendInfo("fake", "fake", "", "thinker")
+
+            def __init__(self):
+                self.calls = 0
+
+            def complete(self, messages):
+                self.calls += 1
+                return backends.Completion("", 12000, 24000, 90.0)   # all of it spent on reasoning: no answer text
+        capped = Capped()
+        result = self.arm.run_case(None, self.root, self.slice_id, capped, self.bench / "r", max_loops=2,
+                                   tester=self.ladder, max_tokens=24000)
+        self.assertEqual((result["outcome"], result["infraKind"], capped.calls), ("infra", "output-cap", 1))
+        self.assertIn("larger --max-tokens", result["attempts"][0]["feedbackExcerpt"])
+
+    def test_an_answer_without_json_fails_at_author_and_gets_a_repair_round(self):
+        fake = self.backend(["Sorry, here is a summary instead.", self.answer("fixed")])
+        result = self.arm.run_case(None, self.root, self.slice_id, fake, self.bench / "r", max_loops=1, tester=self.ladder)
+        self.assertEqual((result["firstAttemptFailingStage"], result["passed"]), ("author", True))
+        self.assertFalse(result["firstAttemptValid"])
+
+    def test_dry_run_writes_a_run_the_matrix_skips(self):
+        with contextlib.redirect_stdout(io.StringIO()), \
+                mock.patch.object(self.sl.ws, "test_pack", self.ladder):
+            code = self.arm.main(["--dry-run", "--workshop", str(self.root), "--out-root", str(self.bench), "--run-id", "dry"])
+        self.assertEqual(code, 0)
+        summary = json.loads((self.bench / "dry" / "summary.json").read_text(encoding="utf-8"))
+        self.assertEqual((summary["arm"], summary["dryRun"], summary["results"][0]["pack"]), ("pack-slice", True, "multi-company"))
+
+    def test_max_tokens_reaches_the_request(self):
+        sent = []
+
+        class Reply:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self):
+                return json.dumps({"choices": [{"message": {"content": "x"}}], "usage": {}}).encode()
+
+        def opener(request, timeout=None):
+            sent.append(json.loads(request.data))
+            return Reply()
+
+        aicfg, _ = backends._ai_modules()
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"NPDEV_AI_USAGE_LOG": tmp + "/u.jsonl"}):
+            backend = backends.build_provider_backends("groq", False, 5.0, resolve_key={"groq": "k"}.get,
+                                                       config=aicfg.load(use_mine=False), opener=opener, max_tokens=24000)
+            backend.complete([{"role": "user", "content": "u"}])
+        self.assertEqual(sent[0]["max_tokens"], 24000)
+        patient = backends.build_provider_backends("groq", False, 5.0, resolve_key={"groq": "k"}.get,
+                                                   config=aicfg.load(use_mine=False), backoff=(20, 40))
+        self.assertEqual(patient._backoff, (20, 40))       # the arm's --patience, not the client's ~15 min
 
 
 if __name__ == "__main__":

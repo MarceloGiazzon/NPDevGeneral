@@ -1,20 +1,36 @@
 {
-  "closedAt": "2026-11-26T03:16:21.7103726Z",
+  "closedAt": "2026-11-27T21:16:03.9422399Z",
   "branch": "main",
-  "head": "c0d4f4be",
-  "headSubject": "test(kernel): the failure and dedupe paths of the scheduleEvent step (ScheduleEventStep 30 missed lines -> 0); docs(ledger): REG-355 bytecode-gate hardening considered and not built (lambdas), REG-356 floor note, handoff",
-  "summary": "2026-11-26. THE REAL-CHAT-AI PILOT IS DONE and REG-354 + REG-355 are closed DONE / VERIFIED_LIVE. The owner ran it on the installed Manager 0.13.44 (Gemini Neon, high effort, scratch copy of the canary): round A (a JS page, 2 files, 4 required boxes) and round B (a Java flow class, 1 box) were both READY on the FIRST answer; the platform accepted the class and the app booted (health 200); every Undo restored the app byte for byte; the public page answered 200 without sign-in while the front page 302. Briefing question answered YES (class + flow + role in one answer). Small findings in the ledger: the preview says nothing would change although apply bumps the version, the picker names a built app by the name it gives itself, the AI wrote Portuguese because the prompt carries the language. Cleanup done: app stopped with its own Stop-App.ps1, scratch folders deleted, the two real conversations archived in NPDev_General__OutsideRepo/reg354-355-pilot/evidence. Open ledger items now: REG-361 only.",
-  "nextStep": "Nothing is left for Claude that the owner has not reserved. OWNER SIDE, the last one: send wave 2 (steps given in chat): attach the guide D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PACK_AUTHORING_BROWSER_AI_2026-11-12\\NPDEV_PACK_AUTHORING_GUIDE_FOR_BROWSER_AI.md, wave2-delivery-request.json (same folder) and the two feedback files in D:\\WorkSpace\\NPDev\\PackWorkshop\\feedback\\, paste wave2-paste-prompt.md as the message; the AI returns TWO zips (w1-modules, w2-delivery); then ask Claude to ingest (npdev pack workshop ingest) and test them, expecting a second round (the checker reports one rung at a time). A bare 'continue': say there is no reserved work; if zips are in Downloads or the workshop inbox ingest and test them.",
-  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General\\ledger\\items\\REG-361.yml",
-  "blocked": "Owner only: sending the wave-2 request to a chat AI and bringing the zips back.",
-  "verified": "Pilot evidence read from the disk after each step (files, hashes, manifest, generated class, health 200, public 200 vs front 302, byte-for-byte undo); ledger guards clean (check-done-item-guards --no-baseline-ok 0 blocking, 667 DONE); portable-tooling check passed. NOT done: the other six chat AIs, the relay target calibration flags, the Manager Remove button on a Java class, calling the flow (needs sign-in), the full kernel gate.",
-  "dirtyCount": 2,
+  "head": "a1047850",
+  "headSubject": "docs(ledger): the real-chat-AI pilot passed (a JS page and a Java flow class, both READY on the first answer, undo byte for byte); REG-354 and REG-355 closed DONE, handoff",
+  "summary": "2026-11-27 fifth stretch. (1) KERNEL GATE: kernelQualityGate passed (636 s) and the coverage ratchet said OK; NPDevKernel/kernel floor raised 73.45 -> 73.6338 in scripts/policy/coverage-baseline.json (committed with this handoff). Also green: PackRoleBindingRewriteTest (T0 fast gate, 30 s), twin-pair (60 rules), test_ai_catalog_build (12), portable-tooling (after the last edit), clean-workspace-state. (2) CLINIC BENCH (REG-356 D / REG-361): harness D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\NPDEV_FORM_PLAN_2026-11-13\\impl\\tools\\catalog_bench.py gained set clinic; local catalog rebuilt with the workshop packs (36 packs, 11 new ones verified; backup D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\backups\\npr-catalog__before-clinic-20261127). gemini-3.6-flash, arm cards: all six packs picked, first answer 1,266 output tokens (under 2k), valid after one repair, 2,591 in all, validator only (no boot), n=1. Found and fixed a CARD defect in scripts/pack-repo/build-ai-catalog.py: transitive_needs makes the card use line bind the roles and declare the capabilities of the whole requires chain (scheduling -> person roles, payments -> pix-charge capability pixProvider); test added. REG-361 and REG-356 updated. (3) Owner earlier: all probed wave-1 packs built; promote is the owner's.",
+  "nextStep": "Owner: review and run npdev pack workshop promote <pack>@<ver> --confirm for audit-log 1.0.4, documents 1.0.2, leads 1.0.2, messaging 1.0.2, multi-company 1.0.3, payables 1.0.3, quotes 1.0.5, consent-lgpd 1.0.0, scheduling 1.0.1, tasks 1.0.1, payments 1.0.0 (NOT the older versions); it stages for the NPR, never publishes. Claude next (optional): clinic bench l0 arm and a second model, a boot of the clinic app, teach cards or core context that a dependency's concepts need a role grant (default-deny) so the first answer validates; re-run python scripts/ai/bench/run_bench.py matrix after any bench.",
+  "plan": "",
+  "blocked": "",
+  "verified": "none",
+  "dirtyCount": 26,
   "dirtyFiles": [
-    " M ledger/items/REG-354.yml",
-    " M ledger/items/REG-355.yml"
+    " M NPDevCli/npdev_jsonschema.py",
+    " M NPDevCli/npdev_pack_probe.py",
+    " M NPDevCli/npdev_pack_workshop.py",
+    " M NPDevCli/tests/test_ai_catalog_build.py",
+    " M NPDevCli/tests/test_pack_workshop_test.py",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/PackRoleBindingRewriter.java",
+    " M NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/PackRoleBindingRewriteTest.java",
+    " M NPDevContract/schemas/pack-workshop/probe.schema.json",
+    " M NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConfiguredConceptGatewaySemanticPolicy.java",
+    " M NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/DefaultConceptGatewayFieldAccessTest.java",
+    " M ledger/items/REG-356.yml",
+    " M ledger/items/REG-361.yml",
+    " M ledger/session-state/current.json",
+    " M ledger/session-state/history.jsonl",
+    " M scripts/ai/bench/backends.py",
+    " M scripts/ai/bench/run_bench.py",
+    " M scripts/ai/bench/test_bench.py",
+    " M scripts/pack-repo/build-ai-catalog.py",
+    " M scripts/policy/coverage-baseline.json",
+    " M scripts/policy/script-invocation-declarations.json"
   ],
   "unpushed": 0,
-  "landedCommits": [
-    "c0d4f4be test(kernel): the failure and dedupe paths of the scheduleEvent step (ScheduleEventStep 30 missed lines -> 0); docs(ledger): REG-355 bytecode-gate hardening considered and not built (lambdas), REG-356 floor note, handoff"
-  ]
+  "landedCommits": []
 }

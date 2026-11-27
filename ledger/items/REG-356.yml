@@ -34,7 +34,7 @@ detail: |
      capture en/pt screenshots and publish the gallery if that is an outward action the owner must click; investigate the flaky acceptance check "driver2 stayed OFFLINE" in drive_s2.py (~line 559):
      it failed once and passed on re-run, cause unknown.
   D. Packs: two more built-in packs to reach `probed` on a real booted app (only `leave` has); the wave-2 delivery request still has two owner questions (`payments`, `kitchen`); bench step "clinic app from
-     packs only, under 2k output tokens" has no record of being run and depends on wave 2 and on provider quota (bench-023 on Gemini is blocked by quota).
+     packs only, under 2k output tokens" RAN 2026-11-27 (gemini-3.6-flash, validator only: 1,266 tokens first answer, valid after one repair, 2,591 in all; details in REG-361); bench-023 on Gemini is still blocked by quota.
   E. Verification owed to the freshness ledger before the single commit: the twelve checks the T1 gate listed as overdue on 2026-11-22 (budget, reference, concept-map, ui-i18n, doc-references, adr,
      experience-client, manager-version-bump, dsl-test-touched-area, model-validate-touched, f6-showcase-browser, jrn-journeys) run through the ledger-recording path, plus run-shell-scenarios and the i18n-pt browser routine.
   DONE 2026-11-22 (A, single source): `NPDevContract/schemas/{model,pack,config}.schema.json` is the ONE hand-edited file of each group; `python scripts/quality/check-schema-mirror-consistency.py --fix`

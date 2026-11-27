@@ -106,6 +106,14 @@ class LadderTest(unittest.TestCase):
         self.assertEqual(verdict["status"], "rejected")
         self.assertIn("own-record-write-null-owner", verdict["feedbackForAi"][0])
 
+    def test_requires_of_the_wrong_shape_is_a_compose_rejection_not_a_crash(self):
+        # 2026-11-26 bench: an AI wrote `requires` as a list of pack ids and test_pack died with AttributeError
+        _put(self.root, _pack(requires=["identity"]))
+        verdict = self.run_ladder()
+        self.assertEqual(verdict["status"], "rejected")
+        self.assertEqual(self.steps(verdict), {"static": "pass", "compose": "fail"})
+        self.assertIn("go in `packs`", verdict["feedbackForAi"][0])
+
     def test_validator_error_rejects_at_compose_with_the_diagnostic(self):
         _put(self.root, _pack())
 
@@ -193,6 +201,22 @@ class LadderTest(unittest.TestCase):
         self.assertFalse(any("could not be resolved together" in line for line in feedback),
                          "a schema refusal must not be reported as an unresolvable dependency")
 
+    def test_a_one_sentence_version_refusal_reaches_the_ai_as_it_is(self):
+        # 2026-11-26 bench: a version constraint the composition cannot meet is ONE sentence, not a list of schema
+        # problems; the workshop again said "could not be resolved together - }" and the AI could not act on it
+        refusal = json.dumps({"status": "failed", "error": (
+            "build/runs/messaging@1.0.1/compose/model.json /packs: Pack 'notification' requires at least 1.0.0 (highest "
+            "of: messaging needs ^1.0 via app -> messaging); the local copy declares 2.0.0 -- run 'npdev pack update' after "
+            "replacing the local pack.json, or relax a constraint")}, indent=2)
+        _put(self.root, _pack("base-thing"))
+        _put(self.root, _pack("leads", packs=[{"pack": "base-thing", "version": "1.0.0"}]))
+        feedback = self.run_ladder(update=lambda model: (False, refusal))["feedbackForAi"]
+        self.assertEqual(len(feedback), 1, feedback)
+        self.assertTrue(feedback[0].startswith("pack.json packs - /packs: Pack 'notification' requires"), feedback[0])
+        self.assertIn("the local copy declares 2.0.0", feedback[0])
+        self.assertNotIn("model.json", feedback[0])
+        self.assertNotIn("could not be resolved together", feedback[0])
+
     def test_unqualified_rollup_is_a_lint_error(self):
         doc = _pack()
         doc["concepts"][0]["rollups"] = [{"field": "total", "from": "LeadLine"}]
@@ -249,9 +273,9 @@ class LadderTest(unittest.TestCase):
             return "http://probe.invalid", stop
         return boot
 
-    def ladder4(self, boot, call, version=None):
+    def ladder4(self, boot, call, version=None, exposure=None):
         return ws.test_pack(_FakeCli(self.root), self.root, "leads", version, stamp="20261114-100000", validate=_ok_report,
-                            update=_update_ok, boot=boot, probe_call=call)
+                            update=_update_ok, boot=boot, probe_call=call, exposure=exposure)
 
     def test_no_probes_means_skipped_and_never_probed(self):
         _put(self.root, _pack())
@@ -271,6 +295,123 @@ class LadderTest(unittest.TestCase):
         self.assertEqual(self.steps(verdict)["exposure-matrix"], "skipped")
         self.assertIn("=dev:rep:REP;", record["env"]["NPDEV_AUTH_API_KEYS"])
         self.assertEqual(record["env"]["NPDEV_AUTH_API_KEYS"], record["env"]["NPDEV_AUTH_APIKEYS"])
+
+    # ---- rung 4b: the exposure matrix, run with the probe identities' static API keys while the consumer is still up ----
+
+    def _probed_with(self, exposure):
+        folder = _put(self.root, _pack())
+        self._put_probe(folder, self._probe())
+        record = {}
+        answers = iter([(201, {"id": "n1"}), (403, {"error": "no"})])
+        seen = {}
+
+        def matrix(base_url, app_dir, users, keys):
+            seen.update(base_url=base_url, app_dir=app_dir, users=users, keys=keys, stopped=record.get("stopped"))
+            return exposure if isinstance(exposure, dict) else exposure()
+        verdict = self.ladder4(self._boot(record), lambda key, method, path, body: next(answers), exposure=matrix)
+        return verdict, record, seen
+
+    def test_a_clean_matrix_passes_the_rung_and_runs_while_the_app_is_up(self):
+        verdict, record, seen = self._probed_with({"routes": 2, "matrix": {"leads_leads": {"rep": {"read": 200, "rows": 1}}},
+                                                   "violations": [], "warnings": []})
+        self.assertEqual(verdict["status"], "probed")
+        self.assertEqual(self.steps(verdict)["exposure-matrix"], "pass")
+        self.assertFalse(seen["stopped"], "the matrix must read the app BEFORE it is stopped")
+        self.assertTrue(record["stopped"])
+        self.assertEqual(seen["base_url"], "http://probe.invalid")
+        self.assertEqual(Path(seen["app_dir"]).name, "App")
+        self.assertEqual({u["name"] for u in seen["users"]}, set(seen["keys"]))
+        evidence = json.loads((Path(verdict["_run"]) / "exposure-matrix.json").read_text(encoding="utf-8"))
+        self.assertEqual(evidence["violations"], [])
+
+    def test_a_violation_rejects_the_pack_with_feedback_and_still_stops_the_app(self):
+        verdict, record, _ = self._probed_with({"routes": 1, "matrix": {}, "warnings": [],
+                                                "violations": ["plain reads 3 row(s) of SYSTEM concept credentials (must be closed to everyone)"]})
+        self.assertEqual(verdict["status"], "rejected")
+        self.assertEqual(self.steps(verdict)["behavior-probes"], "pass")
+        self.assertEqual(self.steps(verdict)["exposure-matrix"], "fail")
+        self.assertTrue(record["stopped"])
+        self.assertTrue(any("exposure matrix - plain reads 3 row(s) of SYSTEM concept credentials" in line and "access.read" in line
+                            for line in verdict["feedbackForAi"]), verdict["feedbackForAi"])
+
+    def test_a_sensitive_looking_name_is_a_warning_not_a_rejection(self):
+        verdict, _, _ = self._probed_with({"routes": 1, "matrix": {}, "violations": [],
+                                           "warnings": ["rep reads 2 row(s) of sensitive therapy_sessions"]})
+        self.assertEqual(verdict["status"], "probed")
+        self.assertEqual(self.steps(verdict)["exposure-matrix"], "pass")
+        self.assertTrue(any(line.startswith("(warning) exposure matrix - rep reads 2 row(s) of sensitive therapy_sessions")
+                            for line in verdict["feedbackForAi"]))
+
+    def test_a_matrix_that_cannot_run_is_a_skipped_rung_never_a_crash(self):
+        def boom():
+            raise RuntimeError("connection refused")
+        verdict, record, _ = self._probed_with(boom)
+        self.assertEqual(verdict["status"], "probed")
+        step = [s for s in verdict["steps"] if s["step"] == "exposure-matrix"][0]
+        self.assertEqual(step["result"], "skipped")
+        self.assertIn("RuntimeError: connection refused", step["detail"])
+        self.assertTrue(record["stopped"])
+
+    def test_a_locked_consumer_data_folder_skips_the_rung_and_says_why(self):
+        """A previous test's java process still holds the H2 file: the delete fails on Windows. That must not boot on the stale schema."""
+        import shutil
+        folder = _put(self.root, _pack())
+        self._put_probe(folder, self._probe())
+        real = shutil.rmtree
+
+        def flaky(path, *args, **kwargs):
+            if Path(path).name == "data":
+                raise PermissionError("sharing violation")
+            return real(path, *args, **kwargs)
+        record = {}
+        with mock.patch.object(ws.shutil, "rmtree", flaky):
+            verdict = self.ladder4(self._boot(record), lambda key, method, path, body: (200, {}))
+        step = [s for s in verdict["steps"] if s["step"] == "behavior-probes"][0]
+        self.assertEqual(step["result"], "skipped")
+        self.assertIn("sharing violation", step["detail"])
+        self.assertNotIn("consumer", record, "the app must not boot when its old data could not be removed")
+
+    def test_the_default_matrix_authenticates_every_identity_with_its_own_static_key(self):
+        import http.server
+        import threading
+        keys = {"admin1": "probe-aaa", "rep": "probe-bbb"}
+        rows_by_key = {"probe-aaa": 3, "probe-bbb": 1}
+        asked = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                key = self.headers.get("X-Api-Key")
+                asked.append((self.path, key, self.headers.get("Authorization")))
+                if self.path.startswith("/api/concepts/leads_leads") and key in rows_by_key:
+                    body = json.dumps({"content": [{"id": "x"}], "totalElements": rows_by_key[key]}).encode("utf-8")
+                    self.send_response(200)
+                else:
+                    body = b"{}"
+                    self.send_response(404)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            app = Path(tempfile.mkdtemp(dir=self.root)) / "App"
+            generated = app / "npdev-generated"
+            generated.mkdir(parents=True)
+            (generated / "meta.json").write_text('{"paths": ["/api/concepts/leads_leads", "/api/concepts/leads_leads/{id}"]}', encoding="utf-8")
+            result = ws._default_exposure(f"http://127.0.0.1:{server.server_address[1]}", app,
+                                          [{"name": "admin1", "role": "ADMIN"}, {"name": "rep", "role": "REP"}], keys)
+        finally:
+            server.shutdown()
+            server.server_close()
+        self.assertEqual(result["violations"], [], result)
+        self.assertEqual(result["warnings"], [])
+        self.assertEqual(result["matrix"]["leads_leads"]["admin1"]["rows"], 3)
+        self.assertEqual(result["matrix"]["leads_leads"]["rep"]["rows"], 1)
+        self.assertTrue(asked and all(auth is None and key in keys.values() for _, key, auth in asked), asked)
 
     # ---- rung 4 without the authoring AI: probes derived from the pack's own declarations ---------------------------
 

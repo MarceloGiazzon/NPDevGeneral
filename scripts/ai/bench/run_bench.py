@@ -56,6 +56,7 @@ import direct  # noqa: E402
 import evolve  # noqa: E402
 import probes  # noqa: E402
 import relay_arm  # noqa: E402
+import results_page  # noqa: E402
 import stages  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -670,11 +671,100 @@ def matrix_log(run_dir: Path, summary: dict, results: list[dict]) -> str:
     return ("\n".join(out) + "\n").replace("�", "?")
 
 
+def matrix_items(run_id: str, summary: dict, results: list[dict]) -> list[dict]:
+    """One row per prompt or pack of a run, for the results page: who tried what, how it ended, what it cost.
+    Never a model's answer or a log line, so the page can be shared without leaking a run's contents."""
+    out = []
+    for r in results:
+        backend = r.get("backend") or summary.get("backend") or {}
+        arm = r.get("arm") or summary.get("arm") or "npdev"
+        provider = PROVIDER_ALIASES.get(backend.get("id"), backend.get("id")) or "unknown"
+        outcome = outcome_of(r)
+        subject = f"{r['pack']}@{r['version']}" if r.get("pack") and r.get("version") else r.get("pack") or r["promptId"]
+        out.append({
+            "run": run_id, "startedAt": summary.get("startedAt"), "arm": arm, "armLabel": results_page.arm_label(arm),
+            "provider": provider, "model": backend.get("model") or "unknown", "effort": backend.get("effort") or "default",
+            "access": backend.get("kind"), "subject": subject, "title": r.get("title") or "", "tier": r.get("tier"),
+            "outcome": outcome, "infra": infra_kind_of(r) if outcome == "infra" else None,
+            "stage": r.get("failingStage"), "reached": r.get("reached"), "loops": r.get("loopsUsed"),
+            "tokens": (r.get("tokens") or {}).get("total"), "seconds": r.get("wallSeconds"),
+            "firstAttemptPassed": bool(r.get("firstAttemptPassed"))})
+    return out
+
+
+def matrix_limits() -> dict:
+    """The official chat limits and the API model facts the page shows beside the results (both are repo data)."""
+    cli = REPO_ROOT / "NPDevCli"
+    doc = json.loads((cli / "chat-ai-limits.json").read_text(encoding="utf-8"))
+    api = json.loads((cli / doc["apiFacts"]).read_text(encoding="utf-8"))
+    return {"comment": doc.get("_comment"), "rows": doc.get("rows", []),
+            "apiModels": [{"provider": m.get("provider"), "model": m.get("id"), "effortLevels": m.get("effortLevels") or [],
+                           "contextTokens": m.get("contextTokens"), "maxOutputTokens": m.get("maxOutputTokens"),
+                           "free": (m.get("price") or {}).get("in") == 0 and (m.get("price") or {}).get("out") == 0}
+                          for m in api.get("models", [])]}
+
+
+def matrix_packs(workshop: str | None = None) -> list[dict]:
+    """Where every pack the workshop ever received stands today (the highest rung of its newest test) and who delivered
+    it: the outcome a pack-slice run is only the road to. [] when this machine has no workshop."""
+    sys.path.insert(0, str(REPO_ROOT / "NPDevCli"))
+    import npdev_pack_workshop as ws  # noqa: E402 -- lazily: the matrix of apps needs none of it
+    env = os.environ.get(ws.ENV_ROOT)
+    root = (Path(workshop).expanduser() if workshop else Path(env).expanduser() if env and env.strip()
+            else stages.build_root().parent / "PackWorkshop")
+    if not (root / "packs").is_dir():
+        return []
+    authors: dict[tuple[str, str], dict] = {}
+    for record in sorted((root / "batches").glob("*.json")):
+        try:
+            doc = json.loads(record.read_text(encoding="utf-8"))
+            for delivery in doc.get("deliveries", []):
+                for p in delivery.get("packs", []):
+                    authors[(p["pack"], p["version"])] = {"batch": doc.get("batchId"), **(delivery.get("author") or {})}
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:   # one half-written record must not blank the whole tab
+            print(f"warning: batch record {record.name} skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
+    # what a person changed AFTER the AI delivered (a probe rewritten, a line fixed): `hand-edits.json` in the workshop root,
+    # {"edits": [{"pack", "version", "by", "date", "what"}]}. Without it the page would credit the AI with the person's work.
+    # The file is written BY HAND, so an entry without pack/version is skipped with a warning, never a crash.
+    edits: dict[tuple[str, str], list[str]] = {}
+    edits_file = root / "hand-edits.json"
+    if edits_file.is_file():
+        try:
+            entries = json.loads(edits_file.read_text(encoding="utf-8")).get("edits", [])
+        except (OSError, ValueError, AttributeError) as exc:
+            print(f"warning: {edits_file} skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
+            entries = []
+        for e in entries:
+            if not isinstance(e, dict) or not e.get("pack") or not e.get("version"):
+                print(f"warning: {edits_file.name}: an entry without 'pack' and 'version' was skipped: {e!r}"[:300], file=sys.stderr)
+                continue
+            edits.setdefault((e["pack"], e["version"]), []).append(f"{e.get('by', '?')} {e.get('date', '')}: {e.get('what', '')}".strip())
+    rows = []
+    for r in ws.status_rows(root):
+        a = authors.get((r["pack"], r["version"]), {})
+        rows.append({"pack": r["pack"], "version": r["version"], "area": r["area"], "rung": r["rung"], "rejected": r["rejected"],
+                     "stoppedAt": r["stoppedAt"], "feedback": (r["firstFeedback"] or "")[:240], "batch": a.get("batch"),
+                     "authorKind": a.get("kind"), "author": a.get("model"), "note": a.get("conversation"),
+                     "handEdits": edits.get((r["pack"], r["version"]), [])})
+    return rows
+
+
+def optional_page_data(label: str, make, empty):
+    """The page's extras (the limits tab, the workshop's packs tab) must never stop the matrix of runs from being written:
+    whatever is wrong in a file there costs that tab, said on stderr, not the command (and not the page)."""
+    try:
+        return make()
+    except Exception as exc:   # noqa: BLE001 -- by design: any failure reading OPTIONAL data
+        print(f"warning: the '{label}' tab is empty: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return empty
+
+
 def cmd_matrix(args) -> int:
     root = Path(args.out_root) if args.out_root else stages.build_root() / "ai-bench"
     out_dir = Path(args.out) if args.out else root / "_matrix"
     (out_dir / "logs").mkdir(parents=True, exist_ok=True)
     runs = []
+    all_items: list[dict] = []
     for run_dir in sorted(p for p in root.iterdir() if p.is_dir() and not p.name.startswith("_")):
         sp = run_dir / "summary.json"
         if not sp.exists():
@@ -691,8 +781,11 @@ def cmd_matrix(args) -> int:
         bundle = ("none" if summary.get("ablation") == "no-knowledge" else
                   "compact" if "compact" in knowledge else "full" if knowledge else "unknown")
         (out_dir / "logs" / f"{run_dir.name}.txt").write_text(matrix_log(run_dir, summary, results), encoding="utf-8")
+        all_items += matrix_items(run_dir.name, summary, results)
         runs.append({
             "runId": run_dir.name, "startedAt": summary.get("startedAt"),
+            "arm": summary.get("arm") or "npdev", "armLabel": results_page.arm_label(summary.get("arm") or "npdev"),
+            "access": backend.get("kind"),
             "provider": PROVIDER_ALIASES.get(backend.get("id"), backend.get("id")), "kind": backend.get("kind"),
             "model": backend.get("model"), "effort": backend.get("effort") or "default", "bundle": bundle,
             "prompts": card["prompts"], "completed": card["completedPrompts"],
@@ -708,7 +801,13 @@ def cmd_matrix(args) -> int:
                             "+ 15 x min(1, 5000 / median tokens per passed app)",
             "runs": runs}
     (out_dir / "matrix.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
-    print(f"matrix: {len(runs)} runs -> {out_dir}")
+    dates = sorted(str(r["startedAt"])[:10] for r in runs if r.get("startedAt"))
+    page = {**data, "items": all_items, "limits": optional_page_data("limits", matrix_limits, {"comment": None, "rows": [], "apiModels": []}),
+            "packs": optional_page_data("packs", lambda: matrix_packs(getattr(args, "workshop", None)), []), "root": str(root), "logsDir": str(out_dir / "logs"),
+            "dateRange": f"{dates[0]} to {dates[-1]}" if dates else "no dated run"}
+    (out_dir / "index.html").write_text(results_page.render_html(page), encoding="utf-8")
+    print(f"matrix: {len(runs)} runs, {len(all_items)} items -> {out_dir}")
+    print(f"results page: {out_dir / 'index.html'}")
     return 0
 
 
@@ -943,10 +1042,12 @@ def make_parser() -> argparse.ArgumentParser:
     cmp_.add_argument("--out", help="output dir (default <first run's parent>/_compare)")
     cmp_.add_argument("--all-prompts", action="store_true",
                       help="count every prompt each arm attempted (default: only prompts every arm finished)")
-    mat = sub.add_parser("matrix", help="every recorded run as matrix.json + one full log per run "
-                                        "(the provider/model/effort results page reads them)")
+    mat = sub.add_parser("matrix", help="every recorded run as matrix.json + one full log per run + index.html, the "
+                                        "provider/model/effort results page (open it in a browser)")
     mat.add_argument("--out-root", help="runs root (default <BuildRoot>/ai-bench)")
     mat.add_argument("--out", help="output dir (default <out-root>/_matrix)")
+    mat.add_argument("--workshop", help="pack workshop root for the 'Packs built' tab "
+                                        "(default $NPDEV_PACK_WORKSHOP, else PackWorkshop next to the Build root)")
     return p
 
 

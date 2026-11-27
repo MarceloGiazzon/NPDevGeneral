@@ -61,6 +61,28 @@ class LinesAndCards(unittest.TestCase):
         self.assertEqual(card["limit"], "does not de-duplicate")
         self.assertLessEqual(card["budgetTokens"], cat.CARD_TOKENS)
 
+    def test_use_line_binds_the_roles_of_required_packs_transitively(self):
+        # composition refuses an unbound role of ANY pack in the graph, one per validator round (clinic bench 2026-11-27)
+        person = _entry(_doc("person"), requires=[])
+        person["doc"]["concepts"][0]["access"] = {"read": "role('personStaff')", "write": "role('personManager')"}
+        mid = _entry(_doc("mid"), requires=["person"])
+        mid["doc"]["concepts"][0]["access"] = {"read": "role('midUser')", "write": "role('midUser')"}
+        top = _entry(_doc("top"), requires=["mid", "ghost"])   # `ghost` is not in the catalog: skipped, never an error
+        top["doc"]["concepts"][0]["access"] = {"read": "role('topUser')", "write": "role('topUser')"}
+        by_id = {e["id"]: e for e in (person, mid, top)}
+        person["doc"]["requires"] = {"capabilities": ["payProvider"]}   # a capability of a DEPENDENCY must be declared by the app too
+        self.assertEqual(cat.transitive_needs(top, by_id), (["midUser", "personManager", "personStaff", "topUser"], ["payProvider"]))
+        card, why = cat.build_card(top, by_id)
+        self.assertIsNone(why)
+        for token in ("topUser", "midUser", "personManager", "personStaff"):
+            self.assertIn(f'"{token}": "<YourRole>"', card["use"])
+        self.assertIn('"capabilities": ["payProvider"]', card["use"])
+        # the card's own role list stays the pack's own roles (the budget is for what the pack provides)
+        self.assertEqual([r.split(" ")[0] for r in card["provides"]["roles"]], ["topUser"])
+        # a requirement cycle must terminate
+        person["requires"] = ["top"]
+        self.assertIn("topUser", cat.transitive_needs(person, by_id)[0])
+
     def test_card_validates_against_its_schema(self):
         import npdev_jsonschema
         schema = json.loads((REPO / "NPDevContract" / "schemas" / "ai-catalog" / "card.schema.json").read_text(encoding="utf-8"))

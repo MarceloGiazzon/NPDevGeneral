@@ -77,11 +77,29 @@ def _load_schema(name: str) -> dict:
 
 def _validate(name: str, instance, where: str) -> None:
     import npdev_jsonschema
-    errors = npdev_jsonschema.validate(_load_schema(name), instance)
+    schema = _load_schema(name)
+    errors = npdev_jsonschema.validate(schema, instance)
     if errors:
         first = errors[0]
         more = f" (+{len(errors) - 1} more)" if len(errors) > 1 else ""
-        raise WorkshopError(f"{where} is not a valid {name}: {first.get('path') or '$'}: {first.get('message')}{more}")
+        allowed = _allowed_values(schema, first.get("path") or "")
+        # "must be one of the allowed values" alone did not let an AI repair its handoff (2026-11-26 bench: the same
+        # wrong checklist answer twice); naming the values does
+        hint = f" (allowed: {', '.join(json.dumps(v) for v in allowed)})" if allowed else ""
+        raise WorkshopError(f"{where} is not a valid {name}: {first.get('path') or '$'}: {first.get('message')}{hint}{more}")
+
+
+def _allowed_values(schema: dict, path: str) -> list | None:
+    """The enum (or const) of the schema node at a /a/0/b error path, if there is one."""
+    node = schema
+    for token in [t for t in path.strip("/").split("/") if t]:
+        if token.isdigit():
+            node = node.get("items") or {}
+        else:
+            node = (node.get("properties") or {}).get(token) or {}
+    if "enum" in node:
+        return list(node["enum"])
+    return [node["const"]] if "const" in node else None
 
 
 def _roadmap_areas() -> dict[str, str]:
@@ -298,6 +316,12 @@ def make_pack_finder(root: Path):
     return find
 
 
+# typographic punctuation an authoring AI types by habit (a non-breaking hyphen in "tamper-resistant"): English text with the wrong
+# glyph, so the advice is "use the ASCII one", never "translate it". Written as escapes: this file stays ASCII.
+_ASCII_FOR = {"‐": "-", "‑": "-", "‒": "-", "–": "-", "—": "-", "―": "-",
+              "‘": "'", "’": "'", "“": '"', "”": '"', "…": "...", " ": " "}
+
+
 def lint_pack(path: Path) -> tuple[list[str], list[str]]:
     """Static checks for mistakes the schema validator cannot see (from the authoring guide's validate_pack.py).
     Returns (errors, warnings), each line written as where - what - how to fix."""
@@ -305,11 +329,20 @@ def lint_pack(path: Path) -> tuple[list[str], list[str]]:
     doc = json.loads(raw)
     errors: list[str] = []
     warnings: list[str] = []
+    first_at: dict[str, int] = {}
+    count: dict[str, int] = {}
     for i, ch in enumerate(raw):
         if ord(ch) > 127:
-            warnings.append(f"pack.json near {raw[max(0, i - 20):i + 10]!r} - non-ASCII character U+{ord(ch):04X}; everything in a "
-                            f"pack is English - translate it (for example 'correction letter (CC-e)')")
-            break
+            first_at.setdefault(ch, i)
+            count[ch] = count.get(ch, 0) + 1
+    for ch, i in list(first_at.items())[:5]:   # one warning per distinct character, so one repair round fixes them all
+        near = ascii(raw[max(0, i - 20):i + 10])
+        if ch in _ASCII_FOR:
+            advice = (f"typographic punctuation, not another language - replace all {count[ch]} with the plain ASCII "
+                      f"{_ASCII_FOR[ch]!r}")
+        else:
+            advice = "everything in a pack is English - translate it (for example 'correction letter (CC-e)')"
+        warnings.append(f"pack.json near {near} - non-ASCII character U+{ord(ch):04X}; {advice}")
     concepts = {c["name"]: c for c in doc.get("concepts", []) if isinstance(c, dict) and "name" in c}
     for c in concepts.values():
         access = c.get("access") or {}
@@ -378,9 +411,18 @@ def compose_scratch(pack_id: str, scratch: Path, find) -> tuple[Path, list[str],
         (scratch / "packs" / pid).mkdir()
         (scratch / "packs" / pid / "pack.json").write_text(text, encoding="utf-8")
         roles |= set(re.findall(r"role\('([A-Za-z0-9_-]+)'\)", text))
-        requires = json.loads(text).get("requires", {})
-        roles |= set(requires.get("roles", []))
-        caps |= set(requires.get("capabilities", []))
+        requires = json.loads(text).get("requires") or {}
+        # an AI-written pack is hostile input: a wrong shape is a sentence for the author, never a crash of the ladder
+        # (2026-11-26 bench: a model wrote `requires` as a list and test_pack died with AttributeError)
+        if not isinstance(requires, dict):
+            raise WorkshopError(f"pack.json requires - must be an object like {{\"roles\": [\"agent\"], \"capabilities\": "
+                                f"[\"emailSender\"]}}, not a {type(requires).__name__} - packs this pack depends on go in "
+                                f"`packs`, not in `requires`")
+        for key in ("roles", "capabilities"):
+            if not isinstance(requires.get(key, []), list):
+                raise WorkshopError(f"pack.json requires.{key} - must be a list of names, not a {type(requires[key]).__name__}")
+        roles |= {r for r in requires.get("roles", []) if isinstance(r, str)}
+        caps |= {c for c in requires.get("capabilities", []) if isinstance(c, str)}
     target = json.loads(find(pack_id).read_text(encoding="utf-8"))
     model: dict = {"dslVersion": "3.0.0", "version": "1.0", "namespace": "scratch.packcheck",
                    "packs": [{"$ref": f"packs/{pid}/pack.json", "as": pid} for pid in order]}
@@ -435,7 +477,127 @@ def _default_update(cli, model_path: Path) -> tuple[bool, str]:
     done = subprocess.run(command, capture_output=True, text=True)
     # The refusal lists EVERY schema problem of the composed model (3,100 characters for one real pack), and
     # _update_problems needs the whole document, so keep a generous tail rather than the last 1,500 characters.
-    return done.returncode == 0, (done.stdout + done.stderr)[-20000:]
+    return done.returncode == 0, (done.stdout + done.stderr)[-400000:]
+
+
+def _with_shape_hint(line: str) -> str:
+    """A schema message says WHAT is wrong, rarely HOW the pack's author writes it. The bench (2026-11-26) showed a
+    model putting `"type": "string"` beside `enumValues` and a `schemaRef` beside an inline `properties` in a capability
+    operation, then reading "must be the constant value 'enum'" and "must be valid to one and only one schema" twice
+    without fixing either. These two shapes get one sentence of how-to-fix; everything else passes through unchanged."""
+    if "must be the constant value 'enum'" in line and "enumValues" not in line:
+        return line + " - a property with enumValues is written {\"type\": \"enum\", \"enumValues\": [\"A\", \"B\"]}, never \"type\": \"string\""
+    if "property 'enum' is not defined" in line and "enumValues" not in line:
+        return line + " - write \"enumValues\" (not \"enum\") together with \"type\": \"enum\""
+    if re.search(r"invariants\[\d+\] - property '(unique|uniqueFields|fields|on)' is not defined", line):
+        return line + (" - an invariant states a RULE as {\"name\", \"type\", \"expr\", \"message\"}; uniqueness is not an invariant: "
+                       "write \"unique\": true on the field, or an index {\"name\": ..., \"fields\": [...], \"unique\": true} in the concept's \"indexes\"")
+    if re.search(r"\$\.packs\[\d+\] - property '(concepts|roles|capabilities|domainTypes|packsEntry)' is not defined", line):
+        return line + (" - an entry of `packs` is ONLY {\"pack\": \"<id>\", \"version\": \"^2.0\"}: copy the `packsEntry` object of requiredPacks, "
+                       "not the whole requiredPacks item")
+    if "must be valid to one and only one schema" in line and re.search(r"\.(input|output) - ", line):
+        return line + (" - an operation's input/output is EITHER {\"schemaRef\": \"<name>\"} or {\"conceptRef\": \"<Concept>\"} OR an inline "
+                       "{\"type\": \"object\", \"properties\": {...}}, never a mix of the two")
+    missing = re.search(r"reference target not found: ([a-z][a-z0-9-]*)::(\w+)", line)
+    if missing:
+        # 2026-11-27 bench (payments): a model pointed `reference` at pix-key::PixKey, a DOMAIN TYPE; told only "point the
+        # reference at an existing concept" it put the pack id in `requires` and, a round later, dropped the type. The
+        # message cannot know which it is, so the sentence names both readings.
+        pack_id, name = missing.groups()
+        own = re.search(r"Concept ([a-z][a-z0-9-]*)::\w+", line)
+        if own and own.group(1) != pack_id and own.group(1).replace("-", "") == pack_id.replace("-", ""):
+            # 2026-11-27 bench (consent-lgpd): the model qualified its OWN concept with the pack id minus the hyphen
+            return line + (f" - the pack id is spelled '{own.group(1)}', hyphen included: write the target "
+                           f"'{own.group(1)}::{name}'")
+        return line + (f" - if '{name}' is a domain type of the pack '{pack_id}' (requiredPacks[].domainTypes), it is not a concept: remove "
+                       f"`reference` and write the field {{\"type\": \"string\", \"domainType\": \"{pack_id}::{name}\"}}; if it is a concept, "
+                       f"the name after '::' must be spelled exactly as in that pack's `concepts`. A dependency is declared only in `packs`, never in `requires`")
+    return line
+
+
+_MODEL_SCHEMA = Path(__file__).resolve().parent.parent / "NPDevContract" / "schemas" / "model.schema.json"
+
+
+def _concept_key_errors(pack) -> list[str]:
+    """A key the concept schema does not know (`queries` written INSIDE a concept, 2026-11-26 bench, leads) makes the
+    model validator answer "must be valid to one and only one schema" plus twelve lines about the OTHER branch of the
+    concept's one-of -- true, and no help: the author cannot tell which key is the culprit. The concept's allowed keys
+    are read from model.schema.json (never copied here); a key that is a top-level array of the model is told where it
+    belongs. Returns [] when the schema is not on this machine or the pack has no concepts to look at."""
+    if not isinstance(pack, dict) or not isinstance(pack.get("concepts"), list) or not _MODEL_SCHEMA.is_file():
+        return []
+    try:
+        schema = json.loads(_MODEL_SCHEMA.read_text(encoding="utf-8"))
+        allowed = set(schema["$defs"]["concept"]["properties"])
+        top_level = set(schema["properties"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+    lines: list[str] = []
+    for index, concept in enumerate(pack["concepts"]):
+        if not isinstance(concept, dict) or "$ref" in concept:
+            continue
+        for key in concept:
+            if key in allowed:
+                continue
+            where = f"pack.json concepts[{index}] ({concept.get('name', '?')}) {key}"
+            if key in top_level:
+                lines.append(f'{where} - "{key}" is not written inside a concept: it is a top-level array of the pack. '
+                             f'Move it to the pack\'s own "{key}": [...] and name the concept in each entry ("concept": "{concept.get("name", "<Name>")}")')
+            else:
+                lines.append(f"{where} - not a concept key; a concept holds only: {', '.join(sorted(allowed))}")
+    return lines
+
+
+_NOT_CONTENT = {"$schema", "dslVersion", "pack", "version", "namespace", "description", "category", "author", "metadata", "packs",
+                "schemaVersion", "provides", "modules", "agentAccess", "externalAi"}
+_ITEM_NOISE = re.compile(r"^\$\.(\w+)\[\d+\] - (required property '\$ref' not found|must be valid to one and only one schema, but 0 are valid"
+                         r"|property '[^']+' is not defined in the schema)")
+
+
+def _is_item_noise(line: str, explained: set[str]) -> bool:
+    """One-of noise, but ONLY for an array the mini validator really explained (`explained` = the keys of its lines): a
+    `packs[]` line with its packsEntry hint, or an array it does not read, is a real error and must survive."""
+    found = _ITEM_NOISE.match(line)
+    return bool(found) and found.group(1) in explained
+
+
+def _content_shape_errors(pack) -> list[str]:
+    """What is REALLY wrong inside the pack's content arrays, one `where - what` line each, read with the mini validator.
+    The Java validator reports an item that fails a one-of (every `concepts[]`/`screens[]` item is `$ref` OR inline) as
+    "must be valid to one and only one schema, but 0 are valid" followed by one line per property of the BRANCH THE
+    AUTHOR DID NOT MEAN (twelve lines for a concept whose only fault was a `queries` key, 2026-11-26 bench). The mini
+    validator follows if/then/else, so it names the branch the author wrote. Paths are the PACK's own (pack.json
+    `screens[0]...`), not the composed model's, which shift when other packs are composed. [] when it cannot tell."""
+    if not isinstance(pack, dict) or not _MODEL_SCHEMA.is_file():
+        return []
+    try:
+        import npdev_jsonschema
+        schema = json.loads(_MODEL_SCHEMA.read_text(encoding="utf-8"))
+        lines: list[str] = []
+        for key, sub in schema["properties"].items():
+            if key in _NOT_CONTENT or key not in pack or not isinstance(sub, dict):
+                continue
+            wrapper = {"$defs": schema.get("$defs", {}), **sub}
+            for item in npdev_jsonschema.validate(wrapper, pack[key]):
+                parts = [part for part in (item.get("path") or "/").split("/") if part]
+                where = "".join(f"[{part}]" if part.isdigit() else f".{part}" for part in parts)
+                allowed = item.get("allowedValues")
+                hint = f" (allowed: {', '.join(map(str, allowed[:24]))})" if isinstance(allowed, list) and allowed else ""
+                lines.append(f"pack.json {key}{where} - {item.get('message')}{hint}")
+        return lines[:12]
+    except Exception:  # noqa: BLE001 -- a diagnosis is a help; whatever goes wrong, the validator's own lines are still shown
+        return []
+
+
+def _explain_one_of(pack, lines: list[str]) -> list[str]:
+    """The validator's lines, with the one-of noise replaced by the real reason when the mini validator can name it."""
+    if not any("one and only one schema, but 0 are valid" in line for line in lines):
+        return lines
+    real = _content_shape_errors(pack)
+    if not real:
+        return lines
+    explained = {found.group(1) for line in real if (found := re.match(r"pack\.json (\w+)", line))}
+    return real + [line for line in lines if not _is_item_noise(line, explained)]
 
 
 def _update_problems(output: str) -> list[str]:
@@ -453,6 +615,12 @@ def _update_problems(output: str) -> list[str]:
             error = str(doc.get("error") or "") if isinstance(doc, dict) else ""
         except ValueError:
             error = ""
+    if not error and "Suggested fix:" in text:
+        # the document does not parse (cut at the front by a size limit: a four-pack composition refused with 20,000+
+        # characters, tasks 2026-11-26, answered "could not be resolved together - }"): the problems are still there as
+        # ` - <path>: <path>: <message> Suggested fix: <fix>` after JSON-escaped newlines, so read them from the raw text
+        error = text.replace("\\r\\n", "\n").replace("\\n", "\n")
+        error = re.sub(r'\\(["\\/])', r"\1", error)   # the other JSON escapes still in the raw text: \" \\ \/
     problems: list[str] = []
     for raw in re.split(r"\r?\n", error):
         raw = raw.strip()
@@ -461,8 +629,14 @@ def _update_problems(output: str) -> list[str]:
         body = raw[2:].strip()
         m = re.match(r"^(\S+): \1: (.*?)(?: Suggested fix: (.*))?$", body)
         line = " - ".join(part.strip() for part in m.groups() if part and part.strip()) if m else body
+        line = _with_shape_hint(line)
         if line and line not in problems:
             problems.append(line)
+    if not problems and error.strip():
+        # a one-sentence refusal (a version constraint the composition cannot meet, 2026-11-26 bench) is not a list of
+        # schema problems: hand it over as it is, minus the scratch model's absolute path, never the old "}" sentence
+        sentence = re.sub(r"^\S*model\.json\s+", "", error.strip().splitlines()[0])
+        problems.append(f"pack.json packs - {sentence}")
     return problems[:20]
 
 
@@ -472,7 +646,7 @@ def _diagnostic_lines(report: dict, severity: str = "error") -> list[str]:
         if item.get("severity", "error") != severity:
             continue
         parts = [str(item.get("path") or ""), str(item.get("message") or ""), str(item.get("hint") or item.get("suggestedFix") or "")]
-        line = " - ".join(p.strip() for p in parts if p.strip())
+        line = _with_shape_hint(" - ".join(p.strip() for p in parts if p.strip()))
         if line and line not in lines:
             lines.append(line)
     return lines
@@ -550,6 +724,17 @@ def assemble_consumer(cli, run: Path, pack_id: str, order: list[str], find, user
     name = f"packprobe-{pack_id}"
     port = _free_port()
     out = _build_root(cli) / "generated-finalapps" / name
+    # Regeneration spares `data`, `logs` and `secrets` (the generated-app filesystem contract), so the H2 file of the
+    # PREVIOUS test of this pack survived and the next boot was refused ("destructive change(s) requiring an explicit
+    # acknowledgment", leads 2026-11-26: contacts_v1 -> contacts_v2). This consumer is a throwaway the workshop owns
+    # (its name is packprobe-<pack>): its data starts empty on every run, as the config's own note promises.
+    try:
+        shutil.rmtree(out / "App" / "data")
+    except FileNotFoundError:
+        pass
+    except OSError as exc:   # on Windows: the H2 file is still held by a java process of an earlier test of this pack
+        raise BootUnavailable(f"the consumer's data folder of the previous test could not be removed ({exc}); a java process of "
+                              f"an earlier test of this pack is probably still running -- stop it (App/_ops/Stop-App.ps1) and test again") from exc
     posix = lambda p: str(p).replace("\\", "/")  # noqa: E731 -- the generator reads forward-slash paths on every OS
     config = {
         "configVersion": "1.0",
@@ -645,14 +830,44 @@ def default_boot(cli, consumer: dict, env: dict):
     return f"http://127.0.0.1:{consumer['port']}", stop
 
 
+def _default_exposure(base_url: str, app_dir: Path, users: list[dict], keys: dict[str, str]) -> dict:
+    """Rung 4b: scripts/quality/exposure_matrix.py against the booted probe consumer, every probe identity authenticating with its
+    static X-Api-Key. Returns {"routes", "matrix", "violations", "warnings"} or {"skipped": reason}. A role that reads what it has no
+    business reading is a violation (a system concept readable by anyone, a typed system route that answers); a non-admin reading a
+    concept whose NAME merely looks sensitive is a warning, because a pack may legitimately own a `Session` or `Token` concept."""
+    import importlib.util
+    path = _repo_root() / "scripts" / "quality" / "exposure_matrix.py"
+    if not path.is_file():
+        return {"skipped": f"{path} is not in this install"}
+    spec = importlib.util.spec_from_file_location("npdev_exposure_matrix", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    routes, system_routes, typed_routes = module.discover(app_dir)
+    if not routes:
+        return {"skipped": f"the generated app has no /api/concepts/<route> to read under {app_dir / 'npdev-generated'}"}
+    tokens = {u["name"]: module.ApiKey(keys[u["name"]]) for u in users}
+    admins = {u["name"] for u in users if str(u.get("role", "")).upper() == "ADMIN"}
+    matrix, violations, warnings = module.scan(base_url, routes, system_routes, typed_routes, list(tokens), tokens, admins, {},
+                                               heuristic="warning")
+    return {"routes": len(routes), "matrix": matrix, "violations": violations, "warnings": warnings}
+
+
+def _run_exposure(matrix, base_url: str, app_dir: Path, users: list[dict], keys: dict[str, str]) -> dict:
+    try:
+        return matrix(base_url, app_dir, users, keys)
+    except Exception as exc:   # a broken tool must show in the verdict as a skipped rung, never crash the ladder after the app already ran
+        return {"skipped": f"the matrix could not run: {type(exc).__name__}: {exc}"}
+
+
 def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stamp: str | None = None,
               validate=None, update=None, boot=None, probe_call=None, screens: bool = False, shoot=None,
-              derive_probes: bool = True) -> dict:
+              derive_probes: bool = True, exposure=None) -> dict:
     """Run the ladder for one pack. Writes runs/<pack>@<version>/<stamp>/ and returns the verdict dict.
     `validate(model_path, report_path) -> report|None`, `update(model_path) -> (ok, text)` and
     `boot(cli, consumer, env) -> (base_url, stop)` (or raise BootUnavailable) are injectable for tests;
     `probe_call(key, method, path, body) -> (status, payload)` replaces the HTTP client in tests.
     `screens=True` adds rung 5 (screenshots per identity); `shoot(base_url, out_dir, users, keys)` replaces the browser in tests.
+    `exposure(base_url, app_dir, users, keys) -> {"routes","matrix","violations","warnings"} | {"skipped": why}` replaces the exposure matrix.
     `derive_probes=False` keeps the old rule that a pack with no probes/*.json cannot reach rung 4 (default: derive them)."""
     folder = find_pack_dir(root, pack_id, version)
     if folder is None:
@@ -687,6 +902,7 @@ def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stam
         feedback.append("pack.json - it is not valid JSON - fix the syntax and resend the whole file")
         return finish("rejected")
     lines = npdev_relay_pack.static_errors(pack, pack_id, _scan_text(text))
+    lines.extend(line for line in _concept_key_errors(pack) if line not in lines)
     handoff_path = folder / "handoff.json"
     if handoff_path.is_file():
         handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
@@ -717,7 +933,7 @@ def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stam
         if not ok:
             (run / "compose.txt").write_text("\n".join(log) + "\n", encoding="utf-8")
             _step(steps, "compose", started, "fail", "npdev pack update refused the composition", "compose.txt")
-            problems = _update_problems(output)
+            problems = _explain_one_of(pack, _update_problems(output))
             if problems:
                 feedback.extend(problems)
             else:
@@ -730,7 +946,7 @@ def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stam
         (run / "compose.txt").write_text("\n".join(log) + "\n", encoding="utf-8")
         _step(steps, "compose", started, "skipped", "the model validator cannot run on this machine (no Java/jar/Gradle)", "compose.txt")
         return finish(status)
-    errors = _diagnostic_lines(report)
+    errors = _explain_one_of(pack, _diagnostic_lines(report))
     warns = _diagnostic_lines(report, "warning")
     (run / "validate.txt").write_text("\n".join([f"status: {report.get('status')}"] + [f"error: {e}" for e in errors]
                                                 + [f"warning: {w}" for w in warns]) + "\n", encoding="utf-8")
@@ -856,7 +1072,11 @@ def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stam
                 results.pop(name)
                 docs.pop(name)
         probes_ok = all(r["ok"] for rows in results.values() for r in rows)
-        if screens and probes_ok:
+        exposed = None
+        exposure_started = time.monotonic()
+        if docs and probes_ok:   # while the app is still up, and after the probes left rows behind for the matrix to count
+            exposed = _run_exposure(exposure or _default_exposure, base_url, Path(consumer["outputRoot"]) / "App", users, keys)
+        if screens and probes_ok and not (exposed or {}).get("violations"):
             import npdev_pack_screens
             try:
                 shots = npdev_pack_screens.capture(base_url, users, keys, run / "screens", f"{pack_id}@{version}", shoot=shoot)
@@ -883,8 +1103,21 @@ def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stam
                                                                 f"{len(derived_skipped)} concept(s) not derivable" if derived_names else ""),
               "probes.json")
         status = "probed"
-        _step(steps, "exposure-matrix", time.monotonic(), "skipped",
-              "the matrix logs in with passwords; the probe consumer uses static API keys -- not wired yet")
+        if exposed is None or "skipped" in exposed:
+            _step(steps, "exposure-matrix", exposure_started, "skipped", (exposed or {}).get("skipped", "the probes did not pass, so nothing was read"))
+        else:
+            (run / "exposure-matrix.json").write_text(json.dumps({k: exposed[k] for k in ("matrix", "violations", "warnings")}, indent=2) + "\n",
+                                                      encoding="utf-8")
+            feedback.extend(f"(warning) exposure matrix - {line} - fine if that role is meant to read it, otherwise tighten the concept's access.read"
+                            for line in exposed["warnings"])
+            if exposed["violations"]:
+                _step(steps, "exposure-matrix", exposure_started, "fail", f"{len(exposed['violations'])} violation(s)", "exposure-matrix.json")
+                feedback.extend(f"exposure matrix - {line} - a role must never read what it has no business reading: tighten the pack's access.read "
+                                f"rules so that role is refused" for line in exposed["violations"][:20])
+                return finish("rejected")
+            _step(steps, "exposure-matrix", exposure_started, "pass",
+                  f"{exposed['routes']} concept route(s) read as {len(users)} identit{'y' if len(users) == 1 else 'ies'}, no role reads a system concept",
+                  "exposure-matrix.json")
     else:
         _step(steps, "behavior-probes", started, "skipped",
               ("the probes derived from the pack's declarations were all inconclusive (" + "; ".join(inconclusive[:2]) + ")") if inconclusive
@@ -1095,16 +1328,26 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     promote.add_argument("--confirm", action="store_true", help="the owner has read the rules sheet and says yes")
     promote.add_argument("--root", default=None, help="workshop root")
     promote.add_argument("--json", action="store_true")
+    import npdev_pack_slice
+    npdev_pack_slice.add_arguments(sub)
 
 
 def main(cli, args: argparse.Namespace) -> int:
     command = getattr(args, "workshop_command", None)
+    for stream in (sys.stdout, sys.stderr):
+        # feedback quotes the pack's own text; a character the Windows console code page lacks (U+2011 in a real
+        # audit-log description, 2026-11-26) crashed `test` AFTER the ladder had run: print a '?', never crash
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
     if command == "test":
         return _main_test(cli, args)
     if command in ("status", "feedback", "promote"):
         return _main_t5(cli, args, command)
+    if command in ("slice", "take", "trials"):
+        import npdev_pack_slice
+        return npdev_pack_slice.main(cli, args, command)
     if command != "ingest":
-        print("usage: npdev pack workshop ingest [<zip> ...] [--downloads] | test <packId>[@version] | status [--batch id] | feedback <batch> | promote <pack>@<version> --confirm", file=sys.stderr)
+        print("usage: npdev pack workshop ingest [<zip> ...] [--downloads] | test <packId>[@version] | status [--batch id] | feedback <batch> | promote <pack>@<version> --confirm | slice <packId> | take <answer> | trials", file=sys.stderr)
         return 2
     root = workshop_root(cli, args.root)
     zips = [Path(z) for z in args.zips]

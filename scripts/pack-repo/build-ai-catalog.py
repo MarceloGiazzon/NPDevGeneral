@@ -156,7 +156,31 @@ def function_text(fn) -> str:
     return str(fn)
 
 
-def build_card(entry: dict) -> tuple[dict | None, str | None]:
+def transitive_needs(entry: dict, by_id: dict[str, dict] | None) -> tuple[list[str], list[str]]:
+    """(roles to bind, capabilities to declare) for this pack AND every pack it requires, transitively.
+    Composition refuses an unbound role or an undeclared capability of ANY pack in the graph ("pack 'person' (via app -> scheduling
+    -> person) references role('personManager'), which the app does not declare"; "pack 'pix-charge' (via app -> payments ->
+    pix-charge) requires capabilitie 'pixProvider', which the app does not declare in provides.capabilities"), ONE per validator
+    round -- so a card that lists only the pack's own needs sends the AI into a repair loop that a two-round cap cannot finish
+    (clinic bench 2026-11-27: scheduling -> person, payments -> pix-charge)."""
+    roles: set[str] = set()
+    caps: set[str] = set()
+    seen: set[str] = set()
+    todo = [entry]
+    while todo:
+        current = todo.pop()
+        if current["id"] in seen:
+            continue
+        seen.add(current["id"])
+        roles.update(roles_of(current["doc"]))
+        required = current["doc"].get("requires")
+        if isinstance(required, dict):
+            caps.update(c for c in required.get("capabilities", []) if isinstance(c, str))
+        todo.extend(by_id[dep] for dep in current.get("requires", []) if by_id and dep in by_id)
+    return sorted(roles), sorted(caps)
+
+
+def build_card(entry: dict, by_id: dict[str, dict] | None = None) -> tuple[dict | None, str | None]:
     doc = entry["doc"]
     provides: dict = {}
     concepts = [concept_text(c) for c in doc.get("concepts", []) if isinstance(c, dict) and "name" in c]
@@ -182,8 +206,13 @@ def build_card(entry: dict) -> tuple[dict | None, str | None]:
     points = [p.get("name", str(p)) if isinstance(p, dict) else str(p) for p in doc.get("extensionPoints", [])]
     if points:
         provides["extendPoints"] = points
-    tokens_in_use = roles_of(doc)
-    binding = (', "provides": {"roleBindings": {' + ", ".join(f'"{t}": "<YourRole>"' for t in tokens_in_use) + "}}") if tokens_in_use else ""
+    tokens_in_use, capabilities_needed = transitive_needs(entry, by_id)
+    parts = []
+    if tokens_in_use:
+        parts.append('"roleBindings": {' + ", ".join(f'"{t}": "<YourRole>"' for t in tokens_in_use) + "}")
+    if capabilities_needed:   # an app-level list of names, the shape provides.capabilities takes (the workshop consumer writes the same)
+        parts.append('"capabilities": [' + ", ".join(f'"{c}"' for c in capabilities_needed) + "]")
+    binding = (', "provides": {' + ", ".join(parts) + "}") if parts else ""
     use = f'{{"from": "{NPR_URL}//packs/{entry["id"]}@{entry["id"]}-{entry["version"]}"{binding}}}'
     limit = entry.get("limit") or "no limit was recorded for this pack"
     card = {"id": entry["id"], "version": entry["version"], "trust": entry["trust"], "need": cut(entry["need"], 120),
@@ -281,7 +310,7 @@ def build(workshop: Path | None, include_builtin: bool) -> tuple[list[dict], lis
     problems: list[str] = []
     entries = []
     for entry in sorted(chosen.values(), key=lambda e: (e["area"], e["id"])):
-        card, why = build_card(entry)
+        card, why = build_card(entry, chosen)
         if card is None:
             problems.append(f"{entry['id']}: {why}")
             continue

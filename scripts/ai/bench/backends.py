@@ -36,10 +36,15 @@ class BackendError(Exception):
 
 def classify_backend_error(text: str) -> str:
     """Why a model call failed, for the scorecard: an infrastructure outcome is never an authoring
-    failure. quota (429: the free tier is used up) | overload (5xx) | unreachable (timeout, network,
+    failure. too-large (413: one request above what the tier takes) | quota (429: the free tier is used up) |
+    overload (5xx) | unreachable (timeout, network,
     404 = no such model) | other. full-gemini-1 scored 16.7 % because 25 of these were counted as
     `author` failures: 20 prompts never reached the model at all."""
     head = (text or "")[:200]
+    if "HTTP 413" in head:
+        # the request is bigger than the tier takes at once (Groq free: 8,000 tokens per minute, a pack slice is ~14k):
+        # a capacity fact about the tier, not an authoring failure, and no retry or repair can help
+        return "too-large"
     if "HTTP 429" in head or "rate_limit" in head or "usage limit" in head.lower():
         return "quota"
     if any(f"HTTP {code}" in head for code in (500, 502, 503, 504, 529)) or "overloaded" in head.lower():
@@ -270,10 +275,12 @@ class ClientBackend:
     wire, retry, spend guard and usage log every other NPDev feature uses."""
 
     def __init__(self, config, provider_id: str, model: str, allow_paid: bool, timeout: float,
-                 backoff: tuple | None = None, key_resolver=None, opener=None, effort: str | None = None):
+                 backoff: tuple | None = None, key_resolver=None, opener=None, effort: str | None = None,
+                 max_tokens: int | None = None):
         self.info = _info(config, provider_id, model, allow_paid)
         self.info.effort = effort
         self._config, self._allow_paid, self._timeout, self._backoff = config, allow_paid, timeout, backoff
+        self._max_tokens = max_tokens   # None = the client's default (4096); a pack answer needs more
         self._key_resolver, self._opener = key_resolver, opener
 
     def complete(self, messages: list[dict]) -> Completion:
@@ -282,7 +289,8 @@ class ClientBackend:
         result = client.complete(self._config, "", messages=messages, provider=self.info.id, model=self.info.model,
                                  effort=self.info.effort,
                                  feature="bench", allow_paid=self._allow_paid, timeout=self._timeout,
-                                 backoff=self._backoff, key_resolver=self._key_resolver, **extra)
+                                 backoff=self._backoff, key_resolver=self._key_resolver, max_tokens=self._max_tokens,
+                                 **extra)
         return _completion(result, messages)
 
 
@@ -291,7 +299,8 @@ class ProfileBackend:
     chain itself. Once a fallback answers, the run sticks to it (a provider whose quota is gone stays
     gone), so one run is one model unless that model becomes unreachable."""
 
-    def __init__(self, config, profile: str | None, allow_paid: bool, timeout: float, key_resolver=None, opener=None):
+    def __init__(self, config, profile: str | None, allow_paid: bool, timeout: float, key_resolver=None, opener=None,
+                 max_tokens: int | None = None, backoff: tuple | None = None):
         _, client = _ai_modules()
         try:
             targets, _ = client.targets_for(config, profile=profile, feature=None if profile else "bench")
@@ -301,13 +310,17 @@ class ProfileBackend:
         self.info = _info(config, first.provider_id, first.model_id, allow_paid)
         self._config, self._profile, self._allow_paid, self._timeout = config, profile, allow_paid, timeout
         self._key_resolver, self._opener = key_resolver, opener
+        self._max_tokens = max_tokens
+        self._backoff = backoff   # None = the client's own default (~15 min on 429/503 for the last target)
         self.retired: list[str] = []
 
     def complete(self, messages: list[dict]) -> Completion:
         _, client = _ai_modules()
         extra = {"opener": self._opener} if self._opener else {}
+        if self._backoff is not None:
+            extra["backoff"] = self._backoff
         result = client.complete(self._config, "", messages=messages, profile=self._profile, feature="bench",
-                                 allow_paid=self._allow_paid, timeout=self._timeout,
+                                 allow_paid=self._allow_paid, timeout=self._timeout, max_tokens=self._max_tokens,
                                  key_resolver=self._key_resolver, **extra)
         completion = _completion(result, messages)
         if result.get("attempts") and result.get("profile"):
@@ -318,7 +331,8 @@ class ProfileBackend:
 
 
 def build_provider_backends(spec: str, allow_paid: bool, timeout: float, resolve_key=None, config=None, opener=None,
-                            effort: str | None = None):
+                            effort: str | None = None, max_tokens: int | None = None,
+                            backoff: tuple | None = None):
     """Backends for `--provider`: catalogue endpoint + the key from the NPDev vault / environment
     (npdev_providers.resolve_key). One provider -> that backend; several -> FailoverBackend, and every
     backend but the last gives up after a short retry budget so failover is quick. Refusals happen here,
@@ -359,9 +373,9 @@ def build_provider_backends(spec: str, allow_paid: bool, timeout: float, resolve
                                  f"(or set {entry['keyEnvVar']})")
         last = index == len(parsed) - 1
         built.append(ClientBackend(config, provider_id, model, allow_paid, timeout,
-                                   backoff=None if last else (15, 30),
+                                   backoff=backoff if last else (15, 30),   # backoff None = the client default (~15 min on 429/503)
                                    key_resolver=lambda pid, account=None, _key=key: _key, opener=opener,
-                                   effort=effort))
+                                   effort=effort, max_tokens=max_tokens))
     return built[0] if len(built) == 1 else FailoverBackend(built)
 
 

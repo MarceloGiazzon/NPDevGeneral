@@ -8,6 +8,7 @@ import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.inproc.InMemoryConceptStore;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -121,6 +122,65 @@ class DefaultConceptGatewayFieldAccessTest {
         );
 
         assertEquals(1200, updated.data().get("salary"));
+    }
+
+    // ---- REG-361 (2026-11-27): a protected DECIMAL resent unchanged must not count as a change ----
+
+    private static CompiledModel invoiceModel() {
+        CompiledConcept invoice = new CompiledConcept(
+                "Invoice", "Invoice", "invoices",
+                List.of(
+                        new CompiledField("id", "string", "String", true, true, false),
+                        new CompiledField("note", "string", "String", false, false, false),
+                        new CompiledField(
+                                "amount", "decimal", "BigDecimal", false, false, false,
+                                List.of(), null, null, null, null, List.of(), null, null, null, null,
+                                false, null,
+                                new CompiledFieldAccess(
+                                        "$user.actorId == 'manager-1'",
+                                        "$user.actorId == 'manager-1'"
+                                )
+                        )
+                ),
+                List.of(), List.of(), null, null, null, null, List.of(), null
+        );
+        return new CompiledModel("test", "1.0.0", "1.0.0", Map.of(invoice.getName(), invoice));
+    }
+
+    @Test
+    void aProtectedDecimalResentWithAnotherScaleOrNumberTypeIsNotAChange() {
+        DefaultConceptGateway gateway = DefaultConceptGateway.governedBy(new InMemoryConceptStore(), invoiceModel());
+        gateway.save(
+                new ConceptWriteRequest("Invoice", "inv-1", "tenant-a",
+                        Map.of("id", "inv-1", "note", "first", "amount", new BigDecimal("160.00"))),
+                manager()
+        );
+
+        // the stored value is a BigDecimal(160.00); a client resending the record can carry the same number as any of these
+        int note = 0;
+        for (Object same : List.of(new BigDecimal("160.0"), new BigDecimal("160"), 160.0d, 160, "160.00", new BigDecimal("1.6E+2"))) {
+            gateway.save(
+                    new ConceptWriteRequest("Invoice", "inv-1", "tenant-a",
+                            Map.of("id", "inv-1", "note", "edit " + (++note), "amount", same)),
+                    nonManager()
+            );
+        }
+        assertEquals("edit " + note, gateway.read(new ConceptReadRequest("Invoice", "inv-1", "tenant-a"), manager())
+                .orElseThrow().data().get("note"));
+
+        // a different number is still a change and is still refused, however it is typed
+        for (Object changed : List.of(new BigDecimal("160.01"), 161.0d, 0, "1")) {
+            ConceptGatewayAccessDeniedException exception = assertThrows(
+                    ConceptGatewayAccessDeniedException.class,
+                    () -> gateway.save(
+                            new ConceptWriteRequest("Invoice", "inv-1", "tenant-a",
+                                    Map.of("id", "inv-1", "note", "x", "amount", changed)),
+                            nonManager()
+                    ),
+                    "changing the amount to " + changed + " must be refused"
+            );
+            assertEquals("FIELD_SCOPE_DENIED", exception.code());
+        }
     }
 
     // ---- FORM P0-T5 (REG-339): `sensitive: true` is a runtime guarantee ----

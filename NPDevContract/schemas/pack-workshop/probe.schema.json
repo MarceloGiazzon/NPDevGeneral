@@ -35,7 +35,8 @@
           "name": {"type": "string"},
           "as": {"type": "string", "description": "a name from `users`"},
           "method": {"enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]},
-          "path": {"type": "string", "pattern": "^/"},
+          "path": {"type": "string", "pattern": "^/(__derive__/|api/[a-z][a-z0-9_]*(/|\\?|$))",
+                   "description": "/api/<packId with - as _>_<concept in snake_case, plural>[/...]: snake_case, never '-' (a 2026-11-26 bench probe wrote /api/multi_company_company-users and got a bare 404). /__derive__/ paths are written by npdev_pack_probe_derive only."},
           "body": {},
           "expect": {
             "type": "object",

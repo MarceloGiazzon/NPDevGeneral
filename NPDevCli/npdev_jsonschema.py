@@ -51,10 +51,14 @@ SUPPORTED = {
     "minLength", "maxLength", "pattern", "format",
     "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf",
     "anyOf", "allOf", "oneOf", "not",
+    # conditional (model.schema.json writes every `concepts[]`/`screens[]` item as if { required: [$ref] } then ... else ...)
+    "if", "then", "else",
+    # root-level schema version label of model.schema.json: an annotation
+    "version",
 }
 
 ANNOTATION_ONLY = {
-    "$schema", "$id", "$defs", "$comment",
+    "$schema", "$id", "$defs", "$comment", "version",
     "title", "description", "default", "examples", "deprecated", "readOnly", "writeOnly",
 }
 
@@ -175,6 +179,15 @@ def _validate(schema: Any, instance: Any, root: dict, path: str, errors: list, s
         _validate(schema["not"], instance, root, path, sub, seen_formats)
         if not sub:
             errors.append(_err(path, "not", "must NOT match the given schema"))
+
+    if "if" in schema:
+        # `if` never reports: it only picks the branch. The chosen branch reports its own errors at this path, which is
+        # the point -- the Java validator's one-of noise names the branch the author did NOT mean.
+        condition: list = []
+        _validate(schema["if"], instance, root, path, condition, seen_formats)
+        chosen = schema.get("then") if not condition else schema.get("else")
+        if chosen is not None:
+            _validate(chosen, instance, root, path, errors, seen_formats)
 
     for keyword in ("allOf",):
         if keyword in schema:

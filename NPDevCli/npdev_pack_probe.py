@@ -75,7 +75,8 @@ def _substitute(value, variables: dict):
         def swap(match):
             name = match.group(1)
             if name not in variables:
-                raise ProbeError(f"variable '${{{name}}}' is used before any step saved it")
+                raise ProbeError(f"variable '${{{name}}}' is used before any step saved it - an EARLIER step must create that row "
+                                 f"(POST as a user allowed to create it) and carry \"save\": {{\"{name}\": \"id\"}}; a probe never reads a row it did not create")
             return str(variables[name])
         return VARIABLE.sub(swap, value)
     if isinstance(value, list):
@@ -121,7 +122,13 @@ def _judge(expect: dict, status: int, payload) -> list[str]:
     problems = []
     wanted = expect["status"] if isinstance(expect["status"], list) else [expect["status"]]
     if status not in wanted:
-        problems.append(f"status {status}, wanted {' or '.join(map(str, wanted))}")
+        said = ""
+        if status >= 400 and payload not in (None, "", {}, []):
+            # "status 400, wanted 201" tells an author nothing; what the app answered (a validation message, a missing
+            # field, a lifecycle refusal) is the whole diagnosis (leads and payables, 2026-11-26: four probes red on 400)
+            text = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False)
+            said = f"; the app said: {text[:300]}"
+        problems.append(f"status {status}, wanted {' or '.join(map(str, wanted))}{said}")
     for path, want in (expect.get("json") or {}).items():
         got = dotted(payload, path)
         if got is MISSING or got != want:
@@ -159,6 +166,10 @@ def run_probe(base: str, doc: dict, keys: dict[str, str], call=None) -> list[dic
             continue
         status, payload = call(keys[step["as"]], step["method"], path, body)
         problems = _judge(step["expect"], status, payload)
+        if status == 405 and step["method"] == "PATCH":
+            # the bench (messaging, 2026-11-26) wrote PATCH for every update and got 405 twice: the generated API
+            # updates a row with PUT and the whole row as the body
+            problems.append("405 means the verb is not offered: a row is updated with PUT and the WHOLE row as the body (the create body with the changed field), never PATCH")
         for name, where in (step.get("save") or {}).items():
             found = dotted(payload, where)
             if found is MISSING:

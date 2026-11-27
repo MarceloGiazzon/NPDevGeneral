@@ -38,7 +38,9 @@ import java.util.regex.Pattern;
  * prefix convention): {@code visibility}, {@code permissionHint}, each entry of {@code
  * permissionRequirements}; EXPRESSION-EMBEDDED (a free-form CEL-ish predicate that may reference a
  * role check anywhere inside a larger expression): {@code read}/{@code write} (a concept's {@code
- * access} object), {@code visibleWhen}, {@code enabledWhen}, {@code readonlyWhen}. A coincidental
+ * access} object), {@code visibleWhen}, {@code enabledWhen}, {@code readonlyWhen}, and a lifecycle
+ * transition's {@code guard} (without it a pack cannot say "only the finance manager approves": the
+ * token stayed literal and the guard refused EVERY user, 2026-11-27). A coincidental
  * {@code "role(...)"} substring inside an unrelated label or description is left untouched, because
  * this walker never looks at those keys in the first place. PACK-1 added one more STRUCTURED site: a
  * flow human task's {@code assignee.roles} (each entry a plain role name), so a pack can route a
@@ -65,7 +67,7 @@ final class PackRoleBindingRewriter {
     private static final String ASSIGNEE_ROLES_FIELD = "roles";
     /** Free-form expression strings; the token is substituted as a QUOTED string literal. */
     private static final Set<String> QUOTED_STRING_FIELDS =
-            Set.of("read", "write", "visibleWhen", "enabledWhen", "readonlyWhen");
+            Set.of("read", "write", "visibleWhen", "enabledWhen", "readonlyWhen", "guard");
 
     private PackRoleBindingRewriter() {
     }

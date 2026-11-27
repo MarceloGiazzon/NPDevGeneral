@@ -134,6 +134,69 @@ class PackRoleBindingRewriteTest {
         assertFalse(resolvedB.resolvedRoot().toString().contains("role('curator')"));
     }
 
+    private static final String APPROVAL_PACK = """
+            {
+              "dslVersion": "3.0.0",
+              "pack": "approvals",
+              "version": "1.0.0",
+              "concepts": [
+                {
+                  "name": "Request",
+                  "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true },
+                    { "name": "status", "type": "enum", "enumValues": ["DRAFT", "APPROVED"], "required": true }
+                  ],
+                  "lifecycle": {
+                    "statusField": "status",
+                    "states": [ { "value": "DRAFT", "initial": true }, { "value": "APPROVED", "terminal": true } ],
+                    "transitions": [
+                      { "from": "DRAFT", "to": "APPROVED", "event": "RequestApproved",
+                        "guard": "$user.roles.contains('ADMIN') || $user.roles.contains(role('approver'))" }
+                    ]
+                  }
+                }
+              ]
+            }
+            """;
+
+    @Test
+    void aLifecycleGuardRoleTokenIsBoundLikeAnAccessRule() throws Exception {
+        write("packs/approvals/pack.json", APPROVAL_PACK);
+        Path model = write("model.json", """
+                {
+                  "namespace": "role.binding.guard.test",
+                  "dslVersion": "3.0.0",
+                  "version": "1.0",
+                  "provides": { "roleBindings": { "approver": "FinanceApprover" } },
+                  "packs": [ { "$ref": "packs/approvals/pack.json" } ]
+                }
+                """);
+
+        ResolvedModelSource resolved = new ModelSourceResolver().resolve(model);
+
+        JsonNode request = findConcept(resolved.resolvedRoot(), "approvals::Request");
+        assertEquals("$user.roles.contains('ADMIN') || $user.roles.contains('FinanceApprover')",
+                request.path("lifecycle").path("transitions").get(0).path("guard").asText(),
+                "the guard must carry the app's concrete role, not the token (a guard with the token refuses everyone)");
+        assertFalse(resolved.resolvedRoot().toString().contains("role('approver')"));
+    }
+
+    @Test
+    void anUnboundRoleTokenInALifecycleGuardRefusesAtComposition() throws Exception {
+        write("packs/approvals/pack.json", APPROVAL_PACK);
+        Path model = write("model.json", """
+                {
+                  "namespace": "role.binding.guard.unbound.test",
+                  "dslVersion": "3.0.0",
+                  "version": "1.0",
+                  "packs": [ { "$ref": "packs/approvals/pack.json" } ]
+                }
+                """);
+
+        IOException thrown = assertThrows(IOException.class, () -> new ModelSourceResolver().resolve(model));
+        assertTrue(thrown.getMessage().contains("approver"), "must name the unbound logical role, got: " + thrown.getMessage());
+    }
+
     @Test
     void packWithNoRoleTokenIsUnaffected() throws Exception {
         write("packs/billing/pack.json", """

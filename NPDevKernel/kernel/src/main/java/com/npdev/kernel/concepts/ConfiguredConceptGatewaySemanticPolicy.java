@@ -16,6 +16,7 @@ import com.npdev.dsl.v1.expr.SequenceNumberFormat;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.ports.SequenceAllocator;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -743,16 +744,23 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
         return Map.copyOf(detail);
     }
 
+    /**
+     * What "the same value" means for a field-level write rule ({@link #deniedWriteFields}): numbers compare by VALUE.
+     * A stored decimal is a {@code BigDecimal} with the column's scale (160.00) while the same number arriving in a
+     * request body can be a {@code Double} (160.0), an {@code Integer} (160) or a {@code BigDecimal} of another scale
+     * (160.0); {@code Objects.equals} on those is false, so a client that resent the whole record -- the case the
+     * contract promises is fine -- was refused on every protected decimal field (REG-361, a payments pack, 2026-11-27:
+     * "field(s): amount" on a PAID to REFUNDED move that never touched the amount). A number-looking string still
+     * compares as a number (it did before); anything else compares as text.
+     */
     private static Object normalizeComparable(Object value) {
-        if (value instanceof Number) {
-            return value;
-        }
         if (value == null) {
             return null;
         }
         String text = String.valueOf(value);
         try {
-            return Double.parseDouble(text);
+            BigDecimal number = new BigDecimal(text.trim());
+            return number.signum() == 0 ? BigDecimal.ZERO : number.stripTrailingZeros();
         } catch (NumberFormatException ignored) {
             return text;
         }
