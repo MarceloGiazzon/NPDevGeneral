@@ -566,6 +566,152 @@ class LadderTest(unittest.TestCase):
         self.assertEqual(verdict["status"], "secure")
         self.assertEqual(self.steps(verdict)["screens"], "skipped")
 
+    # ---- rung 4c: populated (opt-in; the pack's demo/ loaded into the booted app by Mockuper) --------------------------------
+
+    def _demo(self, folder: Path, identities=None, config=None):
+        demo = folder / "demo"
+        (demo / "cache").mkdir(parents=True)
+        (demo / "cache" / "answers.json").write_text("{}", encoding="utf-8")
+        doc = {"schemaVersion": "npdev-pack-demo.v1", "targetUrlEnv": "TARGET_API_URL",
+               "identities": identities or [{"name": "rep1", "role": "REP", "keyEnv": "DEMO_REP1_KEY"}]}
+        (demo / "identities.json").write_text(json.dumps(doc), encoding="utf-8")
+        (demo / "mockuper.yaml").write_text(config or "output:\n  api:\n    base_url_env: TARGET_API_URL\n    identities:\n"
+                                            "      rep1: {type: header, header_name: X-Api-Key, value_env: DEMO_REP1_KEY}\n", encoding="utf-8")
+
+    def _populated_ladder(self, populator, *, demo=True, screens=False, shoot=None, populate=True):
+        folder = _put(self.root, _pack())
+        self._put_probe(folder, self._probe())
+        if demo:
+            self._demo(folder)
+        record = {}
+        answers = iter([(201, {"id": "n1"}), (403, {"error": "no"})])
+        verdict = ws.test_pack(_FakeCli(self.root), self.root, "leads", None, stamp="20261114-100000", validate=_ok_report,
+                               update=_update_ok, boot=self._boot(record), probe_call=lambda key, method, path, body: next(answers),
+                               populate=populate, populator=populator, screens=screens, shoot=shoot)
+        return verdict, record
+
+    def _populator(self, seen, result="pass", detail="3 row(s) in 1 table(s) by 1 identity, 0 refusals", feedback=None):
+        def populator(demo, run, base_url, keys):
+            seen.update(demo=demo, base_url=base_url, keys=dict(keys), run=run)
+            return {"result": result, "detail": detail, "feedback": feedback or [], "evidence": "populate/summary.json"}
+        return populator
+
+    def test_a_loaded_demo_reaches_populated_and_the_app_is_up_while_it_loads(self):
+        seen = {}
+        record_stopped = []
+
+        def populator(demo, run, base_url, keys):
+            record_stopped.append(record["stopped"])
+            return self._populator(seen)(demo, run, base_url, keys)
+        record = {}
+        folder = _put(self.root, _pack())
+        self._put_probe(folder, self._probe())
+        self._demo(folder)
+        answers = iter([(201, {"id": "n1"}), (403, {"error": "no"})])
+        verdict = ws.test_pack(_FakeCli(self.root), self.root, "leads", None, stamp="20261114-100000", validate=_ok_report,
+                               update=_update_ok, boot=self._boot(record), probe_call=lambda key, method, path, body: next(answers),
+                               populate=True, populator=populator)
+        self.assertEqual(verdict["status"], "populated")
+        self.assertEqual(record_stopped, [False])
+        self.assertTrue(record["stopped"])
+        self.assertEqual([s["step"] for s in verdict["steps"]], ["static", "compose", "access-lint", "behavior-probes", "populate", "exposure-matrix"])
+        step = [s for s in verdict["steps"] if s["step"] == "populate"][0]
+        self.assertEqual((step["result"], step["evidence"]), ("pass", "populate/summary.json"))
+        env = record["env"]["NPDEV_AUTH_API_KEYS"]
+        self.assertIn("=dev:demo-rep1:REP", env)
+        self.assertIn("=dev:workshop-reader:ADMIN", env)
+        self.assertEqual({"rep", "plain", "demo-rep1", "workshop-reader"}, set(seen["keys"]))
+        self.assertEqual(seen["demo"]["targetUrlEnv"], "TARGET_API_URL")
+
+    def test_populate_then_screens_climbs_to_browsed_and_photographs_the_demo_identities_but_not_the_reader(self):
+        shot = {}
+        verdict, _ = self._populated_ladder(self._populator({}), screens=True, shoot=self._shoot(shot))
+        self.assertEqual(verdict["status"], "browsed")
+        self.assertEqual(shot["shot"]["users"], ["rep", "plain", "demo-rep1"])
+        self.assertIn("workshop-reader", shot["shot"]["keys"])   # its key exists in the app, it is just never photographed
+
+    def test_a_demo_the_app_refuses_rejects_the_pack_and_skips_the_later_steps(self):
+        shot = {}
+        line = "demo/mockuper.yaml - while loading the demo into the pack's own app: 422 on /api/leads - fix the demo"
+        verdict, record = self._populated_ladder(self._populator({}, result="fail", detail="Mockuper stopped with exit code 6", feedback=[line]),
+                                                 screens=True, shoot=self._shoot(shot))
+        self.assertEqual(verdict["status"], "rejected")
+        self.assertEqual(self.steps(verdict)["populate"], "fail")
+        self.assertNotIn("exposure-matrix", self.steps(verdict))
+        self.assertNotIn("screens", self.steps(verdict))
+        self.assertNotIn("shot", shot)
+        self.assertIn(line, verdict["feedbackForAi"])
+        self.assertTrue(record["stopped"])
+        self.assertEqual(ws.highest_rung(verdict), "probed")   # populate did not pass: the rung is not climbed
+
+    def test_a_demo_that_cannot_be_loaded_here_is_skipped_never_rejected_and_the_warning_reaches_the_author(self):
+        verdict, _ = self._populated_ladder(self._populator({}, result="skipped", detail="Mockuper is not installed here",
+                                                            feedback=["(warning) the demo was not loaded - Mockuper is not installed"]))
+        self.assertEqual(verdict["status"], "probed")
+        self.assertEqual(self.steps(verdict)["populate"], "skipped")
+        self.assertIn("(warning) the demo was not loaded - Mockuper is not installed", verdict["feedbackForAi"])
+
+    def test_a_loader_that_crashes_is_a_skipped_rung_not_a_crash_of_the_ladder(self):
+        def broken(demo, run, base_url, keys):
+            raise RuntimeError("boom")
+        verdict, record = self._populated_ladder(broken)
+        self.assertEqual(verdict["status"], "probed")
+        step = [s for s in verdict["steps"] if s["step"] == "populate"][0]
+        self.assertEqual(step["result"], "skipped")
+        self.assertIn("RuntimeError: boom", step["detail"])
+        self.assertTrue(record["stopped"])
+
+    def test_a_pack_with_no_demo_skips_the_rung_and_everything_else_goes_on(self):
+        called = []
+        verdict, _ = self._populated_ladder(lambda *a: called.append(a), demo=False)
+        self.assertEqual(verdict["status"], "probed")
+        step = [s for s in verdict["steps"] if s["step"] == "populate"][0]
+        self.assertEqual(step["result"], "skipped")
+        self.assertIn("no demo/", step["detail"])
+        self.assertEqual(called, [])
+
+    def test_without_the_flag_the_demo_is_never_loaded_and_adds_no_identity(self):
+        called, record = [], {}
+        verdict, record = self._populated_ladder(lambda *a: called.append(a), populate=False)
+        self.assertEqual(verdict["status"], "probed")
+        self.assertNotIn("populate", self.steps(verdict))
+        self.assertEqual(called, [])
+        self.assertNotIn("demo-rep1", record["env"]["NPDEV_AUTH_API_KEYS"])
+        self.assertNotIn("workshop-reader", record["env"]["NPDEV_AUTH_API_KEYS"])
+
+    def test_a_demo_folder_that_cannot_work_is_rejected_at_the_first_rung_even_without_the_flag(self):
+        folder = _put(self.root, _pack())
+        self._demo(folder)
+        (folder / "demo" / "mockuper.yaml").unlink()
+        verdict = self.run_ladder()
+        self.assertEqual(verdict["status"], "rejected")
+        self.assertEqual(self.steps(verdict), {"static": "fail"})
+        self.assertTrue(any(line.startswith("demo/mockuper.yaml - it is missing") for line in verdict["feedbackForAi"]), verdict["feedbackForAi"])
+
+    def test_a_demo_identity_that_clashes_with_another_user_is_rejected_before_booting(self):
+        # a probe user cannot be named like a demo identity (probe names have no hyphen), so the clash is forced here
+        folder = _put(self.root, _pack())
+        self._put_probe(folder, self._probe())
+        self._demo(folder)
+        record = {}
+        import npdev_pack_populate
+        with mock.patch.object(npdev_pack_populate, "merge_users", return_value=([], "the demo identity 'demo-rep1' has the role 'REP' but ...")):
+            verdict = ws.test_pack(_FakeCli(self.root), self.root, "leads", None, stamp="20261114-100000", validate=_ok_report,
+                                   update=_update_ok, boot=self._boot(record), populate=True, populator=self._populator({}))
+        self.assertEqual(verdict["status"], "rejected")
+        self.assertEqual(self.steps(verdict)["populate"], "fail")
+        self.assertTrue(verdict["feedbackForAi"][0].startswith("demo/identities.json - the demo identity 'demo-rep1'"))
+        self.assertNotIn("env", record)   # nothing was booted
+
+    def test_populate_asked_for_a_pack_that_never_booted_is_skipped_with_the_reason(self):
+        folder = _put(self.root, _pack())
+        self._put_probe(folder, self._probe())
+        self._demo(folder)
+        verdict = ws.test_pack(_FakeCli(self.root), self.root, "leads", None, stamp="20261114-100000", validate=_ok_report,
+                               update=_update_ok, boot=_no_boot, populate=True, populator=self._populator({}))
+        self.assertEqual(verdict["status"], "secure")
+        self.assertEqual(self.steps(verdict)["populate"], "skipped")
+
     def _with_dependency(self):
         _put(self.root, _pack("base-thing"))
         return _put(self.root, _pack("leads", packs=[{"pack": "base-thing", "version": "1.0.0"}]))
@@ -618,6 +764,21 @@ class LadderTest(unittest.TestCase):
         self.assertEqual(screens.default_users(["REP", "MANAGER"]),
                          [{"name": "rep-user", "role": "REP"}, {"name": "manager-user", "role": "MANAGER"}])
         self.assertEqual(screens.default_users([]), [{"name": "tester", "role": "USER"}])
+
+    def test_the_capture_budget_grows_with_the_identities(self):
+        import npdev_pack_screens as screens
+        budgets = []
+
+        def fake_shoot(root, url, out, users, keys, budget=None):
+            budgets.append(budget)
+            (out / "manifest.json").write_text(json.dumps([{"user": "a", "role": "R", "screen": "Home", "file": "a.png"}]),
+                                               encoding="utf-8")
+
+        users = [{"name": f"u{i}", "role": "R"} for i in range(4)]
+        with mock.patch.object(screens, "run_shoot", fake_shoot):
+            screens.capture("http://x", users, {}, self.root / "s4", "t", engine_root=self.root)
+            screens.capture("http://x", users[:1], {}, self.root / "s1", "t", engine_root=self.root)
+        self.assertEqual(budgets, [4 * screens.SCREENS_SECONDS_PER_IDENTITY, screens.SCREENS_BUDGET_SECONDS])
 
     def test_gallery_escapes_what_the_app_printed(self):
         import npdev_pack_screens as screens

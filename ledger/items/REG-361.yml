@@ -12,7 +12,9 @@ source: >-
 surface: pack-workshop, contract/dsl, cli/pack
 files:
   - NPDevCli/npdev_pack_workshop.py
+  - NPDevCli/npdev_pack_populate.py
   - NPDevCli/tests/test_pack_workshop_test.py
+  - NPDevCli/tests/test_pack_populate.py
   - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/cli/PackUpdateMain.java
   - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/cli/PackAddMain.java
   - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/cli/CliEnglishLocaleTest.java
@@ -142,10 +144,55 @@ detail: |
   and the cause was in the CARDS: composition demands that every role of EVERY pack in the graph is bound and every capability declared, ONE per validator round, while a card listed only the pack's own needs (scheduling -> person: personManager,
   personStaff, selfPerson; payments -> pix-charge: capability pixProvider). FIXED in scripts/pack-repo/build-ai-catalog.py (`transitive_needs`: the `use` line now binds the roles and declares the capabilities of the whole `requires` chain; test
   test_use_line_binds_the_roles_of_required_packs_transitively, 12 tests pass). Third run: first answer 1,266 tokens, rejected only by the default-deny rule on a dependency's concept (notification::OutgoingMessage has no grant), repaired in round 2
-  (1,325 tokens) -> VALID, 2,591 output tokens over the two rounds (runs clinic-cards-20261127, -b, -c in Build/ai-bench/catalog). NOT measured: a boot of the clinic app (the validator is the only gate here), the `l0` arm (does the AI pick the packs
-  unaided), a second model, a second run (n=1; round-1 latency ranged 14-150 s). Open idea, not done: teach the card or the core context that a dependency's concepts need a role grant too (default-deny), which would make the first answer valid.
+  (1,325 tokens) -> VALID, 2,591 output tokens over the two rounds (runs clinic-cards-20261127, -b, -c in Build/ai-bench/catalog). `l0` ARM (same brief, same model, the L0 catalog lines but NO cards; run clinic-l0-20261127): gemini-3.6-flash used NO pack at
+  all, modelled the seven concepts inline (14,188 characters) and was valid first try with 3,794 output tokens -- so the packs route (cards) costs 2,591 tokens in all against 3,794 inline (-32%) and reuses six probed packs with their access rules;
+  the L0 lines alone do not make this model reuse anything (same finding as the P7-T5 bench). BOOT OF THE CLINIC APP (2026-11-27, tool clinic_boot.py next to catalog_bench.py, same boot path and exposure matrix as the workshop): the cards-arm model (clinic-cards-20261127c, attempt-2) GENERATED, BUILT and
+  STARTED in 57.6 s; 29 concept routes read as five identities (admin + one per role the model declares), 0 violations, 0 warnings; the identity_* system routes answer 403 to every non-admin. LIMIT OF THAT EVIDENCE: every table was empty
+  (rows 0), so the matrix shows no system route is exposed but NOT that a patient or doctor is kept off other people's payments, consents or persons row by row; the packs' own probes cover each pack alone, a composed-app probe with data is not written.
+  NOT measured: a second model, a second run (n=1; round-1 latency ranged 14-150 s), row-level access of the composed clinic app. Open idea, not done: teach the card or the core context that a dependency's concepts need a role grant too (default-deny), which would make the first answer valid.
   STILL OPEN (updated 2026-11-27, fifth stretch): the owner's review and `promote` (audit-log 1.0.4, documents 1.0.2, leads 1.0.2, messaging 1.0.2, multi-company 1.0.3, payables 1.0.3, quotes 1.0.5, consent-lgpd 1.0.0, scheduling 1.0.1, tasks 1.0.1,
   payments 1.0.0), and the commit itself (clean-workspace-state, select_checks, then main + push).
+  PROMOTION EVIDENCE (2026-11-28, Mockuper plan F0): `promote` now builds <run>/evidence/ (npdev_pack_evidence.py: probe plan with the
+  status each step expected beside what it got, exposure matrix, consumer logs with probe keys scrubbed, screenshots per identity,
+  evidence.html + evidence.json) BEFORE asking for --confirm, and stages it at npr-staging/packs/<pack>/<version>/evidence/. All eleven
+  versions above were re-tested with --screens and reached `browsed` (11-48 screenshots each, probes and exposure unchanged); the
+  screens budget now grows with the identities (45 s each, floor 90 s) because quotes 1.0.5 did not fit 90 s. The screens show only
+  the rows the probes created: realistic demo data is the Mockuper plan (outside the repo, Mockuper\Initial Analisis).
+  RUNG `populated` (2026-11-28, Mockuper plan I4, NPDev side DONE and tested with a simulated Mockuper and app): the ladder is now delivered, valid, composes, secure, probed, POPULATED, browsed, reviewed, published; the
+  rung is opt-in (`npdev pack workshop test <pack> --populate`, which is also the owner's explicit request for `mockuper --apply`) and optional (a pack with no `demo/` skips it). Module NPDevCli/npdev_pack_populate.py: it
+  saves the booted app's /v3/api-docs, reads the row count of every creatable route as an ADMIN reader, runs `mockuper run -c demo/mockuper.yaml --openapi <saved> --cache-only --cache-dir demo/cache --target api --apply` as a
+  PROCESS (command from NPDEV_MOCKUPER_CMD or `mockuper` on PATH) with the app URL and one throwaway key per identity only in that process's environment, and re-reads the counts: each must have grown by exactly what Mockuper
+  reports in created.jsonl (at least one route must GROW by at least what was created; less is a note because the reader obeys the same read rules, more is a note too). Only a loopback app is ever filled, and Mockuper
+  inherits NONE of the owner's environment beyond an allowlist (it reads the URL and every key by variable NAME, so a demo naming OPENROUTER_API_KEY or HTTPS_PROXY must find them empty; found by the review of 2026-11-28).
+  Verdicts: Mockuper exit 5, or exit 6 whose error says an answered HTTP 4xx (not 408/429/5xx/"rede"), or rows created as an undeclared identity, or nothing created = FAIL with the app's own words for the author; every other
+  trouble (no Mockuper, cache miss = exit 4, config = exit 2, a dying app, timeout 180 s, no count confirms the rows) = SKIPPED with a warning, never a rejection. A SECOND independent review (same day) hardened it again: the
+  inherited environment is EXACT names only (no UV_ prefix: UV_PUBLISH_TOKEN / UV_INDEX_*_PASSWORD / UV_ENV_FILE would have passed), mockuper.yaml may name no *_env variable except the ones identities.json declares (comments do not
+  count), the 4xx is read on Mockuper's `erro:` line only (never the app's response text; 408/425/429 are retried, not a refusal), tables posting to one route share its count, a trailing slash no longer hides a route, and the count
+  reads are time-boxed (45 s each side). KNOWN, NOT FIXED: on Windows a Mockuper whose launcher exited but whose Python child still holds the pipes waits out the 180 s budget (bounded, rung skipped); an app behind a proxy cannot
+  `uv sync` on first use (proxy variables are not inherited; the rung skips); a mismatch between the identity names in mockuper.yaml and identities.json is only caught after the run (rows created as an undeclared name = FAIL with
+  a line naming both files). The pack carries `demo/identities.json` (schema NPDevContract/schemas/pack-workshop/demo.schema.json: identity name, role, env variable of
+  its key, env variable of the app URL), `demo/mockuper.yaml` and `demo/cache/` (made once with the AI by `mockuper cache export`); DEVIATION from plan X6, which put the identities inside mockuper.yaml: NPDevCli reads no YAML
+  (no new dependency), so a static check (rung 1, with or without --populate) only requires mockuper.yaml to MENTION every variable named in identities.json. The evidence of `promote` gained a "Demo data" section and populate/ files
+  (summary, plan, requests, created, log; keys scrubbed) and `demo/` travels to the NPR staging. Real invocation shape checked against the real Mockuper CLI WITHOUT --apply (exit 4 "no providers" with an empty cache, as the rung
+  expects). NOT done and blocked: any live `--apply` (owner decision D2, Mockuper BLOQUEIOS B-004); Mockuper skipping `x-npdev-stamp` fields (request written to NPDev_General__OutsideRepo/mockuper-i0/PEDIDO_M5_x-npdev-stamp.md;
+  until then preparedBy would be generated text and the rows land on the wrong owner); the `demo/` + cache of the 11 packs (needs I3: one real run with free-tier AI); the ADMIN reader may lack coarse grants in a pack whose
+  example-model.json defines no ADMIN role (counts would then read as "could not be read back", a pass with a note). Tests: NPDevCli/tests/test_pack_populate.py (new) + the `rung 4c` section of test_pack_workshop_test.py.
+  VERIFIED 2026-11-28 for the uncommitted OpenApiDocumentBuilder change (x-npdev-ref / readOnly / x-npdev-stamp / x-npdev-lifecycle): the three checks select_checks names all PASS -- run-behavior-probes 163/163 (6 skipped: the
+  rename-by-uid variant), run-fast-gate T1 "PASSED" (6 min), run-ride-hailing exposure matrix 142 PASS / 0 FAIL (10 min) -- plus check-twin-pair-consistency. Logs in Build/digest-logs/*verify-*.log. The T1 gate also prints "OVERDUE (BLOCKING,
+  tiers T0/T1): 15 check(s) need a real run" (cadence coverage, pre-existing, not caused by this work).
+  CLINIC BENCH, SECOND ATTEMPT 2026-11-28 (negative result, change REVERTED): a card member `addToRoleConcepts` (every concept of the pack graph with no read/write rule, derived from pack data, placed right after `use`) was tried so the
+  FIRST answer would carry the role grant that default deny demands (notification::OutgoingMessage). gemini-3.6-flash, set clinic, arm cards, three runs (clinic-cards-20261128, -b, -c): 0 of 3 first answers valid, round-1 output 1,540-1,990
+  tokens (earlier cards-arm runs 1,266-1,424), 3,431 / 3,752 / 3,080 tokens over two rounds, only run 1 valid at the end. The model ignored the field in all three; in two of them the first answer failed on a schema error of its OWN inline flow
+  (an invented `where` key, `input.mode: read`) and the semantic default-deny error only shows after the schema errors are fixed, so the field could not have made the first answer valid anyway. It added +66..+106 characters to 13 of 36
+  cards for no measured gain, against the central goal (tokens), so it was reverted; the patch is kept in NPDev_General__OutsideRepo/backups/addToRoleConcepts-experiment-20261128.patch. KEPT: a real latent bug the experiment exposed
+  in scripts/pack-repo/build-ai-catalog.py `fit_budget` (the 4-token `budgetTokens` member was not counted while trimming, so a card of 347 raw tokens became 351 and failed the build with nothing trimmed) with its test. Still untested
+  ideas: ONE general sentence in the core context ("a concept without an access rule must be listed in some role's concepts"), which every app would pay for; and making the validator report default deny in the same round as schema
+  errors (it would save a whole round for any model).
+  CLINIC BENCH, THIRD ATTEMPT 2026-11-28 (negative result, change REVERTED): the general sentence was tested -- one sentence in the "Use a published pack" section of docs/content/authoring-for-ai.yml ("once your app has `roles[]`, a concept of a
+  pack, or of a pack it needs, that has no access rule of its own must be listed in some role's `concepts`, or the check refuses it (default deny)"), present in the compact core context the bench uses. gemini-3.6-flash, set clinic, arm cards,
+  three runs (clinic-cards-20261128-sentence-a, -b, -c in Build/ai-bench/catalog): 0 of 3 first answers valid, ALL THREE rejected by the same error as before (notification::OutgoingMessage has no read/write rule), round-1 output 1,131-1,346 tokens,
+  2,775 / 2,321 / 2,746 tokens over two rounds, all three valid after round 2 (the validator's own suggestedFix names the grant, so round 2 is cheap). The model ignores the sentence exactly as it ignored the card field: two prompt-side attempts, six runs,
+  zero effect. Reverted (the three docs files back to HEAD). What is left is NOT a prompt change: make the validator report the default-deny error in the SAME round as schema errors (a real saving of a whole round for any model; Java, SemanticValidator).
   ALSO STILL OPEN from REG-356 item D: two packs reaching `probed` on a booted consumer (blocked by this item) and the bench step "a clinic app from packs only under 2k output tokens" (blocked by wave 2 and provider quota).
 done_when: >-
   The six foundation packs are secure at 1.0.1 (DONE 2026-11-25), and the seven module packs reach at least `secure` against the current schema as higher versions delivered by the authoring AI (wave-2 request, second

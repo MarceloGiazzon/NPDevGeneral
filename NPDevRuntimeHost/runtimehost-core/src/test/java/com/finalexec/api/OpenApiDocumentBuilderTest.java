@@ -227,6 +227,181 @@ class OpenApiDocumentBuilderTest {
         assertTrue(minTotal.get("required").asBoolean(), "a parameter without a default is still required");
     }
 
+    /**
+     * Mockuper plan X1: the prose "id of sales::Customer" is not a name a client generator can resolve (the schema is
+     * {@code sales__Customer}), and a name match fails behind the pack prefix, so a record creator inserted quotes
+     * before customers (I0, 2026-11-28, real quotes 1.0.5 document). The reference field names its target component.
+     */
+    @Test
+    void aReferenceFieldNamesTheComponentOfItsTarget() throws Exception {
+        String json = """
+                {
+                  "dslVersion": "3.0.0", "namespace": "crm", "version": "1.0",
+                  "concepts": [
+                    { "name": "Customer", "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true },
+                        { "name": "name", "type": "string" } ] },
+                    { "name": "Secret", "system": true, "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true } ] },
+                    { "name": "Quote", "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true },
+                        { "name": "customerId", "type": "reference", "reference": { "target": "Customer" } },
+                        { "name": "secretId", "type": "reference", "reference": { "target": "Secret" } },
+                        { "name": "number", "type": "string" } ] }
+                  ]
+                }
+                """;
+        CompiledModel compiled = new ModelCompiler().compile(new JsonModelParser().parse(MAPPER.readTree(json)));
+        JsonNode doc = MAPPER.valueToTree(OpenApiDocumentBuilder.build(compiled, "Crm"));
+        JsonNode schemas = doc.get("components").get("schemas");
+        JsonNode customer = schemas.get("Quote").get("properties").get("customerId");
+        assertEquals("Customer", customer.get("x-npdev-ref").asText());
+        assertEquals("id of Customer", customer.get("description").asText(), "the prose stays for human readers");
+        assertTrue(schemas.has(customer.get("x-npdev-ref").asText()), "the extension names a schema that exists");
+        JsonNode secret = schemas.get("Quote").get("properties").get("secretId");
+        assertFalse(secret.has("x-npdev-ref"), "a platform-owned concept has no component to point at");
+        assertFalse(schemas.get("Quote").get("properties").get("number").has("x-npdev-ref"));
+        assertFalse(schemas.get("Quote").get("properties").get("id").has("x-npdev-ref"));
+    }
+
+    private static final String LIFECYCLE_MODEL = """
+            {
+              "dslVersion": "3.0.0", "namespace": "sales", "version": "1.0",
+              "concepts": [
+                { "name": "Quote",
+                  "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true },
+                    { "name": "status", "type": "enum", "enumValues": ["DRAFT", "SENT", "APPROVED", "REJECTED", "ARCHIVED"] } ],
+                  "lifecycle": {
+                    "statusField": "status",
+                    "states": [ { "value": "SENT" }, { "value": "DRAFT", "initial": true }, { "value": "APPROVED" },
+                                { "value": "REJECTED" }, { "value": "ARCHIVED" } ],
+                    "transitions": [
+                      { "from": "DRAFT", "to": "SENT", "event": "QuoteSent" },
+                      { "from": "SENT", "to": "APPROVED", "event": "QuoteApproved",
+                        "guard": "$user.roles.contains('ADMIN') || $user.roles.contains('SALESMANAGER')" },
+                      { "from": "SENT", "to": "REJECTED", "event": "QuoteRejected",
+                        "guard": "$user.roles.contains('ADMIN') || $user.roles.contains('ADMIN') || $user.roles.contains(\\"BOSS\\")" },
+                      { "from": "REJECTED", "to": "ARCHIVED", "event": "QuoteArchived",
+                        "guard": "$user.roles.contains('ADMIN') && status == 'REJECTED'" },
+                      { "from": "DRAFT", "to": "ARCHIVED", "event": "QuoteDropped",
+                        "guard": "$user.roles.contains('ADMIN') || ownerId == $user.id" } ] } },
+                { "name": "Note", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true },
+                    { "name": "state", "type": "string" } ],
+                  "lifecycle": {
+                    "statusField": "state",
+                    "transitions": [ { "from": "A", "to": "B", "event": "Moved" } ] } }
+              ]
+            }
+            """;
+
+    private static JsonNode lifecycleDoc() throws Exception {
+        CompiledModel compiled = new ModelCompiler().compile(new JsonModelParser().parse(MAPPER.readTree(LIFECYCLE_MODEL)));
+        return MAPPER.valueToTree(OpenApiDocumentBuilder.build(compiled, "Sales")).get("components").get("schemas");
+    }
+
+    /**
+     * Mockuper plan X3. A client that creates records cannot see which states a row can reach, nor who may move it:
+     * the status field is a plain enum. The kernel accepts any declared state on create and checks transitions and
+     * user guards only on update, so the document publishes the machine, and the role list only for a guard that is
+     * nothing but a disjunction of role tests (the form the compiler leaves for {@code role('x')}).
+     */
+    @Test
+    void aConceptWithALifecyclePublishesItsStatesAndWhoMayMoveBetweenThem() throws Exception {
+        JsonNode lifecycle = lifecycleDoc().get("Quote").get("x-npdev-lifecycle");
+        assertEquals("status", lifecycle.get("field").asText());
+        assertEquals("DRAFT", lifecycle.get("initial").asText(), "the state flagged initial, not the first declared");
+        JsonNode steps = lifecycle.get("transitions");
+        assertEquals(5, steps.size());
+        // the compiler orders the transitions (not by declaration), so each one is looked up by its ends
+        JsonNode send = step(steps, "DRAFT", "SENT");
+        assertFalse(send.has("roles") || send.has("conditional"), "no guard: any writer may take it");
+        assertEquals(List.of("ADMIN", "SALESMANAGER"), strings(step(steps, "SENT", "APPROVED").get("roles")));
+        assertEquals(List.of("ADMIN", "BOSS"), strings(step(steps, "SENT", "REJECTED").get("roles")),
+                "duplicates fold, both quote styles read");
+        JsonNode archive = step(steps, "REJECTED", "ARCHIVED");
+        assertTrue(archive.get("conditional").asBoolean(), "a guard that also tests a field is not decided by roles");
+        assertFalse(archive.has("roles"));
+        JsonNode drop = step(steps, "DRAFT", "ARCHIVED");
+        assertTrue(drop.get("conditional").asBoolean(), "a guard on the row's owner is not decided by roles");
+        assertFalse(drop.has("roles"));
+        assertFalse(steps.toString().contains("ownerId"), "the guard text is not published");
+        for (JsonNode step : steps) {
+            assertTrue(step.has("from") && step.has("to"));
+        }
+    }
+
+    /**
+     * Mockuper plan X2. The kernel generates the id, overwrites a derived field with the computed value, and stamps
+     * the caller into a {@code $user} default when the field is left blank. A client that creates records must be told,
+     * or it invents a preparedBy and the row disappears from the identity it acts as (I0, quotes 1.0.5).
+     */
+    @Test
+    void fieldsTheServerFillsAreMarkedSoAClientLeavesThemOut() throws Exception {
+        String json = """
+                {
+                  "dslVersion": "3.0.0", "namespace": "sales", "version": "1.0",
+                  "concepts": [
+                    { "name": "Line", "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true },
+                        { "name": "qty", "type": "decimal" },
+                        { "name": "price", "type": "decimal" },
+                        { "name": "total", "type": "decimal", "derivedExpression": "qty * price" },
+                        { "name": "preparedBy", "type": "string", "defaultExpression": "$user.id" },
+                        { "name": "issuedOn", "type": "date", "defaultExpression": "today()" },
+                        { "name": "status", "type": "string", "default": "NEW" },
+                        { "name": "note", "type": "string" } ] }
+                  ]
+                }
+                """;
+        CompiledModel compiled = new ModelCompiler().compile(new JsonModelParser().parse(MAPPER.readTree(json)));
+        JsonNode props = MAPPER.valueToTree(OpenApiDocumentBuilder.build(compiled, "Sales"))
+                .get("components").get("schemas").get("Line").get("properties");
+        assertTrue(props.get("id").get("readOnly").asBoolean(), "the server generates the id");
+        assertTrue(props.get("total").get("readOnly").asBoolean(), "the server computes a derived field");
+        assertFalse(props.get("total").has("x-npdev-stamp"));
+        assertEquals("caller", props.get("preparedBy").get("x-npdev-stamp").asText());
+        assertFalse(props.get("preparedBy").has("readOnly"), "a value is accepted, so it is not read-only");
+        for (String plain : List.of("qty", "price", "issuedOn", "status", "note")) {
+            assertFalse(props.get(plain).has("readOnly") || props.get(plain).has("x-npdev-stamp"),
+                    plain + " is an ordinary field: a default is a convenience, not a constraint");
+        }
+        assertEquals("x-npdev-stamp", OpenApiDocumentBuilder.STAMP_EXTENSION);
+    }
+
+    @Test
+    void aLifecycleWithoutDeclaredStatesPublishesNothingRatherThanAGuessedInitialState() throws Exception {
+        JsonNode schemas = lifecycleDoc();
+        assertFalse(schemas.get("Note").has("x-npdev-lifecycle"));
+    }
+
+    @Test
+    void roleGuardParsingOnlyAcceptsAPureDisjunctionOfRoleTests() {
+        assertEquals(List.of("A"), OpenApiDocumentBuilder.rolesOfRoleOnlyGuard("$user.roles.contains('A')"));
+        assertEquals(List.of("A", "B"),
+                OpenApiDocumentBuilder.rolesOfRoleOnlyGuard(" $user.roles.contains( 'A' )||$user.roles.contains('B') "));
+        for (String notPure : List.of("", "status == 'X'", "$user.roles.contains('A') && x > 1",
+                "($user.roles.contains('A') || $user.roles.contains('B'))", "!$user.roles.contains('A')",
+                "$user.roles.contains(role('a'))", "$user.roles.contains('A') || ")) {
+            assertTrue(OpenApiDocumentBuilder.rolesOfRoleOnlyGuard(notPure).isEmpty(), "not a pure role guard: " + notPure);
+        }
+        assertTrue(OpenApiDocumentBuilder.rolesOfRoleOnlyGuard(null).isEmpty());
+    }
+
+    @Test
+    void aConceptWithoutALifecycleCarriesNoLifecycleExtension() throws Exception {
+        assertFalse(doc().get("components").get("schemas").get("Order").has("x-npdev-lifecycle"));
+        assertEquals("x-npdev-lifecycle", OpenApiDocumentBuilder.LIFECYCLE_EXTENSION);
+    }
+
+    @Test
+    void theExtensionIsTheComponentNameWhenThePackNamespaceIsFolded() {
+        // "sales::Customer" is the model name of a pack concept; its schema (and so the extension) is "sales__Customer"
+        assertEquals("sales__Customer", OpenApiDocumentBuilder.componentName("sales::Customer"));
+        assertEquals("x-npdev-ref", OpenApiDocumentBuilder.REF_EXTENSION);
+    }
+
     @Test
     void queryHasItsRowsEnvelope() throws Exception {
         JsonNode result = doc().get("components").get("schemas").get("OpenOrdersQueryResult").get("properties");
@@ -293,6 +468,15 @@ class OpenApiDocumentBuilderTest {
         } else if (node.isArray()) {
             node.elements().forEachRemaining(child -> collectRefs(child, out));
         }
+    }
+
+    private static JsonNode step(JsonNode transitions, String from, String to) {
+        for (JsonNode transition : transitions) {
+            if (from.equals(transition.get("from").asText()) && to.equals(transition.get("to").asText())) {
+                return transition;
+            }
+        }
+        throw new AssertionError("no transition " + from + " -> " + to + " in " + transitions);
     }
 
     private static List<String> strings(JsonNode array) {

@@ -28,6 +28,7 @@
         "composes",
         "secure",
         "probed",
+        "populated",
         "browsed",
         "reviewed",
         "published",
@@ -53,6 +54,7 @@
               "access-lint",
               "exposure-matrix",
               "behavior-probes",
+              "populate",
               "screens",
               "owner-review",
               "publish"

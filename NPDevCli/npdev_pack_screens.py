@@ -22,7 +22,8 @@ import time
 from pathlib import Path
 
 SHOOT_SCRIPT = Path(__file__).resolve().parent / "pack_screens_shoot.cjs"
-SCREENS_BUDGET_SECONDS = 90   # on top of the boot budget; screens are opt-in
+SCREENS_BUDGET_SECONDS = 90   # on top of the boot budget; screens are opt-in; the floor of the budget below
+SCREENS_SECONDS_PER_IDENTITY = 45
 DEFAULT_USER = {"name": "tester", "role": "USER"}
 
 
@@ -125,7 +126,9 @@ def capture(base_url: str, users: list[dict], keys: dict[str, str], out_dir: Pat
     started = time.monotonic()
     if shoot is None:
         root = engine_root or find_engine_root()
-        shoot = lambda url, out, us, ks: run_shoot(root, url, out, us, ks)  # noqa: E731
+        # one pass per identity at ~3 s a screen: quotes@1.0.5 (4 identities, 11 routes) did not fit a flat 90 s (2026-11-28)
+        budget = max(SCREENS_BUDGET_SECONDS, SCREENS_SECONDS_PER_IDENTITY * len(users))
+        shoot = lambda url, out, us, ks: run_shoot(root, url, out, us, ks, budget=budget)  # noqa: E731
     shoot(base_url, out_dir, users, keys)
     manifest_path = out_dir / "manifest.json"
     if not manifest_path.is_file():

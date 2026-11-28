@@ -35,10 +35,11 @@ sys.path.insert(0, str(REPO / "scripts" / "ai"))  # build_root(): the repo's one
 L0_LINE_TOKENS = 40
 L0_TOTAL_TOKENS = 8000
 CARD_TOKENS = 350
+BUDGET_MEMBER_TOKENS = 4  # the `budgetTokens` member a card carries about itself
 NEED_MAX = 90
 NPR_URL = "git+https://github.com/MarceloGiazzon/NPR.git"
 NPR_RAW = "https://raw.githubusercontent.com/MarceloGiazzon/NPR/main/catalog"
-RUNG_TRUST = {"probed": "verified", "browsed": "verified", "reviewed": "certified", "published": "certified"}
+RUNG_TRUST = {"probed": "verified", "populated": "verified", "browsed": "verified", "reviewed": "certified", "published": "certified"}
 SKIPPED_BUILTINS = {"project-tracker-demo"}  # same exclusion as build-pack-catalog-view.py: a demo export, not a catalog pack
 ROLE_TOKEN = re.compile(r"role\('([A-Za-z0-9_-]+)'\)")
 
@@ -229,13 +230,14 @@ def _size(card: dict) -> int:
 def fit_budget(card: dict) -> tuple[dict | None, str | None]:
     """Trim in a fixed order until the card fits CARD_TOKENS; None + a reason when it cannot."""
     provides = card["provides"]
+    # the budgetTokens member itself is part of the card (a raw size of 347 became 351 and failed the build with nothing trimmed)
     for key in ("extendPoints", "screens", "functions", "events"):
-        if _size(card) > CARD_TOKENS and key in provides:
+        if _size(card) + BUDGET_MEMBER_TOKENS > CARD_TOKENS and key in provides:
             del provides[key]
     for key in ("flows", "roles", "concepts"):
-        while _size(card) > CARD_TOKENS and len(provides.get(key, [])) > 1:
+        while _size(card) + BUDGET_MEMBER_TOKENS > CARD_TOKENS and len(provides.get(key, [])) > 1:
             provides[key].pop()
-    card["budgetTokens"] = _size(card) + 4  # the budgetTokens member itself
+    card["budgetTokens"] = _size(card) + BUDGET_MEMBER_TOKENS
     if card["budgetTokens"] > CARD_TOKENS:
         return None, f"card is {card['budgetTokens']} tokens after trimming (limit {CARD_TOKENS})"
     return card, None

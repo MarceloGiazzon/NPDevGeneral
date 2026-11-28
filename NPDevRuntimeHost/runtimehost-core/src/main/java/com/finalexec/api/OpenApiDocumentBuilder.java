@@ -6,20 +6,27 @@ import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledContext;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
+import com.npdev.dsl.v1.compiled.CompiledLifecycle;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledQueryParameter;
 import com.npdev.dsl.v1.compiled.CompiledPublicRead;
 import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
+import com.npdev.dsl.v1.compiled.CompiledStateMachineState;
+import com.npdev.dsl.v1.compiled.CompiledStateTransition;
 import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
+import com.npdev.kernel.concepts.UserScopedExpressions;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * INT-7: builds the OpenAPI 3.0.3 document of a running app from its live {@link CompiledModel}, so
@@ -47,9 +54,29 @@ import java.util.Set;
  *       (anonymous, allow-listed fields only).</li>
  *   <li>the fixed runtime/admin paths the generated {@code OpenApiController} always listed.</li>
  * </ul>
+ *
+ * <p>Vendor extensions for a client that CREATES records over this API (Mockuper plan): {@code x-npdev-ref} on a
+ * reference field ({@link #REF_EXTENSION}), {@code x-npdev-lifecycle} on a concept schema
+ * ({@link #LIFECYCLE_EXTENSION}), and {@code readOnly} / {@code x-npdev-stamp} on the fields the server fills
+ * ({@link #markServerFilled}).
  */
 public final class OpenApiDocumentBuilder {
 
+    /**
+     * Vendor extension on a {@code reference} field: the name of the component schema of the concept it points to
+     * (the schema that concept's own POST route takes). Lets a client that creates records over this API order the
+     * calls and fill the id without guessing from field names (Mockuper plan, X1).
+     */
+    static final String REF_EXTENSION = "x-npdev-ref";
+    /** Vendor extension on a concept schema: its lifecycle (states and who may move between them); see {@link #lifecycleExtension}. */
+    static final String LIFECYCLE_EXTENSION = "x-npdev-lifecycle";
+    /** Vendor extension on a field the server fills with the calling user when it is left blank; see {@link #markServerFilled}. */
+    static final String STAMP_EXTENSION = "x-npdev-stamp";
+    private static final String ROLE_TEST = "\\$user\\.roles\\.contains\\(\\s*(?:'[^']+'|\"[^\"]+\")\\s*\\)";
+    private static final Pattern ROLE_ONLY_GUARD =
+            Pattern.compile("^\\s*" + ROLE_TEST + "(?:\\s*\\|\\|\\s*" + ROLE_TEST + ")*\\s*$");
+    private static final Pattern ROLE_CHECK =
+            Pattern.compile("\\$user\\.roles\\.contains\\(\\s*(?:'([^']+)'|\"([^\"]+)\")\\s*\\)");
     private static final String SCHEMA_REF = "#/components/schemas/";
     private static final Set<String> RUNTIME_TAG = Set.of("runtime");
 
@@ -77,8 +104,12 @@ public final class OpenApiDocumentBuilder {
         List<CompiledConcept> concepts = new ArrayList<>(model.getConcepts());
         concepts.removeIf(CompiledConcept::isSystem); // FORM P0: platform-owned concepts have no public API
         concepts.sort(Comparator.comparing(CompiledConcept::getName, String.CASE_INSENSITIVE_ORDER));
+        Set<String> documented = new HashSet<>();
         for (CompiledConcept concept : concepts) {
-            addConcept(concept, model.getContexts(), schemas, paths);
+            documented.add(componentName(concept.getName()));
+        }
+        for (CompiledConcept concept : concepts) {
+            addConcept(concept, model.getContexts(), documented, schemas, paths);
         }
         for (CompiledQuery query : sorted(model.getQueries(), Comparator.comparing(CompiledQuery::name))) {
             addQuery(query, model, schemas, paths);
@@ -112,11 +143,16 @@ public final class OpenApiDocumentBuilder {
 
     // ------------------------------------------------------------------ concepts
 
-    private static void addConcept(CompiledConcept concept, List<CompiledContext> contexts,
+    private static void addConcept(CompiledConcept concept, List<CompiledContext> contexts, Set<String> documented,
                                    Map<String, Object> schemas, Map<String, Object> paths) {
         String name = concept.getName();
         String component = componentName(name);
-        schemas.put(component, conceptSchema(concept, null));
+        Map<String, Object> conceptSchema = conceptSchema(concept, null, documented);
+        Map<String, Object> lifecycle = lifecycleExtension(concept.getLifecycle());
+        if (lifecycle != null) {
+            conceptSchema.put(LIFECYCLE_EXTENSION, lifecycle);
+        }
+        schemas.put(component, conceptSchema);
         schemas.put(component + "Page", pageSchema(component));
 
         // REG-312: the controller serves a concept under its REST collection name, never its model
@@ -150,6 +186,88 @@ public final class OpenApiDocumentBuilder {
                 jsonBody(ref("BatchRequest")), "400", "401", "403")));
     }
 
+    /**
+     * The state machine of a concept as a record-creating client needs it (Mockuper plan, X3):
+     * {@code {field, initial, transitions: [{from, to, roles?|conditional?}]}}, or {@code null} when the concept has
+     * no lifecycle the kernel enforces. Mirrors {@code ConfiguredConceptGatewaySemanticPolicy.lifecycleOf}: the
+     * initial state is the one flagged {@code initial} (the last flag wins) or, with none flagged, the first declared;
+     * a transition with a blank end is skipped. A lifecycle that declares transitions but NO states has no initial
+     * state the kernel would apply, so nothing is published for it rather than a guess.
+     *
+     * <p>The kernel accepts ANY declared state when a row is created and checks transitions and guards only on
+     * update, so a client that wants a row in a later state walks the transitions, as the right role, with one
+     * {@code PUT} (the whole row) per step.
+     *
+     * <p>{@code roles}: the guard is exactly a disjunction of {@code $user.roles.contains('X')} (the form the
+     * compiler leaves after resolving {@code role('x')} to the app's concrete role), so a caller holding ANY of those
+     * authorities may take the transition. {@code conditional: true}: the guard says more than roles (a payload field,
+     * the row's owner...), so roles alone do not decide and none are listed; the guard text is not published. No guard:
+     * neither key, any caller allowed to write the concept may take it.
+     */
+    static Map<String, Object> lifecycleExtension(CompiledLifecycle lifecycle) {
+        if (lifecycle == null || lifecycle.getStatusField() == null || lifecycle.getStatusField().isBlank()) {
+            return null;
+        }
+        String first = null;
+        String flagged = null;
+        for (CompiledStateMachineState state : lifecycle.getStates()) {
+            if (state.getValue() == null || state.getValue().isBlank()) {
+                continue;
+            }
+            if (first == null) {
+                first = state.getValue();
+            }
+            if (state.isInitial()) {
+                flagged = state.getValue();
+            }
+        }
+        String initial = flagged != null ? flagged : first;
+        List<Object> transitions = new ArrayList<>();
+        for (CompiledStateTransition transition : lifecycle.getTransitions()) {
+            if (transition.getFrom() == null || transition.getFrom().isBlank()
+                    || transition.getTo() == null || transition.getTo().isBlank()) {
+                continue;
+            }
+            Map<String, Object> step = new LinkedHashMap<>();
+            step.put("from", transition.getFrom());
+            step.put("to", transition.getTo());
+            String guard = transition.getGuard();
+            if (guard != null && !guard.isBlank()) {
+                List<String> roles = rolesOfRoleOnlyGuard(guard);
+                if (roles.isEmpty()) {
+                    step.put("conditional", true);
+                } else {
+                    step.put("roles", roles);
+                }
+            }
+            transitions.add(step);
+        }
+        if (initial == null || transitions.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("field", lifecycle.getStatusField());
+        out.put("initial", initial);
+        out.put("transitions", transitions);
+        return out;
+    }
+
+    /** The authorities of a guard that is nothing but {@code $user.roles.contains('A') || $user.roles.contains('B')}, else empty. */
+    static List<String> rolesOfRoleOnlyGuard(String guard) {
+        if (guard == null || !ROLE_ONLY_GUARD.matcher(guard).matches()) {
+            return List.of();
+        }
+        List<String> roles = new ArrayList<>();
+        Matcher matcher = ROLE_CHECK.matcher(guard);
+        while (matcher.find()) {
+            String role = matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
+            if (!roles.contains(role)) {
+                roles.add(role);
+            }
+        }
+        return List.copyOf(roles);
+    }
+
     private static List<Object> listParameters() {
         List<Object> params = new ArrayList<>();
         params.add(queryParam("page", integerSchema(), "Zero-based page number (default 0)."));
@@ -166,7 +284,12 @@ public final class OpenApiDocumentBuilder {
         return params;
     }
 
-    private static Map<String, Object> conceptSchema(CompiledConcept concept, Set<String> allowedFields) {
+    /**
+     * @param documented component names of the concepts this document describes; a reference field whose target
+     *                   is one of them also carries {@link #REF_EXTENSION}. The public schemas pass an empty set.
+     */
+    private static Map<String, Object> conceptSchema(CompiledConcept concept, Set<String> allowedFields,
+                                                     Set<String> documented) {
         Map<String, Object> properties = new LinkedHashMap<>();
         List<String> required = new ArrayList<>();
         for (CompiledField field : concept.getFieldsInDeclaredOrder()) {
@@ -174,7 +297,7 @@ public final class OpenApiDocumentBuilder {
                     && allowedFields.stream().noneMatch(f -> f.equalsIgnoreCase(field.getName()))) {
                 continue;
             }
-            properties.put(field.getName(), fieldSchema(field));
+            properties.put(field.getName(), fieldSchema(field, documented));
             if (allowedFields == null && field.isRequired() && !field.isId()) {
                 required.add(field.getName());
             }
@@ -188,7 +311,7 @@ public final class OpenApiDocumentBuilder {
         return schema;
     }
 
-    static Map<String, Object> fieldSchema(CompiledField field) {
+    static Map<String, Object> fieldSchema(CompiledField field, Set<String> documented) {
         String type = field.getDslType() == null ? "string" : field.getDslType().toLowerCase(Locale.ROOT);
         Map<String, Object> out = new LinkedHashMap<>();
         switch (type) {
@@ -220,6 +343,13 @@ public final class OpenApiDocumentBuilder {
             case "reference" -> {
                 out.put("type", "string");
                 out.put("description", "id of " + field.getReferenceTarget());
+                String target = field.getReferenceTarget();
+                // The description above is prose ("sales::Customer"); a client generator needs the COMPONENT name
+                // ("sales__Customer"), the schema its POST route takes. Only emitted when that component is in this
+                // document: a reference to a platform-owned concept has no component to point at.
+                if (target != null && !target.isEmpty() && documented.contains(componentName(target))) {
+                    out.put(REF_EXTENSION, componentName(target));
+                }
             }
             case "file", "image" -> {
                 out.put("type", "object");
@@ -237,7 +367,33 @@ public final class OpenApiDocumentBuilder {
             }
             default -> out.put("type", "string");
         }
+        markServerFilled(field, out);
         return out;
+    }
+
+    /**
+     * What the server does with a field a client sends on create (Mockuper plan, X2), read from the same
+     * {@code ConfiguredConceptGatewaySemanticPolicy} rules that apply it:
+     * <ul>
+     *   <li>{@code readOnly: true} -- the server generates the {@code id}, and COMPUTES a {@code derivedExpression}
+     *       field, overwriting whatever was sent; a client leaves both out.</li>
+     *   <li>{@code x-npdev-stamp: "caller"} -- a {@code defaultExpression} over {@code $user} (a {@code preparedBy}
+     *       owner column): left blank the server stamps the calling user, but a value IS accepted, so it is not
+     *       read-only. A client that wants the rows to belong to the identity it acts as must leave it out; sending
+     *       something else makes the row invisible to that identity under an {@code ownerId == $user.id} rule.</li>
+     * </ul>
+     * A plain {@code defaultValue} or a non-user {@code defaultExpression} is a convenience, not a constraint: no marker.
+     */
+    private static void markServerFilled(CompiledField field, Map<String, Object> out) {
+        CompiledSchema schema = field.getSchema();
+        boolean derived = schema != null && schema.getDerivedExpression() != null
+                && !schema.getDerivedExpression().isBlank();
+        if (field.isId() || derived) {
+            out.put("readOnly", true);
+        } else if (schema != null && schema.getDefaultExpression() != null
+                && UserScopedExpressions.referencesUser(schema.getDefaultExpression())) {
+            out.put(STAMP_EXTENSION, "caller");
+        }
     }
 
     /** CompiledSchema (flow input, object/array fields) to an OpenAPI schema object. */
@@ -438,7 +594,7 @@ public final class OpenApiDocumentBuilder {
             }
             any = true;
             String component = componentName(concept.getName()) + "Public";
-            schemas.put(component, conceptSchema(concept, Set.copyOf(grant.fields())));
+            schemas.put(component, conceptSchema(concept, Set.copyOf(grant.fields()), Set.of()));
             Map<String, Object> page = new LinkedHashMap<>();
             page.put("items", Map.of("type", "array", "items", ref(component)));
             page.put("total", Map.of("type", "integer", "format", "int64"));

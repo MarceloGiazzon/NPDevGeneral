@@ -83,6 +83,21 @@ class LinesAndCards(unittest.TestCase):
         person["requires"] = ["top"]
         self.assertIn("topUser", cat.transitive_needs(person, by_id)[0])
 
+    def test_the_budget_member_counts_toward_the_budget_so_a_347_token_card_is_trimmed_not_failed(self):
+        # sales + its grant list measured 347 raw tokens; the `budgetTokens` member adds 4, so the card was 351 and the build failed with NOTHING trimmed
+        card = {"id": "p", "version": "1.0.0", "trust": "draft", "need": "n", "provides": {"events": ["e"], "concepts": ["C"]}, "use": "{}", "limit": "l"}
+        pad = 1
+        while True:
+            card["provides"]["events"] = ["e" * pad]
+            if cat._size(card) >= cat.CARD_TOKENS - cat.BUDGET_MEMBER_TOKENS + 1:
+                break
+            pad += 1
+        self.assertLessEqual(cat._size(card), cat.CARD_TOKENS)   # raw size fits ...
+        fitted, why = cat.fit_budget(card)
+        self.assertIsNone(why)                                    # ... and the card with its own member still fits, by dropping events
+        self.assertLessEqual(fitted["budgetTokens"], cat.CARD_TOKENS)
+        self.assertNotIn("events", fitted["provides"])
+
     def test_card_validates_against_its_schema(self):
         import npdev_jsonschema
         schema = json.loads((REPO / "NPDevContract" / "schemas" / "ai-catalog" / "card.schema.json").read_text(encoding="utf-8"))

@@ -10,7 +10,9 @@ else a `PackWorkshop` folder next to the Build root. Never a hardcoded drive.
     <root>/inbox/<sha12>__<zip name>              immutable copy of every accepted delivery (duplicates found by hash)
     <root>/packs/<area>/<packId>/<version>/       pack.json, handoff.json, example-model.json, probes/*.json
     <root>/batches/<batchId>.json                 one record per batch, one entry per delivery
-    <root>/runs/<pack>@<version>/<stamp>/         verdict.json (+ static/compose/validate/access-lint text) from `test`
+    <root>/runs/<pack>@<version>/<stamp>/         verdict.json (+ static/compose/validate/access-lint text) from `test`;
+                                                  evidence/ built there by `promote` (npdev_pack_evidence)
+    <root>/npr-staging/packs/<pack>/<version>/    what `promote --confirm` stages: the pack, probes/, verdict.json, evidence/
 
 Rules (the X0 family: refuse, never guess):
   * a delivery has `batch.json` at its root, valid against NPDevContract/schemas/pack-workshop/batch.schema.json, and
@@ -47,6 +49,7 @@ DELIVERY_NAME = re.compile(r"^npdev-packs__(?P<batch>w[0-9]+-[a-z0-9-]+)__(?P<st
 PACK_ID = re.compile(r"^[a-z][a-z0-9-]*$")
 VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 KNOWN_FILES = ("pack.json", "handoff.json", "example-model.json")
+KNOWN_FOLDERS = ("probes", "demo")   # demo/ = identities.json + mockuper.yaml + cache/ (rung 'populated', npdev_pack_populate)
 
 
 class WorkshopError(Exception):
@@ -238,7 +241,7 @@ def ingest_zip(root: Path, zip_path: Path, legacy_batch: str | None = None) -> d
             for member in packs_found.get(pack_id, []):
                 rel = member[len(base) + 1:]
                 top = rel.split("/")[0]
-                if top not in KNOWN_FILES and top != "probes":
+                if top not in KNOWN_FILES and top not in KNOWN_FOLDERS:
                     warnings.append(f"{pack_id}: '{rel}' is not a recognised file and was not kept")
                     continue
                 files[rel] = zf.read(member)
@@ -852,6 +855,13 @@ def _default_exposure(base_url: str, app_dir: Path, users: list[dict], keys: dic
     return {"routes": len(routes), "matrix": matrix, "violations": violations, "warnings": warnings}
 
 
+def _run_populate(populator, demo: dict, run: Path, base_url: str, keys: dict[str, str]) -> dict:
+    try:
+        return populator(demo, run, base_url, keys)
+    except Exception as exc:   # same rule as the matrix: a broken loader is a skipped rung, never a crash after the app already ran
+        return {"result": "skipped", "detail": f"the demo could not be loaded: {type(exc).__name__}: {exc}", "feedback": [], "evidence": None}
+
+
 def _run_exposure(matrix, base_url: str, app_dir: Path, users: list[dict], keys: dict[str, str]) -> dict:
     try:
         return matrix(base_url, app_dir, users, keys)
@@ -861,14 +871,17 @@ def _run_exposure(matrix, base_url: str, app_dir: Path, users: list[dict], keys:
 
 def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stamp: str | None = None,
               validate=None, update=None, boot=None, probe_call=None, screens: bool = False, shoot=None,
-              derive_probes: bool = True, exposure=None) -> dict:
+              derive_probes: bool = True, exposure=None, populate: bool = False, populator=None) -> dict:
     """Run the ladder for one pack. Writes runs/<pack>@<version>/<stamp>/ and returns the verdict dict.
     `validate(model_path, report_path) -> report|None`, `update(model_path) -> (ok, text)` and
     `boot(cli, consumer, env) -> (base_url, stop)` (or raise BootUnavailable) are injectable for tests;
     `probe_call(key, method, path, body) -> (status, payload)` replaces the HTTP client in tests.
     `screens=True` adds rung 5 (screenshots per identity); `shoot(base_url, out_dir, users, keys)` replaces the browser in tests.
     `exposure(base_url, app_dir, users, keys) -> {"routes","matrix","violations","warnings"} | {"skipped": why}` replaces the exposure matrix.
-    `derive_probes=False` keeps the old rule that a pack with no probes/*.json cannot reach rung 4 (default: derive them)."""
+    `derive_probes=False` keeps the old rule that a pack with no probes/*.json cannot reach rung 4 (default: derive them).
+    `populate=True` (opt-in, like `screens`) adds the rung between probed and browsed: the pack's demo/ is loaded into the booted
+    app by Mockuper (npdev_pack_populate); a pack with no demo/ skips it. `populator(demo, run, base_url, keys) -> {"result", "detail",
+    "feedback", "evidence"}` replaces the Mockuper run in tests."""
     folder = find_pack_dir(root, pack_id, version)
     if folder is None:
         raise WorkshopError(f"{pack_id}{'@' + version if version else ''} is not in the workshop ({root}); ingest it first")
@@ -909,6 +922,8 @@ def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stam
         unanswered = [c["id"] for c in handoff.get("checklist", []) if c.get("answer") == "no"]
         if unanswered:
             lines.append(f"handoff.json checklist - answered 'no' for {', '.join(unanswered)} - fix the pack until the answer is yes")
+    import npdev_pack_populate
+    lines.extend(npdev_pack_populate.static_problems(folder))   # a demo/ that cannot work is a delivery defect, whether or not --populate runs it
     (run / "static.txt").write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
     if lines:
         _step(steps, "static", started, "fail", f"{len(lines)} problem(s)", "static.txt")
@@ -992,6 +1007,8 @@ def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stam
         _step(steps, "behavior-probes", started, "skipped",
               "the pack delivered no probes/*.json and none could be derived from its declarations"
               + (f" ({'; '.join(derived_skipped[:3])})" if derived_skipped else ""))
+        if populate:
+            _step(steps, "populate", started, "skipped", "the pack did not reach 'probed', and the demo is only loaded into a probed pack")
         return finish(status)
     docs: dict[str, dict] = {}
     shape: list[str] = []
@@ -1022,23 +1039,37 @@ def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stam
     if not docs:   # screens were asked for a pack that sent no probes: identities come from the roles the pack names
         import npdev_pack_screens
         users = npdev_pack_screens.default_users(roles)
+    demo = npdev_pack_populate.load_demo(folder) if populate else None
+    reader = None
+    if demo is not None:
+        users, clash = npdev_pack_populate.merge_users(users, demo)
+        if clash:
+            _step(steps, "populate", started, "fail", clash)
+            feedback.append(f"demo/{npdev_pack_populate.IDENTITIES_FILE} - {clash} - rename the demo identity or give it the same role")
+            return finish("rejected")
+        reader = dict(npdev_pack_populate.READER)   # reads counts and /v3/api-docs; it is in the app's keys, not in the identities photographed
+    app_users = users + [reader] if reader else users
     example_path = folder / "example-model.json"
     try:
-        consumer = assemble_consumer(cli, run, pack_id, order, make_pack_finder(root), users,
+        consumer = assemble_consumer(cli, run, pack_id, order, make_pack_finder(root), app_users,
                                      example_path.read_text(encoding="utf-8") if example_path.is_file() else None, update=update)
     except BootUnavailable as exc:
         _step(steps, "behavior-probes", started, "skipped", f"the consumer could not be assembled: {exc}")
+        if populate:
+            _step(steps, "populate", time.monotonic(), "skipped", "the consumer could not be assembled, so there is no app to fill")
         if screens:
             _step(steps, "screens", time.monotonic(), "skipped", "the consumer could not be assembled, so there is nothing to photograph")
         return finish(status)
-    keys = npdev_pack_probe.new_keys(users)
-    keys_value = npdev_pack_probe.api_keys_env(users, keys)
+    keys = npdev_pack_probe.new_keys(app_users)
+    keys_value = npdev_pack_probe.api_keys_env(app_users, keys)
     env = {"NPDEV_AUTH_API_KEYS": keys_value, "NPDEV_AUTH_APIKEYS": keys_value}
     boot = boot or default_boot
     try:
         base_url, stop = boot(cli, consumer, env)
     except BootUnavailable as exc:
         _step(steps, "behavior-probes", started, "skipped", f"the consumer was assembled but not booted: {exc}", "consumer")
+        if populate:
+            _step(steps, "populate", time.monotonic(), "skipped", "the consumer was not booted, so there is no app to fill")
         if screens:
             _step(steps, "screens", time.monotonic(), "skipped", "the consumer was not booted, so there is nothing to photograph")
         return finish(status)
@@ -1046,6 +1077,8 @@ def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stam
     shots: dict | None = None
     screens_note = ""
     screens_started = time.monotonic()
+    populated: dict | None = None
+    populate_started = time.monotonic()
     inconclusive: list[str] = []
     try:
         if derived_names:
@@ -1073,10 +1106,13 @@ def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stam
                 docs.pop(name)
         probes_ok = all(r["ok"] for rows in results.values() for r in rows)
         exposed = None
+        if demo is not None and docs and probes_ok:   # before the matrix, so the matrix and the screens read an app WITH data
+            populate_started = time.monotonic()
+            populated = _run_populate(populator or npdev_pack_populate.populate, demo, run, base_url, keys)
         exposure_started = time.monotonic()
-        if docs and probes_ok:   # while the app is still up, and after the probes left rows behind for the matrix to count
+        if docs and probes_ok and (populated or {}).get("result") != "fail":   # while the app is still up, and after the probes left rows behind for the matrix to count
             exposed = _run_exposure(exposure or _default_exposure, base_url, Path(consumer["outputRoot"]) / "App", users, keys)
-        if screens and probes_ok and not (exposed or {}).get("violations"):
+        if screens and probes_ok and (populated or {}).get("result") != "fail" and not (exposed or {}).get("violations"):
             import npdev_pack_screens
             try:
                 shots = npdev_pack_screens.capture(base_url, users, keys, run / "screens", f"{pack_id}@{version}", shoot=shoot)
@@ -1103,6 +1139,16 @@ def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stam
                                                                 f"{len(derived_skipped)} concept(s) not derivable" if derived_names else ""),
               "probes.json")
         status = "probed"
+        if populate:
+            if populated is None:
+                _step(steps, "populate", populate_started, "skipped", "the pack has no demo/ folder, so there is no demo data to load")
+            else:
+                feedback.extend(populated["feedback"])
+                _step(steps, "populate", populate_started, populated["result"], populated["detail"], populated.get("evidence"))
+                if populated["result"] == "fail":
+                    return finish("rejected")
+                if populated["result"] == "pass":
+                    status = "populated"
         if exposed is None or "skipped" in exposed:
             _step(steps, "exposure-matrix", exposure_started, "skipped", (exposed or {}).get("skipped", "the probes did not pass, so nothing was read"))
         else:
@@ -1122,6 +1168,8 @@ def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stam
         _step(steps, "behavior-probes", started, "skipped",
               ("the probes derived from the pack's declarations were all inconclusive (" + "; ".join(inconclusive[:2]) + ")") if inconclusive
               else "the pack delivered no probes/*.json, so it cannot reach 'probed'")
+        if populate:
+            _step(steps, "populate", populate_started, "skipped", "the pack did not reach 'probed', and the demo is only loaded into a probed pack")
     if screens:
         if shots is None:
             _step(steps, "screens", screens_started, "skipped", f"no screenshots were taken: {screens_note}")
@@ -1129,7 +1177,7 @@ def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stam
             detail = f"{shots['shots']} screenshot(s) for {shots['identities']} identit{'y' if shots['identities'] == 1 else 'ies'}"
             if shots["consoleErrors"]:
                 detail += f"; {len(shots['consoleErrors'])} console error(s) (see manifest.json)"
-            if status == "probed":
+            if status in ("probed", "populated"):
                 status = "browsed"
             else:
                 detail += "; the rung 'browsed' is not claimed because the pack is not 'probed'"
@@ -1141,9 +1189,10 @@ def test_pack(cli, root: Path, pack_id: str, version: str | None = None, *, stam
 # STATUS / FEEDBACK / PROMOTE (P6-T5)
 # ---------------------------------------------------------------------------------------------------------------
 
-RUNGS = ("delivered", "valid", "composes", "secure", "probed", "browsed", "reviewed", "published")
+RUNGS = ("delivered", "valid", "composes", "secure", "probed", "populated", "browsed", "reviewed", "published")
 STEP_REACHES = (("static", "valid"), ("compose", "composes"), ("access-lint", "secure"), ("behavior-probes", "probed"),
-                ("screens", "browsed"), ("owner-review", "reviewed"), ("publish", "published"))
+                ("populate", "populated"), ("screens", "browsed"), ("owner-review", "reviewed"), ("publish", "published"))
+OPTIONAL_STEPS = ("populate",)   # a pack with no demo/ never climbs it; skipping it must not hide a later rung that passed
 
 
 def latest_verdict(root: Path, pack_id: str, version: str) -> tuple[dict, str] | None:
@@ -1166,7 +1215,7 @@ def highest_rung(verdict: dict | None) -> str:
     for step, rung in STEP_REACHES:
         if step in passed:
             reached = rung
-        else:
+        elif step not in OPTIONAL_STEPS:
             break
     return reached
 
@@ -1269,9 +1318,16 @@ def promote_pack(root: Path, pack_id: str, version: str, confirm: bool) -> dict:
     if found is None or found[0]["status"] == "rejected" or RUNGS.index(rung) < RUNGS.index("probed"):
         raise WorkshopError(f"{pack_id}@{version} has only reached '{rung}'; promotion needs 'probed' (run `npdev pack workshop test` "
                             f"and fix what it reports -- no pack goes out without probes)")
+    import npdev_pack_evidence
+    try:
+        # built BEFORE the confirmation question, so the owner reads what the run proved before confirming it
+        evidence = npdev_pack_evidence.build(root, pack_id, version, folder)
+    except LookupError as exc:
+        raise WorkshopError(f"{exc}; run `npdev pack workshop test {pack_id}@{version}` first") from None
     if not confirm:
         raise WorkshopError(f"{pack_id}@{version} reached '{rung}' and can be promoted, but promotion records the OWNER's review: "
-                            f"read the rules sheet (scripts/pack-repo/generate-pack-rules-sheet.py) and re-run with --confirm")
+                            f"read the evidence ({evidence['page']}: {evidence['summary']['line']}) and the rules sheet "
+                            f"(scripts/pack-repo/generate-pack-rules-sheet.py), then re-run with --confirm")
     verdict, _ = found
     stage = root / "npr-staging" / "packs" / pack_id / version
     if stage.exists():
@@ -1280,19 +1336,23 @@ def promote_pack(root: Path, pack_id: str, version: str, confirm: bool) -> dict:
     for name in KNOWN_FILES:
         if (folder / name).is_file():
             shutil.copy2(folder / name, stage / name)
-    if (folder / "probes").is_dir():
-        shutil.copytree(folder / "probes", stage / "probes")
+    for name in KNOWN_FOLDERS:   # probes/ and demo/ travel with the pack
+        if (folder / name).is_dir():
+            shutil.copytree(folder / name, stage / name)
+    shutil.copytree(evidence["folder"], stage / npdev_pack_evidence.EVIDENCE_DIR)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     run = root / "runs" / f"{pack_id}@{version}" / stamp
     run.mkdir(parents=True, exist_ok=True)
     steps = [s for s in verdict["steps"] if s["step"] not in ("owner-review", "publish")]
-    steps.append({"step": "owner-review", "result": "pass", "detail": "owner confirmed with --confirm"})
+    steps.append({"step": "owner-review", "result": "pass", "detail": f"owner confirmed with --confirm; {evidence['summary']['line']}",
+                  "evidence": f"{npdev_pack_evidence.EVIDENCE_DIR}/evidence.html"})
     steps.append({"step": "publish", "result": "skipped", "detail": "staged only; publishing to the public NPR is a separate owner act"})
     reviewed = {"schemaVersion": "npdev-pack-verdict.v1", "pack": pack_id, "version": version, "status": "reviewed", "steps": steps}
     _validate("verdict", reviewed, "the promoted verdict")
     (run / "verdict.json").write_text(json.dumps(reviewed, indent=2) + "\n", encoding="utf-8")
     shutil.copy2(run / "verdict.json", stage / "verdict.json")
-    return {"pack": pack_id, "version": version, "status": "reviewed", "staging": str(stage), "run": str(run)}
+    return {"pack": pack_id, "version": version, "status": "reviewed", "staging": str(stage), "run": str(run),
+            "evidence": str(stage / npdev_pack_evidence.EVIDENCE_DIR / "evidence.html"), "summary": evidence["summary"]["line"]}
 
 def downloads_dir(override: str | None) -> Path:
     return Path(override).expanduser() if override else Path.home() / "Downloads"
@@ -1315,6 +1375,10 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     test.add_argument("--screens", action="store_true",
                       help="also photograph the booted consumer, one pass per identity (needs node and the ScrapForAI engine; "
                            "writes <run>/screens/gallery.html; 'browsed' needs the pack to be 'probed' first)")
+    test.add_argument("--populate", action="store_true",
+                      help="load the pack's demo/ into the booted throwaway app with Mockuper (offline, --cache-only; the app on this "
+                           "machine is the only target ever sent to). This is the explicit request to run `mockuper --apply`; "
+                           "needs `mockuper` on PATH or NPDEV_MOCKUPER_CMD; a pack with no demo/ skips the rung 'populated'")
     test.add_argument("--json", action="store_true")
     status = sub.add_parser("status", help="Table of workshop packs x highest rung reached.")
     status.add_argument("--batch", default=None, help="only the packs of this batch id")
@@ -1389,7 +1453,7 @@ def _main_test(cli, args: argparse.Namespace) -> int:
     root = workshop_root(cli, args.root)
     pack_id, _, version = args.pack.partition("@")
     try:
-        verdict = test_pack(cli, root, pack_id, version or None, screens=args.screens)
+        verdict = test_pack(cli, root, pack_id, version or None, screens=args.screens, populate=args.populate)
     except WorkshopError as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 2
@@ -1420,7 +1484,8 @@ def _main_t5(cli, args: argparse.Namespace, command: str) -> int:
                 raise WorkshopError("promote needs <packId>@<version> (a promotion is for one exact version)")
             result = promote_pack(root, pack_id, version, args.confirm)
             print(json.dumps(result, indent=2) if args.json else
-                  f"{pack_id}@{version}: REVIEWED, staged at {result['staging']}\n(nothing was published; pushing to the public NPR is a separate owner act)")
+                  f"{pack_id}@{version}: REVIEWED, staged at {result['staging']}\n  evidence: {result['summary']}\n  page:     {result['evidence']}\n"
+                  f"(nothing was published; pushing to the public NPR is a separate owner act)")
     except WorkshopError as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 2

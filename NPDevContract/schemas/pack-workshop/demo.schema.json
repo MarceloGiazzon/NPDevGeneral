@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "npdev:pack-workshop:demo.v1",
+  "title": "A pack's demo identities (demo/identities.json), read by the workshop rung 'populated'",
+  "description": "Who the demo data is created as. The workshop boots a throwaway app, gives each identity below a throwaway API key, puts the keys and the app URL in the environment of the Mockuper process under the names declared here, and runs demo/mockuper.yaml with --cache-only --apply against that app. Keys are never written to a file. demo/mockuper.yaml must name the same environment variables (output.api.base_url_env and each identity's value_env).",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "targetUrlEnv",
+    "identities"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-pack-demo.v1"
+    },
+    "targetUrlEnv": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$",
+      "description": "environment variable that holds the app URL (the mockuper.yaml's output.api.base_url_env)"
+    },
+    "identities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "role",
+          "keyEnv"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "description": "the identity's name in mockuper.yaml (output.api.identities.<name>)"
+          },
+          "role": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
+            "description": "the role the app gives this identity (the pack's role token)"
+          },
+          "keyEnv": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$",
+            "description": "environment variable that holds this identity's API key (that identity's value_env in mockuper.yaml)"
+          }
+        }
+      }
+    }
+  }
+}

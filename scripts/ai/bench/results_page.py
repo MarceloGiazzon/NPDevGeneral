@@ -214,7 +214,7 @@ const RUNG_CLASS = { probed: "ok", secure: "ok", composes: "warn", valid: "warn"
 function viewPacks(box) {
   const all = (DATA.packs || []).filter((r) => !state.text || Object.values(r).join(" ").toLowerCase().includes(state.text.toLowerCase()));
   const count = {}; all.forEach((r) => { const k = r.rejected ? "rejected" : r.rung; count[k] = (count[k] || 0) + 1; });
-  box.append(el("div", { class: "cards" }, ["probed", "secure", "composes", "valid", "delivered", "rejected"].filter((k) => count[k]).map((k) => el("div", { class: "card" }, el("b", { text: count[k] }), k === "rejected" ? "rejected at some rung" : "at rung: " + k))));
+  box.append(el("div", { class: "cards" }, ["browsed", "populated", "probed", "secure", "composes", "valid", "delivered", "rejected"].filter((k) => count[k]).map((k) => el("div", { class: "card" }, el("b", { text: count[k] }), k === "rejected" ? "rejected at some rung" : "at rung: " + k))));
   box.append(el("div", { class: "note", text: "Every pack version the workshop received, with the highest rung its newest test reached: valid (shape) < composes < secure (access rules lint) < probed (a booted app with behaviour probes). A version a later one replaced stays here, as a record of what the AI delivered. Who: the AI that delivered it; a 'Claude' note marks a fix made on this side." }));
   box.append(table([{ id: "pack", label: "Pack", get: (r) => r.pack + "@" + r.version }, { id: "area", label: "Area", get: (r) => r.area },
     { id: "rung", label: "Reached", get: (r) => r.rung, render: (r) => el("span", { class: "pill " + (RUNG_CLASS[r.rung] || "warn"), text: r.rung }) },
